@@ -1,0 +1,33 @@
+# entornos y Python
+.venv/
+.venv-*/
+.python-*/
+.qtlibs/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+# herramientas
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+# datos y resultados en bruto (las referencias pequeñas de tests/golden/data sí se versionan)
+/data/
+bench/results/
+*.fits
+*.icube
+*.fcube
+!tests/golden/data/**
+# registros y trazas
+logs/
+*.log
+trace*.json
+# sistema
+.DS_Store
+# auditorías y notas locales: nunca en el repositorio
+AUDIT*.md
+src/explorer/_version.py
+scripts/sync.local.json
