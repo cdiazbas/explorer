@@ -6,7 +6,7 @@ cada sesión; no crece.
 ## 2026-09-28
 
 - **Hecho:**
-  - `explorer/` creado, con su propio git y sin commits;
+  - `explorer/` creado, con su propio git;
   - `PLAN.md` congelado;
   - `ROADMAP.md`, `docs/decisions/` (ADR 0001 y 0002), `docs/measured.md` y
     `docs/architecture.md` (vacío hasta que haya código).
@@ -14,7 +14,9 @@ cada sesión; no crece.
   - `scripts/sync.py` sube a `…/CRISPEX/explorer` en bellatrix; la configuración está en
     `scripts/sync.local.json`, que no se versiona.
   - `scripts/setup_env.sh` crea `.venv-<OS>-<arch>`: con uv en el Mac, con conda + pip en bellatrix.
-  - 7 pruebas en verde en las dos máquinas. Sin commit.
+  - 7 pruebas en verde en las dos máquinas.
+- **Primeros commits** (`97b965b`, `3580a4a`, `11f9ce1`), con las etiquetas del
+  [ADR 0005](docs/decisions/0005-commits.md). Sin remoto ni `push`.
 - **Regla nueva:** la aplicación, en inglés; los `.md`, en español ([ADR 0004](docs/decisions/0004-idioma.md)).
 - **Siguiente:** E0.4 (`obs/`, midiendo su coste), E0.5 (CI), E0.6 (cubos sintéticos).
 - **Del prototipo, fuera de explorer:**
