@@ -481,3 +481,95 @@ caso real. La diferencia era NUMA.
 
 **Hallazgo para E1.10.** En bellatrix, `NUMBA_NUM_THREADS` vale 32 (los núcleos), así que los 64
 hilos de `gather` que decide la sonda se quedan en 32, en el prototipo y en explorer.
+
+### 2026-09-29: fachada `Dataset` y estudio sin `_sp` (ROADMAP E1.10)
+
+**`explorer.data.dataset.Dataset`.** Arma las piezas como `startup.open_cube` y `Viewer` del
+prototipo:
+- sonda de almacenamiento, guardián de memoria, reparto del presupuesto y ejecutores;
+- un fichero por píxel que no se puede usar se ignora con un aviso;
+- la calibración de un `_sp.icube` queda en el lector.
+
+Las lecturas devuelven `Future`:
+- una imagen o un bloque que ya está en caché vuelve como futuro terminado, sin salto de hilo
+  (`FrameCache.peek`, `PixelReader.peek`);
+- las imágenes que faltan se leen en un pool propio, con los trozos en el pool de E/S (16 hilos,
+  como el `Cube` del prototipo);
+- las series van al hilo de numba;
+- las losas, a un pool que queda abierto.
+
+`update_memory()` es el `_memory` del prototipo. `close()` cierra los pools y luego los ficheros.
+
+**`explorer demo --sp | --nosp`.** Un paseo del cursor por el campo, con el origen desplazado al
+azar en cada ejecución: imprime en cada movimiento el tiempo hasta el espectro y hasta el λ–t.
+
+**Rendimiento frente al prototipo** (bellatrix, 6173, fijado al nodo 0, 8 rondas ABBA, 0
+resultados distintos; el prototipo con su tope real de 32 hilos):
+
+| Caso | Prototipo | explorer | Ratio (explorer más rápido) |
+|---|---|---|---|
+| Imagen en frío | 33.6 ms | 34.2 ms | 1.011 (4/8) |
+| λ–t en frío | 406 ms | 370 ms | 0.91 (7/8) |
+| Bloque `_sp` en frío | 20.8 ms | 20.2 ms | 0.992 (5/8) |
+
+Estas cifras son con 64 hilos, que al final no se adoptaron (véase abajo). Sin ese cambio,
+explorer y el prototipo usan los mismos hilos.
+
+**El bloque `_sp` en frío.** Una primera pasada daba +2 ms (1.088), pero con carga ~5. Repetido con
+carga 0.2, las cinco variantes quedaron entre 18.8 y 19.9 ms:
+- prototipo directo, dos veces (A/A);
+- nuestro lector, directo y a través del futuro;
+- el del prototipo a través de nuestro pool.
+
+El A/A ya difiere 0.9 ms, así que la diferencia de la primera pasada queda dentro del ruido.
+
+**Aciertos de caché.** Una imagen en caché a través de la fachada cuesta 5.6 µs. De ellos, ~3 µs son
+crear el `Future` (un objeto mínimo ya terminado costaría 0.27 µs). Se deja el `Future` estándar.
+Frente a los ~13 ms de un movimiento del cursor es un 0.02 %.
+
+**Estudio sin `_sp`** (bellatrix, fijado al nodo 0, lecturas que el proceso no había hecho, con los
+contadores FC para confirmar que eran en frío):
+- **Coste por petición.** Un fallo de 4 B va al SAN como una petición de ~4 KB, a ~12.5 ms.
+- **Caché del sistema.**
+  - Solo guarda esa página, y poco tiempo: el mismo píxel falla otra vez tras ~10 k lecturas, con
+    38 GB libres.
+  - A 30 filas ya es un fallo.
+  - Un λ–t en caché aún cuesta ~24–33 ms, y no se midió por qué.
+- **Hilos de numba**, límite del almacenamiento. λ–t / todo el píxel en frío:
+
+  | Hilos | λ–t | Todo el píxel |
+  |---|---|---|
+  | 32 | 670 ms | 2730 ms |
+  | 64 | 462 ms | 1783 ms |
+  | 128 | 377 ms | 1468 ms |
+  | 256 | 367 ms | 1359 ms |
+  | 32 (A/A) | 675 ms | 2831 ms |
+
+  El almacenamiento se satura hacia ~7000–7700 peticiones/s, y el mínimo ronda los 330 ms en todos.
+- **io_uring:** bloqueado en bellatrix (`io_uring_disabled=2`, `EPERM` sin root).
+- **λ–t progresivo** (cada 4.º t, luego cada 2.º, luego el resto), 64 hilos:
+  - primera pasada en 136 ms, frente a 434 ms del λ–t completo;
+  - el total tarda un 10 % más (477 ms);
+  - la primera pasada interpolada no es fiel: error RMS del 12 % en I y del 34 % en V. A 20 s por
+    barrido la estructura temporal no es suave en 80 s.
+  - Solo serviría como vista previa mientras el ratón se mueve.
+- **Resolución de pantalla:** no ayuda con 186 t. Solo con cubos de más t que píxeles tiene el
+  panel.
+
+**Descartado: 64 hilos fijos.** El tamaño del pool de numba se decide al importarlo, y en bellatrix
+es 32. Probado, y no adoptado:
+- **Con el almacenamiento cargado (tarde):** −33 % en el λ–t en frío.
+- **Con el almacenamiento rápido (noche):** paseo del demo, 12 movimientos:
+  - λ–t 276 frente a 287 ms, apenas un 4 %; recorta la cola lenta;
+  - espectro 27 frente a 20 ms, más lento;
+  - un λ–t en caché del sistema, 33 frente a 24 ms, más lento (0/8).
+- **Por qué:** con poca espera por hilo, tantos hilos cuestan más de lo que ganan. Se queda el tamaño
+  por defecto.
+- **Abierto:** hilos por petición (E1.12) y vecinos desde la misma lectura (E1.13).
+
+**Demo en bellatrix** (20:52, sin fijar, 12 movimientos):
+
+| Modo | Espectro | λ–t |
+|---|---|---|
+| `--sp` | 19.4 ms | 19.4 ms |
+| `--nosp` | 20–27 ms | 276–287 ms |

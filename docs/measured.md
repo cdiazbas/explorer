@@ -34,6 +34,10 @@ Copiado de `docs/plan.md` §4 el 2026-09-28.
 | Medidas finas (< 30 %) fijadas a un nodo NUMA (`taskset`) | Sin fijar, copiar a búfer bimodal ~960 frente a ~1270 µs por imagen de 3.9 MB, cambia entre ejecuciones (bel, 2 nodos) | Diario 09-29, E1.9 |
 | Con 16 hilos, el obrero de E/S igual que el del prototipo, no más ligero | Offsets calculados antes: 8–15 % más lento (GIL) | Diario 09-29, E1.9 |
 | Pool de hilos abierto para la losa de rendija | Crear 64 hilos por rendija: 10–16 % de la losa templada | Diario 09-29, E1.9 |
+| Sin `_sp`, un fallo de 4 B cuesta una petición de ~4 KB (~12.5 ms), y el sistema apenas guarda | Contadores FC: 2604 peticiones y ~11 MB por λ–t; el mismo píxel vuelve a fallar tras ~10 k lecturas (~50 MB) con 38 GB libres | Diario 09-29, E1.10 |
+| Sin `_sp`, el almacenamiento se satura hacia ~7000–7700 peticiones/s | λ–t en frío con 32/64/128/256 hilos: 670/462/377/367 ms (bel, fijado al nodo 0, A/A 675) | Diario 09-29, E1.10 |
+| No fijar 64 hilos de numba (se queda el tamaño por defecto, los núcleos) | Ganancia en frío 33 % (tarde) o 4 % (noche); más lento en el espectro (27 frente a 20 ms) y en caché (33 frente a 24 ms) | Diario 09-29, E1.10 |
+| io_uring no se puede usar en bel | `kernel.io_uring_disabled=2`: `EPERM` sin root | Diario 09-29, E1.10 |
 | Por `ssh -Y` solo llega `pgr` | vispy/gfx: ventana vacía (OpenGL en el servidor); napari igual (2026-09-26) | Fase 11 |
 | Puente X11 por defecto en pantalla remota | ~12 frente a ~8.5 imágenes/s; 1.3 frente a 4.8 B/px | F2, 2026-09-25 |
 | Lo que escala por X11 es lo repintado | Mismos bytes con 1 o 4 ventanas; 49 ms repintando todo frente a 20 ms solo cruz + 2 paneles | Fase 17 |
