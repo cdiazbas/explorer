@@ -21,8 +21,10 @@ cada sesión; no crece.
   usuario no pudo conectar durante un rato.
 - **E0.4 hecha:** `obs/` (registro por capa, tramos con presupuestos, trazas); cada tramo cuesta
   0.7 µs (Mac) y 1.4 µs (bellatrix). Las pruebas ya no escriben en la caché real (`9062dcc`, `b57cbd2`).
-- **Siguiente:** E0.5 (CI) y E0.6 (`_sp`, `icube` y WCS-TAB en el sintético). Pequeña: E0.11
-  (avisar de copias huérfanas en bellatrix).
+- **E0.5 hecha:** `scripts/check.sh` (higiene, `ruff`, capas, `mypy`, pruebas) y ganchos de git
+  (`scripts/install_hooks.sh`; en un clon nuevo hay que ejecutarlo). `2444f50`.
+- **Siguiente:** E0.6 (`_sp`, `icube` y WCS-TAB en el sintético), E0.8 (línea base del
+  prototipo). Pequeña: E0.11 (avisar de copias huérfanas en bellatrix).
 - **Del prototipo, fuera de explorer:**
   - `prototype/actualize.py` sigue apuntando a los `.md` de la raíz, que ahora están en
     `docs/` del proyecto;

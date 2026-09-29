@@ -10,6 +10,7 @@ Una decisión revocada no se borra: se marca **Sustituida por NNNN** y se crea l
 | [0003](0003-nombre-provisional.md) | Nombre provisional `explorer`, preparado para cambiarlo | Vigente (provisional) | 2026-09-28 |
 | [0004](0004-idioma.md) | La aplicación, en inglés; las notas, en español | Vigente | 2026-09-28 |
 | [0005](0005-commits.md) | Mensajes de commit: una etiqueta y una frase | Vigente | 2026-09-28 |
+| [0006](0006-comprobaciones-locales.md) | Comprobaciones en local, mientras no haya CI remoto | Vigente | 2026-09-29 |
 
 ## Plantilla
 

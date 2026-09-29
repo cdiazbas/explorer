@@ -8,5 +8,7 @@ documentación, en [docs/](docs/README.md).
 scripts/setup_env.sh --dev     # entorno de esta máquina (.venv-<OS>-<arch>); se puede repetir
 scripts/demo.sh                # probar lo que haya, en el cubo de prueba o en uno sintético
 scripts/run.sh doctor          # comprobar entorno, numba, Qt y pantalla
+scripts/check.sh               # todo lo que haría el CI: higiene, lint, capas, tipos, pruebas
+scripts/install_hooks.sh       # una vez por clon: ganchos de git (higiene y formato de commits)
 python3 scripts/sync.py -n     # qué se subiría a bellatrix (necesita la conexión maestra de ssh abierta)
 ```
