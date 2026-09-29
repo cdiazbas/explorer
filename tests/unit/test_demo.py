@@ -19,8 +19,23 @@ def test_demo_on_a_given_cube(headless):
     assert demo.main([str(cube), "--no-window"]) == 0
 
 
-def test_synthetic_cube_is_written_once(headless, monkeypatch):
+def test_synthetic_cube_is_written_once_with_its_per_pixel_file(headless, monkeypatch):
     calls = []
-    monkeypatch.setattr(synth, "write_stokes_cube", lambda p, **k: (calls.append(p), p.write_bytes(b"x"))[0])
+
+    def fake(directory, name, **k):                        # no 84 MB cubes in unit tests
+        calls.append(name)
+        directory.mkdir(parents=True, exist_ok=True)
+        paths = {"im": directory / f"{name}_im.fits", "sp": directory / f"{name}_sp.fits"}
+        for p in paths.values():
+            p.write_bytes(b"x")
+        return {k: str(v) for k, v in paths.items()}
+
+    demo_dir = headless / "cache" / "explorer" / "demo"
+    demo_dir.mkdir(parents=True)
+    (demo_dir / "synth_stokes_v1_im.fits").write_bytes(b"old")        # a cube of an older version
+    monkeypatch.setattr(synth, "write_dataset", fake)
     first, second = demo.synthetic_cube(), demo.synthetic_cube()
-    assert first == second and len(calls) == 1 and not list((headless / "cache" / "explorer" / "demo").glob("*.tmp*"))
+    assert first == second and len(calls) == 1
+    names = sorted(p.name for p in demo_dir.iterdir())
+    v = synth.SYNTH_VERSION
+    assert names == [f"synth_stokes_v{v}_im.fits", f"synth_stokes_v{v}_sp.fits"]      # old one gone, no temp left

@@ -19,21 +19,28 @@ from ._paths import cache_dir
 
 
 def synthetic_cube() -> str:
-    """The cached synthetic demo cube, written if missing (atomically: a half-written file is never used)."""
+    """The cached synthetic demo cube and its per-pixel file (_sp.fits), written once, atomically (a half-written
+    set is never used); cubes of older synthetic versions are removed."""
+    import shutil
+
     from .testing import synth
 
     d = cache_dir() / "demo"
     d.mkdir(parents=True, exist_ok=True)
-    path = d / f"synth_stokes_v{synth.SYNTH_VERSION}_im.fits"
+    name = f"synth_stokes_v{synth.SYNTH_VERSION}"
+    path = d / f"{name}_im.fits"
+    for old in d.glob("synth_stokes_v*"):
+        if not old.name.startswith(name + "_"):
+            old.unlink()
     if not path.exists():
         print(f"writing the synthetic demo cube (once): {path}", flush=True)
-        tmp = path.with_suffix(f".tmp{os.getpid()}.fits")
+        tmp = d / f".tmp{os.getpid()}"
         try:
-            synth.write_stokes_cube(tmp)
-            os.replace(tmp, path)
+            paths = synth.write_dataset(tmp, name, icube=False)
+            os.replace(paths["sp"], d / os.path.basename(paths["sp"]))
+            os.replace(paths["im"], path)                  # last: its presence means the set is complete
         finally:
-            if tmp.exists():
-                tmp.unlink()
+            shutil.rmtree(tmp, ignore_errors=True)
     return str(path)
 
 
