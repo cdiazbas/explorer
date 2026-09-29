@@ -31,7 +31,12 @@ cada sesión; no crece.
 - **E0.6 hecha:** sintético v2 (`_im` con WCS-TAB, `_sp.fits`, `_sp.icube`), leído por el prototipo
   con su propio código. La línea base del Mac se repitió con el v2 (`eb532b3`).
 - **Regla (memoria del usuario):** nada del prototipo de memoria; se lee su código y se cita.
-- **Siguiente:** E0.7 (referencias del prototipo para la comparación numérica). Pequeña: E0.11.
+- **E0.7 hecha:** referencias del prototipo (caso sintético versionado; caso real del 6173 en
+  bellatrix, en `tests/golden/real/`), exportador y comparador (`acea67c`).
+- **Regla (memoria del usuario):** comentarios del código neutros, sin "el usuario dijo" ni
+  historias con fecha; la historia, a la documentación.
+- **Siguiente:** E1 (`explorer.data`), comparándose con esas referencias desde el primer día.
+  Pequeña: E0.11.
 - **Del prototipo, fuera de explorer:**
   - `prototype/actualize.py` sigue apuntando a los `.md` de la raíz, que ahora están en
     `docs/` del proyecto;

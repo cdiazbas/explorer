@@ -149,3 +149,45 @@ propio código (`physics.from_fits`, `Cube`, `find_sp`, `SpFits`, `SpLP.calibrat
 - `SpFits` idéntico a `Cube.series`;
 - calibración del `icube`: escala 1.0e-11, residuo máximo 0.58 unidades. Con el `_sp.icube` real
   de Hα el prototipo midió 0.5 unidades (OVERVIEW, diario 2026-09-24).
+
+### 2026-09-29: referencias del prototipo para la comparación numérica (ROADMAP E0.7)
+
+**Qué se exporta.** `tools/golden/export_prototype.py` corre con el Python del prototipo y llama a
+sus propias funciones, sin modificarlas. Para cada caso de `tests/golden/cases.toml` guarda:
+- imágenes, límites de contraste, series por píxel y bloques de `_sp.fits` e `icube`;
+- la reducción de `pgr` que usa la aplicación (`_reduce_u8_serial`, nivel 0 = relleno);
+- rendijas: camino, píxeles, losa y bandas;
+- ejes físicos y rangos de Q, U y V;
+- de una ventana real del prototipo construida sin pantalla: los rangos y del muestreo y de Q, U y V,
+  `iscale` y los límites de la primera imagen.
+
+**1. El sintético no es idéntico entre máquinas.**
+- El mismo `write_dataset(seed=7)` da un `_im.fits` y un `_sp.fits` distintos en el Mac (arm64) y en
+  bellatrix (x86_64): son distintos los sha256, porque los float32 difieren en los últimos bits.
+- El `icube` sí coincide: el redondeo a enteros absorbe la diferencia.
+- **Consecuencia:** las entradas del caso sintético se versionan (`tests/golden/data/synth_small/`,
+  1.2 MB), y cada máquina lee los mismos bytes.
+
+**2. Con las mismas entradas, el prototipo da lo mismo en las dos máquinas.**
+- Exportado en el Mac y en bellatrix y comparado con `tools/golden/compare.py --meta`: 38 de 43
+  claves idénticas.
+- Las 5 diferencias son del último dígito de un float64:
+  - la calibración del `icube` (`np.polyfit`: escala, cero y residuo) difiere en ~1e-15 relativo, y
+    aun así los bloques calibrados en float32 salen idénticos;
+  - un valor de cada `slit_path`, 3.6e-15 (1e-16 relativo).
+- **Para la E1:** lectura y conversiones, idénticas; cuentas en float64 (calibración, caminos), con
+  tolerancia relativa del orden de 1e-12, escrita en la prueba con su motivo.
+
+**3. Determinismo.** Dos exportaciones seguidas en el Mac, con las mismas entradas, salen idénticas
+en las 40 claves, pese a las lecturas en paralelo.
+
+**4. Coste de la referencia real** (cubo de Stokes 6173, bellatrix, carga ~1).
+- 20 s de reloj; 8.4 s de exportación. El resto es arrancar, la ventana sin pantalla y comprimir
+  los 118 MB del `.npz`, que se queda en bellatrix y no se versiona.
+- El primer intento tardó ~20 minutos: calculaba el sha256 de las entradas completas (dos cubos
+  de 176 GB, ~350 GB leídos de StorNext a ~0.3 GB/s).
+- Ahora, los ficheros de más de 64 MB se identifican con una huella: tamaño, fecha de modificación
+  y sha256 de los primeros y últimos 16 MB. Un cambio en medio del fichero con el mismo tamaño y la
+  misma fecha pasaría desapercibido; se acepta, porque los cubos compartidos no se reescriben así.
+- En el cubo real, los rangos de Q, U y V recorren la rama del percentil (Q y U: 10.7 %, V:
+  15.7 % de I_c). En el sintético pequeño solo se recorre la del suelo de ruido.
