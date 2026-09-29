@@ -344,3 +344,55 @@ se quedan en las unidades leídas, aunque el título diga %. En relleno todo es 
 - fichero sin WCS-TAB, y fichero que no es FITS;
 - papeles por nombre y por orden SOLARNET;
 - unidades de los espectros.
+
+### 2026-09-29: estadística y núcleos (ROADMAP E1.8)
+
+Desde `app/viewer.py` del prototipo:
+- `explorer.data.kernels`: `reduce_u8_serial` y su reparto en franjas, y `absmax_*`;
+- `explorer.data.stats`:
+  - `limits` y `nice_range`;
+  - la muestra de perfiles, de `_start_sample`, `_sample_job` y `_sample_ready`, partida en
+    `sample_pixels`, `sample_profiles` y `sample_ranges`;
+  - `quv_amplitude_ranges`, `quv_threads` (de `_quv_job`) y `quv_plot_ranges` (de `_quv_ready`).
+
+**Comprobación frente a las referencias del prototipo**, en el sintético y en el cubo 6173 real
+(bellatrix), todo idéntico sin tolerancia:
+- `limits.*` y `reduce.*`;
+- `meta.quv`: semianchos, ruido, píxeles con señal y percentil, en t = 0 y 2 en el sintético y en
+  t = 93 en 6173;
+- lo que calculaba el visor en marcha: los límites de la primera imagen, los rangos y de la muestra
+  con Q, U y V sustituidos por los de las imágenes enteras, y `yquv`.
+
+**Diferencias buscadas.**
+- Sin fichero `_sp`, la muestra lee sus valores con una sola llamada a `gather` en el hilo de numba.
+  El prototipo usaba un pool de Python con un `pread` por valor. Da los mismos valores (prueba
+  unitaria frente al FITS y frente al `_sp`).
+- Un cubo de enteros con BSCALE, BZERO o BLANK se convierte a valores físicos antes de calcular los
+  rangos de Q, U y V. El prototipo leía los bytes como si fueran float (su `Cube` no admite
+  BSCALE). Una prueba unitaria da lo mismo que el cubo float con esos valores.
+- `quv_amplitude_ranges` exige un eje de Stokes y avisa si falta.
+
+**Velocidad frente al prototipo** (bellatrix, 6173, 2026-09-29 13:16, carga 2.8–4.8, 64 hilos
+de numba, 8 franjas, 4 rondas ABBA). Mediana de las medianas por ronda:
+
+| Caso | Prototipo | explorer | Dispersión entre rondas |
+|---|---|---|---|
+| Reducción de una imagen entera, f = 1 | 5.58 ms | 5.52 ms | 5.5–5.6 |
+| Reducción, f = 2 | 2.45 ms | 2.40 ms | 2.4–2.5 |
+| Q U V, t sin leer | 846 ms | 752 ms | 726–926 frente a 704–767 |
+| Q U V, releído | 571 ms | 559 ms | 536–603 frente a 550–574 |
+| Muestra con `_sp` | 48 ms | 44 ms | 39–62 frente a 40–51 |
+| Muestra sin `_sp` | 1555 ms | 1578 ms | 1474–1665 frente a 1540–1810 |
+
+Todo está dentro de la dispersión, así que no se afirma ninguna mejora. En 32 comparaciones, 0
+resultados distintos.
+
+**Números que no se reproducen hoy.**
+- La muestra sin `_sp` tardó 1.5–1.8 s con las dos implementaciones. En la fase anterior el
+  prototipo medía 0.89–0.92 s en las mismas condiciones. Es igual para las dos, así que no es una
+  regresión de explorer. Queda pendiente averiguar por qué: carga de StorNext o de la máquina.
+- La reducción de 2044×2030 da 5.5 ms a f = 1 y 2.4 ms a f = 2. `measured.md` dice 1.45 ms con
+  8 franjas, pero con una salida del tamaño de la pantalla, no de la imagen entera. Las condiciones
+  no son las mismas, así que no se comparan.
+
+Script: `bench/stats_vs_prototype.py`. Resultado: `bench/results/stats_vs_prototype_*.json`.
