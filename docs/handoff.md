@@ -23,7 +23,12 @@ cada sesión; no crece.
   0.7 µs (Mac) y 1.4 µs (bellatrix). Las pruebas ya no escriben en la caché real (`9062dcc`, `b57cbd2`).
 - **E0.5 hecha:** `scripts/check.sh` (higiene, `ruff`, capas, `mypy`, pruebas) y ganchos de git
   (`scripts/install_hooks.sh`; en un clon nuevo hay que ejecutarlo). `2444f50`.
-- **Siguiente:** E0.6 (`_sp`, `icube` y WCS-TAB en el sintético), E0.8 (línea base del
+- **E0.8 hecha:** línea base del prototipo en bellatrix y en el Mac ([journal.md](journal.md)).
+  **Regla:** explorer no puede ser más lento que ella, y la meta es mejorarla (`a528015`).
+- **Lanzar medidas largas en bellatrix:** `ssh host 'nohup bash -c "cd … && orden" > log 2>&1 < /dev/null &'`.
+  Con `cd … && nohup orden > log &`, la subshell conserva la salida de la sesión y el `ssh` no
+  vuelve hasta que termina la medida (2026-09-29).
+- **Siguiente:** E0.6 (`_sp`, `icube` y WCS-TAB en el sintético) y E0.7 (referencias del
   prototipo). Pequeña: E0.11 (avisar de copias huérfanas en bellatrix).
 - **Del prototipo, fuera de explorer:**
   - `prototype/actualize.py` sigue apuntando a los `.md` de la raíz, que ahora están en

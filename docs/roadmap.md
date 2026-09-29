@@ -10,6 +10,10 @@ sección que la origina.
   [journal.md](journal.md); nunca repetir lo que dice la tarea.
 - **Estado "hecho":** verificado contra el código tal como está, no contra el commit que
   dijo hacerlo.
+- **Rendimiento:** ninguna medida de explorer puede ser peor que la línea base del prototipo en
+  las mismas condiciones (en ABBA y dentro del ruido entre rondas), y la meta es mejorarla.
+  Cada etapa que toque el visor se compara con [journal.md](journal.md), línea base del
+  2026-09-29 (el usuario, 2026-09-29).
 
 **Estados** (conjunto cerrado):
 
@@ -27,7 +31,6 @@ sección que la origina.
 |---|:---:|---|---|---|---|
 | E0.6 | 🔄 | `testing/synth.py`: cubos sintéticos pequeños con relleno NaN, Stokes, `_sp`, `icube` y cabecera SOLARNET (PLAN §7). **Hecho:** cubo `_im` (t, s, λ, y, x) big-endian con relleno NaN alrededor de un campo girado, determinista, escrito instante a instante; 3 pruebas. **Falta:** `_sp` transpuesto, `icube`, cabecera con las tablas WCS-TAB de los cubos reales | E0.2 | 2026-09-28 | `74b50f0` (el cubo `_im`) |
 | E0.7 | ⬜ | `tools/golden/export_prototype.py` + `tests/golden/cases.toml` + referencias del prototipo para los cubos sintéticos (PLAN §7.1, nivel 1) | E0.6 | 2026-09-28 | — |
-| E0.8 | ⬜ | Línea base del prototipo: `selftest` ABBA en bellatrix (Xvfb y puente) y en el Mac (sintético), `--look modern`, con y sin `_sp` (PLAN §6) | — | 2026-09-28 | — |
 | E0.11 | ⬜ | `sync.py -n` avisa de los ficheros que están en el remoto y ya no en la lista (movidos o borrados aquí), sin borrarlos. Visto el 2026-09-29: al mover las notas a `docs/` quedaron cinco copias viejas en bellatrix, borradas a mano tras comprobar que eran versiones del historial | — | 2026-09-29 | — |
 | E3.1 | ⬜ | La orden `explorer` lanzada sin `scripts/run.sh` en Linux: relanzarse sin un `LD_LIBRARY_PATH` ajeno antes de cargar Qt (como `test.py` del prototipo). Visto el 2026-09-28: con el entorno conda de `.bashrc` en bellatrix, Qt no arranca (`Qt_6_PRIVATE_API`) | E3 | 2026-09-28 | `doctor` lo detecta y lo explica |
 | X.1 | ⬜ | `explorer install-desktop` (orden explícita, no al instalar): en macOS un `explorer.app` pequeño en `~/Applications` que llama al entorno (Info.plist con los tipos FITS, `QFileOpenEvent` para abrir desde Finder o arrastrando al icono; arregla que el menú diga "python" y la falta de icono); en Linux un `.desktop` y el tipo MIME de FITS | E3 | 2026-09-28 | — |
@@ -46,6 +49,7 @@ sección que la origina.
 | E0.10 | ✅ | `scripts/demo.sh` y `explorer demo`: probar en cualquier momento, en el Mac o en Linux, lo más completo que haya. Cubo elegido por almacenamiento, no por sistema: el de Stokes 6173 si el enlace `data/` del proyecto resuelve; si no, el sintético (una vez, en `~/.cache/explorer/demo/`). Hoy ejecuta `doctor` sobre el cubo con una ventana de 2 s; desde E3, el visor | — | 2026-09-28 | Mac: sintético, `doctor` OK en 4.5 s con ventana; bellatrix: cubo real (176 GB, con `_sp`), OK en 1.8 s sin pantalla; 12 pruebas en verde en los dos; `651c05d` |
 | E0.4 | ✅ | `obs/`: `log.py` (un logger por capa, fichero rotado, `EXPLORER_LOG` por capa, con filtro por salida), `spans.py` (tramos, contadores, presupuestos con desglose de hijos, `summary()`), `trace.py` (`EXPLORER_TRACE`, Chrome/Perfetto); `doctor` abre un tramo por comprobación. **Coste:** 0.74 µs por tramo en el Mac y 1.38 µs en bellatrix; 20 tramos en el peor caso = 25 y 50 µs, dentro del presupuesto de 100 µs (PLAN §3.8) | — | 2026-09-29 | [journal.md](journal.md) 2026-09-29; 20 pruebas en verde en el Mac y en bellatrix; `9062dcc` |
 | E0.5 | ✅ | Comprobaciones en local ([ADR 0006](decisions/0006-comprobaciones-locales.md)): `scripts/check.sh` (higiene del árbol y del historial, `ruff` con reglas explícitas, contratos de `import-linter`, `mypy`, pruebas sin pantalla) y ganchos `pre-commit`/`commit-msg` (`scripts/install_hooks.sh`). `mypy` en lugar de `pyright` (sin Node.js). Pruebas del propio guardián (`tests/unit/test_hygiene.py`) | — | 2026-09-29 | `check.sh` en verde en el Mac (~3 s) y en bellatrix (sin higiene: no hay `.git`); los ganchos rechazan una ruta personal y un asunto mal formado; `2444f50` |
+| E0.8 | ✅ | Línea base del prototipo con el aspecto moderno: `bench/prototype_baseline.sh` (su `selftest` sin modificarlo; `offscreen`, `xcb` y puente sobre Xvfb; con y sin `_sp`; 2 rondas ABBA; md5 del código medido) y `bench/summarize_baseline.py` (PLAN §6) | — | 2026-09-29 | [journal.md](journal.md) 2026-09-29: bellatrix (cubo de Stokes 6173) y Mac (sintético); `a528015` |
 
 ## Decisiones pendientes
 
