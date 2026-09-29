@@ -109,16 +109,26 @@ class SpFits(PixelReader):
         if shape_stl is not None and (self.ns, self.nt, self.nl) != tuple(shape_stl):
             raise ValueError(f"{path}: (s, t, l) = {(self.ns, self.nt, self.nl)} does not match the image cube "
                              f"{tuple(shape_stl)}")
+        lay = self.layout
+        self._conv = (np.float32(lay.scale), np.float32(lay.zero)) if lay.scaled else None
+        self._blank, self._dtype, self._offset = lay.blank, lay.dtype, lay.offset
 
     def strip_read(self, y, x0, k):
-        raw = self._read(y, x0, k)
-        out = raw.astype(np.float32)
-        lay = self.layout
-        if lay.scaled:
-            out = out * np.float32(lay.scale) + np.float32(lay.zero)
-        if lay.blank is not None:
-            out[raw == lay.blank] = np.nan
-        return out
+        # _read inlined and the conversion decided once: a slit issues one call per run of pixels, hundreds from
+        # 64 threads under the GIL, and the extra call and lookups cost 0.5 us each (slab 41.07 -> 40.67 ms warm)
+        if not (0 <= y < self.ny and 0 <= x0 and k >= 1 and x0 + k <= self.nx):
+            raise IndexError(f"strip ({y}, {x0}..{x0 + k}) outside {self.ny}x{self.nx}")
+        n = k * self.pix
+        raw = os.pread(self.fd, n, self._offset + (y * self.nx + x0) * self.pix)
+        if len(raw) != n:
+            raise ShortRead(f"read {len(raw)} of {n} bytes for strip ({y}, {x0}) in {self.layout.path}")
+        a = np.frombuffer(raw, self._dtype)
+        out = a.astype(np.float32)
+        if self._conv is not None:
+            out = out * self._conv[0] + self._conv[1]
+        if self._blank is not None:
+            out[a == self._blank] = np.nan
+        return out.reshape(k, self.ns, self.nt, self.nl)
 
 
 class SpLP(PixelReader):

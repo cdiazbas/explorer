@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 from .axes import Roles
-from .io import FrameReader, ShortRead
+from .io import FrameReader
 from .kernels import absmax_into
 
 SAMPLE_N = 100              # profiles
@@ -72,14 +72,11 @@ def sample_profiles(ys, xs, ts, frames: FrameReader, roles: Roles, pixel=None, t
         with ThreadPoolExecutor(max(1, min(threads, n))) as ex:
             blocks = list(ex.map(lambda i: pixel.strip_read(int(ys[i]), int(xs[i]), 1)[0], range(n)))
         return np.stack([b[:, int(t), :] for b, t in zip(blocks, ts, strict=True)]).astype(np.float64)
-    from .gather import gather
-
     lead = frames.shape[:-2]
     if len(lead) != sum(a is not None for a in (roles.t, roles.s, roles.l)):
         raise ValueError(f"a sample needs every leading axis to be t, Stokes or lambda: {frames.layout.axes}")
-    it = frames.layout.dtype.itemsize
     strides = frames.strides
-    base = np.zeros(n, np.int64)                                       # frame index of each pixel's t
+    base = np.zeros(n, np.int64)                                       # frame number of each pixel's t
     if roles.t is not None:
         base = np.asarray(ts, np.int64) * strides[roles.t]
     sl = np.zeros((roles.ns, roles.nl), np.int64)
@@ -87,13 +84,7 @@ def sample_profiles(ys, xs, ts, frames: FrameReader, roles: Roles, pixel=None, t
         sl = sl + np.arange(roles.ns, dtype=np.int64)[:, None] * strides[roles.s]
     if roles.l is not None:
         sl = sl + np.arange(roles.nl, dtype=np.int64)[None, :] * strides[roles.l]
-    pix = (np.asarray(ys, np.int64) * frames.nx + np.asarray(xs, np.int64)) * it
-    offs = (frames.layout.offset + (base[:, None, None] + sl[None]) * frames.frame_bytes + pix[:, None, None])
-    out = np.empty(offs.size * it, np.uint8)
-    if gather(frames.fd, offs.ravel().astype(np.int64), it, out):
-        raise ShortRead(f"short reads for the profile sample in {frames.layout.path}")
-    raw = out.view(frames.layout.dtype).reshape(n, roles.ns, roles.nl)
-    return frames.to_float32(raw).astype(np.float64)
+    return frames.points(ys, xs, base[:, None, None] + sl[None]).astype(np.float64)
 
 
 def sample_ranges(prof, cont, iscale=None, k_sig=SAMPLE_K):
@@ -181,13 +172,9 @@ def quv_amplitude_ranges(frames: FrameReader, roles: Roles, cont, t, threads=8, 
         if roles.l is not None:
             j[roles.l] = lam
         q = time.perf_counter()
-        b = os.pread(frames.fd, frames.frame_bytes, frames.frame_offset(j))
+        b = frames.read_raw(j, chunks=1)                # one read per frame: `threads` frames run at once
         tio[0] += time.perf_counter() - q
-        if len(b) != frames.frame_bytes:
-            raise ShortRead(f"read {len(b)} of {frames.frame_bytes} bytes of frame {j} in {lay.path}")
-        if converted:
-            return frames.to_float32(np.frombuffer(b, lay.dtype)).tobytes()
-        return b
+        return frames.to_float32(b) if converted else b
 
     dtype = np.float32 if converted else lay.dtype
     if cont is not None:

@@ -67,14 +67,50 @@ class FrameReader:
         with span("data.frame.read"):
             return self.to_float32(self.read_raw(idx, chunks))
 
-    def read_rows(self, idx, y0: int, y1: int) -> np.ndarray:
-        """Rows y0..y1-1 of a frame, one read: the band a slit crosses, without the rest of the image."""
+    def read_rows_raw(self, idx, y0: int, y1: int) -> np.ndarray:
+        """Rows y0..y1-1 of a frame as stored, one read: the band a slit crosses, without the rest of the image.
+        Read-only (a view of the bytes read): os.pread into bytes costs 7-15 us less per band than preadv into a
+        new numpy array, and a slit reads one band per frame (bellatrix, 3.9 MB bands, pinned to one NUMA node)."""
         if not 0 <= y0 < y1 <= self.ny:
             raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        n = (y1 - y0) * self.nx * self.layout.dtype.itemsize
+        b = os.pread(self.fd, n, self.frame_offset(idx) + y0 * self.nx * self.layout.dtype.itemsize)
+        if len(b) != n:
+            raise ShortRead(f"read {len(b)} of {n} bytes of rows {y0}..{y1} in {self.layout.path}")
+        return np.frombuffer(b, self.layout.dtype).reshape(y1 - y0, self.nx)
+
+    def band_values(self, idxs, y0: int, y1: int, at, threads: int = 8) -> np.ndarray:
+        """For each frame index in idxs, one read of rows y0..y1-1, then the values at flat positions `at` in that
+        band: (len(idxs), len(at)) float32 in physical units, reads on `threads` threads started for the call.
+        The values along a slit without a per-pixel file. Each worker computes its frame's offset and converts
+        its own values, as the prototype's read_slit_bands does: with 16 workers a leaner one (offsets computed
+        up front) measured 8-15 % slower, the reads then contending harder for the GIL (bellatrix, 186 frames of
+        3.9 MB, pinned to one NUMA node)."""
+        if not 0 <= y0 < y1 <= self.ny:
+            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        at = np.asarray(at, np.int64)
+        if at.size and not (0 <= at.min() and at.max() < (y1 - y0) * self.nx):
+            raise IndexError(f"positions outside a band of {y1 - y0} rows of {self.nx}")
         isz = self.layout.dtype.itemsize
-        raw = np.empty((y1 - y0, self.nx), self.layout.dtype)
-        _preadv_exact(self.fd, memoryview(raw).cast("B"), self.frame_offset(idx) + y0 * self.nx * isz)
-        return self.to_float32(raw)
+        n = (y1 - y0) * self.nx * isz
+        skip = y0 * self.nx * isz
+        fd, dt = self.fd, self.layout.dtype
+
+        def one(j):
+            b = os.pread(fd, n, self.frame_offset(j) + skip)
+            if len(b) != n:
+                raise ShortRead(f"read {len(b)} of {n} bytes of frame {j} in {self.layout.path}")
+            return self.to_float32(np.frombuffer(b, dt)[at])
+
+        idxs = list(idxs)
+        if not idxs:
+            return np.empty((0, at.size), np.float32)
+        with span("data.bands.read"), ThreadPoolExecutor(max(1, min(threads, len(idxs)))) as ex:
+            return np.stack(list(ex.map(one, idxs)))
+
+    def read_rows(self, idx, y0: int, y1: int) -> np.ndarray:
+        """Rows y0..y1-1 of a frame as native float32 in physical units."""
+        return self.to_float32(self.read_rows_raw(idx, y0, y1))
 
     def series(self, y: int, x: int, idx, free_axes) -> np.ndarray:
         """Values at pixel (y, x) along the leading axes in free_axes, the others fixed at idx: one dimension per
@@ -101,6 +137,29 @@ class FrameReader:
             if gather(self.fd, offs, it, out):
                 raise ShortRead(f"short reads for pixel ({y}, {x}) in {self.layout.path}")
         return self.to_float32(out.view(self.layout.dtype).reshape(sizes))
+
+    def points(self, ys, xs, frame_numbers) -> np.ndarray:
+        """Values at pixels (ys[i], xs[i]), each at the frames frame_numbers[i, ...] (frame numbers in file order:
+        the dot product of a leading-axes index with self.strides): float32 of frame_numbers' shape, in one gather
+        (call it from the one thread that runs parallel numba)."""
+        from .gather import gather
+
+        fn = np.asarray(frame_numbers, np.int64)
+        ys, xs = np.asarray(ys, np.int64), np.asarray(xs, np.int64)
+        if fn.shape[:1] != ys.shape or ys.shape != xs.shape:
+            raise ValueError(f"{len(ys)} pixels and frame numbers of shape {fn.shape}")
+        if ((ys < 0) | (ys >= self.ny) | (xs < 0) | (xs >= self.nx)).any():
+            raise IndexError(f"pixels outside {self.ny}x{self.nx}")
+        if ((fn < 0) | (fn >= int(np.prod(self.shape[:-2], dtype=np.int64)))).any():
+            raise IndexError(f"frame numbers outside {self.shape[:-2]}")
+        it = self.layout.dtype.itemsize
+        pix = ((ys * self.nx + xs) * it).reshape((-1,) + (1,) * (fn.ndim - 1))
+        offs = (self.layout.offset + fn * self.frame_bytes + pix).ravel().astype(np.int64)
+        out = np.empty(offs.size * it, np.uint8)
+        with span("data.points.read"):
+            if gather(self.fd, offs, it, out):
+                raise ShortRead(f"short reads for {len(ys)} pixels in {self.layout.path}")
+        return self.to_float32(out.view(self.layout.dtype).reshape(fn.shape))
 
     def to_float32(self, raw: np.ndarray) -> np.ndarray:
         lay = self.layout

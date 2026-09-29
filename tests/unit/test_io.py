@@ -101,3 +101,21 @@ def test_numba_cache_goes_to_the_user_cache(monkeypatch, tmp_path):
     code = "import numba; from explorer.data import gather; print(numba.config.CACHE_DIR)"
     out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True).stdout
     assert out.strip() == str(tmp_path / "explorer" / "numba")
+
+
+def test_band_values_at_flat_positions(dataset, tmp_path):
+    data = fits.getdata(dataset["im"]).astype(np.float32)             # (t, s, l, y, x)
+    lay = formats.open_layout(dataset["im"])
+    rows, cols = np.array([3, 4, 8]), np.array([1, 11, 0])
+    at = (rows - 3) * SHAPE[4] + cols
+    idxs = [(t, 2, 1) for t in range(SHAPE[0])]
+    with FrameReader(lay) as r:
+        got = r.band_values(idxs, 3, 9, at, threads=2)
+        assert got.dtype == np.float32
+        np.testing.assert_array_equal(got, data[:, 2, 1][:, rows, cols])
+        with pytest.raises(IndexError):
+            r.band_values(idxs, 3, 9, [6 * SHAPE[4]])
+    cut = tmp_path / "cut_im.fits"                                     # the last two frames missing
+    cut.write_bytes(open(dataset["im"], "rb").read()[:lay.offset + lay.nbytes - 2 * SHAPE[3] * SHAPE[4] * 4])
+    with FrameReader(formats.fits_layout(cut)) as r, pytest.raises(ShortRead):
+        r.band_values([(1, 3, 2)], 0, 4, [0])

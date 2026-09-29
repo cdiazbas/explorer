@@ -216,3 +216,28 @@ def test_sampled_y_ranges_identical_to_the_prototype(golden):
     for k, r in yquv.items():
         ranges[k] = r
     assert _same([list(r) for r in ranges], v["ysample"])
+
+
+def test_slits_identical_to_the_prototype(golden):
+    """Path (1e-12 relative: its float64 differs in the last digit between machines, docs/journal.md), pixels,
+    the slab from the per-pixel file and the bands from the frames."""
+    from explorer.data.io import FrameReader
+    from explorer.data.pixel import open_pixel
+    from explorer.data.slits import read_slit_bands, read_slit_slab, slit_path, slit_pixels
+
+    case, ref, meta, im = golden
+    with FrameReader(formats.open_layout(im)) as fr:
+        sp = open_pixel(im, fr)
+        for m, pts in enumerate(case["slits"]):
+            path = slit_path(pts)
+            np.testing.assert_allclose(path, ref[f"slit_path.{m}"], rtol=1e-12, atol=0)
+            iy, ix = slit_pixels(ref[f"slit_path.{m}"], fr.ny, fr.nx)
+            assert np.array_equal(iy, ref[f"slit_iy.{m}"]) and np.array_equal(ix, ref[f"slit_ix.{m}"])
+            assert np.array_equal(slit_pixels(path, fr.ny, fr.nx)[0], iy), "pixels from our own path"
+            if f"slit_slab.{m}" in ref.files:
+                slab, _ = read_slit_slab(sp, iy, ix)
+                assert slab.dtype == np.float32 and np.array_equal(slab, ref[f"slit_slab.{m}"], equal_nan=True)
+            bands = read_slit_bands(fr, [tuple(f) for f in case["frames"]], iy, ix)
+            assert np.array_equal(bands, ref[f"slit_bands.{m}"], equal_nan=True), f"slit_bands.{m}"
+        if sp is not None:
+            sp.close()
