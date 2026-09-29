@@ -127,3 +127,92 @@ def test_power_of_ten_of_stokes_i_as_the_prototype(golden):
         spec = fr.series(fr.ny // 2, fr.nx // 2, tuple(v["idx"]), [r.s, r.l])
     assert axes.power_of_ten(spec[0]) == v["iscale"]
     assert axes.from_fits(im).cont == v["cont"]
+
+
+def test_limits_and_reduction_identical_to_the_prototype(golden):
+    from explorer.data.io import FrameReader
+    from explorer.data.kernels import reduce_u8_serial
+    from explorer.data.stats import limits
+
+    case, ref, meta, im = golden
+    with FrameReader(formats.open_layout(im)) as r:
+        imgs = [r.read(tuple(idx)) for idx in case["frames"]]
+    for i, (img, idx) in enumerate(zip(imgs, case["frames"], strict=True)):
+        assert np.array_equal(np.asarray(limits(img, symmetric=idx[1] > 0)), ref[f"limits.{i}"]), f"limits.{i}"
+    for k, c in enumerate(case["reduce"]):
+        lo, hi = ref[f"limits.{c['frame']}"]
+        out = np.empty((c["h"], c["w"]), np.uint8)
+        reduce_u8_serial(imgs[c["frame"]], c["y0"], c["x0"], c["f"], float(lo), float(hi), out)
+        assert np.array_equal(out, ref[f"reduce.{k}"]), f"reduce.{k}"
+
+
+def _same(a, b):
+    """Equal numbers, NaN equal to NaN, through nested lists, tuples and dicts."""
+    if isinstance(a, dict):
+        return isinstance(b, dict) and a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
+    if isinstance(a, (list, tuple)):
+        return isinstance(b, (list, tuple)) and len(a) == len(b) and all(map(_same, a, b))
+    return a == b or (a != a and b != b)
+
+
+def test_quv_ranges_identical_to_the_prototype(golden):
+    from explorer.data import axes
+    from explorer.data.io import FrameReader
+    from explorer.data.stats import quv_amplitude_ranges
+
+    case, ref, meta, im = golden
+    if "quv" not in meta:
+        pytest.skip("no Q U V in this case")
+    lay = formats.open_layout(im)
+    roles, cont = axes.roles(lay.axes, lay.shape), axes.from_fits(im).cont
+    with FrameReader(lay) as r:
+        for t, want in meta["quv"].items():
+            half, info, _, _ = quv_amplitude_ranges(r, roles, cont, int(t))
+            got = dict(half={str(k): v for k, v in half.items()}, info={str(k): list(v) for k, v in info.items()})
+            assert _same(got, want), f"Q U V at t={t}: {got} != {want}"
+
+
+def test_sampled_y_ranges_identical_to_the_prototype(golden):
+    """The running viewer's spectra ranges: the random sample from its first image, with Q U V then replaced by the
+    whole-frame ranges at its start t, and the first image's contrast limits."""
+    from explorer.data import axes
+    from explorer.data.executors import Executors
+    from explorer.data.io import FrameReader
+    from explorer.data.pixel import open_pixel
+    from explorer.data.stats import (
+        limits,
+        quv_amplitude_ranges,
+        quv_plot_ranges,
+        sample_pixels,
+        sample_profiles,
+        sample_ranges,
+    )
+
+    case, ref, meta, im = golden
+    if "viewer" not in meta:
+        pytest.skip("no viewer-level reference for this case")
+    v = meta["viewer"]
+    lay = formats.open_layout(im)
+    roles, cont = axes.roles(lay.axes, lay.shape), axes.from_fits(im).cont
+    idx = tuple(v["idx"])
+    ex = Executors(gather_threads=16)
+    try:
+        with FrameReader(lay) as fr:
+            img = fr.read(idx)
+            assert list(limits(img, symmetric=idx[roles.s] > 0)) == v["limits"]
+            sp = open_pixel(im, fr)
+            assert getattr(sp, "kind", None) == v["sp_kind"]
+            ys, xs, ts = sample_pixels(img, im, roles.nt)
+            prof = ex.numba.submit(sample_profiles, ys, xs, ts, fr, roles, sp).result()
+            ranges, iscale, _ = sample_ranges(prof, cont, v["iscale"])
+            t = idx[roles.t] if roles.t is not None else 0
+            half = quv_amplitude_ranges(fr, roles, cont, t)[0]
+            yquv = quv_plot_ranges(half, cont, iscale)
+            if sp is not None:
+                sp.close()
+    finally:
+        ex.close()
+    assert _same({str(k): list(r) for k, r in yquv.items()}, v["yquv"])
+    for k, r in yquv.items():
+        ranges[k] = r
+    assert _same([list(r) for r in ranges], v["ysample"])
