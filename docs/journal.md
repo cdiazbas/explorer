@@ -243,3 +243,36 @@ en las 40 claves, pese a las lecturas en paralelo.
 ~90 µs por lectura, frente a ~13 µs en el λ–t. No escala con el número de lecturas, y está sin
 explicar. Coincide con lo que midió el prototipo sin `_sp` (Fase 17: 0.5–1.8 s). El `_sp` lo evita
 con una sola lectura por píxel.
+
+### 2026-09-29: ficheros por píxel, explorer frente al prototipo (ROADMAP E1.4)
+
+**Método.**
+- `bench/pixel_vs_prototype.py`: el `SpFits` del prototipo (`app/sources.py`) y el de explorer
+  en el mismo proceso, tira de 32 px (la que elige la política en StorNext), 4 rondas ABBA de 10
+  píxeles sorteados, cada uno en una fila que ninguna de las dos había leído.
+- "En caché" es el píxel vecino, servido por la caché LRU de bloques de cada lector.
+- bellatrix, `_sp.fits` del cubo de Stokes 6173, carga 0.4. Resultado en `bench/results/pixel_vs_prototype_bellatrix_20260929T1209.json`.
+
+| Ronda | Prototipo, tira nueva | explorer, tira nueva |
+|---|---:|---:|
+| 1 (prototipo primero) | 33.9 ms | 21.5 ms |
+| 2 (explorer primero) | 37.8 ms | 29.6 ms |
+| 3 | 25.7 ms | 24.6 ms |
+| 4 | 22.1 ms | 21.4 ms |
+| Mediana | 29.8 ms | 23.1 ms |
+
+En caché: 0.003 ms en las dos.
+
+**Conclusión.**
+- No es más lento en ninguna ronda. El 20 % a favor de explorer **no se da por bueno**: las dos
+  leen la tira con un solo `pread` del mismo tamaño, sin diferencia de código que lo explique, y
+  la dispersión de StorNext (22–38 ms) es mayor que la diferencia.
+- 0 bloques distintos.
+- En `tests/golden`, los bloques `_sp.fits` del cubo real son idénticos a los de la referencia.
+
+**`icube`.**
+- Solo el caso sintético tiene `_sp.icube`.
+- La calibración coincide con la del prototipo dentro de 1e-12 relativo, y los bloques calibrados
+  son idénticos.
+- Diferencia buscada: cuando el píxel central es relleno, el prototipo deja la escala en 1 sin
+  avisar; explorer prueba otros píxeles, y si ninguno tiene datos, da error.
