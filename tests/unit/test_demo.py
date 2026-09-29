@@ -27,6 +27,7 @@ def test_cursor_walk_with_and_without_the_per_pixel_file(headless, capsys):
     assert "per-pixel file (sp.fits)" in out and "no per-pixel file" in out
     assert sum(line.startswith("  move ") for line in out.splitlines()) == 6
     assert set(with_sp) == set(without) == {"spectrum", "lambda_t"}
+    assert set(demo.cursor_walk(paths["im"], no_sp=True, moves=5, drag=True)) == {"spectrum", "lambda_t"}
 
 
 def test_synthetic_cube_is_written_once_with_its_per_pixel_file(headless, monkeypatch):

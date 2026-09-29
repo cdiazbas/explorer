@@ -7,7 +7,9 @@ Cases, each on data the implementation has not read yet in this process (shared 
 ABBA order is what makes it fair), then again (cached), results compared bit for bit:
 - image: Cube.image(idx) against Dataset.image(idx).result();
 - series: lambda-t of one Stokes, Cube.series on a reader thread that owns numba's threads (as the prototype's
-  _bg, capped at the core count as its own process is) against Dataset.series(...).result();
+  _bg, capped as its own process is) against Dataset.series(...).result() without the per-pixel file; then the
+  pixel next to it (x + 1), the usual cursor move, which the prototype reads again and explorer may hold
+  (rowbands.py);
 - block: SpFits.block(y, x) (called on the window's thread in the prototype) against
   Dataset.pixel_block(y, x).result(); then a pixel of the same strip, which both serve from memory.
 """
@@ -35,6 +37,7 @@ def main():
     ap.add_argument("--prototype", default=os.path.join(ROOT, "..", "prototype"))
     ap.add_argument("--rounds", type=int, default=8)
     ap.add_argument("--per-round", type=int, default=6, help="reads per implementation, case and round")
+    ap.add_argument("--rows", type=int, help="rows per block for the series without a per-pixel file")
     ap.add_argument("--out")
     a = ap.parse_args()
     proto_dir = os.path.abspath(a.prototype)
@@ -47,20 +50,23 @@ def main():
     from sources import SpFits
 
     ds = Dataset.open(a.cube)
+    ds_nosp = Dataset.open(a.cube, no_sp=True)          # series are what a cube without a per-pixel file reads
+    if a.rows and ds_nosp.rowbands is not None:
+        ds_nosp.rowbands.rows = a.rows
     r = ds.roles
     proto = Cube.from_fits(a.cube, cache_bytes=ds.budgets.images)
     pprobe = ProtoProbe(proto)
     proto_sp = (SpFits(ds.pixel.layout.path, (r.ns, r.nt, r.nl), strip=pprobe.strip)
                 if ds.pixel is not None and ds.pixel.kind == "sp.fits" else None)
     proto_bg = ThreadPoolExecutor(1)                      # the prototype's _bg: numba's threads set on it
-    # the prototype caps its threads at numba's default pool, the core count
-    n_thr = min(getattr(pprobe, "gather_threads", 32), os.cpu_count() or 1)
+    n_thr = min(getattr(pprobe, "gather_threads", 32), numba.config.NUMBA_NUM_THREADS)   # as the prototype's Viewer
     proto_bg.submit(numba.set_num_threads, n_thr).result()
     zero = (0,) * len(ds.shape[:-2])
     lt_axes = sorted(x for x in (r.t, r.l) if x is not None)
     rng = np.random.default_rng(int(time.time()))
     res = dict(host=socket.gethostname().split(".")[0], date=time.strftime("%Y-%m-%dT%H:%M:%S"),
                cube=os.path.basename(a.cube), shape=list(ds.shape), describe=ds.describe(),
+               describe_nosp=ds_nosp.describe(), rows=a.rows,
                proto_numba_threads=n_thr, ours_numba_threads=ds.executors.numba_threads,
                affinity=sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
                load=os.getloadavg(), cases={})
@@ -78,7 +84,7 @@ def main():
         "image": (frame, lambda i: proto.image(list(i)), lambda i: ds.image(i).result(), lambda i: i),
         "series": (lambda: pixel(1),
                    lambda p: proto_bg.submit(proto.series, p[0], p[1], zero, lt_axes).result(),
-                   lambda p: ds.series(p[0], p[1], zero, lt_axes).result(), lambda p: p),
+                   lambda p: ds_nosp.series(p[0], p[1], zero, lt_axes).result(), lambda p: (p[0], p[1] + 1)),
     }
     if proto_sp is not None:
         cases["block"] = (lambda: pixel(ds.probe.strip), lambda p: proto_sp.block(*p),
@@ -124,6 +130,7 @@ def main():
         json.dump(res, open(a.out, "w"), indent=1)
     proto_bg.shutdown()
     ds.close()
+    ds_nosp.close()
     proto.close()
     return 1 if any(mism.values()) else 0
 

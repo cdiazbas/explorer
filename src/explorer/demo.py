@@ -9,7 +9,8 @@ welcome). scripts/demo.sh picks the real test cube when the project's data/ link
 What it runs grows with the ROADMAP; today: doctor on the cube, with a 2 s window that shows whether the display
 works (over ssh -Y too), then a cursor walk through the data layer: the cursor visits pixels across the field and
 each move prints how long the spectrum and the lambda-t took, with the per-pixel file (default, when there is one)
-or without it (--nosp), so both can be compared on the same cube. From E3 on it opens the viewer.
+or without it (--nosp), so both can be compared on the same cube: first jumps across the field, then a drag in
+1-pixel steps. From E3 on it opens the viewer.
 
     explorer demo [cube] [--nosp | --sp FILE] [--moves N] [--no-window]
 """
@@ -48,12 +49,13 @@ def synthetic_cube() -> str:
     return str(path)
 
 
-def cursor_walk(cube, sp=None, no_sp=False, moves=12) -> dict:
+def cursor_walk(cube, sp=None, no_sp=False, moves=12, drag=False) -> dict:
     """Move a cursor over `moves` pixels on a diagonal across the middle of the field (shifted at random on each
     run), each on a row not visited before, and time what the viewer would read at each: the spectrum (all Stokes
     and lambda at t = 0), then the lambda-t of Stokes I (all t and lambda). With a per-pixel file both come from
-    one block; without it, the spectrum is read first and the lambda-t after, as the viewer shows them. Returns
-    the medians in ms."""
+    one block; without it, the spectrum is read first and the lambda-t after, as the viewer shows them.
+    drag: 1-pixel steps instead (right, and one row down every 4 moves), as a mouse dragged across the image.
+    Returns the medians in ms."""
     import statistics
     import time
 
@@ -73,8 +75,14 @@ def cursor_walk(cube, sp=None, no_sp=False, moves=12) -> dict:
         lt_axes = sorted((r.t, r.l))
         # shifted at random on each run, so a second run does not find the first one's pixels in the OS cache
         dy, dx = (int(v) for v in np.random.default_rng().integers(-(ds.ny // 10), ds.ny // 10 + 1, 2))
-        ys = np.clip(np.linspace(ds.ny * 0.3, ds.ny * 0.7, moves).astype(int) + dy, 0, ds.ny - 1)
-        xs = np.clip(np.linspace(ds.nx * 0.3, ds.nx * 0.7, moves).astype(int) + dx, 0, ds.nx - 1)
+        if drag:
+            step = np.arange(moves)
+            ys = np.clip(ds.ny // 2 + dy + step // 4, 0, ds.ny - 1)
+            xs = np.clip(ds.nx // 2 + dx + step, 0, ds.nx - 1)
+        else:
+            ys = np.clip(np.linspace(ds.ny * 0.3, ds.ny * 0.7, moves).astype(int) + dy, 0, ds.ny - 1)
+            xs = np.clip(np.linspace(ds.nx * 0.3, ds.nx * 0.7, moves).astype(int) + dx, 0, ds.nx - 1)
+        print(f"  {'drag, 1-pixel steps' if drag else 'jumps across the field'}:", flush=True)
         spec_ms, lt_ms = [], []
         for k, (y, x) in enumerate(zip(ys.tolist(), xs.tolist(), strict=True)):
             q = time.perf_counter()
@@ -91,7 +99,7 @@ def cursor_walk(cube, sp=None, no_sp=False, moves=12) -> dict:
                   f"lambda-t {lt_ms[-1]:7.1f} ms", flush=True)
         med = dict(spectrum=statistics.median(spec_ms), lambda_t=statistics.median(lt_ms))
         src = f"per-pixel file ({ds.pixel.kind})" if ds.pixel is not None else "no per-pixel file"
-        print(f"  median over {moves} moves, {src}: spectrum {med['spectrum']:.1f} ms, "
+        print(f"  median over {moves} {'steps' if drag else 'moves'}, {src}: spectrum {med['spectrum']:.1f} ms, "
               f"lambda-t {med['lambda_t']:.1f} ms (from the move to its lambda-t on screen)", flush=True)
         return med
 
@@ -115,6 +123,7 @@ def main(argv=None) -> int:
     rc = doctor.main([cube] + ([] if a.no_window else ["--show"]))
     if a.moves > 0:
         cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves)
+        cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves, drag=True)
     return rc
 
 

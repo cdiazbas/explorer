@@ -7,7 +7,8 @@ Which thread does what (explorer.data.executors):
 - images: missing frames on a small pool of their own (the probe's readers), each read in chunks on the I/O pool,
   so a thread waiting for its chunks never waits on the pool it is part of; frames in the cache come back as
   completed futures, with no thread hop;
-- series without a per-pixel file: the numba thread (one parallel numba region at a time);
+- series without a per-pixel file: the numba thread (one parallel numba region at a time), a whole row at a time on
+  network storage (rowbands.py), so the pixels along the cursor's row come from memory;
 - per-pixel blocks: the I/O pool; slabs along a slit: a pool of the probe's gather threads, kept open (starting
   64 threads per slit cost 10-16 % of a warm slab, docs/measured.md).
 Latest-wins (Executors.submit_latest) is for the caller to use: the Dataset serves every request it gets.
@@ -24,6 +25,7 @@ from .executors import Executors
 from .io import FrameReader
 from .pixel import PixelReader, open_pixel
 from .policy import Budgets, MemoryGuard, StorageProbe, plan_budgets
+from .rowbands import RowBands
 from .slits import read_slit_bands, read_slit_slab, slit_pixels
 
 log = get_logger("data")
@@ -63,6 +65,9 @@ class Dataset:
             self.calibration = None
             if not no_sp:
                 self._open_pixel(sp)
+            # without a per-pixel file, series come a row at a time on network storage (rowbands.py)
+            self.rowbands: RowBands | None = (RowBands(self.frames, max_bytes=self.budgets.pixel)
+                                           if self.pixel is None and getattr(self.probe, "network", False) else None)
         except BaseException:
             self.close()
             raise
@@ -96,10 +101,13 @@ class Dataset:
         self.cache.set_budget(self.budgets.images)
         if self.pixel is not None:
             self.pixel.set_budget(self.budgets.pixel)
+        if self.rowbands is not None:
+            self.rowbands.set_budget(self.budgets.pixel)
         return self.budgets
 
     def nbytes(self) -> int:
-        return self.cache.nbytes() + (self.pixel.nbytes() if self.pixel is not None else 0)
+        return (self.cache.nbytes() + (self.pixel.nbytes() if self.pixel is not None else 0)
+                + (self.rowbands.nbytes() if self.rowbands is not None else 0))
 
     # ---------------------------------------------------------------- reads
     def image(self, idx) -> Future:
@@ -126,8 +134,13 @@ class Dataset:
 
     def series(self, y: int, x: int, idx, free_axes) -> Future:
         """Values at (y, x) along the leading axes in free_axes, the others fixed at idx (FrameReader.series), on
-        the numba thread."""
+        the numba thread; from the row blocks in memory, completed at once, when they hold it."""
         assert self.executors is not None
+        if self.rowbands is not None:
+            hit = self.rowbands.peek(y, x, idx, free_axes)
+            if hit is not None:
+                return _done(hit)
+            return self.executors.numba.submit(self.rowbands.series, int(y), int(x), tuple(idx), list(free_axes))
         return self.executors.numba.submit(self.frames.series, int(y), int(x), tuple(idx), list(free_axes))
 
     def slit(self, path_xy):
@@ -151,7 +164,8 @@ class Dataset:
 
     # ---------------------------------------------------------------- description and closing
     def describe(self) -> str:
-        sp = f", per-pixel {self.pixel.kind}" if self.pixel is not None else ", no per-pixel file"
+        sp = (f", per-pixel {self.pixel.kind}" if self.pixel is not None else ", no per-pixel file"
+              + (f" (series a block of {self.rowbands.rows} row(s) at a time)" if self.rowbands is not None else ""))
         return (f"{self.layout.kind} {tuple(self.shape)} {self.layout.dtype}{sp}; {self.probe.describe()}; "
                 f"{self.guard.describe()}")
 
