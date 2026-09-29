@@ -30,7 +30,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
-    from . import obs                                   # standard library only: cheap
+    from . import obs  # standard library only: cheap
 
     obs.setup_from_env()                                # EXPLORER_LOG
     if os.environ.get(ENV_PREFIX + "TRACE"):            # EXPLORER_TRACE=t.json: Perfetto trace of the spans

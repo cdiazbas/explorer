@@ -70,7 +70,8 @@ def test_trace_has_one_row_per_thread(tmp_path):
         with obs.span("in.thread", k=1):
             pass
     t = threading.Thread(target=work, name="reader")
-    t.start(); t.join()
+    t.start()
+    t.join()
     with obs.span("in.main"):
         pass
     assert trace.stop() == str(p)

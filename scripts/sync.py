@@ -104,9 +104,9 @@ def main():
     if a.action in ("sync", "push"):
         r = remote(host, f"cat {shlex.quote(rdir)}/.editing_on_server 2>/dev/null")
         if r.stdout.strip():
-            print(f"refusing to push: {rdir}/.editing_on_server exists on {host}:\n  "
-                  + r.stdout.strip().replace("\n", "\n  ") + "\n  bring those changes here first, then remove the file.",
-                  file=sys.stderr)
+            who = r.stdout.strip().replace("\n", "\n  ")
+            print(f"refusing to push: {rdir}/.editing_on_server exists on {host}:\n  {who}\n"
+                  "  bring those changes here first, then remove the file.", file=sys.stderr)
             if a.action == "push":
                 sys.exit(1)
             a.action = "pull"                          # sync: still bring results back

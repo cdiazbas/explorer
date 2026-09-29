@@ -27,6 +27,7 @@ def test_cube_not_implemented_yet(capsys):
 
 def test_import_does_not_load_heavy_modules():
     # a fresh interpreter: the test process may already have imported them
-    code = "import sys, explorer.cli; print(sorted(m for m in ('PySide6', 'numba', 'numpy', 'astropy') if m in sys.modules))"
+    code = ("import sys, explorer.cli; "
+            "print(sorted(m for m in ('PySide6', 'numba', 'numpy', 'astropy') if m in sys.modules))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
     assert out == "[]"

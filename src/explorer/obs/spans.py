@@ -17,6 +17,7 @@
 - set_enabled(False) makes span() return one shared no-op object (cost: a function call and a flag test).
 The cost per span is measured in bench/obs_overhead.py; see docs/journal.md.
 """
+import functools
 import threading
 import time
 from collections import deque
@@ -33,7 +34,7 @@ _count: dict[str, int] = {}
 _counters: dict[str, int] = {}
 _budgets: dict[str, int] = {}                   # name -> ns
 _last_warn: dict[str, float] = {}
-_sink = None                                    # trace.start() puts a list here: (name, t0_ns, dur_ns, tid, attrs)
+_sink: list | None = None                       # trace.start() puts a list here: (name, t0_ns, dur_ns, tid, attrs)
 _thread_names: dict[int, str] = {}
 
 
@@ -50,8 +51,7 @@ def _stack():
     st = getattr(_local, "stack", None)
     if st is None:
         st = _local.stack = []
-        t = threading.current_thread()
-        _thread_names[t.ident] = t.name
+        _thread_names[threading.get_ident()] = threading.current_thread().name
     return st
 
 
@@ -112,10 +112,10 @@ def span(name: str, **attrs):
 def timed(name: str):
     """Decorator: the whole call is one span."""
     def wrap(fn):
+        @functools.wraps(fn)
         def inner(*a, **k):
             with span(name):
                 return fn(*a, **k)
-        inner.__name__, inner.__doc__, inner.__wrapped__ = fn.__name__, fn.__doc__, fn
         return inner
     return wrap
 
@@ -138,7 +138,7 @@ def _over_budget(s, dur, b):
     if now - _last_warn.get(s.name, -1e9) < 1.0:
         return
     _last_warn[s.name] = now
-    parts = {}
+    parts: dict[str, int] = {}
     for n, d in s.children or ():
         parts[n] = parts.get(n, 0) + d
     detail = ", ".join(f"{n} {d / 1e6:.1f} ms" for n, d in sorted(parts.items(), key=lambda kv: -kv[1]))
@@ -167,5 +167,6 @@ def summary() -> dict:
 def reset() -> None:
     """Forget every span, counter and budget (tests)."""
     with _lock:
-        _recent.clear(); _count.clear(); _counters.clear(); _budgets.clear(); _last_warn.clear()
+        for d in (_recent, _count, _counters, _budgets, _last_warn):
+            d.clear()
 

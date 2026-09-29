@@ -8,9 +8,9 @@ Standard library only, and imports nothing else from explorer but its name and p
     with span("image.read", idx=idx):
         ...
 """
+from . import trace
 from .log import get_logger, setup, setup_from_env
 from .spans import budget, counter, enabled, set_enabled, span, summary, timed
-from . import trace
 
 __all__ = ["get_logger", "setup", "setup_from_env", "span", "timed", "counter", "budget", "summary", "enabled",
            "set_enabled", "trace"]

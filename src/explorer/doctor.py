@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 import traceback
+from typing import Any
 
 from . import __version__
 from ._name import APP_NAME
@@ -30,7 +31,7 @@ class Report:
     def __init__(self):
         self.user = getpass.getuser()
         self.host = socket.gethostname().split(".")[0]
-        self.data = dict(app=APP_NAME, version=__version__, user=self.user, host=self.host,
+        self.data: dict[str, Any] = dict(app=APP_NAME, version=__version__, user=self.user, host=self.host,
                          platform=platform.platform(), machine=platform.machine(), python=sys.executable,
                          date=time.strftime("%Y-%m-%dT%H:%M:%S"), checks=[])
         self.failed = False
@@ -145,7 +146,7 @@ def c_numba(rep):
     @numba.njit(parallel=True, nogil=True)
     def par(a):
         s = 0.0
-        for i in numba.prange(a.size):
+        for i in numba.prange(a.size):  # type: ignore[attr-defined]
             s += a[i]
         return s
 
@@ -154,9 +155,10 @@ def c_numba(rep):
         return FAIL, "wrong result from a compiled kernel"
     ms = (time.perf_counter() - t) * 1e3
     layer = numba.threading_layer()
-    rep.data["numba"] = dict(version=numba.__version__, threading_layer=layer, threads=numba.config.NUMBA_NUM_THREADS,
+    threads = numba.config.NUMBA_NUM_THREADS  # type: ignore[attr-defined]  # set at import, from the environment
+    rep.data["numba"] = dict(version=numba.__version__, threading_layer=layer, threads=threads,
                              compile_ms=round(ms, 1))
-    return f"numba {numba.__version__}: compiled in {ms:.0f} ms; threading layer {layer}, {numba.config.NUMBA_NUM_THREADS} threads"
+    return f"numba {numba.__version__}: compiled in {ms:.0f} ms; threading layer {layer}, {threads} threads"
 
 
 def _libxcb_cursor():
@@ -267,7 +269,8 @@ def main(argv=None) -> int:
 
     t0 = time.perf_counter()
     rep = Report()
-    print(f"{APP_NAME} {__version__} doctor: {rep.user}@{rep.host}, {platform.system()} {platform.machine()}", flush=True)
+    print(f"{APP_NAME} {__version__} doctor: {rep.user}@{rep.host}, {platform.system()} {platform.machine()}",
+          flush=True)
     rep.check("python", lambda: c_python(rep))
     rep.check("packages", lambda: c_packages(rep))
     rep.check("environment", lambda: c_environment(rep))

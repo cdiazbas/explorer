@@ -66,7 +66,8 @@ def threaded(nthreads=4, n=N // 4):
         loop_flat(n)
     ts = [threading.Thread(target=work) for _ in range(nthreads)]
     [t.start() for t in ts]
-    t0 = time.perf_counter_ns(); bar.wait()
+    t0 = time.perf_counter_ns()
+    bar.wait()
     [t.join() for t in ts]
     return (time.perf_counter_ns() - t0) / (nthreads * n)
 
@@ -89,12 +90,18 @@ def main():
         print(f"  {name:34s} {med:8.1f} ns/span   (min {lo:.1f}, max {hi:.1f})", flush=True)
 
     print(f"obs span cost on {res['host']} ({res['machine']}, Python {res['python']}, load {res['load'][0]:.1f})")
-    spans.set_enabled(False); rec("disabled", per_span(loop_flat)); spans.set_enabled(True)
+    spans.set_enabled(False)
+    rec("disabled", per_span(loop_flat))
+    spans.set_enabled(True)
     rec("enabled, flat", per_span(loop_flat))
     rec("enabled, nested (parent+child)", per_span(loop_nested))
-    obs.budget("bench.flat", 1000); rec("enabled, with a budget (not hit)", per_span(loop_flat)); obs.budget("bench.flat", None)
+    obs.budget("bench.flat", 1000)
+    rec("enabled, with a budget (not hit)", per_span(loop_flat))
+    obs.budget("bench.flat", None)
     with tempfile.TemporaryDirectory() as d:
-        trace.start(os.path.join(d, "t.json")); rec("enabled, recording a trace", per_span(loop_flat, reps=3)); trace._path = None; trace.stop()
+        trace.start(os.path.join(d, "t.json"))
+        rec("enabled, recording a trace", per_span(loop_flat, reps=3))
+        trace.stop(write=False)
     rec("enabled, 4 threads at once", threaded())
     worst = max(c["ns_per_span"] for k, c in res["cases"].items() if k != "disabled")
     res["per_action_us_at_20_spans"] = round(20 * worst / 1e3, 2)

@@ -39,11 +39,12 @@ def active() -> bool:
     return spans._sink is not None
 
 
-def stop():
-    """Write the trace (if one is being recorded) and stop recording; returns the path or None."""
+def stop(write=True):
+    """Stop recording and write the trace (unless write=False); returns the path written, or None."""
     global _path
     sink, spans._sink = spans._sink, None
-    if sink is None or _path is None:
+    if sink is None or _path is None or not write:
+        _path = None
         return None
     pid = os.getpid()
     t0 = min((e[1] for e in sink), default=0)
