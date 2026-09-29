@@ -17,6 +17,8 @@ cada sesión; no crece.
   - 7 pruebas en verde en las dos máquinas.
 - **Primeros commits** (`97b965b`, `3580a4a`, `11f9ce1`), con las etiquetas del
   [ADR 0005](docs/decisions/0005-commits.md). Sin remoto ni `push`.
+- **`scripts/demo.sh`** (E0.10): prueba lo que haya en cualquier momento. En el Mac usa un cubo
+  sintético; en bellatrix, el de Stokes 6173 (`74b50f0`, `651c05d`).
 - **Regla nueva:** la aplicación, en inglés; los `.md`, en español ([ADR 0004](docs/decisions/0004-idioma.md)).
 - **Siguiente:** E0.4 (`obs/`, midiendo su coste), E0.5 (CI), E0.6 (cubos sintéticos).
 - **Del prototipo, fuera de explorer:**
