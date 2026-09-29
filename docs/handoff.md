@@ -19,8 +19,10 @@ cada sesión; no crece.
   cualquier problema de conexión: parar, no reintentar, y esperar a que el usuario diga que
   sigue. Un `push` con la maestra caducada dejó un aviso de doble factor colgado, y después el
   usuario no pudo conectar durante un rato.
-- **Siguiente:** E0.4 (`obs/`, midiendo su coste), E0.5 (CI) y E0.6 (`_sp`, `icube` y WCS-TAB
-  en el sintético). Pequeña: E0.11 (avisar de copias huérfanas en bellatrix).
+- **E0.4 hecha:** `obs/` (registro por capa, tramos con presupuestos, trazas); cada tramo cuesta
+  0.7 µs (Mac) y 1.4 µs (bellatrix). Las pruebas ya no escriben en la caché real (`9062dcc`, `b57cbd2`).
+- **Siguiente:** E0.5 (CI) y E0.6 (`_sp`, `icube` y WCS-TAB en el sintético). Pequeña: E0.11
+  (avisar de copias huérfanas en bellatrix).
 - **Del prototipo, fuera de explorer:**
   - `prototype/actualize.py` sigue apuntando a los `.md` de la raíz, que ahora están en
     `docs/` del proyecto;

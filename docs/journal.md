@@ -45,3 +45,34 @@ Diario de medidas de explorer, con el formato de `OVERVIEW.md` del prototipo.
   ninguna imagen, así que no es una comparación de visores; esa llega en E3–E4 frente a la línea
   base E0.8.
 - Con ventana, `doctor --show` añade 2 s fijos a propósito: es lo que se percibe como lento.
+
+### 2026-09-29: coste de un tramo de `obs` (ROADMAP E0.4)
+
+**Pregunta:** ¿pueden quedarse siempre activados los tramos (`obs.span`) en el visor?
+
+**Criterio.** Una acción del usuario abrirá unos 20 tramos, y el cursor del prototipo tarda
+6–15 ms. Cada tramo debe costar ≤ 5 µs, para que el total sea ≤ 0.1 ms (≤ 1 %).
+
+**Método.** `bench/obs_overhead.py`: 200 000 tramos en un bucle, menos el mismo bucle sin tramos,
+7 repeticiones, mediana. Resultados en `bench/results/obs_overhead_*_20260929.json`.
+
+**Condiciones.**
+- Mac: M1 Pro, carga 5.4.
+- bellatrix: carga 0.4.
+- Los dos: Python 3.12, sin commit (el código de `obs` es el de este día).
+
+| µs por tramo | Mac | bellatrix |
+|---|---:|---:|
+| Desactivado | 0.19 | 0.33 |
+| Activado | 0.74 | 1.38 |
+| Activado, anidado | 0.80 | 1.45 |
+| Activado, con presupuesto (sin pasarse) | 0.74 | 1.38 |
+| Grabando traza | 1.27 | 2.49 |
+| 4 hilos a la vez | 0.76 | 1.39 |
+| **20 tramos, peor caso** | **25 µs** | **50 µs** |
+
+**Conclusión.**
+- Pasa en las dos máquinas: los tramos pueden quedarse activados.
+- En bellatrix el peor caso usa la mitad del presupuesto: si una acción llega a abrir muchos más
+  de 20 tramos, hay que volver a mirarlo.
+- La traza casi duplica el coste: se graba solo cuando se pide (`EXPLORER_TRACE`).
