@@ -573,3 +573,30 @@ es 32. Probado, y no adoptado:
 |---|---|---|
 | `--sp` | 19.4 ms | 19.4 ms |
 | `--nosp` | 20–27 ms | 276–287 ms |
+
+### 2026-09-29: pruebas de comparación del nivel 1 (ROADMAP E1.11)
+
+`tests/golden/` compara con el prototipo todo lo que exportan sus referencias:
+- imágenes, series y ficheros por píxel (`_sp.fits` y `_sp.icube` calibrado);
+- ejes físicos y sus metadatos, papeles de los ejes y potencia de diez de I;
+- límites de contraste y reducción a u8;
+- rangos de Q, U y V, rangos y de la muestra y límites de la primera imagen del visor;
+- rendijas: camino, píxeles, losa y bandas.
+
+Dos pruebas nuevas en `test_references.py` hacen que siga siendo verdad:
+- **Cobertura.** Cada tipo de resultado exportado tiene que estar en la lista de los que se
+  comparan. Uno nuevo falla hasta que se escribe su comparación.
+- **Referencia caducada.** Donde el prototipo está al lado, la huella de su código tiene que ser la
+  que se guardó al exportar. Si cambió, hay que exportar otra vez y mirar con
+  `tools/golden/compare.py` qué cambió.
+
+**Resultado:**
+- Mac: 14 pasan y 12 se saltan, porque la referencia real no está aquí.
+- bellatrix: 26 pasan, con el caso real del 6173 y la misma huella del prototipo.
+
+**Fase E1.** El criterio de salida de PLAN §6 se cumple:
+- idéntico byte a byte donde toca;
+- la misma latencia de E/S que el prototipo, o mejor, en ABBA;
+- `explorer.data` se importa sin PySide6.
+
+Quedan abiertas dos mejoras: E1.12 (hilos por petición) y E1.13 (vecinos desde la misma lectura).
