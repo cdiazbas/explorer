@@ -4,10 +4,11 @@ Imports stay light here: a subcommand's module (and Qt, numba, astropy) is impor
 subcommand runs, so `explorer --version` and `explorer doctor --help` answer at once.
 """
 import argparse
+import os
 import sys
 
 from . import __version__
-from ._name import APP_NAME
+from ._name import APP_NAME, ENV_PREFIX
 
 # name -> (module, one-line help). Each module has main(argv) -> exit code.
 SUBCOMMANDS = {
@@ -29,6 +30,11 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
+    from . import obs                                   # standard library only: cheap
+
+    obs.setup_from_env()                                # EXPLORER_LOG
+    if os.environ.get(ENV_PREFIX + "TRACE"):            # EXPLORER_TRACE=t.json: Perfetto trace of the spans
+        obs.trace.start(os.environ[ENV_PREFIX + "TRACE"])
     if argv and argv[0] in SUBCOMMANDS:
         import importlib
 

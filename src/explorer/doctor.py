@@ -37,9 +37,12 @@ class Report:
 
     def check(self, name, fn):
         """Run one check; fn returns (status, info) or info (= ok). Keeps going after a failure."""
+        from .obs import span
+
         t = time.perf_counter()
         try:
-            r = fn()
+            with span(f"doctor.{name}"):
+                r = fn()
             status, info = r if isinstance(r, tuple) else (OK, r)
         except Exception as e:  # a check that raises is a failure, with its traceback in the report
             status, info = FAIL, f"{type(e).__name__}: {e}"
