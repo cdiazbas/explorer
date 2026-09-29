@@ -191,3 +191,27 @@ en las 40 claves, pese a las lecturas en paralelo.
   misma fecha pasaría desapercibido; se acepta, porque los cubos compartidos no se reescriben así.
 - En el cubo real, los rangos de Q, U y V recorren la rama del percentil (Q y U: 10.7 %, V:
   15.7 % de I_c). En el sintético pequeño solo se recorre la del suelo de ruido.
+
+### 2026-09-29: lectura de imágenes, explorer frente al prototipo (ROADMAP E1.2)
+
+**Método.**
+- `bench/frames_vs_prototype.py`: el `Cube._read_frame` del prototipo y el `FrameReader` de
+  explorer en el mismo proceso, en 4 rondas ABBA de 10 imágenes sorteadas.
+- En las lecturas nuevas, cada imagen la lee una sola de las dos implementaciones. Las cachés
+  compartidas no se vacían, así que el estado previo de la caché es desconocido: lo que hace justa
+  la comparación es el orden ABBA.
+- Cada imagen se compara bit a bit entre las dos.
+- bellatrix, cubo de Stokes 6173 (imagen de 16.6 MB), carga 0.6. Resultado en
+  `bench/results/frames_vs_prototype_bellatrix_20260929T1141.json`.
+
+| Mediana de las rondas | Prototipo | explorer |
+|---|---:|---:|
+| Imagen aún no leída | 37.3 ms | 37.6 ms |
+| Imagen ya en caché | 6.22 ms | 6.31 ms |
+
+**Conclusión.**
+- Igual dentro del ruido: la dispersión entre rondas de las lecturas nuevas es de 34.8–52.8 ms.
+- 0 de 40 imágenes distintas.
+- En `tests/golden`, las 5 imágenes del cubo real son idénticas bit a bit a las de la referencia.
+- La estrategia de lectura es la misma (`preadv` en 4 trozos). explorer añade la comprobación de
+  lecturas cortas y `BSCALE`/`BZERO`/`BLANK` sin coste visible.
