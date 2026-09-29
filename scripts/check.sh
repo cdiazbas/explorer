@@ -29,7 +29,7 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 else
   rows+=("  skip  hygiene    (not a git repository)")
 fi
-step ruff "$bin/ruff" check src tests scripts bench
+step ruff "$bin/ruff" check src tests scripts bench tools
 step layers "$bin/lint-imports"
 if [ $fast = 0 ]; then
   step types "$bin/mypy"
