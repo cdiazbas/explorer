@@ -7,7 +7,11 @@ the right default on a machine without the shared test cubes (a Mac on its local
 welcome). scripts/demo.sh picks the real test cube when the project's data/ link resolves.
 
 What it runs grows with the ROADMAP; today: doctor on the cube, with a 2 s window that shows whether the display
-works (over ssh -Y too). From E3 on it opens the viewer.
+works (over ssh -Y too), then a cursor walk through the data layer: the cursor visits pixels across the field and
+each move prints how long the spectrum and the lambda-t took, with the per-pixel file (default, when there is one)
+or without it (--nosp), so both can be compared on the same cube. From E3 on it opens the viewer.
+
+    explorer demo [cube] [--nosp | --sp FILE] [--moves N] [--no-window]
 """
 import argparse
 import os
@@ -44,19 +48,74 @@ def synthetic_cube() -> str:
     return str(path)
 
 
+def cursor_walk(cube, sp=None, no_sp=False, moves=12) -> dict:
+    """Move a cursor over `moves` pixels on a diagonal across the middle of the field (shifted at random on each
+    run), each on a row not visited before, and time what the viewer would read at each: the spectrum (all Stokes
+    and lambda at t = 0), then the lambda-t of Stokes I (all t and lambda). With a per-pixel file both come from
+    one block; without it, the spectrum is read first and the lambda-t after, as the viewer shows them. Returns
+    the medians in ms."""
+    import statistics
+    import time
+
+    import numpy as np
+
+    from .data.dataset import Dataset
+
+    with Dataset.open(cube, sp=sp, no_sp=no_sp) as ds:
+        r = ds.roles
+        print(f"cursor walk: {ds.describe()}", flush=True)
+        if r.t is None or r.l is None:
+            print("  no t or no lambda axis: nothing to walk", flush=True)
+            return {}
+        idx = [0] * len(ds.shape[:-2])
+        idx[r.l] = r.nl // 2
+        spec_axes = sorted(a for a in (r.s, r.l) if a is not None)
+        lt_axes = sorted((r.t, r.l))
+        # shifted at random on each run, so a second run does not find the first one's pixels in the OS cache
+        dy, dx = (int(v) for v in np.random.default_rng().integers(-(ds.ny // 10), ds.ny // 10 + 1, 2))
+        ys = np.clip(np.linspace(ds.ny * 0.3, ds.ny * 0.7, moves).astype(int) + dy, 0, ds.ny - 1)
+        xs = np.clip(np.linspace(ds.nx * 0.3, ds.nx * 0.7, moves).astype(int) + dx, 0, ds.nx - 1)
+        spec_ms, lt_ms = [], []
+        for k, (y, x) in enumerate(zip(ys.tolist(), xs.tolist(), strict=True)):
+            q = time.perf_counter()
+            if ds.pixel is not None:
+                ds.pixel_block(y, x).result()                  # (s, t, lambda): both from one read
+                spec_ms.append((time.perf_counter() - q) * 1e3)
+                lt_ms.append(spec_ms[-1])
+            else:
+                ds.series(y, x, idx, spec_axes).result()
+                spec_ms.append((time.perf_counter() - q) * 1e3)
+                ds.series(y, x, idx, lt_axes).result()
+                lt_ms.append((time.perf_counter() - q) * 1e3)
+            print(f"  move {k + 1:2d}  pixel ({y:4d}, {x:4d})  spectrum {spec_ms[-1]:7.1f} ms   "
+                  f"lambda-t {lt_ms[-1]:7.1f} ms", flush=True)
+        med = dict(spectrum=statistics.median(spec_ms), lambda_t=statistics.median(lt_ms))
+        src = f"per-pixel file ({ds.pixel.kind})" if ds.pixel is not None else "no per-pixel file"
+        print(f"  median over {moves} moves, {src}: spectrum {med['spectrum']:.1f} ms, "
+              f"lambda-t {med['lambda_t']:.1f} ms (from the move to its lambda-t on screen)", flush=True)
+        return med
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog=f"{APP_NAME} demo", description="try what explorer can do so far, on a cube")
     ap.add_argument("cube", nargs="?", help="default: a small synthetic cube")
     ap.add_argument("--no-window", action="store_true", help="do not open any window (headless runs, tests)")
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--nosp", action="store_true", help="read without the per-pixel file, from the image cube")
+    g.add_argument("--sp", help="this per-pixel file instead of the one found next to the cube")
+    ap.add_argument("--moves", type=int, default=12, help="cursor moves in the walk (default 12)")
     a = ap.parse_args(argv)
     cube = a.cube or synthetic_cube()
     kind = "synthetic" if a.cube is None else "given"
     print(f"{APP_NAME} {__version__} demo on the {kind} cube {cube}", flush=True)
-    print("  implemented so far: doctor (environment, numba, Qt, the cube's header); the viewer comes with ROADMAP E3",
-          flush=True)
+    print("  implemented so far: doctor (environment, numba, Qt, the cube's header) and the data layer (cursor walk);"
+          " the viewer comes with ROADMAP E3", flush=True)
     from . import doctor
 
-    return doctor.main([cube] + ([] if a.no_window else ["--show"]))
+    rc = doctor.main([cube] + ([] if a.no_window else ["--show"]))
+    if a.moves > 0:
+        cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves)
+    return rc
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ class PixelReader:
         self._lock = threading.Lock()
         self.fd = os.open(layout.path, os.O_RDONLY)
         self.scale, self.zero = np.float32(1.0), np.float32(0.0)
+        self.calibration: dict | None = None            # SpLP.calibrate's result, once calibrated
 
     # ---- reads
     def _read(self, y: int, x0: int, k: int) -> np.ndarray:
@@ -49,6 +50,15 @@ class PixelReader:
     def strip_read(self, y: int, x0: int, k: int) -> np.ndarray:
         """(k, ns, nt, nl) float32 in physical units, k neighbouring pixels of row y."""
         raise NotImplementedError
+
+    def peek(self, y: int, x: int):
+        """The block at (y, x) if it is cached (marked as just used), else None; never reads."""
+        key = (int(y), int(x))
+        with self._lock:
+            b = self._lru.get(key)
+            if b is not None:
+                self._lru.move_to_end(key)
+            return b
 
     def block(self, y: int, x: int) -> np.ndarray:
         """(s, t, l) float32 at pixel (y, x); on a miss the aligned strip around it is read and cached."""
@@ -165,8 +175,9 @@ class SpLP(PixelReader):
                 with self._lock:
                     self._lru.clear()
                     self._bytes = 0
-                return dict(scale=float(scale), zero=float(zero), max_resid=float(np.abs(resid).max()),
-                            pixel=(y, x))
+                self.calibration = dict(scale=float(scale), zero=float(zero),
+                                        max_resid=float(np.abs(resid).max()), pixel=(y, x))
+                return self.calibration
         raise ValueError(f"{self.layout.path}: no pixel with data to calibrate against the image cube")
 
     def strip_read(self, y, x0, k):

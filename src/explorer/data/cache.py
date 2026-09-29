@@ -34,6 +34,15 @@ class FrameCache:
         self._store(idx, img)
         return img
 
+    def peek(self, idx):
+        """The frame at idx if it is cached (marked as just used), else None; never reads nor waits."""
+        idx = tuple(int(i) for i in idx)
+        with self._lock:
+            img = self._lru.get(idx)
+            if img is not None:
+                self._lru.move_to_end(idx)
+            return img
+
     def prefetch(self, idx) -> None:
         """Start reading idx in the background, unless it is cached, in flight, or outside the cube."""
         idx = tuple(int(i) for i in idx)

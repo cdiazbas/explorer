@@ -16,7 +16,17 @@ def headless(monkeypatch, tmp_path):
 
 def test_demo_on_a_given_cube(headless):
     cube = synth.write_stokes_cube(headless / "c_im.fits", shape=(2, 1, 3, 32, 32))
-    assert demo.main([str(cube), "--no-window"]) == 0
+    assert demo.main([str(cube), "--no-window", "--moves", "2"]) == 0
+
+
+def test_cursor_walk_with_and_without_the_per_pixel_file(headless, capsys):
+    paths = synth.write_dataset(headless / "d", "c", shape=(3, 4, 5, 48, 40), icube=False)
+    with_sp = demo.cursor_walk(paths["im"], moves=3)
+    without = demo.cursor_walk(paths["im"], no_sp=True, moves=3)
+    out = capsys.readouterr().out
+    assert "per-pixel file (sp.fits)" in out and "no per-pixel file" in out
+    assert sum(line.startswith("  move ") for line in out.splitlines()) == 6
+    assert set(with_sp) == set(without) == {"spectrum", "lambda_t"}
 
 
 def test_synthetic_cube_is_written_once_with_its_per_pixel_file(headless, monkeypatch):
