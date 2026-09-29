@@ -31,3 +31,4 @@ trace*.json
 AUDIT*.md
 src/explorer/_version.py
 scripts/sync.local.json
+tests/golden/real/

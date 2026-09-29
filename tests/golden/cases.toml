@@ -1,0 +1,48 @@
+# The comparison cases (docs/plan.md §7.1, level 1): the same inputs go through the prototype (the oracle,
+# tools/golden/export_prototype.py) and through explorer, and the results must match.
+#
+# Coordinates: frames are (t, s, lambda) indices; pixels (y, x); slits are clicked points in view coordinates
+# (x, y), pixel centres at .5, as the prototype's slit_path takes them; reduce = pgr's reduction of one frame:
+# region corner (y0, x0), factor f, output (h, w), with the frame's own contrast limits.
+
+[[case]]
+name = "synth_small"
+# versioned inputs in tests/golden/data/synth_small/: the synthetic float cubes differ between Mac arm64 and
+# Linux x86_64 in their last bits, so every machine must read the same files (docs/journal.md)
+source = "synthetic"
+shape = [3, 4, 5, 48, 40]
+seed = 11
+reference = "tests/golden/data/synth_small/reference.npz"
+frames = [[0, 0, 0], [1, 0, 2], [2, 3, 4], [1, 1, 4], [0, 2, 1]]
+pixels = [[20, 15], [24, 20], [40, 30], [2, 2]]          # the last one is padding
+reduce = [
+    { frame = 0, y0 = 0, x0 = 0, f = 1, h = 48, w = 40 },
+    { frame = 2, y0 = 4, x0 = 2, f = 2, h = 20, w = 18 },
+    { frame = 1, y0 = 10, x0 = 8, f = 3, h = 10, w = 9 },
+]
+slits = [
+    [[5.5, 10.5], [30.5, 20.5]],
+    [[8.5, 8.5], [20.5, 30.5], [32.5, 12.5]],
+]
+quv_t = [0, 2]
+viewer = true
+
+[[case]]
+name = "stokes_6173"
+# the shared Fe I 6173 Stokes cube (176 GB): only where the project's data/ link resolves (bellatrix); the
+# reference stays on that machine (tests/golden/real/ is not versioned)
+source = "path"
+path = "../data/stokes_6173_im.fits"
+reference = "tests/golden/real/stokes_6173.npz"
+frames = [[0, 0, 0], [93, 0, 7], [185, 3, 13], [40, 1, 5], [120, 2, 9]]
+pixels = [[1022, 1015], [600, 1400], [1500, 700], [3, 3]]
+reduce = [
+    { frame = 1, y0 = 0, x0 = 0, f = 2, h = 1022, w = 1015 },
+    { frame = 2, y0 = 800, x0 = 900, f = 1, h = 300, w = 400 },
+]
+slits = [
+    [[800.5, 700.5], [1300.5, 1200.5]],
+    [[900.5, 900.5], [1100.5, 1300.5], [1400.5, 1000.5]],
+]
+quv_t = [93]
+viewer = true
