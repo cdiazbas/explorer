@@ -28,8 +28,10 @@ cada sesión; no crece.
 - **Lanzar medidas largas en bellatrix:** `ssh host 'nohup bash -c "cd … && orden" > log 2>&1 < /dev/null &'`.
   Con `cd … && nohup orden > log &`, la subshell conserva la salida de la sesión y el `ssh` no
   vuelve hasta que termina la medida (2026-09-29).
-- **Siguiente:** E0.6 (`_sp`, `icube` y WCS-TAB en el sintético) y E0.7 (referencias del
-  prototipo). Pequeña: E0.11 (avisar de copias huérfanas en bellatrix).
+- **E0.6 hecha:** sintético v2 (`_im` con WCS-TAB, `_sp.fits`, `_sp.icube`), leído por el prototipo
+  con su propio código. La línea base del Mac se repitió con el v2 (`eb532b3`).
+- **Regla (memoria del usuario):** nada del prototipo de memoria; se lee su código y se cita.
+- **Siguiente:** E0.7 (referencias del prototipo para la comparación numérica). Pequeña: E0.11.
 - **Del prototipo, fuera de explorer:**
   - `prototype/actualize.py` sigue apuntando a los `.md` de la raíz, que ahora están en
     `docs/` del proyecto;

@@ -18,7 +18,7 @@ src/explorer/
 │   ├── spans.py    span()/timed()/counter()/budget()/summary(); aviso con desglose al pasar un presupuesto
 │   └── trace.py    EXPLORER_TRACE=t.json: traza Chrome/Perfetto, una fila por hilo
 └── testing/
-    └── synth.py    cubos sintéticos pequeños (relleno NaN, big-endian, deterministas)
+    └── synth.py    juegos sintéticos pequeños: _im.fits con WCS-TAB, _sp.fits y _sp.icube (el prototipo los lee)
 ```
 
 ## Reglas que ya se cumplen

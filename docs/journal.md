@@ -104,8 +104,10 @@ ser peor que esta en las mismas condiciones, y la meta es mejorarla (el usuario,
 | puente | sí | 1.72 / 1.73 | 17.6 / 17.8 | — | 23.4 / 23.0 | 25.0 / 24.7 | 14.8 / 14.6 | 43 / 40 | 0.50 |
 | puente | no | 1.89 / 1.78 | 13.0 / 12.3 | 242 / 227 | 20.4 / 20.8 | 24.2 / 23.0 | 14.3 / 12.7 | 38 / 41 | 0.20 |
 
-**Mac** (M1 Pro): cubo sintético (8, 4, 10, 256, 256), solo `offscreen` (cocoa abriría ventanas
-en la pantalla del usuario), carga 3.3.
+**Mac** (M1 Pro): ~~cubo sintético (8, 4, 10, 256, 256), solo `offscreen` (cocoa abriría ventanas
+en la pantalla del usuario), carga 3.3.~~ **Sustituida el mismo día** por la tabla "Mac, sintético v2"
+de abajo. Esta se midió con el sintético v1, sin `_sp`, y ya no sirve de referencia. Se conserva
+tal cual:
 
 | `_sp` | Primera imagen s | Cursor ms | Espectro+λt ms | Paso t ms | Paso λ ms | Stokes ms | fps |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -124,3 +126,26 @@ en la pantalla del usuario), carga 3.3.
 - No mide `ssh -Y` hasta XQuartz, que depende del enlace y de lo que se repinta.
 - No mide cocoa en el Mac.
 - Tampoco el aspecto clásico.
+
+### 2026-09-29: línea base del Mac con el sintético v2 (sustituye a la del v1)
+
+**Qué cambia.** El sintético v2 trae cabecera SOLARNET con WCS-TAB y su `_sp.fits`, así que el
+prototipo lo abre como un cubo real. Con el v1 no había fichero por píxel y las dos filas medían
+lo mismo.
+
+**Condiciones.** Mismo método (`bench/prototype_baseline.sh`, `offscreen`, 2 rondas ABBA, aspecto
+moderno) y mismo código del prototipo (md5 `a5f3bfce…`). Mac M1 Pro, carga ~3, swap sin cambios.
+Resultados en `bench/results/baseline_069194691202856_20260929T1012/`.
+
+| `_sp` | Primera imagen s | Cursor ms | Cursor p95 | Espectro+λt ms | Paso t ms | Paso λ ms | Stokes ms | fps |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| sí | 1.08 / 0.83 | 3.59 / 3.64 | 8.70 / 8.23 | — | 5.17 / 5.51 | 4.57 / 4.56 | 2.95 / 3.01 | 62.5 / 62.5 |
+| no | 0.84 / 0.81 | 1.48 / 1.42 | 3.19 / 4.42 | 5.41 / 5.21 | 5.44 / 5.34 | 4.81 / 4.95 | 3.77 / 3.88 | 62.5 / 62.5 |
+
+**Comprobación de compatibilidad.** Antes de medir, el prototipo abrió el sintético v2 con su
+propio código (`physics.from_fits`, `Cube`, `find_sp`, `SpFits`, `SpLP.calibrate`):
+- línea Fe I 617.3, λ0 617.3341 nm, continuo en la sintonía 5 (de `PRPARA`), Δλ −0.35…+0.70 Å;
+- UTC por barrido y segundos de arco que derivan con t;
+- `SpFits` idéntico a `Cube.series`;
+- calibración del `icube`: escala 1.0e-11, residuo máximo 0.58 unidades. Con el `_sp.icube` real
+  de Hα el prototipo midió 0.5 unidades (OVERVIEW, diario 2026-09-24).
