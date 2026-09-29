@@ -215,3 +215,31 @@ en las 40 claves, pese a las lecturas en paralelo.
 - En `tests/golden`, las 5 imágenes del cubo real son idénticas bit a bit a las de la referencia.
 - La estrategia de lectura es la misma (`preadv` en 4 trozos). explorer añade la comprobación de
   lecturas cortas y `BSCALE`/`BZERO`/`BLANK` sin coste visible.
+
+### 2026-09-29: series por píxel, explorer frente al prototipo (ROADMAP E1.3)
+
+**Método.**
+- `bench/series_vs_prototype.py`: el `Cube.series` del prototipo y el `FrameReader.series` de
+  explorer en el mismo proceso, los dos con `gather` de numba y 64 hilos, en 4 rondas ABBA con
+  píxeles sorteados. Una llamada en paralelo cada vez.
+- Resultados comparados bit a bit.
+- bellatrix, cubo de Stokes 6173, sin `_sp`, carga 0.2. Resultado en `bench/results/series_vs_prototype_bellatrix_20260929T1201.json`.
+
+| Mediana de las rondas | Prototipo | explorer |
+|---|---:|---:|
+| λ–t de un Stokes (2 604 lecturas), sin leer | 648 ms | 615 ms |
+| λ–t, en caché | 34.8 ms | 35.1 ms |
+| Bloque completo (10 416 lecturas), sin leer | 2 282 ms | 2 225 ms |
+| Bloque completo, en caché | 947 ms | 959 ms |
+
+**Conclusión.**
+- Igual dentro del ruido; 0 series distintas.
+- En `tests/golden`, las series del cubo real son idénticas bit a bit a las de la referencia.
+- En el Mac, con el sintético pequeño, también iguales (λ–t 0.2 ms, bloque completo 0.4 ms).
+- La primera lectura de la primera ronda sale lenta en las dos implementaciones (hasta 3.7 ms en
+  el Mac): es un efecto de arranque, no de la implementación.
+
+**Anotado para después.** Sin fichero por píxel, el bloque completo tarda ~1 s incluso en caché:
+~90 µs por lectura, frente a ~13 µs en el λ–t. No escala con el número de lecturas, y está sin
+explicar. Coincide con lo que midió el prototipo sin `_sp` (Fase 17: 0.5–1.8 s). El `_sp` lo evita
+con una sola lectura por píxel.
