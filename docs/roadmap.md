@@ -40,7 +40,7 @@ sección que la origina.
 | E1.10 | ✅ | Fachada `Dataset` (imagen, píxel y losa como `Future`, `close()`), sin Qt (contrato de capas). Rendimiento frente a la línea base en bellatrix, en ABBA: imagen, serie, bloque `_sp` | E1.1–E1.9 | 2026-09-29 | journal 09-29 |
 | E1.11 | ✅ | Pruebas de comparación del nivel 1 (`tests/golden/test_data.py`): el caso sintético siempre; el real del 6173 en bellatrix (`-m golden_real`) | E1.1 | 2026-09-29 | journal 09-29 |
 | E1.12 | ⬜ | Hilos por petición en las lecturas dispersas: pocos para las pequeñas o probablemente en caché (espectro, movimientos de 1 px), muchos para un λ–t en frío. Un 64 fijo ganó 33 % con el almacenamiento cargado, 4 % con el almacenamiento rápido, y fue más lento en el espectro (27 frente a 20 ms) y en un λ–t en caché del sistema (33 frente a 24 ms). Medir a distintas horas | E1.10 | 2026-09-29 | journal 09-29 |
-| E1.13 | ⬜ | Vecinos gratis sin `_sp`: guardar la página de ~4 KB por imagen que ya trae cada λ–t (~1000 píxeles de la fila, ~10 MB), para servir desde memoria los movimientos horizontales. Sin probar | E1.10 | 2026-09-29 | journal 09-29 |
+| E1.13 | ✅ | Vecinos gratis sin `_sp`: cada serie se lee con su fila entera (8 KB por imagen) y los píxeles de esa fila salen de memoria (`data/rowbands.py`). Primera lectura igual que el prototipo (1.009), el vecino 0.10 frente a 17.6 ms | E1.10 | 2026-09-29 | journal 09-29 |
 | E2 | ⬜ | `explorer.core` + `testing.Driver` (PLAN §3.3, §6) | E1 | 2026-09-28 | — |
 | E3 | ⬜ | `platform/plan.py`, `Display` (cocoa, xcb, offscreen), `Shell` mínima con la imagen (PLAN §3.5, §6) | E2 | 2026-09-28 | — |
 | E4 | ⬜ | Espectros, λ–t, cursor, reproducción; niveles 2 y 3 de la comparación (PLAN §6, §7.1) | E3 | 2026-09-28 | — |

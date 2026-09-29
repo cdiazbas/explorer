@@ -600,3 +600,55 @@ Dos pruebas nuevas en `test_references.py` hacen que siga siendo verdad:
 - `explorer.data` se importa sin PySide6.
 
 Quedan abiertas dos mejoras: E1.12 (hilos por petición) y E1.13 (vecinos desde la misma lectura).
+
+### 2026-09-29: vecinos desde la misma lectura, sin `_sp` (ROADMAP E1.13)
+
+**Idea.** Cada lectura de un λ–t sin `_sp` es una petición por imagen (2604 en 6173). Si pedir más
+bytes por petición cuesta lo mismo, esa misma lectura puede traer los píxeles de alrededor.
+
+**Tamaño de petición.** λ–t en frío, bellatrix, fijado al nodo 0, filas nuevas por Stokes, orden
+rotado:
+
+| Tamaño | Coste |
+|---|---|
+| 4 B | 1368 ms (base) |
+| 16 KB | 1362 ms |
+| 64 KB | 1005 ms |
+| 176 KB | +22 % |
+| 512 KB | +63 % |
+
+- Con el almacenamiento así de lento, hasta 64 KB no cuesta más que 4 bytes.
+- El λ–t de un vecino, sacado de lo guardado, cuesta 0.17–0.23 ms.
+- En el mismo estado, las bandas de 1, 2, 4 y 8 filas salen a 0.89–0.98× de la lectura de 4 bytes.
+
+**Frente al prototipo, con la fachada** (`bench/dataset_vs_prototype.py --rows`, 8 rondas ABBA):
+
+| Bloque | Primer λ–t | Vecino (x + 1) |
+|---|---|---|
+| 8 filas (64 KB) | **1.339** (1/8) | 0.14 frente a 17.7 ms |
+| 1 fila (8 KB) | **1.009** (4/8) | **0.10 frente a 17.6 ms** (8/8) |
+
+- Con el almacenamiento rápido (~0.3 s por λ–t), 8 filas hacen la primera lectura un 34 % más lenta.
+  Parte de ese 34 % puede venir de que las bandas de explorer calientan la caché del sistema en esas
+  8 filas, y lecturas posteriores del prototipo caen en ellas.
+- 1 fila no cuesta nada en la primera lectura y cubre todos los movimientos horizontales. Es el valor
+  por defecto (`rowbands.ROWS`).
+
+**Implementado:**
+- `FrameReader.row_band` y `series_frames`;
+- `data/rowbands.py`: un LRU por serie (índice fijo y ejes libres) dentro del presupuesto por píxel,
+  con los mismos valores que `FrameReader.series`, y que lee solo el píxel si el bloque no cabe;
+- `Dataset` lo usa solo en almacenamiento en red y sin `_sp`, y devuelve los aciertos como futuros
+  terminados;
+- demo: un segundo paseo de arrastre, en pasos de 1 píxel.
+
+**Demo en bellatrix** (`--nosp`, 12 movimientos):
+- saltos: λ–t ~258 ms, igual que antes;
+- arrastre: el primer paso 261 ms; los pasos en la misma fila, 0.0–0.3 ms; bajar una fila es una
+  lectura nueva, 251 ms, o 50 ms si parte ya está en la caché del sistema.
+
+**Memoria.** Un λ–t de una fila ocupa 21 MB. El presupuesto de bellatrix guarda ~110 filas.
+
+**Pendiente:**
+- los movimientos verticales siguen siendo una lectura nueva;
+- leer por adelantado la fila siguiente según la dirección del movimiento, con el cursor de E2.
