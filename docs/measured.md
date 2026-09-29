@@ -27,6 +27,7 @@ Copiado de `docs/plan.md` §4 el 2026-09-28.
 | Contraste en la submuestra `[::8, ::8]` | 55 → 1 ms | Fase 3 |
 | Un solo hilo para numba en paralelo | `workqueue` aborta con dos regiones a la vez | Diario 09-24 |
 | Espectro antes que λ–t; la última petición gana | Mac 18–23 → 3–5 ms; StorNext ~165 → ~40 ms | Código del prototipo, 09-24 |
+| Mostrar un resultado salvo que ya haya uno más nuevo en pantalla (no solo el último pedido) | 188 movimientos cada 8 ms (Mac, cubo de 22 GB, sin `_sp`): espectros mostrados 1–11 → 108–131, λ–t 1–11 → 100–120 | Código del prototipo (`_lt_ready`), 09-24 |
 | Rango y: crece al mover, ajuste en reposo | 57 → 26 ms por movimiento | F64 (código) |
 | Caché de imágenes: el bucle entero o poco | Solo el bucle entero gana (16.5 frente a 18.4–19.8 ms) | Fase 17 |
 | `MemoryGuard` vigila el swap en macOS | "Disponible" no avisa: abortó con el swap +0.57 GB y 5.6 GB "libres" | Fase 17 |

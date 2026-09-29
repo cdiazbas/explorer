@@ -291,3 +291,23 @@ sistemas en red.
 
 **Diferencia buscada.** En el reparto del presupuesto, la vuelta entera suma las imágenes de lectura
 anticipada que decide la política (2 en disco local, 4 en red). El prototipo sumaba siempre 4.
+
+### 2026-09-29: ejecutores (ROADMAP E1.6)
+
+Traídos de `viewer.py` del prototipo (`_bg`, `_quv_bg`, `_slit_bg`, `_strip_pool`, `_series_job`,
+`_lt_ready`), en `explorer.data.executors`:
+- un hilo `numba` que ejecuta todo numba en paralelo; el número de hilos de numba se fija en ese
+  hilo (es por hilo) con el valor de la sonda, como hacía el prototipo en `_bg`;
+- un pool de E/S, un pool de franjas (`min(8, núcleos)`, como `_STRIPS`) y un hilo `background`
+  para trabajos largos (rangos Q U V, franjas de rendija);
+- `submit_latest`: un contador por clave; el trabajo no empieza si ya llegó una petición más nueva,
+  y puede pararse entre pasos (espectro, luego λ–t), como `_series_job`;
+- `ShownGate`: muestra un resultado salvo que ya haya uno más nuevo en pantalla, como `_lt_ready`.
+  Se usará en `core` (E2). La medida que lo justifica está ahora en `measured.md`.
+
+**Comprobación.** 200 peticiones desde 8 hilos a la vez: todas las lecturas `gather` se ejecutan en
+el hilo `numba`, nunca dos a la vez, y dan los mismos valores que el FITS. Pasa en el Mac y en
+bellatrix.
+
+No hay prueba de velocidad propia. El coste de repartir el trabajo entre hilos se medirá junto con la
+fachada `Dataset` (E1.10), frente al prototipo.
