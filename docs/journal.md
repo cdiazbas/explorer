@@ -311,3 +311,36 @@ bellatrix.
 
 No hay prueba de velocidad propia. El coste de repartir el trabajo entre hilos se medirá junto con la
 fachada `Dataset` (E1.10), frente al prototipo.
+
+### 2026-09-29: ejes físicos, papeles y unidades (ROADMAP E1.7)
+
+En `explorer.data.axes`, desde el código del prototipo:
+- `from_fits` y `Axes` (`app/physics.py`);
+- `roles` (`viewer.axis_positions`), que ahora devuelve también nt, ns y nl;
+- `power_of_ten` y `plot_units` (`Viewer._set_spectra` y `_sample_ready`);
+- `unit_text` y `fmt_signed`.
+
+**Comprobación frente a las referencias del prototipo.**
+- Sintético y cubo 6173 real (bellatrix): `axes.lam_nm`, `t_sec`, `corners`, `dlam_A` y `vel_kms`
+  idénticos, sin tolerancia.
+- Metadatos idénticos: línea, λ₀, continuo, BUNIT, esquinas, DATEREF, fuentes y UTC.
+- Papeles de los ejes idénticos a `axis_positions`.
+- La potencia de diez de I, calculada en el espectro del centro en el índice de arranque del visor,
+  es la del visor: 1e-09 en el sintético.
+
+**Diferencias buscadas.**
+- `Axes.distortion` dice si la cabecera trae distorsión de λ. En 6173: `WCSDVARR CWDIS3 = Lookup`.
+  Sigue sin aplicarse, como en el prototipo, y `source` no cambia.
+- Una cabecera que no se puede leer deja además un aviso en el registro, no solo en `source`.
+
+**Se conserva, anotado.** Si el continuo de un píxel no es finito o vale cero (relleno), Q, U y V
+se quedan en las unidades leídas, aunque el título diga %. En relleno todo es NaN, así que no se ve.
+
+**Unitarias:**
+- cabecera sintética de SSTRED;
+- continuo por sintonía aislada: con 5 sintonías no salta (2× la mediana del paso), con 12 sí;
+- línea desconocida;
+- distorsión;
+- fichero sin WCS-TAB, y fichero que no es FITS;
+- papeles por nombre y por orden SOLARNET;
+- unidades de los espectros.
