@@ -64,3 +64,28 @@ def test_series_identical_to_the_prototype(golden):
         for j, (y, x) in enumerate(case["pixels"]):
             got, want = r.series(y, x, (0,) * len(r.shape[:-2]), free), ref[f"series.{j}"]
             assert got.shape == want.shape and np.array_equal(got, want, equal_nan=True), f"pixel {(y, x)} differs"
+
+
+def test_per_pixel_files_identical_to_the_prototype(golden):
+    from explorer.data.io import FrameReader
+    from explorer.data.pixel import SpLP, lp_pixel_layout, open_pixel
+
+    case, ref, meta, im = golden
+    with FrameReader(formats.open_layout(im)) as fr:
+        sp = open_pixel(im, fr)
+        if any(k.startswith("sp_fits.") for k in ref.files):
+            assert sp is not None and sp.kind == "sp.fits"
+            for j, (y, x) in enumerate(case["pixels"]):
+                assert np.array_equal(sp.block(y, x), ref[f"sp_fits.{j}"], equal_nan=True), f"sp.fits {(y, x)}"
+        if "icube_calibration" in meta:
+            icube = str(im).replace("_im.fits", "_sp.icube")
+            lp = SpLP(lp_pixel_layout(icube, fr.ny, fr.nx))
+            cal, want = lp.calibrate(fr), meta["icube_calibration"]
+            # np.polyfit differs between machines in the last digits (docs/journal.md): 1e-12 relative
+            for k in ("scale", "zero", "max_resid"):
+                assert cal[k] == pytest.approx(want[k], rel=1e-12, abs=1e-24), k
+            for j, (y, x) in enumerate(case["pixels"]):
+                assert np.array_equal(lp.block(y, x), ref[f"icube.{j}"], equal_nan=True), f"icube {(y, x)}"
+            lp.close()
+        if sp is not None:
+            sp.close()
