@@ -89,3 +89,41 @@ def test_per_pixel_files_identical_to_the_prototype(golden):
             lp.close()
         if sp is not None:
             sp.close()
+
+
+def test_axes_identical_to_the_prototype(golden):
+    from explorer.data import axes
+
+    case, ref, meta, im = golden
+    lay = formats.open_layout(im)
+    assert list(axes.roles(lay.axes, lay.shape)[:3]) == meta["axis_positions"]
+    ax = axes.from_fits(im)
+    for k in ("lam_nm", "t_sec", "corners", "dlam_A", "vel_kms"):
+        v = getattr(ax, k)
+        got = v() if callable(v) else v
+        assert (got is None) == (f"axes.{k}" not in ref.files), k
+        if got is not None:
+            assert np.array_equal(got, ref[f"axes.{k}"]), f"axes.{k} differs"
+    want = meta["axes"]
+    t = axes.roles(lay.axes, lay.shape).t
+    assert dict(line=ax.line, lam0_nm=ax.lam0_nm, cont=ax.cont, bunit=ax.bunit,
+                corner_px=[list(c) for c in ax.corner_px] if ax.corner_px else None,
+                dateref=None if ax.dateref is None else str(ax.dateref), source=ax.source,
+                utc=[ax.utc_str(i) for i in range(lay.shape[t])] if t is not None else None) == want
+
+
+def test_power_of_ten_of_stokes_i_as_the_prototype(golden):
+    """The viewer's power of ten for I, from the first spectrum it showed (the image centre at its start index)."""
+    from explorer.data import axes
+    from explorer.data.io import FrameReader
+
+    case, ref, meta, im = golden
+    if "viewer" not in meta:
+        pytest.skip("no viewer-level reference for this case")
+    v = meta["viewer"]
+    lay = formats.open_layout(im)
+    r = axes.roles(lay.axes, lay.shape)
+    with FrameReader(lay) as fr:
+        spec = fr.series(fr.ny // 2, fr.nx // 2, tuple(v["idx"]), [r.s, r.l])
+    assert axes.power_of_ten(spec[0]) == v["iscale"]
+    assert axes.from_fits(im).cont == v["cont"]
