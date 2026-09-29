@@ -12,8 +12,10 @@
 - Nothing is ever deleted on either side.
 - push refuses while <remote>/.editing_on_server exists: someone is editing there, and a push would silently
   overwrite their work.
-- It uses the ssh configuration as it is: with ControlMaster it reuses the open master and triggers no new login
-  (new connections through login2 ask for a second factor).
+- It never opens a new ssh connection: it checks for an open ControlMaster first (`ssh -O check`, which connects
+  to nothing) and stops if there is none. A new connection to bellatrix goes through login2, which sends a
+  second-factor request to the user's phone; BatchMode does not prevent it, because the ProxyCommand's own ssh to
+  login2 is not in batch mode (seen 2026-09-29: an expired master made a push hang on that request).
 
 Host and remote directory come from scripts/sync.local.json (never synced nor versioned: it holds a personal path):
 
@@ -95,6 +97,9 @@ def main():
     if any(rdir.startswith(f) for f in FORBIDDEN):
         sys.exit(f"refusing: {rdir} is read-only shared data")
     dest = f"{host}:{rdir}/"
+    if subprocess.run(["ssh", "-O", "check", host], capture_output=True).returncode:
+        sys.exit(f"no open ssh master to {host}: nothing done. Open one yourself (it asks for the second factor "
+                 f"once, then lasts hours):\n  ssh -fN {host}\nand run this again.")
 
     if a.action in ("sync", "push"):
         r = remote(host, f"cat {shlex.quote(rdir)}/.editing_on_server 2>/dev/null")
