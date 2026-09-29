@@ -396,3 +396,88 @@ resultados distintos.
   no son las mismas, así que no se comparan.
 
 Script: `bench/stats_vs_prototype.py`. Resultado: `bench/results/stats_vs_prototype_*.json`.
+
+### 2026-09-29: rendijas (ROADMAP E1.9)
+
+En `explorer.data.slits`, desde `app/viewer.py` del prototipo: `slit_path`, `slit_pixels`,
+`read_slit_blocks` (con `pixel_runs` aparte), `read_slit_slab`, `read_slit_bands` y `frame_index`
+(de `Viewer._frame_index`).
+
+Ahora toda lectura pasa por `io.py`:
+- `FrameReader.read_rows_raw`;
+- `FrameReader.points`, que la muestra de perfiles usa en vez de calcular los offsets en `stats.py`;
+- las imágenes para los rangos de Q, U y V se leen con `read_raw`, no con `os.pread` directo.
+
+**Comprobación frente al prototipo**, en el sintético y en 6173 real (bellatrix):
+- `slit_path` dentro de 1e-12 relativo;
+- `slit_iy`, `slit_ix`, `slit_slab` y `slit_bands` idénticos;
+- las pruebas de oro de E1.8 siguen idénticas tras el cambio de lecturas.
+
+**Medidas** (bellatrix, 6173, rendija de ~600 px, ABBA). El banco `bench/slits_vs_prototype.py`
+tuvo que corregirse dos veces:
+
+1. **Rendijas distintas para cada lado.** Cada implementación tenía su propia rendija aleatoria, y lo
+   que cuesta una rendija depende de su forma (filas que abarca, tramos seguidos). Salía losa 109
+   frente a 72 ms y bandas t 398 frente a 191 ms, y no era una comparación válida. Ahora cada ronda
+   usa una misma forma para los dos lados, cada uno en su mitad del campo, alternando mitades.
+2. **Control A/A (`--aa`).** El prototipo contra sí mismo da 0.986 en frío, sin efecto de orden. Es
+   el suelo de ruido de este diseño.
+
+**Losa `_sp`.**
+- Con el código portado tal cual: +2 % templado (41.07 frente a 40.13 ms).
+- Causa medida: 0.83 µs más por llamada a `strip_read`, que se nota con cientos de llamadas en 64
+  hilos bajo el GIL.
+- Arreglo: `SpFits.strip_read` en un solo nivel, con la conversión decidida al abrir, y
+  `read_slit_blocks` y `read_slit_slab` aceptan un pool ya abierto. Crear 64 hilos en cada rendija
+  costaba 10–16 % de la losa templada.
+- Resultado en 16 rondas: frío 0.914 (explorer más rápido en 11/16), templado 0.835 (15/16).
+
+**Probado y descartado.** Losa leída en numba (tramos de longitud variable, `prange`, una sola
+conversión):
+- templado, 27 frente a 43 ms con muchos tramos, pero más lenta con pocos (26 frente a 21 ms);
+- en frío, 1.51× más lenta con 32 hilos y 1.17× con 64 (más rápida en 0/12 y 2/12 rondas).
+
+**Bandas λ:** iguales (7.1 frente a 6.9 ms).
+
+**Bandas t en frío: resuelto.** El 3.5 % tenía dos causas. Se aislaron una a una, con el mismo
+fichero y la misma rendija:
+
+| Variante | Ratio en frío | Más rápido | Orden (explorer primero / segundo) |
+|---|---|---|---|
+| `preadv`, dos pasadas de 16 rondas | 1.072 y 1.075 | 6/16 y 7/16 | 1.17 / 0.95 |
+| `os.pread`, como el prototipo | 1.058 | 6/16 | 1.17 / 0.96 |
+| Con el mismo descriptor que el prototipo | 1.035 | 3/16 | 1.03 / 1.08 |
+
+1. **NUMA.** bellatrix tiene 2 zócalos y 2 nodos NUMA.
+   - Sin fijar el proceso, el coste por imagen es bimodal: ~960 frente a ~1270 µs (+30 %). El caso
+     lento cambia entre dos ejecuciones idénticas: una vez los búferes numpy, otra vez los bytes.
+   - Depende del nodo al que va a parar la memoria de cada búfer. No hay fallos de página.
+   - Fijado al nodo 0 con `taskset`, desaparece. Todas las medidas finas se hacen así desde ahora.
+   - El efecto de orden venía de otra cosa: el estado que el núcleo guarda por fichero abierto. En
+     el banco hay dos ficheros abiertos sobre el mismo cubo; la app tiene uno solo.
+2. **El GIL con 16 hilos.** Fijado al nodo 0, con un hilo explorer era igual (0.993–1.001). Con
+   16 hilos era un 8–10 % más lento: por cada imagen hacía más trabajo en Python (comprobaciones,
+   `np.empty` y `memoryview`, índice 2-D).
+   - Resultado a contrapelo: un obrero más ligero, con los offsets calculados antes, fue un 8–15 %
+     **más lento** (1.08–1.15).
+   - El más rápido fue el obrero con la forma exacta del prototipo: offset y conversión dentro de
+     cada obrero. Así queda `FrameReader.band_values`, que usa `read_slit_bands`. La comprobación de
+     posiciones se hace una sola vez, fuera del obrero.
+
+**Controles.**
+- Una copia literal de la función del prototipo, dentro del mismo proceso, da 0.999–1.001.
+- Con cinco variantes intercaladas la misma copia dio 0.915–0.967. Por debajo del ~5 %, con 16
+  hilos, solo valen las comparaciones dentro de una misma ejecución y frente a esa copia.
+
+**Final**, bellatrix, 6173, fijado al nodo 0:
+- templado con 16 hilos, cuatro ejecuciones: 0.991–1.003, igual que la copia (0.993–1.005);
+- en frío, 16 rondas ABBA:
+  - bandas t: 1.008 (6/16), sin efecto de orden (1.01 / 0.99); templado 1.000;
+  - losa: frío 0.930 (10/16), templado 0.729 (16/16);
+- 0 resultados distintos.
+
+**Retirado.** «Un búfer nuevo de numpy cuesta fallos de página»: medido, 0 fallos por imagen en el
+caso real. La diferencia era NUMA.
+
+**Hallazgo para E1.10.** En bellatrix, `NUMBA_NUM_THREADS` vale 32 (los núcleos), así que los 64
+hilos de `gather` que decide la sonda se quedan en 32, en el prototipo y en explorer.

@@ -31,6 +31,9 @@ Copiado de `docs/plan.md` §4 el 2026-09-28.
 | Rango y: crece al mover, ajuste en reposo | 57 → 26 ms por movimiento | F64 (código) |
 | Caché de imágenes: el bucle entero o poco | Solo el bucle entero gana (16.5 frente a 18.4–19.8 ms) | Fase 17 |
 | `MemoryGuard` vigila el swap en macOS | "Disponible" no avisa: abortó con el swap +0.57 GB y 5.6 GB "libres" | Fase 17 |
+| Medidas finas (< 30 %) fijadas a un nodo NUMA (`taskset`) | Sin fijar, copiar a búfer bimodal ~960 frente a ~1270 µs por imagen de 3.9 MB, cambia entre ejecuciones (bel, 2 nodos) | Diario 09-29, E1.9 |
+| Con 16 hilos, el obrero de E/S igual que el del prototipo, no más ligero | Offsets calculados antes: 8–15 % más lento (GIL) | Diario 09-29, E1.9 |
+| Pool de hilos abierto para la losa de rendija | Crear 64 hilos por rendija: 10–16 % de la losa templada | Diario 09-29, E1.9 |
 | Por `ssh -Y` solo llega `pgr` | vispy/gfx: ventana vacía (OpenGL en el servidor); napari igual (2026-09-26) | Fase 11 |
 | Puente X11 por defecto en pantalla remota | ~12 frente a ~8.5 imágenes/s; 1.3 frente a 4.8 B/px | F2, 2026-09-25 |
 | Lo que escala por X11 es lo repintado | Mismos bytes con 1 o 4 ventanas; 49 ms repintando todo frente a 20 ms solo cruz + 2 paneles | Fase 17 |

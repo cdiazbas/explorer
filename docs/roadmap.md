@@ -36,7 +36,7 @@ sección que la origina.
 | E1.6 | ✅ | Ejecutores: un solo hilo dueño de numba en paralelo, pool de E/S, franjas de CPU; `submit_latest` (la última petición gana) | — | 2026-09-29 | journal 09-29 |
 | E1.7 | ✅ | Ejes físicos (de `physics.py`) y papeles de los ejes (de `viewer.axis_positions`); unidades de I y de Q, U, V (de `Viewer._set_spectra`). Prueba: `axes.*` y metadatos de ejes idénticos | E1.1 | 2026-09-29 | journal 09-29 |
 | E1.8 | ✅ | Estadística y núcleos (de `viewer.py`): `limits`, `nice_range`, `_reduce_u8_serial` y su reparto en franjas, `_absmax_*`, `quv_amplitude_ranges`, muestreo de perfiles y rangos y (de `_start_sample`, `_sample_job`, `_sample_ready`). Prueba: `limits.*`, `reduce.*`, `meta.quv`, `meta.viewer.ysample`/`yquv` idénticos | E1.2–E1.4, E1.7 | 2026-09-29 | journal 09-29 |
-| E1.9 | ⬜ | Rendijas (de `viewer.py`): `slit_path`, `slit_pixels`, `read_slit_slab`, `read_slit_bands`. Prueba: `slit_*` idénticos (`slit_path` con tolerancia ~1e-12) | E1.2, E1.4 | 2026-09-29 | — |
+| E1.9 | ✅ | Rendijas (de `viewer.py`): `slit_path`, `slit_pixels`, `read_slit_slab`, `read_slit_bands`. Prueba: `slit_*` idénticos (`slit_path` con tolerancia ~1e-12) | E1.2, E1.4 | 2026-09-29 | journal 09-29 |
 | E1.10 | ⬜ | Fachada `Dataset` (imagen, píxel y losa como `Future`, `close()`), sin Qt (contrato de capas). Rendimiento frente a la línea base en bellatrix, en ABBA: imagen, serie, bloque `_sp` | E1.1–E1.9 | 2026-09-29 | — |
 | E1.11 | 🔄 | Pruebas de comparación del nivel 1 (`tests/golden/test_data.py`): el caso sintético siempre; el real del 6173 en bellatrix (`-m golden_real`) | E1.1 | 2026-09-29 | — |
 | E2 | ⬜ | `explorer.core` + `testing.Driver` (PLAN §3.3, §6) | E1 | 2026-09-28 | — |
