@@ -35,6 +35,7 @@ Copiado de `docs/plan.md` §4 el 2026-09-28.
 | Lo que escala por X11 es lo repintado | Mismos bytes con 1 o 4 ventanas; 49 ms repintando todo frente a 20 ms solo cruz + 2 paneles | Fase 17 |
 | Color por el puente | ×2.4 bytes; dos tintes 1.09 B/px [sin probar en la app] | ESTUDIO_INTERFAZ §5 |
 | Nunca forzar repintados | Cruz 118 → 30 ms | Fase 9 |
+| Memoria del sistema por ctypes en macOS, no con `sysctl`/`vm_stat` | 14–34 ms → 0.011 ms por consulta; con procesos eran los únicos fotogramas de más de 17 ms durante la reproducción | Diario 09-24 |
 
 **Resultados negativos que no se vuelven a proponer:**
 - `memmap`;

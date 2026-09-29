@@ -276,3 +276,18 @@ En caché: 0.003 ms en las dos.
   son idénticos.
 - Diferencia buscada: cuando el píxel central es relleno, el prototipo deja la escala en 1 sin
   avisar; explorer prueba otros píxeles, y si ninguno tiene datos, da error.
+
+### 2026-09-29: política de almacenamiento y memoria (ROADMAP E1.5)
+
+**Comprobación en bellatrix, con el cubo de Stokes 6173 en StorNext.** La sonda y el guardián de
+explorer, frente a los del prototipo (`app/policy.py`), en el mismo proceso:
+- las dos sondas deciden lo mismo: `cvfs`, almacenamiento en red, tira de 32 px, 4 imágenes de
+  lectura anticipada, 4 lectores y 64 hilos para `gather`;
+- los dos guardianes dan 8 GB, el tope en Linux.
+
+La lectura pequeña de explorer midió 0.01 ms porque la sonda del prototipo, con la misma semilla,
+acababa de leer esos puntos. La decisión no depende de ella, porque `cvfs` está en la lista de
+sistemas en red.
+
+**Diferencia buscada.** En el reparto del presupuesto, la vuelta entera suma las imágenes de lectura
+anticipada que decide la política (2 en disco local, 4 en red). El prototipo sumaba siempre 4.
