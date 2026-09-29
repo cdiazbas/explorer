@@ -76,6 +76,32 @@ class FrameReader:
         _preadv_exact(self.fd, memoryview(raw).cast("B"), self.frame_offset(idx) + y0 * self.nx * isz)
         return self.to_float32(raw)
 
+    def series(self, y: int, x: int, idx, free_axes) -> np.ndarray:
+        """Values at pixel (y, x) along the leading axes in free_axes, the others fixed at idx: one dimension per
+        free axis, in axis order (profile: (nl,), lambda-t: (nt, nl), everything: (nt, ns, nl)). Read from the
+        file every time, in the numba reader's threads (call it from the one thread that runs parallel numba)."""
+        from .gather import gather
+
+        free = sorted(int(a) for a in free_axes)
+        if not 0 <= y < self.ny or not 0 <= x < self.nx:
+            raise IndexError(f"pixel ({y}, {x}) outside {self.ny}x{self.nx}")
+        idx = tuple(int(i) for i in idx)
+        sizes = [self.shape[a] for a in free]
+        fixed = sum(i * s for a, (i, s) in enumerate(zip(idx, self.strides, strict=True)) if a not in free)
+        grid = np.zeros(sizes, np.int64)
+        for k, a in enumerate(free):
+            shp = [1] * len(sizes)
+            shp[k] = sizes[k]
+            grid = grid + np.arange(sizes[k], dtype=np.int64).reshape(shp) * self.strides[a]
+        it = self.layout.dtype.itemsize
+        offs = (self.layout.offset + (fixed + grid.ravel()) * self.frame_bytes
+                + (int(y) * self.nx + int(x)) * it).astype(np.int64)
+        out = np.empty(offs.size * it, np.uint8)
+        with span("data.series.read"):
+            if gather(self.fd, offs, it, out):
+                raise ShortRead(f"short reads for pixel ({y}, {x}) in {self.layout.path}")
+        return self.to_float32(out.view(self.layout.dtype).reshape(sizes))
+
     def to_float32(self, raw: np.ndarray) -> np.ndarray:
         lay = self.layout
         if not lay.scaled and lay.blank is None:

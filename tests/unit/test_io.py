@@ -71,3 +71,33 @@ def test_lp_image_cube_in_crispex_frame_order(dataset, tmp_path):
     layout, _ = formats.lp_pair_layouts(lp_im, dataset["icube"])
     with FrameReader(layout) as r:
         np.testing.assert_array_equal(r.read((1, 2, 0)), counts[1, 2, 0].astype(np.float32))
+
+
+def test_series_along_any_free_axes(dataset):
+    data = fits.getdata(dataset["im"]).astype(np.float32)             # (t, s, l, y, x)
+    y, x = 9, 5
+    with FrameReader(formats.open_layout(dataset["im"])) as r:
+        np.testing.assert_array_equal(r.series(y, x, (1, 2, 0), [2]), data[1, 2, :, y, x])            # profile
+        np.testing.assert_array_equal(r.series(y, x, (0, 3, 0), [0, 2]), data[:, 3, :, y, x])         # lambda-t
+        np.testing.assert_array_equal(r.series(y, x, (0, 0, 0), [2, 0, 1]), data[:, :, :, y, x])      # everything
+        with pytest.raises(IndexError):
+            r.series(SHAPE[3], 0, (0, 0, 0), [2])
+
+
+def test_series_short_read(dataset, tmp_path):
+    cut = tmp_path / "cut_im.fits"
+    lay = formats.fits_layout(dataset["im"])
+    cut.write_bytes(open(dataset["im"], "rb").read()[: lay.offset + lay.nbytes // 2])
+    with FrameReader(formats.fits_layout(cut)) as r, pytest.raises(ShortRead):
+        r.series(9, 5, (0, 0, 0), [0, 1, 2])
+
+
+def test_numba_cache_goes_to_the_user_cache(monkeypatch, tmp_path):
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in __import__("os").environ.items() if k != "NUMBA_CACHE_DIR"}
+    env["XDG_CACHE_HOME"] = str(tmp_path)
+    code = "import numba; from explorer.data import gather; print(numba.config.CACHE_DIR)"
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True).stdout
+    assert out.strip() == str(tmp_path / "explorer" / "numba")

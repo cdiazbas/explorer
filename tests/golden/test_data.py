@@ -53,3 +53,14 @@ def test_frames_identical_to_the_prototype(golden):
             got, want = r.read(tuple(idx)), ref[f"frame.{i}"]
             assert got.dtype == want.dtype and got.shape == want.shape
             assert np.array_equal(got, want, equal_nan=True), f"frame {idx} differs"
+
+
+def test_series_identical_to_the_prototype(golden):
+    from explorer.data.io import FrameReader
+
+    case, ref, meta, im = golden
+    free = sorted(a for a in meta["axis_positions"] if a is not None)
+    with FrameReader(formats.open_layout(im)) as r:
+        for j, (y, x) in enumerate(case["pixels"]):
+            got, want = r.series(y, x, (0,) * len(r.shape[:-2]), free), ref[f"series.{j}"]
+            assert got.shape == want.shape and np.array_equal(got, want, equal_nan=True), f"pixel {(y, x)} differs"
