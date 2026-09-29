@@ -41,7 +41,7 @@ explorer = "explorer.cli:main"
 dev = [
     "pytest>=8",
     "ruff>=0.6",
-    "pyright>=1.1.380",
+    "mypy>=1.11",                       # not pyright: its PyPI package downloads Node.js on first use (bellatrix)
     "import-linter>=2.1",
 ]
 
@@ -68,5 +68,37 @@ line-length = 120
 target-version = "py312"
 src = ["src", "tests"]
 
+[tool.ruff.lint]
+# explicit, so a new ruff version does not change what fails: errors and real traps, not the code's style
+select = ["E", "W", "F", "I", "B", "UP", "RUF100"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["explorer"]
+check_untyped_defs = true
+warn_unused_ignores = true
+ignore_missing_imports = true           # numba, Xlib and parts of astropy ship no type information
+
+# Layer contracts (docs/plan.md §3.1), checked by `lint-imports` in scripts/check.sh. Contracts for data, core, ui
+# and platform are added with those packages. Imports inside functions count too: lazy imports are checked at run
+# time by tests/unit/test_cli.py instead.
+[tool.importlinter]
+root_package = "explorer"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "obs uses the standard library only, never the command nor anything heavy"
+type = "forbidden"
+source_modules = ["explorer.obs"]
+forbidden_modules = ["explorer.cli", "explorer.doctor", "explorer.demo", "explorer.testing",
+                     "numpy", "numba", "astropy", "PySide6", "pyqtgraph", "Xlib"]
+
+[[tool.importlinter.contracts]]
+name = "testing helpers never import the command nor Qt"
+type = "forbidden"
+source_modules = ["explorer.testing"]
+forbidden_modules = ["explorer.cli", "explorer.doctor", "explorer.demo", "PySide6", "pyqtgraph"]
