@@ -12,6 +12,7 @@ from ._name import APP_NAME
 # name -> (module, one-line help). Each module has main(argv) -> exit code.
 SUBCOMMANDS = {
     "doctor": ("doctor", "check that this user can run explorer here (environment, numba, Qt, a cube)"),
+    "demo": ("demo", "try what explorer can do so far, on a cube (default: a small synthetic one)"),
 }
 
 
