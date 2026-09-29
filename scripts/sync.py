@@ -15,7 +15,7 @@
 - It never opens a new ssh connection: it checks for an open ControlMaster first (`ssh -O check`, which connects
   to nothing) and stops if there is none. A new connection to bellatrix goes through login2, which sends a
   second-factor request to the user's phone; BatchMode does not prevent it, because the ProxyCommand's own ssh to
-  login2 is not in batch mode (seen 2026-09-29: an expired master made a push hang on that request).
+  login2 is not in batch mode, so without this check an expired master leaves a push waiting on that request.
 
 Host and remote directory come from scripts/sync.local.json (never synced nor versioned: it holds a personal path):
 

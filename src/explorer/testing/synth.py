@@ -3,8 +3,8 @@ against the prototype:
 
     paths = write_dataset(directory, "synth_stokes")   # {"im": ..._im.fits, "sp": ..._sp.fits, "icube": ..._sp.icube}
 
-- _im.fits: numpy (t, s, lambda, y, x), big-endian float32, NaN padding around a rotated field of view (the
-  prototype's first synthetic cube had no padding and hid a colour bug that real data showed at once).
+- _im.fits: numpy (t, s, lambda, y, x), big-endian float32, NaN padding around a rotated field of view, so that
+  every code path that must handle padding (levels, colour tables, samples, reads skipped) is exercised.
 - The header follows the Fe I 6173 cube (SOLARNET 1.0) as the prototype reads it (app/physics.py): CTYPE
   HPLN-TAB, HPLT-TAB, WAVE-TAB, STOKES, UTC--TAB; PSi_0/PSi_1/PSi_2 pointing to a WCS-TAB binary table whose
   column "HPLN+HPLT+WAVE+TIME" has shape (nt, nl, 2, 2, 4), with HPLN-INDEX and HPLT-INDEX; WAVEBAND, DATEREF,
@@ -13,11 +13,10 @@ against the prototype:
 - _sp.fits: the same values transposed to numpy (y, x, s, t, lambda), as SSTRED writes it.
 - _sp.icube: LP (La Palma) cube, 512-byte ASCII header as in the real nb_6563 _sp.icube ("stokes=[I], ns=1 :
   datatype=2 (integer), dims=3, nx=nl, ny=nt, nt=npix*ns, endian=l"), little-endian int16, pixel-major with Stokes
-  fastest (prototype app/sources.py SpLP). Values = round(1e11 * value): the prototype's fit against the real
-  nb_6563 _sp.icube gave scale 9.9996e-12 with 0.5 units of residual (prototype OVERVIEW, diary 2026-09-24).
-  SSTRED's red__fitscube_integer.pro scales differently (global [DATAMIN, DATAMAX] -> +-32000 with BSCALE/BZERO,
-  OVERVIEW "El precedente de SSTRED"); the prototype does not assume either: SpLP.calibrate fits scale and zero
-  against the FITS cube and ignores zero counts (sources.py:90-100), so NaN is written as 0 here.
+  fastest (prototype app/sources.py SpLP). Values = round(1e11 * value), the scaling of the real nb_6563
+  _sp.icube (docs/journal.md, synthetic cube v2). SSTRED's red__fitscube_integer.pro scales differently (global
+  [DATAMIN, DATAMAX] -> +-32000 with BSCALE/BZERO), so readers must not assume a scale: the prototype fits scale
+  and zero against the FITS cube and ignores zero counts (app/sources.py SpLP.calibrate); NaN is written as 0.
 Physics is only plausible: granulation, a spot and a pore, an absorption line whose Doppler shift drifts in t,
 V antisymmetric in lambda, Q and U from the spot's azimuth, and a continuum tuning far in the red wing.
 """

@@ -108,7 +108,7 @@ def test_console_keeps_warning_for_unnamed_layers(tmp_path, monkeypatch, capsys)
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     obs.setup(spec="data.io=DEBUG")
     obs.get_logger("core").info("core info")            # below the console's WARNING: not on the console
-    obs.get_logger("data.io").debug("io debug")         # data.io asked for DEBUG: on the console
+    obs.get_logger("data.io").debug("io debug")         # data.io set to DEBUG: on the console
     err = capsys.readouterr().err
     assert "io debug" in err and "core info" not in err
     obs.setup(to_file=False)

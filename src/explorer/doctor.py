@@ -3,9 +3,9 @@
     explorer doctor [cube_im.fits] [--show] [--out report.json]
 
 Read-only on the cube (one header read and one small pread). Ported from the prototype's test.py, with two
-changes: Qt is started in a child process, because a missing libxcb-cursor makes Qt abort the whole process
-(prototype, 2026-09-26) and the doctor must survive to say so; and the report goes to the user's cache
-directory (~/.cache/explorer/doctor/), not to wherever the command was run from.
+changes: Qt is started in a child process, because a missing libxcb-cursor, or another Qt on LD_LIBRARY_PATH,
+makes Qt abort the whole process and the doctor must survive to report it; and the report goes to the user's
+cache directory (~/.cache/explorer/doctor/), not to wherever the command was run from.
 
 Each check prints ok / WARN / FAIL with its time; the exit code is 1 if any check failed.
 """
@@ -129,8 +129,8 @@ def c_files(rep):
 
 def c_numba(rep):
     """Compile a serial and a parallel kernel. The parallel one tells which threading layer this machine has:
-    'workqueue' aborts if two threads run parallel regions at once (prototype, 2026-09-24), so explorer runs
-    every parallel kernel on one thread."""
+    'workqueue' aborts the process if two threads run parallel regions at once, so explorer runs every parallel
+    kernel on one thread."""
     import numba
     import numpy as np
 

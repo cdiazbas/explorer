@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"        # the prototype was measured on 3.12.13
 # Pins are the versions the prototype was measured with (docs/measured.md). Intel Macs get the last numba
 # with x86_64 macOS wheels (0.62.1) and the numpy/llvmlite that go with it; its kernels were checked
-# identical (hash) against 0.67.0 on arm64 (prototype bench/test_numba_compat.py, 2026-09-24).
+# identical (hash) against 0.67.0 on arm64 by the prototype's bench/test_numba_compat.py.
 dependencies = [
     "numpy==2.5.3; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "numpy==2.3.5; sys_platform == 'darwin' and platform_machine == 'x86_64'",

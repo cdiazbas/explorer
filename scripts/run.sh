@@ -5,7 +5,7 @@
 # - rebuilds it (setup_env.sh) when the pinned versions changed since it was built, if it can write it;
 # - drops an inherited LD_LIBRARY_PATH (another env's Qt breaks PySide6) and adds .qtlibs/only on Linux
 #   (libxcb-cursor for X11, see setup_env.sh);
-# - more reader threads than cores: scattered reads wait on the disk, not on the CPU (prototype, Fase 17).
+# - more reader threads than cores: scattered reads wait on the disk, not on the CPU (docs/measured.md).
 # Relative paths in the arguments are relative to where you call it from.
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(dirname "$here")"
@@ -15,7 +15,7 @@ if ! { [ -x "$venv/bin/python" ] && "$venv/bin/python" -c "" 2>/dev/null; }; the
   echo "no environment for $plat in $venv: run $here/setup_env.sh first" >&2
   exit 1
 fi
-# the pins changed since the environment was built: update it if we may (only its owner can)
+# the pins changed since the environment was built: update it if this user may (only its owner can)
 if [ "$(cksum < "$root/uv.lock")" != "$(cat "$venv/.lock.cksum" 2>/dev/null)" ]; then
   if [ -w "$venv" ]; then
     echo "[run.sh] pinned versions changed: updating $venv" >&2

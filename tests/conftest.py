@@ -1,5 +1,5 @@
-"""Every test runs with its own cache directory and without a log file: tests never write to the user's
-~/.cache/explorer (seen 2026-09-29: a budget warning from a test landed in the real log)."""
+"""Every test runs with its own cache directory and without a log file, so that nothing a test logs or writes
+(a budget warning, a doctor report) reaches the user's ~/.cache/explorer."""
 import pytest
 
 
