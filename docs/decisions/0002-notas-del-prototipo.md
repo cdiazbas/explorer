@@ -2,7 +2,7 @@
 
 - **Estado:** Vigente
 - **Fecha:** 2026-09-28
-- **Decide:** el usuario (PLAN.md §9, P3, opción A)
+- **Decide:** el usuario (`docs/plan.md` §9, P3, opción A)
 
 ## Contexto
 
@@ -28,8 +28,8 @@ A.
 
 ## Consecuencias
 
-- **Si una medida nueva cambia una cifra:** se anota en el [JOURNAL.md](../../JOURNAL.md)
+- **Si una medida nueva cambia una cifra:** se anota en el [journal.md](../journal.md)
   de explorer y se actualiza `measured.md`. `OVERVIEW.md` sigue siendo el diario del
   prototipo.
 - **La auditoría del prototipo:** no se cita desde ningún fichero de explorer. Sus lecciones
-  ya están en PLAN.md §1 y §11.
+  ya están en `docs/plan.md` §1 y §11.

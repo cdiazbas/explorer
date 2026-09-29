@@ -5,13 +5,13 @@ condiciones, y dónde se midió en el diario del prototipo (`OVERVIEW.md`, en `d
 proyecto, citado por fase o fecha; [ADR 0002](decisions/0002-notas-del-prototipo.md)).
 
 - **Cambiar una fila** exige medir otra vez con el mismo método, anotarlo en el
-  [JOURNAL.md](../JOURNAL.md) y, si cambia una decisión, escribir un ADR.
+  [journal.md](journal.md) y, si cambia una decisión, escribir un ADR.
 - **Lo que resulta falso** no se borra: se tacha, con la fecha y un enlace a la entrada del
   diario que lo corrige.
 - **Máquinas:** "Mac" es un M1 Pro con SSD; "bel" es bellatrix (StorNext `cvfs`); "eagle7"
   comparte el StorNext de bellatrix, pero su cifra no se compara con las de bel.
 
-Copiado de PLAN.md §4 el 2026-09-28.
+Copiado de `docs/plan.md` §4 el 2026-09-28.
 
 | Decisión | Cifra (condiciones) | Dónde |
 |---|---|---|

@@ -2,7 +2,7 @@
 
 - **Estado:** Vigente
 - **Fecha:** 2026-09-28
-- **Decide:** el usuario (PLAN.md §9, P2, opción A)
+- **Decide:** el usuario (`docs/plan.md` §9, P2, opción A)
 
 ## Contexto
 
@@ -17,7 +17,7 @@ proyecto. El prototipo tiene cosas que no deben entrar en un repositorio version
 - **A. Repositorio propio en `explorer/`:**
   - historial, CI y publicación independientes;
   - el prototipo se queda fuera, como laboratorio y como referencia de las comparaciones
-    (PLAN.md §7.1).
+    (`docs/plan.md` §7.1).
 - **B. Un solo repositorio para todo el proyecto:** exige limpiar o excluir el prototipo
   antes del primer commit.
 

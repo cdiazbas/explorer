@@ -2,7 +2,7 @@
 
 - **Estado:** Vigente (provisional: se revisa antes de publicar)
 - **Fecha:** 2026-09-28
-- **Decide:** el usuario (PLAN.md §9, P1: "ponerle explorer y luego cambiar el nombre de
+- **Decide:** el usuario (`docs/plan.md` §9, P1: "ponerle explorer y luego cambiar el nombre de
   todo")
 
 ## Contexto

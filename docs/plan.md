@@ -1,9 +1,9 @@
 # explorer: plan del repositorio y de la aplicación
 
 > **Congelado el 2026-09-28.** Es el diseño inicial y no se vuelve a editar. Lo vigente
-> está en [ROADMAP.md](ROADMAP.md) (trabajo), [docs/decisions/](docs/decisions/)
-> (decisiones), [docs/architecture.md](docs/architecture.md) (el código tal como es) y
-> [docs/measured.md](docs/measured.md) (decisiones medidas).
+> está en [roadmap.md](roadmap.md) (trabajo), [docs/decisions/](decisions/)
+> (decisiones), [docs/architecture.md](architecture.md) (el código tal como es) y
+> [docs/measured.md](measured.md) (decisiones medidas).
 
 `explorer` es la versión sólida del prototipo (`../prototype/`): un visor de cubos solares
 N-D [t, Stokes, λ, y, x] de 2k–4k px y 20–180 GB, sucesor de CRISPEX. Parte del prototipo

@@ -1,0 +1,29 @@
+# Traspaso
+
+Dónde lo dejamos, para retomar en otra sesión o en otra máquina. Se reescribe al final de
+cada sesión; no crece.
+
+## 2026-09-29
+
+- **Hecho (2026-09-28):**
+  - `explorer/` con su propio git; decisiones en `docs/decisions/` (ADR 0001–0005: repositorio
+    propio, notas del prototipo, nombre provisional, idioma, commits);
+  - la orden `explorer` (`--version`, `doctor`, `demo`) y `scripts/` (`setup_env.sh`,
+    `run.sh`, `demo.sh`, `sync.py`);
+  - funciona en el Mac (uv) y en bellatrix (conda + pip); 12 pruebas en verde en los dos.
+- **Hecho (2026-09-29):**
+  - las notas, movidas a `docs/` con un índice (`docs/README.md`); en la raíz solo queda el
+    `README.md`;
+  - `sync.py` se para si no hay conexión maestra de ssh.
+- **Regla (memoria del usuario):** antes de cualquier orden remota, `ssh -O check`. Ante
+  cualquier problema de conexión: parar, no reintentar, y esperar a que el usuario diga que
+  sigue. Un `push` con la maestra caducada dejó un aviso de doble factor colgado, y después el
+  usuario no pudo conectar durante un rato.
+- **Siguiente:** E0.4 (`obs/`, midiendo su coste), E0.5 (CI) y E0.6 (`_sp`, `icube` y WCS-TAB
+  en el sintético). Pequeña: E0.11 (avisar de copias huérfanas en bellatrix).
+- **Del prototipo, fuera de explorer:**
+  - `prototype/actualize.py` sigue apuntando a los `.md` de la raíz, que ahora están en
+    `docs/` del proyecto;
+  - las teclas de Stokes del prototipo quedaron dentro del bloque del eje t (`_key_table`).
+
+  Los dos son del prototipo y los decide el usuario.
