@@ -74,6 +74,7 @@ select = ["E", "W", "F", "I", "B", "UP", "RUF100"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["golden_real: comparison on the shared real cubes (only where tests/golden/real/ has references)"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -96,6 +97,13 @@ type = "forbidden"
 source_modules = ["explorer.obs"]
 forbidden_modules = ["explorer.cli", "explorer.doctor", "explorer.demo", "explorer.testing",
                      "numpy", "numba", "astropy", "PySide6", "pyqtgraph", "Xlib"]
+
+[[tool.importlinter.contracts]]
+name = "data never imports Qt, the command nor the test helpers"
+type = "forbidden"
+source_modules = ["explorer.data"]
+forbidden_modules = ["explorer.cli", "explorer.doctor", "explorer.demo", "explorer.testing",
+                     "PySide6", "pyqtgraph", "Xlib"]
 
 [[tool.importlinter.contracts]]
 name = "testing helpers never import the command nor Qt"
