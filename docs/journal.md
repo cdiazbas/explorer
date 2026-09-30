@@ -1428,3 +1428,33 @@ Una mayúscula llega como Mayúsculas + letra, como en la ventana: `L` no bloque
 
 **Sin probar:** Ctrl+Z y `fg` (al volver, la terminal quizá no esté en modo cbreak), y la
 comprobación del usuario por `ssh -Y` con esta versión.
+
+
+### 2026-09-30: los pasos sin `_sp` no eran más lentos (ROADMAP E3.8)
+
+**Hipótesis:** la regresión de E3.7 sin `_sp` (Stokes 2.9–3.8×) viene del orden de la
+autoprueba, no de explorer. La del prototipo (`app/selftest.py:58-103`) pasa tras 30 posiciones
+del cursor (cada una esperando a su λ–t), 30 sobre el relleno y una ráfaga de 50. La de explorer
+pasaba nada más abrir, con la muestra del rango y aún leyendo.
+
+**Medida:** bellatrix, 2026-09-30 21:12–21:20, offscreen, 4 rondas ABBA, fijado al nodo NUMA 0.
+Carga 0.2 al empezar y 20 al acabar (trabajos de otros, que pesan igual en cada par). Dos series
+seguidas, la autoprueba de explorer tal como estaba y con la fase del cursor del prototipo
+delante. Razón pareada explorer / prototipo, sin `_sp` (rondas en que explorer es más rápido):
+
+| | Primera imagen | Paso en t | Paso en λ | Cambio de Stokes |
+|---|---|---|---|---|
+| Como estaba | 0.603 (4/4) | 1.023 (1/4) | 1.360 (1/4) | 2.893 (0/4) |
+| Con el procedimiento del prototipo | 0.570 (4/4) | 0.986 (2/4) | 0.639 (4/4) | 0.682 (4/4) |
+
+Con `_sp`, las dos series: t 0.99–1.01, λ 0.69, Stokes 0.72–0.76.
+
+**Resultado:** la hipótesis se confirma. Con el mismo procedimiento, explorer iguala al prototipo
+en t y es más rápido en λ y Stokes. La conclusión de E3.7 ("sin `_sp`, los pasos más lentos") era
+un artefacto de la prueba. `bench/explorer_selftest.py` ya sigue el procedimiento del prototipo.
+El margen de 50 px del prototipo solo se reduce en un cubo más pequeño (el sintético de 48×40),
+así que en el 6173 las posiciones son las del prototipo.
+
+**Sin medir:** pasar en los primeros segundos tras abrir, con la muestra en marcha, en los dos
+programas. La autoprueba del prototipo nunca mide ese momento. Queda para E4, cuando los paneles
+dibujen.
