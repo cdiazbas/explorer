@@ -126,6 +126,8 @@ class Scheduler:
                 self.ds.prefetch(self.session.index(state=ahead))
 
     def _image_ready(self, g: int, idx: tuple, fut: Future) -> None:
+        if fut.cancelled():                             # the pools shut down: closing
+            return
         if fut.exception() is not None:
             log.warning("image %s not read: %r", idx, fut.exception())
             counter("core.image.failed")
@@ -214,6 +216,8 @@ class Scheduler:
             deliver(blk)
             return
         def arrived(f: Future) -> None:                  # on the main thread
+            if f.cancelled():
+                return
             if f.exception() is None:
                 deliver(f.result())
             else:
@@ -250,7 +254,7 @@ class Scheduler:
                 self.loop.post(lambda: self._show("lambda_t", g, lt_, (y, x), st.s))
 
         def failed(f: Future) -> None:
-            if f.exception() is not None:
+            if not f.cancelled() and f.exception() is not None:
                 log.warning("series (%d, %d) not read: %r", y, x, f.exception())
 
         self._track(self.ds.executors.numba.submit(job)).add_done_callback(failed)
@@ -300,7 +304,7 @@ class Scheduler:
     @staticmethod
     def _log_failure(what: str):
         def done(f: Future) -> None:
-            if f.exception() is not None:
+            if not f.cancelled() and f.exception() is not None:
                 log.warning("%s failed: %r", what, f.exception())
         return done
 

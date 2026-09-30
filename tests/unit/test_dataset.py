@@ -86,3 +86,14 @@ def test_a_file_that_is_not_a_cube_raises(tmp_path):
     p.write_bytes(b"nothing here")
     with pytest.raises((OSError, ValueError)):
         Dataset.open(p)
+
+
+def test_closing_with_reads_ahead_in_flight_raises_nothing(dataset, capfd):
+    """Frames read ahead and still queued are cancelled on closing; their callbacks must not raise."""
+    d, _ = dataset
+    ds = Dataset.open(d["im"])
+    for t in range(SHAPE[0]):
+        for lam in range(SHAPE[2]):
+            ds.prefetch((t, 0, lam))
+    ds.close()
+    assert "CancelledError" not in capfd.readouterr().err

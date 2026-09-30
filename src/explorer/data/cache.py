@@ -65,7 +65,7 @@ class FrameCache:
 
     def _done(self, idx, fut: Future) -> None:
         """A read ahead finished: keep the frame, or forget the request if it failed (get() then reads again)."""
-        if fut.exception() is None:
+        if not fut.cancelled() and fut.exception() is None:   # cancelled: the pool shut down (closing)
             self._store(idx, fut.result())
         else:
             with self._lock:
