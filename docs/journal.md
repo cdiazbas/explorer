@@ -652,3 +652,48 @@ rotado:
 **Pendiente:**
 - los movimientos verticales siguen siendo una lectura nueva;
 - leer por adelantado la fila siguiente según la dirección del movimiento, con el cursor de E2.
+
+### 2026-09-30: hilos por lectura dispersa (ROADMAP E1.12)
+
+**Medida** (bellatrix, 2026-09-29 22:37, sin fijar, pool de 128). Lecturas en frío de una fila por
+imagen, filas nuevas por Stokes, orden rotado, 18 lecturas por caso. Ratio frente a 32 hilos:
+
+| Lectura | 8 | 16 | 32 (A/A) | 64 | 128 |
+|---|---|---|---|---|---|
+| Espectro (56 peticiones) | 2.02 | 1.15 | 0.92 | 0.86 | — |
+| λ–t (2604 peticiones) | — | 1.63 | 0.81 | 0.56 | 0.42 |
+| λ–t releído desde la caché del sistema | 0.95 | 0.94 | 1.00 | 1.35 | — |
+
+- 128 hilos dan 261 ms, con p90 de 380 ms frente a 900 ms.
+- El ruido entre ejecuciones de 32 hilos (A/A) es ~±20 %.
+
+Solo la lectura desde la caché del sistema empeora con más hilos. Desde E1.13 ese caso casi no
+ocurre: una fila leída otra vez sale de la memoria de explorer (~110 filas), y el sistema guarda solo
+~50 MB.
+
+**Implementado:**
+- `_numba.py`: el pool de numba tiene al menos 128 hilos, salvo que se fije `NUMBA_NUM_THREADS`.
+- `gather.gather_limited`: cada lectura usa un hilo por petición, hasta el límite de la sonda y del
+  pool.
+- La sonda pasa a 128 en red (el 64 del prototipo venía de lecturas de 4 bytes) y sigue en 16 en
+  local.
+- La losa de rendija se queda en 64 hilos de Python, lo medido en E1.9.
+
+**Frente al prototipo** (bellatrix, 2026-09-30 09:35, sin fijar, 8 rondas ABBA; el prototipo con su
+tope real, min(64, CPU) = 32; 0 resultados distintos):
+
+| Caso | Ratio (explorer más rápido) |
+|---|---|
+| Imagen | 0.991 (4/8) |
+| λ–t en frío | **0.94 (8/8)**, 240 frente a 256 ms |
+| λ–t del vecino | 0.13 frente a 28.2 ms |
+| Bloque `_sp` | 1.025 (3/8) |
+
+Esa mañana el almacenamiento iba rápido; con él cargado, la ganancia esperada es mayor (0.42).
+
+**Incidente, 2026-09-30 ~09:30.**
+- Una cadena de órdenes siguió tras fallar `ssh -O check`: un `;` en lugar de abortar. Abrió una
+  conexión nueva por login2 (con `BatchMode`), que pasó a ser el maestro.
+- La sincronización se había saltado, así que esa ejecución midió el código viejo. Se descartó y se
+  repitió.
+- Desde entonces cada paso remoto aborta si falla la comprobación.

@@ -36,7 +36,8 @@ Copiado de `docs/plan.md` §4 el 2026-09-28.
 | Pool de hilos abierto para la losa de rendija | Crear 64 hilos por rendija: 10–16 % de la losa templada | Diario 09-29, E1.9 |
 | Sin `_sp`, un fallo de 4 B cuesta una petición de ~4 KB (~12.5 ms), y el sistema apenas guarda | Contadores FC: 2604 peticiones y ~11 MB por λ–t; el mismo píxel vuelve a fallar tras ~10 k lecturas (~50 MB) con 38 GB libres | Diario 09-29, E1.10 |
 | Sin `_sp`, el almacenamiento se satura hacia ~7000–7700 peticiones/s | λ–t en frío con 32/64/128/256 hilos: 670/462/377/367 ms (bel, fijado al nodo 0, A/A 675) | Diario 09-29, E1.10 |
-| No fijar 64 hilos de numba (se queda el tamaño por defecto, los núcleos) | Ganancia en frío 33 % (tarde) o 4 % (noche); más lento en el espectro (27 frente a 20 ms) y en caché (33 frente a 24 ms) | Diario 09-29, E1.10 |
+| ~~No fijar 64 hilos de numba (se queda el tamaño por defecto, los núcleos)~~ (2026-09-30: sustituida por la fila siguiente, [journal.md](journal.md) E1.12) | Ganancia en frío 33 % (tarde) o 4 % (noche); más lento en el espectro (27 frente a 20 ms) y en caché (33 frente a 24 ms) | Diario 09-29, E1.10 |
+| Hilos por lectura dispersa: uno por petición, hasta 128 en red (16 en local); pool de numba ≥128 | λ–t en frío por filas: 32/64/128 hilos 1.00/0.56/0.42 (A/A 0.81); espectro 64: 0.86; desde la caché del sistema 64: 1.35 | Diario 09-30, E1.12 |
 | io_uring no se puede usar en bel | `kernel.io_uring_disabled=2`: `EPERM` sin root | Diario 09-29, E1.10 |
 | Sin `_sp`, cada serie se lee con su fila entera (8 KB por imagen) | Primer λ–t 1.009 frente al prototipo (4/8); el vecino (x + 1) 0.10 frente a 17.6 ms (8/8); bel, fijado al nodo 0 | Diario 09-29, E1.13 |
 | Bloques de 1 fila, no de 8 | 8 filas (64 KB): primer λ–t 1.339 (1/8) con el almacenamiento rápido; igual con el lento (0.96×) | Diario 09-29, E1.13 |
