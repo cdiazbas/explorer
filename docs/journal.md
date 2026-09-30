@@ -860,3 +860,46 @@ seguía pintando con el rango de I. Aquí se guardan aparte para I y para Q U V.
   - la imagen llega con sus niveles, y fijados se mantienen al cambiar t;
   - V tiene los suyos, simétricos;
   - el λ–t de V es simétrico.
+
+### 2026-09-30: rangos y de los espectros (ROADMAP E2.5)
+
+**Implementado:** `core/yrange.py`, desde `_set_spectra`, `_yfit`, `_set_yfixed`, `_lock_spectra`,
+`_ysample_fixed`, `_sample_ready` y `_quv_ready` del prototipo. Tiene la lógica y nada más: qué
+rango lleva cada panel y cuándo cambia. Usa las funciones ya verificadas en E1.7 y E1.8
+(`power_of_ten`, `plot_units`, `sample_ranges`, `quv_plot_ranges`).
+
+**Unidades.** La potencia de diez de I sale del primer espectro con datos o de la muestra, lo que
+llegue antes. Q, U y V van en % de I_c si se conoce la sintonía del continuo.
+
+**Candado abierto** (el arranque, como en el prototipo):
+- mientras el cursor se mueve, el rango solo crece, a valores 1-2-5;
+- en reposo (0.4 s sin espectro nuevo), cada panel pasa al rango de su propio perfil.
+
+**Candado cerrado:**
+- los rangos de la muestra de 100 perfiles, fijos;
+- Q, U y V desde imágenes enteras, pedidos la primera vez que se cierra, y mientras llegan Q, U y V
+  conservan el suyo.
+
+**Acciones:**
+- `fit()` (tecla F, clic derecho en el candado): cada panel al perfil que se ve, y fijo ahí;
+- `to_sample()` (Shift+F): los rangos de la muestra;
+- `reset()`: la muestra si está fijo, el perfil si no.
+
+**Planificador:**
+- lanza la muestra 300 ms después de la primera imagen, en el hilo de numba;
+- lanza Q, U y V en el hilo de fondo, para no retrasar el cursor;
+- pasa los espectros al `Sink` ya en las unidades de los paneles, con `y_range(k, rango)` y
+  `units(iscale)`.
+
+**Bucle.** `call_later(segundos, fn)`. En `ManualLoop` hay un reloj virtual (`advance`), así que las
+pruebas no esperan de verdad. Un temporizador que se reinicia marca la llamada anterior como vieja.
+
+**Pruebas (5):**
+- crecer al mover, y ajustar en reposo con el reinicio del temporizador;
+- Q, U y V en %;
+- el candado toma la muestra, y luego Q, U y V de imágenes enteras, pedidos una sola vez;
+- `fit` y `reset`;
+- con el planificador sobre el cubo sintético: los rangos de la muestra y los de Q, U y V son
+  exactamente los de las funciones ya comparadas con el prototipo.
+
+Planificador, niveles y rangos: 5 de 5 ejecuciones seguidas pasan. También pasa en bellatrix.
