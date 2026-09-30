@@ -13,7 +13,8 @@ The prototype's table (app/startup.py prepare and remote_x11, app/xbridge.py wan
 - A local display: Linux, Qt's xcb (or Wayland when that is all there is); a Mac, cocoa.
 - A Mac reached by ssh without X forwarding: no window server; stop with a message (the prototype found it out after
   Qt started, from an empty screen list: grove, 2026-09-24).
-Until the bridge comes (ROADMAP E6) a plan that wants it falls back to Qt's xcb, and says so.
+Where the bridge cannot run (python-xlib missing: xbridge.available) a plan that wants it falls back to Qt's xcb, and
+says so.
 """
 from dataclasses import dataclass, field
 
@@ -42,7 +43,7 @@ class DisplayPlan:
 
 def choose_display(env, platform: str, x11: str = "auto", bridge_available: bool = False) -> DisplayPlan:
     """env: the process environment (a mapping); platform: sys.platform; x11: --x11 (auto, native or bridge);
-    bridge_available: whether this build has the bridge (False until ROADMAP E6)."""
+    bridge_available: whether this install can run the bridge (platform.xbridge.available())."""
     if x11 not in CHOICES:
         raise ValueError(f"--x11 must be one of {CHOICES}, not {x11!r}")
     linux, mac = platform.startswith("linux"), platform == "darwin"
@@ -77,6 +78,6 @@ def choose_display(env, platform: str, x11: str = "auto", bridge_available: bool
     if not disp:
         return DisplayPlan(None, stop="--x11 bridge needs an X display (DISPLAY is not set)")
     if not bridge_available:
-        notes.append("the X11 bridge comes with ROADMAP E6: using Qt's own X11 (xcb) meanwhile")
+        notes.append("the X11 bridge needs python-xlib, which is not installed: using Qt's own X11 (xcb)")
         return DisplayPlan("xcb", remote=True, env={"QT_QPA_PLATFORM": "xcb"}, notes=tuple(notes))
     return DisplayPlan("offscreen", bridge=True, remote=True, env={"QT_QPA_PLATFORM": "offscreen"})

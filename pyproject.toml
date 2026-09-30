@@ -129,3 +129,10 @@ name = "testing helpers never import the command nor Qt"
 type = "forbidden"
 source_modules = ["explorer.testing"]
 forbidden_modules = ["explorer.cli", "explorer.doctor", "explorer.demo", "PySide6", "pyqtgraph"]
+
+[[tool.importlinter.contracts]]
+name = "the platform shows windows: it never imports the core, the interface nor the command"
+type = "forbidden"
+source_modules = ["explorer.platform"]
+forbidden_modules = ["explorer.core", "explorer.ui", "explorer.cli", "explorer.doctor", "explorer.demo",
+                     "explorer.testing"]

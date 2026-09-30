@@ -12,7 +12,7 @@ SSH = {"SSH_CONNECTION": "1.2.3.4 5 6.7.8.9 22"}
     ({"WAYLAND_DISPLAY": "wayland-0"}, "linux", "auto", False, ("ok", None, False, False)),
     ({"DISPLAY": ":0"}, "linux", "auto", False, ("ok", "xcb", False, False)),
     ({"DISPLAY": "localhost:10.0", **SSH}, "linux", "auto", True, ("ok", "offscreen", True, True)),
-    ({"DISPLAY": "localhost:10.0", **SSH}, "linux", "auto", False, ("ok", "xcb", True, False)),   # until E6
+    ({"DISPLAY": "localhost:10.0", **SSH}, "linux", "auto", False, ("ok", "xcb", True, False)),   # no python-xlib
     ({"DISPLAY": "localhost:10.0", **SSH}, "linux", "native", True, ("ok", "xcb", True, False)),
     ({"DISPLAY": ":0", **SSH}, "linux", "auto", True, ("ok", "xcb", False, False)),               # local display
     ({"DISPLAY": ":0"}, "linux", "bridge", True, ("ok", "offscreen", True, True)),
@@ -41,7 +41,7 @@ def test_messages_and_kinds():
     assert "ssh -Y" in choose_display({}, "linux").stop
     assert "window server" in choose_display(SSH, "darwin").stop
     fallback = choose_display({"DISPLAY": "localhost:10.0", **SSH}, "linux", bridge_available=False)
-    assert fallback.notes and "E6" in fallback.notes[0] and fallback.kind == "x11"
+    assert fallback.notes and "python-xlib" in fallback.notes[0] and fallback.kind == "x11"
     assert choose_display({"DISPLAY": "localhost:10.0", **SSH}, "linux", bridge_available=True).kind == "x11bridge"
     assert choose_display({}, "darwin").kind == "cocoa" and choose_display({}, "linux").kind == "none"
     with pytest.raises(ValueError):
