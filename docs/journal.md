@@ -903,3 +903,39 @@ pruebas no esperan de verdad. Un temporizador que se reinicia marca la llamada a
   exactamente los de las funciones ya comparadas con el prototipo.
 
 Planificador, niveles y rangos: 5 de 5 ejecuciones seguidas pasan. También pasa en bellatrix.
+
+### 2026-09-30: rango y a mano, y `testing.Driver` (ROADMAP E4.1 en el núcleo, E2.6)
+
+**Rango y a mano.** A petición del usuario, arrastrar el eje y de un espectro ajusta su rango.
+- **En el núcleo:**
+  - `YRange.manual(k, rango)` fija ese panel, y las reglas automáticas (crecer, ajustar en reposo)
+    lo dejan en paz;
+  - `auto(k)` (doble clic en el eje) lo devuelve;
+  - F, reset, Shift+F y el candado también lo devuelven.
+- **El gesto** (arrastrar para mover, rueda o botón derecho para estirar) es de la interfaz: nueva
+  fila E4.1. Sobre la curva, arrastrar sigue eligiendo λ, como en el prototipo.
+
+**`testing.Driver`** (`testing/driver.py`). La API pública con la que las pruebas manejan el núcleo
+sin pantalla (plan §2, regla 11):
+- tiene un `Dataset`, una `Session` sobre `ManualLoop` y un `Scheduler`;
+- su `Sink` guarda en `Shown` lo que se dibujaría: imagen, espectros en las unidades de los paneles,
+  λ–t, niveles, rangos y, cuántas veces llegó cada cosa;
+- acciones: `hover`, `step`, `set_index`, `set_stokes`, `lock`, `show`, `fix_levels`, `set_y_fixed`,
+  `fit_y`, `reset_y`;
+- tiempo: `pump`, `advance`, `wait_idle`.
+
+**Pruebas (10)**, con y sin `_sp`, sobre el cubo sintético:
+- lo dibujado es el dato (imagen, λ–t, espectro en sus unidades);
+- una ráfaga de 10 movimientos lee una vez;
+- relleno, bloqueo y paneles ocultos no leen;
+- un paso en t redibuja solo los espectros;
+- muestra y candado de los rangos y.
+
+5 de 5 ejecuciones en el Mac y 3 de 3 en bellatrix.
+
+**Criterios de salida de E2** (plan §6), ya cubiertos:
+- lo viejo nunca llega a pantalla (E2.3);
+- una ráfaga da un aviso y una lectura (E2.1, E2.6);
+- nada se lee sobre el relleno (E2.3, E2.6).
+
+Falta E2.7: el coste de las capas frente al prototipo.
