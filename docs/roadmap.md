@@ -50,7 +50,13 @@ sección que la origina.
 | E2.5 | ✅ | `yrange`: crece al mover, ajuste tras 0.4 s quieto; rangos fijos desde la muestra; Q U V bajo pedido (de `_set_spectra`, `_yfit`, `_sample_ready`, `_quv_ready`) | E2.3 | 2026-09-30 | journal 09-30 |
 | E2.6 | ✅ | `testing.Driver` sin pantalla: `hover`, `step`, `set_stokes`, `lock`, `state()`, `pump()`, `wait_idle()`; pruebas de generación, ráfagas y relleno | E2.3 | 2026-09-30 | journal 09-30 |
 | E2.7 | ✅ | Coste de las capas frente a la línea base (PLAN §10): cursor y paso en t, ABBA frente al prototipo | E2.6 | 2026-09-30 | journal 09-30 |
-| E3 | ⬜ | `platform/plan.py`, `Display` (cocoa, xcb, offscreen), `Shell` mínima con la imagen (PLAN §3.5, §6) | E2 | 2026-09-28 | — |
+| E3 | 🔄 | `platform/plan.py`, `Display` (cocoa, xcb, offscreen), `Shell` mínima con la imagen (PLAN §3.5, §6): tareas E3.1–E3.7; solo `pgr`, [ADR 0008](decisions/0008-solo-pgr.md) | E2 | 2026-09-28 | — |
+| E3.2 | 🔄 | `choose_display()`: función pura con la tabla del prototipo (`startup.prepare`, `remote_x11`, `xbridge.wanted`): Linux sin pantalla → mensaje; `QT_QPA_PLATFORM` explícito se respeta; `--x11` gana; Linux local → xcb; `ssh -Y` → puente (hasta E6, xcb nativo con aviso); Mac local → cocoa; Mac por ssh sin X → mensaje. Pruebas sin Qt | E2 | 2026-09-30 | — |
+| E3.3 | ⬜ | El bucle de Qt para el núcleo ([ADR 0007](decisions/0007-core-sin-qt.md)): `call_soon`, `post` al hilo principal, `call_later`; prueba de que lo que llega de otros hilos se aplica en el principal | E3.2 | 2026-09-30 | — |
+| E3.4 | ⬜ | `Display` para cocoa, xcb y offscreen: preparar el entorno antes de Qt, operaciones básicas de ventana (tamaño, subir, activar) | E3.2 | 2026-09-30 | — |
+| E3.5 | ⬜ | Vista de imagen (`pgr`): reducción a los píxeles de pantalla con las franjas de `kernels`, tabla de color, niveles del núcleo, cruz del cursor; el ratón mueve la sesión | E3.3 | 2026-09-30 | — |
+| E3.6 | ⬜ | Ventana mínima: la imagen, teclas de t, λ, Stokes y bloqueo; `explorer cubo.fits` la abre, y el demo también | E3.5 | 2026-09-30 | — |
+| E3.7 | ⬜ | Medidas frente al prototipo, en ABBA: primera imagen (offscreen, xcb en Xvfb) y paso en t. Con el usuario: la traza por `ssh -Y` real (los 7–8 s del demo) y el estudio del foco sin clic (E6.1) | E3.6 | 2026-09-30 | — |
 | E4 | ⬜ | Espectros, λ–t, cursor, reproducción; niveles 2 y 3 de la comparación (PLAN §6, §7.1) | E3 | 2026-09-28 | — |
 | E4.1 | ⬜ | Arrastrar en la franja del eje y de un espectro: arrastrar mueve el rango, rueda o arrastre con el botón derecho lo estira; doble clic en el eje lo devuelve a automático. Queda fijo en ese panel hasta F, reset o el doble clic (`YRange.manual`/`auto`, ya en el núcleo). Sobre la curva, arrastrar sigue eligiendo λ, como en el prototipo (a petición del usuario) | E2.5 | 2026-09-30 | — |
 | E5 | ⬜ | Aspecto moderno como `Look`; `ActionRegistry`; disposición con esquema versionado (PLAN §3.6, §6) | E4 | 2026-09-28 | — |
@@ -84,7 +90,6 @@ desaparece de esta tabla.
 | P1-final | Nombre definitivo (provisional: `explorer`, [ADR 0003](decisions/0003-nombre-provisional.md)) | Comprobar en PyPI; renombrar con las reglas del ADR | publicar en PyPI |
 | P4 | Puente X11 | Traerlo tal cual, partido en módulos · reescribirlo | E6 |
 | P5 | Rendija | Variante A, C o D del prototipo | E7 |
-| P6 | Superficies de imagen | Solo `pgr` al principio · también vispy/gfx locales | E3 |
 | P7 | Aspecto clásico | En E5 junto al moderno · más adelante | E5 |
 | P8 | Remoto (cliente–servidor) | Dentro del alcance como `Dataset` remoto · fuera | — |
 | P9 | Licencia | — | primer commit público |

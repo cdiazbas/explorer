@@ -12,6 +12,7 @@ Una decisión revocada no se borra: se marca **Sustituida por NNNN** y se crea l
 | [0005](0005-commits.md) | Mensajes de commit: una etiqueta y una frase | Vigente | 2026-09-28 |
 | [0006](0006-comprobaciones-locales.md) | Comprobaciones en local, mientras no haya CI remoto | Vigente | 2026-09-29 |
 | [0007](0007-core-sin-qt.md) | `explorer.core` sin Qt: avisos a funciones, momento y paso al hilo principal inyectados | Vigente | 2026-09-30 |
+| [0008](0008-solo-pgr.md) | Una sola superficie de imagen al principio: pyqtgraph (`pgr`) | Vigente | 2026-09-30 |
 
 ## Plantilla
 
