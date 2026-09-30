@@ -102,3 +102,37 @@ def test_no_zoom_on_the_spectra_and_each_panel_names_its_action(qapp, shell):
     assert shell.spectra.w.viewport().cursor().shape() == C.SizeHorCursor
     assert shell.lambda_t.w.viewport().cursor().shape() == C.SizeAllCursor
     assert shell.view.widget.viewport().cursor().shape() == C.CrossCursor
+
+
+def test_a_right_click_opens_no_menu(qapp, shell):
+    """Neither pyqtgraph's menu on the image nor QMainWindow's over the toolbar, the dock titles or a slider (the
+    prototype's smoke.py 'no context menu' checks)."""
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    opened = []
+    close = QtCore.QTimer(interval=20)                  # an open menu runs its own event loop: note it, close it
+
+    def note():
+        p = QtWidgets.QApplication.activePopupWidget()
+        if p is not None:
+            opened.append(type(p).__name__)
+            p.close()
+    close.timeout.connect(note)
+    close.start()
+    try:
+        slider = next(iter(shell.nav.sliders.values()))
+        for w in (shell.view.widget.viewport(), shell.nav.tb, slider, shell.spec_dock):
+            p = w.rect().center()
+            ev = QtGui.QContextMenuEvent(QtGui.QContextMenuEvent.Reason.Mouse, p, w.mapToGlobal(p))
+            QtWidgets.QApplication.sendEvent(w, ev)
+            spin(qapp, lambda: False, 0.05)
+        vb = shell.view.vb
+        B = QtCore.Qt.MouseButton
+        mouse(shell.view.widget, vb.mapViewToScene(QtCore.QPointF(10, 10)), QtCore.QEvent.Type.MouseButtonPress,
+              B.RightButton, B.RightButton)
+        mouse(shell.view.widget, vb.mapViewToScene(QtCore.QPointF(10, 10)), QtCore.QEvent.Type.MouseButtonRelease,
+              B.RightButton, B.NoButton)
+        spin(qapp, lambda: False, 0.1)
+    finally:
+        close.stop()
+    assert opened == []

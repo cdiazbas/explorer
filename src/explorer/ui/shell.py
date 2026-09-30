@@ -207,6 +207,11 @@ class Shell(QtWidgets.QMainWindow):
             vp.setCursor(C.SizeAllCursor)
             picks[vp] = self._lt_pick
             self.lambda_t.w.scene().sigMouseClicked.connect(self._panel_click)
+        # no context menus: a right click releases the cursor, nothing else. pyqtgraph's on the image, and
+        # QMainWindow's (toolbar and docks on/off) over the toolbar, the dock titles and the sliders; an open one
+        # also left the next keys unanswered (the prototype's app/viewer.py:1018-1028)
+        self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
+        self.view.vb.setMenuEnabled(False)
         image = self.view.widget.viewport()
         image.setCursor(C.CrossCursor)
         self._gestures = Gestures(self, picks, image)
