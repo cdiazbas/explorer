@@ -14,13 +14,13 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
     """Open path and run the event loop until the window closes; returns the exit code. quit_after: seconds after the
     first image, then quit (measurements, as the prototype's --quit-after)."""
     t0 = time.perf_counter()
-    from ..platform.display import Display, NoDisplay
+    from ..platform.display import NoDisplay, for_plan
     from ..platform.plan import choose_display
 
     plan = choose_display(os.environ, sys.platform, x11)
     for note in plan.notes:
         print(f"[{APP_NAME}] {note}", file=sys.stderr)
-    disp = Display(plan)
+    disp = for_plan(plan)
     try:
         disp.prepare_env()
         app = disp.make_app()
@@ -42,3 +42,4 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
         return app.exec()
     finally:
         ds.close()
+        disp.close()

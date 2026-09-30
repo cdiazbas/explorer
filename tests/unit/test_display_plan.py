@@ -46,3 +46,13 @@ def test_messages_and_kinds():
     assert choose_display({}, "darwin").kind == "cocoa" and choose_display({}, "linux").kind == "none"
     with pytest.raises(ValueError):
         choose_display({}, "linux", "x")
+
+
+def test_the_rewritten_bridge_only_when_asked():
+    remote = {"DISPLAY": "localhost:10.0", **SSH}
+    p = choose_display(remote, "linux", "bridge2")
+    assert p.variant == "bridge2" and p.bridge and p.env == {"QT_QPA_PLATFORM": "offscreen"}
+    assert choose_display({**remote, X11_VAR: "bridge2"}, "darwin").variant == "bridge2"
+    assert choose_display({**remote, "QT_QPA_PLATFORM": "offscreen"}, "linux", "bridge2").variant == "bridge2"
+    assert choose_display(remote, "linux").variant is None                 # auto never picks it
+    assert "bridge2" in (choose_display({"QT_QPA_PLATFORM": "offscreen"}, "linux", "bridge2").stop or "")

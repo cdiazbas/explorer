@@ -1,7 +1,8 @@
 """The display a plan chose, on Qt: the environment before Qt starts, the application, and what a window needs from
 the platform. The views see WindowOps only; nothing else in the UI branches on the operating system (docs/plan.md
 §3.5). From the prototype's app/startup.py (prepare, make_app, show, _mac_zoom_not_fullscreen, start_link_probe).
-The X11 bridge joins as another Display in ROADMAP E6.
+The X11 bridge joins as another Display in ROADMAP E6; the rewritten one (platform/xbridge2) is Bridge2Display,
+which for_plan() picks when the plan asks for it.
 """
 import os
 import sys
@@ -120,10 +121,19 @@ class Display:
 
     def stats(self) -> dict:
         return {"kind": self.kind, "platform": self.plan.platform, "remote": self.plan.remote,
-                "bridge": self.plan.bridge, "notes": list(self.plan.notes)}
+                "bridge": self.plan.bridge, "variant": self.plan.variant, "notes": list(self.plan.notes)}
 
     def close(self) -> None:
         pass
+
+
+def for_plan(plan: DisplayPlan) -> Display:
+    """The Display for a plan: the rewritten X11 bridge's when the plan asks for it, else the plain one."""
+    if plan.variant == "bridge2":
+        from .xbridge2 import Bridge2Display
+
+        return Bridge2Display(plan)
+    return Display(plan)
 
 
 def _mac_zoom_not_fullscreen(window) -> None:

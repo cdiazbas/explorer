@@ -29,8 +29,9 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--nosp", action="store_true", help="read without the per-pixel file")
     ap.add_argument("--axes", help="what the leading axes are, slowest first, e.g. t,l or s,l (l is lambda), for "
                                    "cubes whose header does not say it")
-    ap.add_argument("--x11", choices=("auto", "native", "bridge"), default="auto",
-                    help="over ssh -Y: Qt's own X11 (native) or the bridge; auto decides")
+    ap.add_argument("--x11", choices=("auto", "native", "bridge", "bridge2"), default="auto",
+                    help="over ssh -Y: Qt's own X11 (native) or the bridge; bridge2: the rewritten bridge; auto "
+                         "decides")
     ap.add_argument("--quit-after", type=float, metavar="S", help="quit S seconds after the first image (measurements)")
     return ap
 
