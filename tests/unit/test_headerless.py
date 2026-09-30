@@ -1,0 +1,67 @@
+"""Cubes whose header says nothing about their axes: 4-D is taken as (t, lambda, y, x), 3-D as an unknown profile
+axis, 5-D in SOLARNET order; --axes says otherwise. Steps, spectra and lambda-t work in indices."""
+import concurrent.futures as cf
+
+import numpy as np
+import pytest
+from astropy.io import fits
+
+from explorer.core.loop import ManualLoop
+from explorer.core.scheduler import Scheduler
+from explorer.core.session import Session
+from explorer.data.dataset import Dataset
+
+
+class Recorder:
+    def __init__(self):
+        self.calls = []
+
+    def image(self, idx, img):
+        self.calls.append(("image", idx, img.shape))
+
+    def spectra(self, spec, pixel, t):
+        self.calls.append(("spectra", spec.shape))
+
+    def lambda_t(self, lt, pixel, s):
+        self.calls.append(("lambda_t", lt.shape))
+
+    def cleared(self, pixel):
+        self.calls.append(("cleared",))
+
+
+def settle(sched):
+    for _ in range(100):
+        cf.wait(sched.in_flight(), timeout=5)
+        if sched.loop.pump() == 0 and not sched.in_flight():
+            return
+
+
+def bare(tmp_path, shape):
+    p = tmp_path / f"bare{len(shape)}.fits"
+    fits.PrimaryHDU(np.random.default_rng(1).uniform(1, 2, size=shape).astype(np.float32)).writeto(p)
+    return p
+
+
+@pytest.mark.parametrize("shape, axes, how, want", [
+    ((5, 7, 16, 12), None, "default (t, lambda)", [("spectra", (1, 7)), ("lambda_t", (5, 7))]),
+    ((4, 7, 16, 12), "s,l", "--axes", [("spectra", (4, 7))]),                      # (s, lambda): no t, no lambda-t
+    ((7, 16, 12), None, "unknown", [("spectra", (1, 7))]),                          # a profile, in indices
+    ((7, 16, 12), "t", "--axes", []),                                               # a time series: image only
+    ((5, 4, 7, 16, 12), None, "SOLARNET order", [("spectra", (4, 7)), ("lambda_t", (5, 7))]),
+])
+def test_cubes_without_a_header(tmp_path, shape, axes, how, want):
+    with Dataset.open(bare(tmp_path, shape), no_sp=True, axes=axes) as ds:
+        assert ds.roles.how == how and ds.axes.lam_nm is None and ds.axes.t_sec is None
+        sess = Session(ManualLoop(), ds)
+        rec = Recorder()
+        sched = Scheduler(sess, rec)
+        settle(sched)
+        assert rec.calls[0][0] == "image" and rec.calls[1:] == want
+        axis = "t" if ds.roles.t is not None else "l" if ds.roles.l is not None else None
+        if axis:                                                                    # stepping works on what there is
+            rec.calls.clear()
+            sess.step(axis, 1)
+            sess.store.loop.pump()
+            settle(sched)
+            assert rec.calls and rec.calls[0][0] == "image"
+        sched.close()

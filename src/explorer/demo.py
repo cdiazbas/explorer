@@ -49,7 +49,7 @@ def synthetic_cube() -> str:
     return str(path)
 
 
-def cursor_walk(cube, sp=None, no_sp=False, moves=12, drag=False) -> dict:
+def cursor_walk(cube, sp=None, no_sp=False, moves=12, drag=False, axes=None) -> dict:
     """Move a cursor over `moves` pixels on a diagonal across the middle of the field (shifted at random on each
     run), each on a row not visited before, and time what the viewer would read at each: the spectrum (all Stokes
     and lambda at t = 0), then the lambda-t of Stokes I (all t and lambda). With a per-pixel file both come from
@@ -63,9 +63,9 @@ def cursor_walk(cube, sp=None, no_sp=False, moves=12, drag=False) -> dict:
 
     from .data.dataset import Dataset
 
-    with Dataset.open(cube, sp=sp, no_sp=no_sp) as ds:
+    with Dataset.open(cube, sp=sp, no_sp=no_sp, axes=axes) as ds:
         r = ds.roles
-        print(f"cursor walk: {ds.describe()}", flush=True)
+        print(f"cursor walk: {ds.describe()}; axes t/s/l at {tuple(r[:3])} ({r.how})", flush=True)
         if r.t is None or r.l is None:
             print("  no t or no lambda axis: nothing to walk", flush=True)
             return {}
@@ -112,6 +112,8 @@ def main(argv=None) -> int:
     g.add_argument("--nosp", action="store_true", help="read without the per-pixel file, from the image cube")
     g.add_argument("--sp", help="this per-pixel file instead of the one found next to the cube")
     ap.add_argument("--moves", type=int, default=12, help="cursor moves in the walk (default 12)")
+    ap.add_argument("--axes", help="what the leading axes are, slowest first, e.g. t,l or s,l (l is lambda); "
+                                   "for cubes whose header does not say it")
     a = ap.parse_args(argv)
     cube = a.cube or synthetic_cube()
     kind = "synthetic" if a.cube is None else "given"
@@ -122,8 +124,8 @@ def main(argv=None) -> int:
 
     rc = doctor.main([cube] + ([] if a.no_window else ["--show"]))
     if a.moves > 0:
-        cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves)
-        cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves, drag=True)
+        cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves, axes=a.axes)
+        cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves, drag=True, axes=a.axes)
     return rc
 
 

@@ -69,13 +69,27 @@ def test_a_header_without_wcs_table_or_a_bad_file_gives_indices(tmp_path):
 
 
 @pytest.mark.parametrize("names, shape, want", [
-    (("UTC", "STOKES", "WAVE", "HPLT", "HPLN"), (3, 4, 5, 8, 8), (0, 1, 2, 3, 4, 5)),
-    (("WAVE", "UTC", "HPLT", "HPLN"), (7, 3, 8, 8), (1, None, 0, 3, 1, 7)),
-    (("A", "B", "C", "Y", "X"), (3, 4, 5, 8, 8), (0, 1, 2, 3, 4, 5)),      # SOLARNET order by default
-    (("A", "B", "Y", "X"), (3, 4, 8, 8), (None, None, None, 1, 1, 1)),
+    (("UTC", "STOKES", "WAVE", "HPLT", "HPLN"), (3, 4, 5, 8, 8), (0, 1, 2, 3, 4, 5, "header")),
+    (("WAVE", "UTC", "HPLT", "HPLN"), (7, 3, 8, 8), (1, None, 0, 3, 1, 7, "header")),
+    (("A", "B", "C", "Y", "X"), (3, 4, 5, 8, 8), (0, 1, 2, 3, 4, 5, "SOLARNET order")),
+    (("A", "B", "Y", "X"), (3, 4, 8, 8), (0, None, 1, 3, 1, 4, "default (t, lambda)")),   # (t, lambda, y, x)
+    (("A", "Y", "X"), (7, 8, 8), (None, None, 0, 1, 1, 7, "unknown")),                  # t or lambda: a profile
+    (("WAVE", "Y", "X"), (7, 8, 8), (None, None, 0, 1, 1, 7, "header")),
 ])
-def test_roles_by_name_else_solarnet_order(names, shape, want):
+def test_roles_by_name_else_by_how_many_axes(names, shape, want):
     assert tuple(axes.roles(names, shape)) == want
+
+
+@pytest.mark.parametrize("spec, want", [("s,l", (None, 0, 1, 1, 3, 4, "--axes")),
+                                        ("l, t", (1, None, 0, 4, 1, 3, "--axes"))])
+def test_axes_given_by_the_user_win(spec, want):
+    assert tuple(axes.roles(("UTC", "WAVE", "Y", "X"), (3, 4, 8, 8), spec)) == want
+
+
+@pytest.mark.parametrize("spec", ["t", "t,t", "t,x", "t,s,l"])
+def test_axes_given_wrong_are_refused(spec):
+    with pytest.raises(ValueError):
+        axes.roles(("A", "B", "Y", "X"), (3, 4, 8, 8), spec)
 
 
 def test_units_of_the_spectra():

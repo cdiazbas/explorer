@@ -50,31 +50,59 @@ def _norm(s) -> str:
 # ---------------------------------------------------------------- roles of the leading axes
 
 class Roles(NamedTuple):
-    """Positions of t, Stokes and lambda among the leading axes (None if absent), and their sizes (1 if absent)."""
+    """Positions of t, Stokes and lambda among the leading axes (None if absent), their sizes (1 if absent), and how
+    they were decided: "header" (CTYPE), "SOLARNET order" (three unnamed axes: t, s, lambda), "default (t, lambda)"
+    (two unnamed axes), "unknown" (one unnamed axis: whatever it is, it is stepped and plotted as a profile in
+    indices, and must not be labelled lambda or t), "--axes" (given by the user)."""
     t: int | None
     s: int | None
     l: int | None  # noqa: E741
     nt: int
     ns: int
     nl: int
+    how: str = "header"
 
 
-def roles(names, shape) -> Roles:
-    """By axis name (CTYPE), else, for three leading axes, SOLARNET order (t, s, lambda). names and shape are those
-    of the whole cube, numpy order; the last two axes are the image."""
+def parse_axes(spec: str, n_lead: int) -> tuple:
+    """--axes: one letter per leading axis, slowest first as numpy stores them (t, s or l for lambda), e.g. "t,l" for
+    (t, lambda, y, x) or "s,l" for (s, lambda, y, x). Returns (t, s, l) positions."""
+    letters = [a.strip().lower() for a in str(spec).replace(" ", "").split(",") if a.strip()]
+    if len(letters) != n_lead:
+        raise ValueError(f"--axes {spec!r}: {len(letters)} axes given, the cube has {n_lead} before (y, x)")
+    if set(letters) - {"t", "s", "l"} or len(set(letters)) != len(letters):
+        raise ValueError(f"--axes {spec!r}: each of t, s, l at most once (l is lambda)")
+    return tuple(letters.index(k) if k in letters else None for k in ("t", "s", "l"))
+
+
+def roles(names, shape, axes: str | None = None) -> Roles:
+    """By --axes when given; else by axis name (CTYPE); else by the number of unnamed leading axes: three are
+    SOLARNET's (t, s, lambda), two are (t, lambda), one is unknown (a profile axis: it may be t or lambda, and only
+    the user can tell, with --axes). names and shape are those of the whole cube, numpy order; the last two axes are
+    the image."""
     lead = [str(a).upper() for a in names[:-2]]
+    how = "header"
+    if axes:
+        t, s, l = parse_axes(axes, len(lead))  # noqa: E741
+        how = "--axes"
+    else:
+        def find(*keys):
+            return next((i for i, a in enumerate(lead) if any(a.startswith(k) for k in keys)), None)
 
-    def find(*keys):
-        return next((i for i, a in enumerate(lead) if any(a.startswith(k) for k in keys)), None)
-
-    t, s, l = find("UTC", "TIME", "TAI"), find("STOKES"), find("WAVE", "AWAV", "FREQ")  # noqa: E741
-    if len(lead) == 3:
-        t, s, l = (0 if t is None else t), (1 if s is None else s), (2 if l is None else l)  # noqa: E741
+        t, s, l = find("UTC", "TIME", "TAI"), find("STOKES"), find("WAVE", "AWAV", "FREQ")  # noqa: E741
+        named = (t, s, l) != (None, None, None)
+        if len(lead) == 3:
+            if None in (t, s, l):                       # what the names do not say comes from SOLARNET's order
+                how = "SOLARNET order"
+            t, s, l = (0 if t is None else t), (1 if s is None else s), (2 if l is None else l)  # noqa: E741
+        elif not named and len(lead) == 2:
+            t, l, how = 0, 1, "default (t, lambda)"  # noqa: E741
+        elif not named and len(lead) == 1:
+            l, how = 0, "unknown"  # noqa: E741
 
     def size(a):
         return int(shape[a]) if a is not None else 1
 
-    return Roles(t, s, l, size(t), size(s), size(l))
+    return Roles(t, s, l, size(t), size(s), size(l), how)
 
 
 # ---------------------------------------------------------------- physical axes

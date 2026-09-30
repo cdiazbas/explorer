@@ -41,8 +41,9 @@ def _done(value) -> Future:
 
 
 class Dataset:
-    def __init__(self, path, *, sp=None, no_sp=False, probe=None, guard=None):
-        """Open the cube at path; sp: a per-pixel file to use instead of the companions next to it; no_sp: none.
+    def __init__(self, path, *, sp=None, no_sp=False, probe=None, guard=None, axes=None):
+        """Open the cube at path; sp: a per-pixel file to use instead of the companions next to it; no_sp: none;
+        axes: what the leading axes are when the header does not say it right (--axes, axes.roles), e.g. "s,l".
         probe and guard: given instead of measured (tests, or a second cube on the same storage)."""
         self.path = str(path)
         self.layout = formats.open_layout(path)
@@ -52,7 +53,7 @@ class Dataset:
         try:
             self.shape = self.layout.shape
             self.ny, self.nx = self.frames.ny, self.frames.nx
-            self.roles = _axes.roles(self.layout.axes, self.shape)
+            self.roles = _axes.roles(self.layout.axes, self.shape, axes)
             self.axes = _axes.from_fits(path) if self.layout.kind == "fits" else _axes.Axes()
             with span("data.open.probe"):
                 self.probe = probe if probe is not None else StorageProbe(self.frames)
