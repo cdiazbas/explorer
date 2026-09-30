@@ -26,5 +26,6 @@ if [ "$(cksum < "$root/uv.lock")" != "$(cat "$venv/.lock.cksum" 2>/dev/null)" ];
 fi
 unset LD_LIBRARY_PATH
 [ "$(uname -s)" = Linux ] && [ -d "$root/.qtlibs/only" ] && export LD_LIBRARY_PATH="$root/.qtlibs/only"
+export PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}"   # the code next to this script, whichever tree installed the env
 export NUMBA_NUM_THREADS="${NUMBA_NUM_THREADS:-64}"
 exec "$venv/bin/explorer" "$@"
