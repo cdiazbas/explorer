@@ -28,6 +28,7 @@ import numpy as np
 
 from ..data.executors import Generations, ShownGate
 from ..obs import counter, get_logger
+from .levels import Levels, panel_levels
 from .session import Session
 from .state import ViewState
 
@@ -37,11 +38,11 @@ log = get_logger("core")
 class Sink(Protocol):
     """Where results go (the UI; a recorder in tests). Called on the main thread."""
 
-    def image(self, idx: tuple, img: np.ndarray) -> None: ...
+    def image(self, idx: tuple, img: np.ndarray, levels: tuple[float, float]) -> None: ...
 
     def spectra(self, spec: np.ndarray, pixel: tuple[int, int], t: int) -> None: ...     # (ns, nl)
 
-    def lambda_t(self, lt: np.ndarray, pixel: tuple[int, int], s: int) -> None: ...     # (nt, nl)
+    def lambda_t(self, lt: np.ndarray, pixel: tuple[int, int], s: int, levels: tuple[float, float]) -> None: ...
 
     def cleared(self, pixel: tuple[int, int]) -> None: ...                             # padding under the cursor
 
@@ -53,6 +54,8 @@ class Scheduler:
         self.loop = session.store.loop
         self.gens, self.shown = Generations(), ShownGate()
         self.img: np.ndarray | None = None              # the image on screen
+        self.img_idx: tuple | None = None
+        self.levels = Levels()
         self._pending: set[str] = set()                 # cursor work waiting for the latest image
         self._cleared = False
         self._futures: set[Future] = set()
@@ -116,8 +119,8 @@ class Scheduler:
             counter("core.image.failed")
             return
         if self.shown.accept("image", g):
-            self.img = fut.result()
-            self.sink.image(idx, self.img)
+            self.img, self.img_idx = fut.result(), idx
+            self._show_image()
         if not self.gens.stale("image", g) and self._pending:
             kinds, self._pending = self._pending, set()
             self._evaluate(self.session.state, kinds)
@@ -158,7 +161,29 @@ class Scheduler:
 
     def _show(self, kind: str, g: int, arr, pixel, at: int) -> None:
         if self.shown.accept(kind, g):
-            getattr(self.sink, kind)(arr, pixel, at)
+            if kind == "lambda_t":                      # Q U V symmetric about 0
+                self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=at > 0))
+            else:
+                self.sink.spectra(arr, pixel, at)
+
+    # ---------------------------------------------------------------- the image's levels
+    def _show_image(self) -> None:
+        if self.img is None or self.img_idx is None:
+            return
+        lim = self.levels.image(self.img_idx, self.session.state.s > 0, self.img)
+        self.sink.image(self.img_idx, self.img, lim)
+
+    def fix_levels(self, on: bool, refit: bool = False) -> None:
+        """The image padlock: on fixes the levels to the image shown (refit: to it again, when already fixed); off
+        lets each image have its own. The image is shown again with them."""
+        if self.img is None:
+            return
+        sym = self.session.state.s > 0
+        if not on:
+            self.levels.unfix()
+        elif refit or not self.levels.fixed(sym):
+            self.levels.fix(self.img, sym)
+        self._show_image()
 
     def _read_block(self, g: int, st: ViewState, want_spec: bool, want_lt: bool) -> None:
         y, x = st.cursor

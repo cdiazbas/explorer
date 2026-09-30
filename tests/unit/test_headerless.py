@@ -16,13 +16,13 @@ class Recorder:
     def __init__(self):
         self.calls = []
 
-    def image(self, idx, img):
+    def image(self, idx, img, levels):
         self.calls.append(("image", idx, img.shape))
 
     def spectra(self, spec, pixel, t):
         self.calls.append(("spectra", spec.shape))
 
-    def lambda_t(self, lt, pixel, s):
+    def lambda_t(self, lt, pixel, s, levels):
         self.calls.append(("lambda_t", lt.shape))
 
     def cleared(self, pixel):
