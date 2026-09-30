@@ -13,6 +13,8 @@ frames) are the scheduler's, and drawing is the UI's.
   ran the cursor went 14.8 -> 18.5-19.3 ms).
 - fit(): each plot to the profile shown, and fixed there (key F, the padlock's right click); reset(): the sample's
   ranges when fixed, else the profile's.
+- manual(k, range): one plot's range set by the user (dragging its y axis, ROADMAP E4.1), kept until fit, reset,
+  the sample's ranges or auto(k) (a double click on the axis) give it back; the rules above leave it alone.
 """
 from collections.abc import Callable
 
@@ -42,6 +44,7 @@ class YRange:
         self.quv_ok = quv_ok and self.ns > 1
         self.quv_started = self.quv_pending = False
         self._rest_token = 0
+        self.manual_k: set[int] = set()                 # plots whose range the user set
 
     # ---------------------------------------------------------------- helpers
     def _set(self, k: int, r: tuple) -> None:
@@ -73,6 +76,8 @@ class YRange:
                 continue
             lo, hi = float(f.min()), float(f.max())
             self.last[k] = (lo, hi)
+            if k in self.manual_k:
+                continue
             r = self.r[k]
             if self.fixed and (r is not None or self.sample is not None):
                 if r is None and self.sample is not None and self.sample[k] is not None:
@@ -92,7 +97,11 @@ class YRange:
         """Each plot to the profile shown (key F: force, then fixed there; lock=False: leave the padlock)."""
         if self.fixed and not force:
             return
+        if force:
+            self.manual_k.clear()
         for k, d in enumerate(self.last):
+            if k in self.manual_k:
+                continue
             if d is None:
                 continue
             nr = nice_range(*d)
@@ -113,6 +122,7 @@ class YRange:
         """Back to the sample's ranges (Shift+F; closing the padlock), fixed; asks for Q U V from whole frames."""
         if lock:
             self.fixed = True
+        self.manual_k.clear()
         self.start_quv()
         if self.sample is None:
             return
@@ -127,6 +137,24 @@ class YRange:
             self.to_sample(lock=False)
         else:
             self.fit(force=True, lock=False)
+
+    def manual(self, k: int, r: tuple) -> None:
+        """Plot k's range as the user set it; the automatic rules leave it alone until given back."""
+        lo, hi = float(r[0]), float(r[1])
+        if not hi > lo:
+            raise ValueError(f"a range needs hi > lo, not {r}")
+        self.manual_k.add(int(k))
+        self._set(int(k), (lo, hi))
+
+    def auto(self, k: int) -> None:
+        """Give plot k back to the automatic rules: the sample's range when fixed, else its profile's."""
+        self.manual_k.discard(int(k))
+        if self.fixed and self.sample is not None and self.sample[k] is not None:
+            self._set(int(k), self.sample[k])
+        else:
+            last = self.last[k]
+            if last is not None:
+                self._set(int(k), nice_range(*last))
 
     def start_quv(self) -> None:
         if self.quv_started or not self.quv_ok:

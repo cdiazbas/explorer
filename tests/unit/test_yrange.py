@@ -3,6 +3,7 @@ frames, fit and reset, the units; then wired into the scheduler on the synthetic
 import concurrent.futures as cf
 
 import numpy as np
+import pytest
 
 from explorer.core.loop import ManualLoop
 from explorer.core.yrange import REST_S, YRange
@@ -76,6 +77,23 @@ def test_fit_fixes_to_the_profile_and_reset_goes_back():
     yr.set_fixed(False)
     yr.reset()
     assert yr.r[0] == nice_range(2.5, 3) and not yr.fixed
+
+
+def test_a_range_set_by_hand_stays_until_given_back():
+    loop, yr, applied, _, _ = make()
+    yr.spectrum(spec([2e-9, 4e-9], [1e-9, 2e-9]))
+    yr.manual(0, (0.0, 20.0))
+    yr.spectrum(spec([1e-9, 30e-9], [1e-9, 2e-9]))          # beyond it: no growing
+    loop.advance(REST_S)
+    loop.pump()                                             # nor refit at rest
+    assert yr.r[0] == (0.0, 20.0) and yr.r[1] == nice_range(1, 2)
+    yr.auto(0)                                              # double click on the axis
+    assert yr.r[0] == nice_range(1, 30)
+    yr.manual(1, (-1.0, 5.0))
+    yr.fit()                                                # F gives every plot back
+    assert yr.r[1] == nice_range(1, 2) and not yr.manual_k
+    with pytest.raises(ValueError):
+        yr.manual(0, (3.0, 3.0))
 
 
 def test_the_scheduler_reads_the_sample_and_quv(tmp_path):

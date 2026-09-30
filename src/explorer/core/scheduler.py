@@ -316,3 +316,9 @@ class Scheduler:
 
     def reset_y(self) -> None:
         self.yrange.reset()
+
+    def set_y_manual(self, k: int, r: tuple) -> None:
+        self.yrange.manual(k, r)
+
+    def y_auto(self, k: int) -> None:
+        self.yrange.auto(k)
