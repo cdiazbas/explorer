@@ -44,7 +44,7 @@ sección que la origina.
 | E2 | 🔄 | `explorer.core` + `testing.Driver` (PLAN §3.3, §6; sin Qt, [ADR 0007](decisions/0007-core-sin-qt.md)): tareas E2.1–E2.7 | E1 | 2026-09-28 | — |
 | E2.1 | ✅ | `ViewState` inmutable y `Store`: `set(**campos)`, un aviso por ráfaga con los campos que cambiaron; el momento de avisar se inyecta (de `Viewer._on_hover`, `_hover_timer`) | E1 | 2026-09-30 | journal 09-30 |
 | E2.2 | ✅ | `Session` con un cubo: tiempo maestro; por cubo, su λ, su Stokes y si van enlazados (trivial con uno, preparado para E8) | E2.1 | 2026-09-30 | journal 09-30 |
-| E2.3 | ⬜ | `scheduler`: una cola por `Dataset` donde solo vale la última petición; espectro antes que λ–t; qué dispara cada cambio (t → espectros, Stokes → λ–t, λ → marcas; de `set_index`, `_update_cursor`); nada sobre el relleno ni para paneles ocultos; el paso al hilo principal se inyecta | E2.1 | 2026-09-30 | — |
+| E2.3 | ✅ | `scheduler`: una cola por `Dataset` donde solo vale la última petición; espectro antes que λ–t; qué dispara cada cambio (t → espectros, Stokes → λ–t, λ → marcas; de `set_index`, `_update_cursor`); nada sobre el relleno ni para paneles ocultos; el paso al hilo principal se inyecta | E2.1 | 2026-09-30 | journal 09-30 |
 | E2.4 | ⬜ | `levels`: límites de contraste por (Dataset, Stokes, idx), en caché, con modo fijo (de `Viewer._limits`, `_toggle_fix`) | E2.1 | 2026-09-30 | — |
 | E2.5 | ⬜ | `yrange`: crece al mover, ajuste tras 0.4 s quieto; rangos fijos desde la muestra; Q U V bajo pedido (de `_set_spectra`, `_yfit`, `_sample_ready`, `_quv_ready`) | E2.3 | 2026-09-30 | — |
 | E2.6 | ⬜ | `testing.Driver` sin pantalla: `hover`, `step`, `set_stokes`, `lock`, `state()`, `pump()`, `wait_idle()`; pruebas de generación, ráfagas y relleno | E2.3 | 2026-09-30 | — |

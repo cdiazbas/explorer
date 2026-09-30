@@ -757,3 +757,50 @@ prototipo.
 - con un `Dataset` real (sintético): la imagen de `index()` es la de los datos.
 
 Pasa en el Mac y en bellatrix.
+
+### 2026-09-30: qué se lee y qué se muestra tras cada cambio (ROADMAP E2.3)
+
+**Implementado:** `core/scheduler.py`, desde `set_index`, `show_frame`, `_update_cursor`,
+`_series_job` y `_lt_ready` del prototipo. Los resultados van a un `Sink` (imagen, espectros, λ–t,
+paneles vaciados), que en E3 será la interfaz y en las pruebas un registro.
+
+**Qué dispara cada cambio:**
+- **t, Stokes o λ:** la imagen del nuevo índice y la lectura anticipada a lo largo del eje que se
+  movió. Los paneles del cursor se evalúan al llegar esa imagen, porque es la que dice si el cursor
+  está sobre relleno. En el prototipo la imagen se leía antes, en el hilo de la ventana; aquí llega
+  como futuro ([ADR 0007](decisions/0007-core-sin-qt.md)).
+- **El cursor:** espectros y λ–t. **t:** solo los espectros. **Stokes:** solo el λ–t. **λ:** nada,
+  porque las marcas son de la interfaz. **Mostrar un panel:** ese panel.
+- **Nada** para un panel oculto, ni sobre relleno (NaN, o 0 exacto en Stokes I). Con relleno los
+  paneles se vacían una sola vez.
+
+**Lecturas:**
+- **Con `_sp`:** el bloque del píxel. Si está en caché, sin salto de hilo.
+- **Sin `_sp`:**
+  - desde las filas en memoria si las tienen (`Dataset.peek_series`, nuevo), al momento;
+  - si no, en el hilo de numba: el espectro primero y el λ–t después (`Dataset.read_series`,
+    nuevo);
+  - el trabajo se salta si llegó una posición más nueva antes de empezar, o entre las dos lecturas.
+- **Regla de pantalla:** se muestra un resultado salvo que ya haya uno más nuevo
+  (`executors.ShownGate`).
+
+**Arreglo frente al prototipo.** Sin `_sp`, un paso en t o en Stokes que saca el cursor del relleno
+rellenaba solo el panel de ese eje y dejaba el otro vacío: `_cleared` solo se usaba con `_sp`.
+Aquí, tras el relleno, el siguiente píxel válido rellena los dos paneles haya cambiado lo que haya
+cambiado. Hay una prueba de ello.
+
+**Pruebas (12).** Con el cubo sintético, con y sin `_sp`:
+- el arranque;
+- qué lee cada cambio;
+- paneles ocultos;
+- relleno.
+
+Con un cubo de prueba cuyas lecturas suelta la prueba:
+- el trabajo viejo se salta antes de leer: de 4 posiciones seguidas solo se leen la primera y la
+  última;
+- una imagen vieja nunca sustituye a una más nueva;
+- una ráfaga de pasos pide una sola imagen;
+- la vuelta desde el relleno sin `_sp`.
+
+10 de 10 ejecuciones en el Mac y 3 de 3 en bellatrix, sin fallos intermitentes.
+
