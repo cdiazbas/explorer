@@ -11,3 +11,14 @@ def _isolated_cache(monkeypatch, tmp_path_factory):
     log.setup(to_file=False)                            # console only, until a test asks for more
     yield
     log.setup(to_file=False)
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    """One QApplication for the tests that need Qt, always offscreen: no test opens a window on anyone's screen."""
+    import os
+
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6 import QtWidgets
+
+    return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
