@@ -69,6 +69,12 @@ def test_the_scheduler_hands_levels_and_fixes_them(tmp_path):
         def cleared(self, pixel):
             pass
 
+        def y_range(self, k, r):
+            pass
+
+        def units(self, iscale):
+            pass
+
     def settle(sched):
         for _ in range(100):
             cf.wait(sched.in_flight(), timeout=5)

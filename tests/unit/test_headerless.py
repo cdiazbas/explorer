@@ -28,6 +28,12 @@ class Recorder:
     def cleared(self, pixel):
         self.calls.append(("cleared",))
 
+    def y_range(self, k, r):
+        pass
+
+    def units(self, iscale):
+        pass
+
 
 def settle(sched):
     for _ in range(100):

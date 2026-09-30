@@ -27,12 +27,16 @@ from typing import Protocol
 import numpy as np
 
 from ..data.executors import Generations, ShownGate
+from ..data.stats import quv_amplitude_ranges, quv_threads, sample_pixels, sample_profiles
 from ..obs import counter, get_logger
 from .levels import Levels, panel_levels
 from .session import Session
 from .state import ViewState
+from .yrange import YRange
 
 log = get_logger("core")
+
+SAMPLE_AFTER_S = 0.3        # the y-range sample starts after the first image (it takes 0.04-0.9 s on bellatrix)
 
 
 class Sink(Protocol):
@@ -46,6 +50,10 @@ class Sink(Protocol):
 
     def cleared(self, pixel: tuple[int, int]) -> None: ...                             # padding under the cursor
 
+    def y_range(self, k: int, r: tuple[float, float]) -> None: ...                     # spectrum plot k's y range
+
+    def units(self, iscale: float | None) -> None: ...                                 # I's power of ten, for titles
+
 
 class Scheduler:
     def __init__(self, session: Session, sink: Sink):
@@ -56,6 +64,10 @@ class Scheduler:
         self.img: np.ndarray | None = None              # the image on screen
         self.img_idx: tuple | None = None
         self.levels = Levels()
+        r = self.ds.roles
+        self.yrange = YRange(self.loop, r.ns, self._cont(), sink.y_range, sink.units,
+                             self._start_quv, quv_ok=r.s is not None)
+        self._sampled = False
         self._pending: set[str] = set()                 # cursor work waiting for the latest image
         self._cleared = False
         self._futures: set[Future] = set()
@@ -121,6 +133,9 @@ class Scheduler:
         if self.shown.accept("image", g):
             self.img, self.img_idx = fut.result(), idx
             self._show_image()
+            if not self._sampled:                        # the y-range sample, after the first image and cursor
+                self._sampled = True
+                self.loop.call_later(SAMPLE_AFTER_S, self._start_sample)
         if not self.gens.stale("image", g) and self._pending:
             kinds, self._pending = self._pending, set()
             self._evaluate(self.session.state, kinds)
@@ -164,7 +179,7 @@ class Scheduler:
             if kind == "lambda_t":                      # Q U V symmetric about 0
                 self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=at > 0))
             else:
-                self.sink.spectra(arr, pixel, at)
+                self.sink.spectra(self.yrange.spectrum(arr), pixel, at)
 
     # ---------------------------------------------------------------- the image's levels
     def _show_image(self) -> None:
@@ -239,3 +254,65 @@ class Scheduler:
                 log.warning("series (%d, %d) not read: %r", y, x, f.exception())
 
         self._track(self.ds.executors.numba.submit(job)).add_done_callback(failed)
+
+    # ---------------------------------------------------------------- the spectra's y ranges: reads
+    def _start_sample(self) -> None:
+        """SAMPLE_N profiles at random valid pixels of the image shown, each at its own t (stats.sample_*), on the
+        numba thread: the fixed y ranges of the padlock."""
+        r = self.ds.roles
+        if self.img is None or r.l is None:
+            return
+        pix = sample_pixels(self.img, getattr(self.ds, "path", ""), r.nt)
+        if pix is None:
+            return
+        ys, xs, ts = pix
+        threads = getattr(getattr(self.ds, "probe", None), "gather_threads", 16)
+        pixel = getattr(self.ds, "pixel", None)
+
+        def job():
+            prof = sample_profiles(ys, xs, ts, self.ds.frames, r, pixel, threads)
+            self.loop.post(lambda: self.yrange.sample_ready(prof))
+
+        self._track(self.ds.executors.numba.submit(job)).add_done_callback(self._log_failure("y-range sample"))
+
+    def _start_quv(self) -> None:
+        """Q U V's ranges from the whole frames at the t shown, on the background thread (never delaying the cursor's
+        reads); asked for once, when the spectra padlock first closes."""
+        r, t = self.ds.roles, self.session.state.t
+        limit = getattr(getattr(self.ds, "probe", None), "gather_threads", 16)
+        threads = quv_threads(self.ds.frames.frame_bytes, limit)
+
+        def job():
+            try:
+                half = quv_amplitude_ranges(self.ds.frames, r, self._cont(), t, threads=threads,
+                                            strips=self.ds.executors.strips)[0]
+            except Exception as e:                      # the sample's ranges stay: a range, not a failure
+                log.warning("Q U V ranges from whole frames failed: %r", e)
+                half = None
+            self.loop.post(lambda: self.yrange.quv_ready(half))
+
+        self._track(self.ds.executors.background.submit(job))
+
+    def _cont(self):
+        """The continuum tuning, when the cube's header gives one."""
+        return getattr(getattr(self.ds, "axes", None), "cont", None)
+
+    @staticmethod
+    def _log_failure(what: str):
+        def done(f: Future) -> None:
+            if f.exception() is not None:
+                log.warning("%s failed: %r", what, f.exception())
+        return done
+
+    # ---------------------------------------------------------------- the spectra's y ranges: the user's actions
+    def set_y_fixed(self, on: bool) -> None:
+        self.yrange.set_fixed(on)
+
+    def fit_y(self) -> None:
+        self.yrange.fit(force=True)
+
+    def y_to_sample(self) -> None:
+        self.yrange.to_sample()
+
+    def reset_y(self) -> None:
+        self.yrange.reset()

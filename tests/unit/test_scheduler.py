@@ -36,6 +36,12 @@ class Recorder:
     def cleared(self, pixel):
         self.calls.append(("cleared", pixel))
 
+    def y_range(self, k, r):
+        pass
+
+    def units(self, iscale):
+        pass
+
     def kinds(self):
         return [c[0] for c in self.calls]
 
