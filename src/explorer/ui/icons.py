@@ -1,0 +1,145 @@
+"""Toolbar glyphs drawn as vectors at the size and device pixel ratio each paint asks for (ROADMAP E4.5).
+
+    button.setIcon(icons.reset_panels(button))     the colours follow button.palette()
+    toolbar.setIconSize(icons.size(icons.RESET))   a button in a toolbar is asked for the TOOLBAR's size
+
+Why not pixmaps: a QToolButton in a QToolBar is asked for the toolbar's icon size, not its own; on a local Mac that
+is 32 x 32 at dpr 2, and fixed pixmaps came back upscaled 1.9x and made the toolbar 44 px high instead of 34. Here
+nothing is scaled: each request paints its own pixmap, strokes a whole number of device pixels wide and straight
+edges on pixel boundaries. The colour is the palette's text colour at paint time, so a change of system appearance
+repaints it right. SF-Symbols-like: rounded caps and joins, one stroke weight, no fills.
+
+From the prototype's app/icons.py (the glyph compared and chosen there: the counterclockwise arrow alone).
+"""
+import math
+
+from PySide6 import QtCore, QtGui, QtWidgets
+
+QP = QtGui.QPalette
+
+
+def _snap(v, w):
+    """Device coordinate of a stroke centre near v whose edges fall on pixel boundaries (w whole pixels)."""
+    return round(v - w / 2) + w / 2
+
+
+class Pen:
+    """Device-pixel drawing on a grid of glyph units (u device px each), strokes w px wide."""
+
+    def __init__(self, p, u, w):
+        self.p, self.u, self.w = p, u, w
+
+    def x(self, v):
+        return _snap(v * self.u, self.w)
+
+    def arrow(self, cx, cy, r, tail=160.0, head=100.0, arm=0.42):
+        """arrow.counterclockwise: an arc from `tail` round to `head` (degrees, counterclockwise from 3 o'clock), an
+        open chevron at the head. Centre on the pixel grid, radius whole pixels."""
+        u = self.u
+        c = QtCore.QPointF(self.x(cx), self.x(cy))
+        rr = max(2.0, round(r * u))
+        box = QtCore.QRectF(c.x() - rr, c.y() - rr, 2 * rr, 2 * rr)
+        path = QtGui.QPainterPath()
+        path.arcMoveTo(box, tail)
+        path.arcTo(box, tail, (head - tail) % 360)
+        a = math.radians(head)
+        tip = c + QtCore.QPointF(rr * math.cos(a), -rr * math.sin(a))
+        back = math.atan2(math.cos(a), math.sin(a))      # against the direction of travel
+        k = max(2.0, arm * r * u)
+        for s in (-1, 1):
+            b = back + s * math.radians(48)
+            path.moveTo(tip + QtCore.QPointF(k * math.cos(b), k * math.sin(b)))
+            path.lineTo(tip)
+        self.p.drawPath(path)
+
+
+def _arrow(g):
+    g.arrow(9, 10, 6.8)
+
+
+GLYPHS = {"arrow": (18, 18, _arrow)}                    # name: (grid width, grid height, draw(Pen))
+RESET = "arrow"                                         # the usual sign for "back to how it was"
+
+
+class GlyphEngine(QtGui.QIconEngine):
+    """Paints a glyph at the requested size and scale in the palette colours of `widget`."""
+
+    def __init__(self, glyph, widget=None):
+        super().__init__()
+        self.glyph, self.widget = glyph, widget
+
+    def clone(self):
+        return GlyphEngine(self.glyph, self.widget)
+
+    def key(self):
+        return "explorer-glyph"
+
+    def isNull(self):
+        return False
+
+    def actualSize(self, size, mode, state):
+        gw, gh, _ = GLYPHS[self.glyph]
+        return QtCore.QSize(size.width(), min(size.height(), int(round(size.width() * gh / gw))))
+
+    def _color(self, mode):
+        try:
+            pal = self.widget.palette() if self.widget is not None else QtWidgets.QApplication.palette()
+        except RuntimeError:                            # the widget is gone (icon copied elsewhere)
+            pal = QtWidgets.QApplication.palette()
+        if mode == QtGui.QIcon.Mode.Disabled:
+            return pal.color(QP.ColorGroup.Disabled, QP.ColorRole.WindowText)
+        if mode == QtGui.QIcon.Mode.Selected:
+            return pal.color(QP.ColorGroup.Active, QP.ColorRole.HighlightedText)
+        c = QtGui.QColor(pal.color(QP.ColorGroup.Active, QP.ColorRole.WindowText))
+        if mode == QtGui.QIcon.Mode.Active:             # hover over an auto-raise button: full strength
+            c.setAlphaF(1.0)
+        elif c.alphaF() > 0.85:                         # an opaque text colour (Fusion): 85 %, as macOS's labelColor
+            c.setAlphaF(0.85)
+        return c
+
+    def scaledPixmap(self, size, mode, state, scale):
+        gw, gh, draw = GLYPHS[self.glyph]
+        W, H = max(1, math.ceil(size.width() * scale - 1e-6)), max(1, math.ceil(size.height() * scale - 1e-6))
+        pm = QtGui.QPixmap(W, H)
+        pm.fill(QtCore.Qt.GlobalColor.transparent)
+        u = min(W / gw, H / gh)
+        w = max(1, int(1.35 * u + 0.5))                 # 1 px at 1x, 2 at 1.5x, 3 at 2x, 4 at 3x (18-unit glyph)
+        p = QtGui.QPainter(pm)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.translate(round((W - gw * u) / 2), round((H - gh * u) / 2))       # whole pixels: the snap holds
+        col = self._color(mode)
+        alpha = col.alphaF()
+        col.setAlphaF(1.0)
+        pen = QtGui.QPen(col, w)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        draw(Pen(p, u, w))
+        # opaque strokes, then one alpha for all: translucent strokes showed brighter dots where two met
+        p.resetTransform()
+        p.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_DestinationIn)
+        p.fillRect(pm.rect(), QtGui.QColor(0, 0, 0, round(alpha * 255)))
+        p.end()
+        pm.setDevicePixelRatio(scale)
+        return pm
+
+    def pixmap(self, size, mode, state):
+        return self.scaledPixmap(size, mode, state, 1.0)
+
+    def paint(self, p, rect, mode, state):
+        dpr = p.device().devicePixelRatioF() if p.device() is not None else 1.0
+        p.drawPixmap(rect.topLeft(), self.scaledPixmap(rect.size(), mode, state, dpr))
+
+
+def glyph_icon(glyph, widget=None) -> QtGui.QIcon:
+    return QtGui.QIcon(GlyphEngine(glyph, widget))
+
+
+def size(glyph) -> QtCore.QSize:
+    gw, gh, _ = GLYPHS[glyph]
+    return QtCore.QSize(gw, gh)
+
+
+def reset_panels(widget) -> QtGui.QIcon:
+    return glyph_icon(RESET, widget)

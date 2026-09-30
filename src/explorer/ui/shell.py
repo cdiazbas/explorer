@@ -1,6 +1,6 @@
-"""The window: the image panel, the spectra and lambda-t panels in docks on the right (ROADMAP E4.2; their contents
-in E4.3 and E4.4), a status line and the keys that move through the cube (E3.6). Playback comes in E4, the look in
-E5, the slit in E7.
+"""The window: the image panel, the spectra and lambda-t panels in docks on the right (ROADMAP E4.2-E4.4), the
+navigation toolbar (E4.5), a status line and the keys that move through the cube (E3.6). Playback comes in E4.9,
+the look in E5, the slit in E7.
 
 It draws what explorer.core decides and turns input into core actions: the mouse over the image moves the cursor, a
 click locks it there and a right click releases it (the prototype's _image_click), a double click shows the whole
@@ -23,7 +23,11 @@ from ..core.state import ViewState
 from ..data.axes import STOKES
 from . import docks
 from .imageview import ImageView
+from .lambda_t import LambdaTPanel
 from .loop import QtLoop
+from .spectra import SpectraPanel
+from .status import diagnostics_text, pixel_text
+from .toolbar import NavBar
 
 MEMORY_S = 1.0                                          # the caches' budget follows the machine's memory (Dataset)
 
@@ -41,19 +45,30 @@ class _Sink:
 
     def spectra(self, spec, pixel, t):
         self.shell.last["spectra"] = (spec, pixel, t)
+        if self.shell.spectra is not None:
+            self.shell.spectra.show(spec)
+        self.shell.update_status()                      # I_c for Q U V in % comes with the spectrum
 
     def lambda_t(self, lt, pixel, s, levels):
         self.shell.last["lambda_t"] = (lt, pixel, s, levels)
+        if self.shell.lambda_t is not None:
+            self.shell.lambda_t.show(lt, levels)
 
     def cleared(self, pixel):
         self.shell.last.pop("spectra", None)
         self.shell.last.pop("lambda_t", None)
+        if self.shell.spectra is not None:
+            self.shell.spectra.clear()
+        if self.shell.lambda_t is not None:
+            self.shell.lambda_t.clear()
 
     def y_range(self, k, r):
-        pass
+        if self.shell.spectra is not None:
+            self.shell.spectra.set_range(k, r)
 
     def units(self, iscale):
-        pass
+        if self.shell.spectra is not None:
+            self.shell.spectra.set_units(iscale)
 
 
 class Shell(QtWidgets.QMainWindow):
@@ -70,15 +85,28 @@ class Shell(QtWidgets.QMainWindow):
         ex = dataset.executors
         self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips)
         self.setCentralWidget(docks.gutter(self.view.widget))
-        self.spec_panel, self.lt_panel = QtWidgets.QWidget(), QtWidgets.QWidget()       # filled in E4.3, E4.4
+        r = dataset.roles
+        # a cube without lambda has no spectra: that dock stays empty and hidden
+        self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, dataset.axes) \
+            if r.l is not None else None
+        self.spec_panel = self.spectra.widget if self.spectra is not None else QtWidgets.QWidget()
+        # lambda-t needs both t and lambda
+        self.lambda_t = LambdaTPanel(r.nt, r.nl, dataset.axes) if r.t is not None and r.l is not None else None
+        self.lt_panel = self.lambda_t.widget if self.lambda_t is not None else QtWidgets.QWidget()
         self.spec_dock = docks.dock(self, "Spectrum", self.spec_panel, "spectrum")
         self.lt_dock = docks.dock(self, "λ–t", self.lt_panel, "lambda_t")
         self.setAnimated(False)
+        self.nav = NavBar(self)
         self._closing = False
         for d, panel in ((self.spec_dock, "spectra"), (self.lt_dock, "lambda_t")):
             d.visibilityChanged.connect(lambda on, panel=panel: self._panel_shown(panel, on))
         self.status = QtWidgets.QLabel()
+        self.status.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         self.statusBar().addWidget(self.status, 1)
+        self.sys_status = QtWidgets.QLabel()
+        self.statusBar().addPermanentWidget(self.sys_status)
+        self.diagnostics = False
+        self.sys_status.hide()
         self.last: dict = {}
         self.setWindowTitle(title or str(getattr(dataset, "path", "")))
         self.view.widget.scene().sigMouseClicked.connect(self._click)
@@ -87,6 +115,14 @@ class Shell(QtWidgets.QMainWindow):
         self.scheduler = Scheduler(self.session, _Sink(self))
         st = self.session.state
         self.view.set_crosshair(*st.cursor)
+        if self.spectra is not None:
+            self.spectra.set_lambda(st.l)
+        else:
+            self.spec_dock.hide()
+        if self.lambda_t is not None:
+            self.lambda_t.set_markers(st.t, st.l)
+        else:
+            self.lt_dock.hide()
         self._mem = QtCore.QTimer(self)
         self._mem.setInterval(int(MEMORY_S * 1000))
         self._mem.timeout.connect(self._memory)
@@ -99,6 +135,10 @@ class Shell(QtWidgets.QMainWindow):
         """A dock shown, closed or hidden: the core reads nothing for a hidden panel, and fills a shown one."""
         if not self._closing:
             self.session.show(panel, on)
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        self.nav.fit(self.width())
 
     def showEvent(self, ev) -> None:
         super().showEvent(ev)
@@ -124,7 +164,14 @@ class Shell(QtWidgets.QMainWindow):
         self.statusBar().showMessage("panels and zoom back to the start", 4000)
 
     def reset_view(self) -> None:
+        """The whole image, the spectra's whole lambda range, and their y ranges as the padlock says: the sample's
+        when closed, this pixel's when open (the prototype's reset_view)."""
         self.view.show_all()
+        if self.spectra is not None:
+            self.spectra.reset_view()
+            self.scheduler.yrange.reset()
+        if self.lambda_t is not None:
+            self.lambda_t.reset_view()
 
     # ---------------------------------------------------------------- input
     def _hover(self, y: float, x: float) -> None:
@@ -161,6 +208,8 @@ class Shell(QtWidgets.QMainWindow):
                          tuple((str(k + 1), lambda k=k: s.set_index("s", k)) for k in range(n))))
         rows += [("L", "lock, release the cursor", ((K.Key_L, lambda: s.lock(not s.state.locked)),)),
                  ("Esc", "release the cursor", ((K.Key_Escape, lambda: s.lock(False)),)),
+                 ("F12", "the cube, storage and memory in the status bar",
+                  ((K.Key_F12, lambda: self.set_diagnostics(not self.diagnostics)),)),
                  ("Ctrl+W", "close the window", (("Ctrl+W", self.close),)),
                  ("Ctrl+M", "minimise", (("Ctrl+M", self.showMinimized),)),
                  ("Ctrl+Q", "quit", () if sys.platform == "darwin" else (("Ctrl+Q", self.close),))]
@@ -174,26 +223,40 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- state
     def _on_state(self, st: ViewState, changed: frozenset) -> None:
+        self.nav.sync(st, changed)
         if "cursor" in changed:
             self.view.set_crosshair(*st.cursor)
+        if "l" in changed and self.spectra is not None:
+            self.spectra.set_lambda(st.l)
+        if changed & {"t", "l"} and self.lambda_t is not None:
+            self.lambda_t.set_markers(st.t, st.l)
         self.update_status()
 
     def update_status(self) -> None:
+        """The cursor's pixel in physical units (status.pixel_text); I_c from the spectrum the core gave for this
+        pixel and t, when the continuum tuning is known."""
         st = self.session.state
         y, x = st.cursor
         img = self.scheduler.img if hasattr(self, "scheduler") else None
-        v = img[y, x] if img is not None else float("nan")
-        parts = [f"x {x}  y {y}"]
-        if self.session.present["t"]:
-            parts.append(f"t {st.t}")
-        if self.session.present["l"]:
-            parts.append(f"λ {st.l}")
-        if self.session.present["s"] and self.session.sizes["s"] > 1:
-            parts.append(f"Stokes {STOKES[st.s]}")
-        parts.append("no data (padding)" if not math.isfinite(v) else f"{v:.4g}")
-        if st.locked:
-            parts.append("locked")
-        self.status.setText("   ·   ".join(parts))
+        v = float(img[y, x]) if img is not None else float("nan")
+        ic = None
+        cont = getattr(self.dataset.axes, "cont", None)
+        last = self.last.get("spectra")
+        if cont is not None and last is not None and last[1] == (y, x) and last[2] == st.t and \
+                self.spectra is not None and self.spectra.ns > 1:
+            ic = float(last[0][0, cont]) * (self.spectra.iscale or 1.0)       # plot units back to physical
+        present = tuple(a for a in ("t", "l") if self.session.present[a])
+        ns = self.session.sizes["s"] if self.session.present["s"] else 1
+        iscale = self.spectra.iscale if self.spectra is not None else None
+        self.status.setText(pixel_text(self.dataset.axes, ns, y, x, st.t, st.l, st.s, v, ic, iscale, st.locked,
+                                       present))
+
+    def set_diagnostics(self, on: bool) -> None:
+        """F12: the cube, the storage probe, memory and the image cache, at the right of the status bar."""
+        self.diagnostics = bool(on)
+        self.sys_status.setVisible(self.diagnostics)
+        if self.diagnostics:
+            self.sys_status.setText(diagnostics_text(self.dataset))
 
     def first_image(self) -> None:
         if self.first_image_s is not None:
@@ -228,6 +291,8 @@ class Shell(QtWidgets.QMainWindow):
     def _memory(self) -> None:
         if hasattr(self.dataset, "update_memory"):
             self.dataset.update_memory()
+        if self.diagnostics:
+            self.sys_status.setText(diagnostics_text(self.dataset))
 
     # ---------------------------------------------------------------- closing
     def closeEvent(self, ev) -> None:
