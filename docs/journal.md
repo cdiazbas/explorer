@@ -984,3 +984,25 @@ Diferencias buscadas frente al prototipo, cada una anotada en su entrada:
 - el relleno sin `_sp`;
 - los niveles fijos, por separado para I y para Q U V;
 - los espectros solo si hay λ.
+
+### 2026-09-30: cómo llegan las ventanas a la pantalla (ROADMAP E3.2)
+
+**Implementado:** `platform/plan.py`, con `choose_display(env, sys.platform, --x11,
+bridge_available) -> DisplayPlan`. Es una función pura, desde la tabla del prototipo
+(`startup.prepare`, `remote_x11`, `xbridge.wanted`):
+- **Linux sin pantalla** (`DISPLAY`, `WAYLAND_DISPLAY` y `QT_QPA_PLATFORM` sin fijar): se para con
+  un mensaje, porque Qt aborta con un volcado de memoria.
+- **`QT_QPA_PLATFORM` fijado por quien lanza:** se respeta, y nunca se cambia por el puente. En el
+  prototipo, las pruebas `offscreen` lanzadas por ssh abrieron ventanas en el Mac del usuario.
+- **`--x11 native|bridge`**, o `EXPLORER_X11`, gana sobre lo automático.
+- **Pantalla remota** (ssh y `DISPLAY` que no es `:N`; en un Mac, cualquier `DISPLAY`
+  bajo ssh): el puente. Hasta E6 se usa el xcb de Qt, con una nota.
+- **Linux local:** xcb (o el Wayland de Qt si solo hay Wayland). **Mac local:** cocoa.
+- **Mac por ssh sin X:** se para con un mensaje. El prototipo lo descubría después de arrancar Qt,
+  por la lista de pantallas vacía.
+- `DisplayPlan.kind` da una clave por modo de mostrar, para guardar la disposición de las ventanas.
+
+Un contrato de capas impide que `platform.plan` importe Qt.
+
+**Pruebas (18):** la tabla, caso por caso, en Linux y en Mac, con y sin puente, más los mensajes y
+las claves. Pasa en el Mac y en bellatrix.
