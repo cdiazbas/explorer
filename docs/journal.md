@@ -1029,3 +1029,29 @@ las claves. Pasa en el Mac y en bellatrix.
   de 10 movimientos y un paso en t. Todo lo que llega al `Sink` llega en el hilo principal.
 
 5 de 5 ejecuciones en el Mac y 3 de 3 en bellatrix.
+
+### 2026-09-30: `Display` para cocoa, xcb y offscreen (ROADMAP E3.4)
+
+**Implementado:** `platform/display.py`, desde `startup.py` del prototipo (`prepare`, `make_app`,
+`show`, `_mac_zoom_not_fullscreen`, `start_link_probe`):
+- **`prepare_env()`:** pone lo que pide el plan (`QT_QPA_PLATFORM`) antes de arrancar Qt, o se para
+  con su mensaje (`NoDisplay`).
+- **`make_app()`:** crea el `QApplication`, o usa el que ya hay. Se para con un mensaje si Qt no ve
+  ninguna pantalla, que es lo que pasa en un Mac por ssh sin X11. Fusion fuera de cocoa; el aspecto
+  llega en E5.
+- **`attach(app, ventana) -> WindowOps`:** muestra la ventana, la sube y le da el teclado, como el
+  `show` del prototipo (si no, la primera tecla iba a la terminal). En un Mac local, el botón verde
+  maximiza en vez de abrir pantalla completa.
+- **`link()`:** para X11 remoto, los 4.8 B/px y el tope de 30 fps que midió el prototipo. La medida
+  en vivo del enlace llega con el puente (E6).
+- **`WindowOps`:** `resize`, `activate`, `zoom` y `minimize`. Las vistas solo ven esto.
+
+**Para E6.1** (foco sin clic), anotado en su fila: el prototipo ya pide el foco al mostrar la
+ventana, y aun así por `ssh -Y` hace falta un clic.
+
+**Pruebas (3, offscreen):**
+- el entorno que prepara, y la parada con mensaje;
+- la aplicación (nombre, estilo) y una ventana adjuntada, con su tamaño;
+- el enlace y el informe, según el plan.
+
+Pasa en el Mac y en bellatrix.
