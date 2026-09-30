@@ -1006,3 +1006,26 @@ Un contrato de capas impide que `platform.plan` importe Qt.
 
 **Pruebas (18):** la tabla, caso por caso, en Linux y en Mac, con y sin puente, más los mensajes y
 las claves. Pasa en el Mac y en bellatrix.
+
+### 2026-09-30: el bucle de Qt para el núcleo (ROADMAP E3.3)
+
+**Implementado:** `ui/loop.py`, `QtLoop`, el adaptador que pedía el
+[ADR 0007](decisions/0007-core-sin-qt.md). Es la primera pieza de `explorer.ui`.
+- **`call_soon`:** un `QTimer` de 0 ms, como el temporizador con el que el prototipo agrupaba los
+  movimientos del ratón.
+- **`call_later`:** un `QTimer` con retardo.
+- **`post`:** una señal en cola. Se emite desde cualquier hilo y la función corre en el principal.
+- **Una llamada que falla** va al registro, y las demás siguen.
+
+**Capas:**
+- nuevo contrato: `ui` no importa la orden, `doctor` ni `demo`;
+- las pruebas con Qt usan un `QApplication` compartido (fixture `qapp`), siempre `offscreen`.
+
+**Pruebas (3):**
+- `post` desde 8 hilos, `call_soon` y `call_later` corren en el hilo principal, en su orden, y
+  `call_later` tras su retardo;
+- una llamada que falla va al registro y el bucle sigue;
+- un `Scheduler` real sobre el cubo sintético, sin `_sp`: lecturas en el hilo de numba, una ráfaga
+  de 10 movimientos y un paso en t. Todo lo que llega al `Sink` llega en el hilo principal.
+
+5 de 5 ejecuciones en el Mac y 3 de 3 en bellatrix.

@@ -52,7 +52,7 @@ sección que la origina.
 | E2.7 | ✅ | Coste de las capas frente a la línea base (PLAN §10): cursor y paso en t, ABBA frente al prototipo | E2.6 | 2026-09-30 | journal 09-30 |
 | E3 | 🔄 | `platform/plan.py`, `Display` (cocoa, xcb, offscreen), `Shell` mínima con la imagen (PLAN §3.5, §6): tareas E3.1–E3.7; solo `pgr`, [ADR 0008](decisions/0008-solo-pgr.md) | E2 | 2026-09-28 | — |
 | E3.2 | ✅ | `choose_display()`: función pura con la tabla del prototipo (`startup.prepare`, `remote_x11`, `xbridge.wanted`): Linux sin pantalla → mensaje; `QT_QPA_PLATFORM` explícito se respeta; `--x11` gana; Linux local → xcb; `ssh -Y` → puente (hasta E6, xcb nativo con aviso); Mac local → cocoa; Mac por ssh sin X → mensaje. Pruebas sin Qt | E2 | 2026-09-30 | journal 09-30 |
-| E3.3 | ⬜ | El bucle de Qt para el núcleo ([ADR 0007](decisions/0007-core-sin-qt.md)): `call_soon`, `post` al hilo principal, `call_later`; prueba de que lo que llega de otros hilos se aplica en el principal | E3.2 | 2026-09-30 | — |
+| E3.3 | ✅ | El bucle de Qt para el núcleo ([ADR 0007](decisions/0007-core-sin-qt.md)): `call_soon`, `post` al hilo principal, `call_later`; prueba de que lo que llega de otros hilos se aplica en el principal | E3.2 | 2026-09-30 | journal 09-30 |
 | E3.4 | ⬜ | `Display` para cocoa, xcb y offscreen: preparar el entorno antes de Qt, operaciones básicas de ventana (tamaño, subir, activar) | E3.2 | 2026-09-30 | — |
 | E3.5 | ⬜ | Vista de imagen (`pgr`): reducción a los píxeles de pantalla con las franjas de `kernels`, tabla de color, niveles del núcleo, cruz del cursor; el ratón mueve la sesión | E3.3 | 2026-09-30 | — |
 | E3.6 | ⬜ | Ventana mínima: la imagen, teclas de t, λ, Stokes y bloqueo; `explorer cubo.fits` la abre, y el demo también | E3.5 | 2026-09-30 | — |
