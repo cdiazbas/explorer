@@ -1,7 +1,7 @@
 """The display a plan chose, on Qt: the environment before Qt starts, the application, and what a window needs from
 the platform. The views see WindowOps only; nothing else in the UI branches on the operating system (docs/plan.md
 §3.5). From the prototype's app/startup.py (prepare, make_app, show, _mac_zoom_not_fullscreen, start_link_probe).
-The X11 bridge joins as another Display in ROADMAP E6.
+The X11 bridge is another Display (xbridge.display.BridgeDisplay); for_plan() picks the one a plan asks for.
 """
 import os
 import sys
@@ -37,20 +37,61 @@ class NoDisplay(SystemExit):
 class LinkInfo:
     """What the link to the screen carries: bytes per pixel of the image panel per image shown, and the playback
     rate not to go above. None: a local screen, no limit. Measured 2026-09-24 (the prototype's start_link_probe):
-    Qt's own X11 ~4.8 B/px (4 B/px plus the side panels), capped at 30 fps; the live measurement of the link joins
-    with the bridge (ROADMAP E6)."""
+    Qt's own X11 ~4.8 B/px (4 B/px plus the side panels), capped at 30 fps; the bridge's in xbridge.display. The
+    link's own rate is measured by platform.linkprobe when playback sets its default (ROADMAP E4)."""
     bytes_per_px: float | None
     fps_cap: int | None
 
 
 class WindowOps:
-    """What a view may ask of its window."""
+    """What a view may ask of its window: here, of a window Qt shows itself (cocoa, xcb, offscreen); the bridge's
+    windows have their own (xbridge.display.BridgeWindowOps). The moving and shaping calls are the prototype's Mover
+    (app/titlebar.py), for a title bar of ours (ROADMAP E5)."""
 
     def __init__(self, window, display: "Display"):
         self.w, self._display = window, display
 
     def resize(self, w: int, h: int) -> None:
         self.w.resize(int(w), int(h))
+
+    def move(self, x: int, y: int) -> None:
+        self.w.move(x, y)
+
+    def set_geometry(self, r) -> None:
+        self.w.setGeometry(r)
+
+    def begin_drag(self) -> bool:
+        """Let the window manager move the window (GNOME and KDE then also snap it); False: the caller moves it."""
+        h = self.w.windowHandle()
+        return bool(h and h.startSystemMove())
+
+    def begin_resize(self, edges) -> bool:
+        h = self.w.windowHandle()
+        return bool(h and h.startSystemResize(edges))
+
+    def set_shape(self, region) -> None:
+        """The window's outline as a mask (Qt makes it an X SHAPE on xcb); None or empty: rectangular. Offscreen has
+        no masks, and says so."""
+        from PySide6 import QtGui
+
+        if QtGui.QGuiApplication.platformName() == "offscreen":
+            return
+        if region is None or region.isEmpty():
+            self.w.clearMask()
+        else:
+            self.w.setMask(region)
+
+    def set_resizer(self, resizer) -> None:
+        """Only the bridge's legacy input feeds an edge resizer; elsewhere it watches the QWindow."""
+
+    @property
+    def active(self) -> bool:
+        return self.w.isActiveWindow()
+
+    @property
+    def qwindow_events(self) -> bool:
+        """Mouse input reaches the QWindow, so an edge resizer can watch it there."""
+        return True
 
     def activate(self) -> None:
         """Raise the window and give it the keyboard. Launched from a terminal, the first key (Space to play) went
@@ -124,6 +165,15 @@ class Display:
 
     def close(self) -> None:
         pass
+
+
+def for_plan(plan: DisplayPlan) -> Display:
+    """The Display a plan asks for: the X11 bridge's, or Qt's own platform."""
+    if plan.bridge:
+        from .xbridge.display import BridgeDisplay
+
+        return BridgeDisplay(plan)
+    return Display(plan)
 
 
 def _mac_zoom_not_fullscreen(window) -> None:

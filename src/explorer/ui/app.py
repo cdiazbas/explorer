@@ -27,13 +27,14 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
     t0 = time.perf_counter()
     before = process_age()                              # Python's start and the imports up to here
     phases: dict[str, float] = {}
-    from ..platform.display import Display, NoDisplay
+    from ..platform import xbridge
+    from ..platform.display import NoDisplay, for_plan
     from ..platform.plan import choose_display
 
-    plan = choose_display(os.environ, sys.platform, x11)
+    plan = choose_display(os.environ, sys.platform, x11, bridge_available=xbridge.available())
     for note in plan.notes:
         print(f"[{APP_NAME}] {note}", file=sys.stderr)
-    disp = Display(plan)
+    disp = for_plan(plan)
     try:
         disp.prepare_env()
         q = time.perf_counter()
@@ -59,6 +60,7 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
         log.info("%s; %s", ds.describe(), disp.stats())
         if quit_after is not None:
             shell.after_first_image(quit_after, app.quit)
-        return app.exec()
+        return app.exec()                           # 1 when the X display went away under the bridge
     finally:
         ds.close()
+        disp.close()

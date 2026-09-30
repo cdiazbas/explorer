@@ -1120,3 +1120,98 @@ solo de que haya Stokes. Hay una prueba con un cubo `--axes s,l`.
 **Primera medida, sin ABBA** (bellatrix, cubo 6173, offscreen): primera imagen en 1.83–2.43 s desde
 el principio de la apertura. La línea base del prototipo en offscreen era 1.58–1.92 s. La
 comparación de verdad es E3.7.
+
+### 2026-09-30: el puente X11 traído tal cual (ROADMAP E6, opción A de P4)
+
+**Implementado** (commit `1b71165`): el puente del prototipo (`app/xbridge.py`, `xconn.py`,
+`xrender.py`) en `platform/xbridge/`, partido por temas y con sus decisiones medidas y sus mandos:
+- `bridge.py`: la conexión del hilo de la interfaz, el tic de 4 ms y el filtro de eventos de Qt;
+- `wm.py`: ventanas X, ICCCM y EWMH, paneles transitorios, formas, cursores, iconos, activación;
+- `qtinput.py`: la entrada X a Qt por la puerta de plataforma (ctypes), con la vía antigua de
+  reserva;
+- `transport.py`: teselas de 32×32, gris a 1 B/px por RENDER, doble búfer y el codificador numba,
+  en su propio hilo y conexión;
+- `render.py`, `clipboard.py`, `xconn.py`, y `state.py` (el estado compartido, para `mypy`);
+- `display.py`: `BridgeDisplay`, que el plan elige cuando python-xlib se importa, y
+  `BridgeWindowOps`, que sustituye al `BridgeMover` del prototipo.
+
+`platform/linkprobe.py` también, sin arrancarlo: lo usa la reproducción (E4). El plan decía
+`x11bridge/`; el directorio es `xbridge/`.
+
+**Diferencias con el prototipo:**
+- Las piezas de la barra de título (forma, bordes, ventana activa, marco propio) son llamadas de
+  `WindowOps` (`set_shape`, `set_resizer`, `active`) en vez de atributos `_crispex_*` en los
+  widgets. La barra propia llega en E5; hasta entonces el gestor de ventanas pone el marco.
+- No se traen el modo de repintado `window` (medido sin ganancia) ni el mando del intervalo del
+  GIL.
+- Mandos `EXPLORER_XB_*` en vez de `CRISPEX_XB_*`, leídos una vez.
+- `close()`: para el temporizador, espera al hilo emisor y cierra las conexiones. El prototipo
+  nunca cerraba.
+- La caché de numba del puente va a la del usuario, como los demás núcleos.
+- No se fuerza el tema oscuro con el puente: el aspecto llega en E5.
+
+**Pruebas:**
+- Sin X (13): el codificador numba da los mismos bytes que python-xlib; teselas numba frente a
+  numpy; tramos; teclas; cookies; formatos de RENDER; los símbolos privados de Qt 6.11.2 están
+  todos; el plan elige `BridgeDisplay`.
+- Sobre un Xvfb privado (7, en un proceso aparte): los píxeles de la ventana X son los de Qt (0
+  distintos); una tecla X mueve t; un movimiento X mueve el cursor al píxel de dato que toca; la
+  vía antigua de entrada; panel flotante transitorio y de tipo utilidad; menú emergente
+  `override-redirect`; forma (24 rectángulos) y su retirada; portapapeles en los dos sentidos;
+  estadísticas de tráfico; salida con 1 cuando X desaparece. 3 de 3 en bellatrix. Se saltan sin
+  `EXPLORER_XVFB_DISPLAY=:N`.
+- `scripts/check.sh` pasa en el Mac (las pruebas X se saltan) y en bellatrix.
+
+**Medida** (commit `5a22101`):
+- bellatrix, 2026-09-30 13:00–13:08; Xvfb privado `:98` (3840×1080, sin gestor de ventanas);
+  cubo de Stokes 6173 (StorNext).
+- Fijado al nodo NUMA 0 (16 CPU), con el cerrojo de medidas. Carga 3.3 al empezar la primera tanda
+  y 38 al acabar; 18 durante la segunda.
+- Una ejecución de calentamiento por programa y configuración.
+- Resultados en `bench/results/` de la carpeta de la medida: `bridgeA_20260930T1300.json` y
+  `bridgeA_ab8_20260930T1306.json`.
+
+**Solo el puente** (`--modes bridge-ab`): la ventana de explorer con el puente del prototipo (P) y
+con el de explorer (E). Cada paso espera a estar en X. 8 rondas ABBA; mediana P / E, razón
+pareada E/P y rondas en que E fue más rápido.
+
+| | con `_sp` | sin `_sp` |
+|---|---|---|
+| Primera imagen enviada a X, s | 1.005 / 1.000; 1.005 (4/8) | 0.927 / 0.917; 0.986 (4/8) |
+| Primera imagen vista en X desde la orden, s | 2.27 / 2.22; 1.03 (4/8) | 2.15 / 2.20; 1.06 (4/8) |
+| Paso en t hasta X, ms | 21.2 / 20.5; 0.92 (6/8) | 67.7 / 64.4; 0.90 (6/8) |
+| Paso en λ hasta X, ms | 17.9 / 18.2; 1.02 (3/8) | 17.6 / 17.5; 1.00 (5/8) |
+| Stokes hasta X, ms | 14.4 / 13.5; 0.91 (6/8) | 54.5 / 53.9; 0.92 (6/8) |
+| Bytes por paso (t, λ, Stokes) | 612 300, 612 230, 612 396 en los dos | iguales en los dos |
+
+- Los bytes por paso y por envío son idénticos: mismas teselas, mismo gris, mismas peticiones.
+- Tiempos dentro del ruido: la primera tanda de 4 rondas dio razones de 1.01–1.11 con `_sp`
+  (0–1 de 4 a favor de E) y 0.94–0.97 sin `_sp`. Con 8 rondas, 0.90–1.06.
+- **Efecto del orden:** en cada par, el primero en ejecutarse tarda ~2.5 s en verse y el segundo
+  ~1.9 s. Sin ABBA saldría una diferencia falsa de ~25 %.
+
+**Programa contra programa** (`--modes bridge`): cada uno con su puente, 4 rondas ABBA; P / E,
+razón y rondas a favor de E. Los pasos se miden hasta que Qt pinta, como en el `selftest` del
+prototipo, y no hasta X.
+
+| | con `_sp` | sin `_sp` |
+|---|---|---|
+| Primera imagen (tras crear la aplicación), s | 1.55 / 1.02; 0.66 (4/4) | 1.74 / 0.87; 0.50 (4/4) |
+| Primera imagen vista en X desde la orden, s | 3.18 / 2.57; 0.81 (4/4) | 3.38 / 2.15; 0.63 (4/4) |
+| Paso en t, ms | 19.4 / 17.2; 0.88 (4/4) | 19.1 / 46.5; **2.49 (0/4)** |
+| Paso en λ, ms | 20.8 / 16.0; 0.77 (4/4) | 22.0 / 15.4; 0.71 (4/4) |
+| Stokes, ms | 12.4 / 9.7; 0.79 (4/4) | 12.5 / 41.4; **3.35 (0/4)** |
+| kB por paso en t / λ / Stokes | 556 / 520, 613 / 582, 558 / 765 | 517 / 551, 614 / 613, 558 / 689 |
+
+Las ventanas no son iguales. El prototipo repinta espectros y λ–t en cada paso; explorer, la imagen
+y la línea de estado. El panel de imagen mide 772×803 en los dos.
+
+**Resultados negativos y avisos:**
+- **Sin `_sp`, explorer tarda 2.5× en t y 3.3× en Stokes.** Pasa igual con los dos puentes
+  (41–45 ms en t, 33–35 ms en Stokes), así que no es el puente: es algo del programa sin `_sp`.
+  Queda para E3.7/E4.
+- **Un núcleo compilado durante la medida para al emisor del puente ~0.6 s** (cubo sintético, sin
+  `_sp`, primera ejecución con la caché de numba vacía). Por eso se calienta cada configuración.
+- **Sin medir:** `ssh -Y` hasta XQuartz, es decir, las ~12 frente a ~8.5 imágenes/s y los bytes
+  frente a xcb de la Fase F2. Necesita al usuario. El foco sin clic (E6.1) tampoco se ha medido: en
+  Xvfb no hay gestor de ventanas.
