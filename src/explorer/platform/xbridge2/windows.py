@@ -19,14 +19,13 @@ import struct
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-SHAPE_ATTR = "x11_shape"                                # a QRegion a top-level publishes as its shape (sync_shape)
-
 from ..._name import APP_NAME
 from ...obs import get_logger
 from . import xproto as X
 
 log = get_logger("platform.xbridge2")
 Qt, E = QtCore.Qt, QtCore.QEvent
+SHAPE_ATTR = "x11_shape"                                # a QRegion a top-level publishes as its shape (sync_shape)
 
 ATOMS = ("WM_PROTOCOLS", "WM_DELETE_WINDOW", "WM_TAKE_FOCUS", "_NET_WM_PING", "WM_STATE", "WM_CHANGE_STATE",
          "WM_CLIENT_MACHINE", "_NET_WM_PID", "_NET_WM_NAME", "UTF8_STRING", "_NET_WM_WINDOW_TYPE",
