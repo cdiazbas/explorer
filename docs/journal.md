@@ -939,3 +939,48 @@ sin pantalla (plan §2, regla 11):
 - nada se lee sobre el relleno (E2.3, E2.6).
 
 Falta E2.7: el coste de las capas frente al prototipo.
+
+### 2026-09-30: coste de las capas del núcleo (ROADMAP E2.7) y cierre de E2
+
+**Método** (`bench/core_overhead.py`). Cada operación se hace de dos maneras, sobre datos nuevos y
+en ABBA:
+- a través del núcleo (`testing.Driver`: estado, aviso, planificador, niveles, rangos y, entrega al
+  `Sink`);
+- directamente, con las mismas lecturas sobre el `Dataset`.
+
+La diferencia es lo que cuestan las capas. explorer aún no dibuja, así que el cursor completo frente
+al prototipo llega con E3–E4.
+
+**Condiciones.** bellatrix, cubo 6173, 2026-09-30 10:53, fijado al nodo 0, 8 rondas de 10.
+
+| Caso | Con `_sp`: núcleo / directo | Sin `_sp`: núcleo / directo |
+|---|---|---|
+| Cursor a una fila sin leer | 20.7 / 21.1 ms | 364 / 368 ms |
+| Cursor al vecino (en caché) | 0.36 / 0.01 ms | 0.54 / 0.17 ms |
+| Paso en t (imagen y espectros en el nuevo t) | 2.8 / 4.3 ms | 26.1 / 26.8 ms |
+
+**Conclusión:**
+- En frío y en los pasos, las capas no cuestan nada medible: las diferencias están dentro del ruido.
+- En un movimiento a un píxel ya en caché añaden ~0.35 ms: pasar el dato a lo que se dibuja
+  (unidades, rangos y, niveles del λ–t, avisos), trabajo que el prototipo también hacía en su
+  ventana.
+- Es ~3 % del cursor del prototipo (13.5 ms, dibujo incluido), y muy por debajo de un fotograma
+  (16 ms).
+
+**Sin medir:** el bucle de eventos de Qt y el dibujo. Llegan con E3–E4, cuyos criterios ya comparan
+el cursor y los pasos con el prototipo.
+
+**E2 cerrada.** Hecho:
+- estado y avisos por ráfaga;
+- sesión;
+- planificador (la última gana, espectro antes que λ–t, nada sobre el relleno ni para paneles
+  ocultos);
+- niveles de contraste;
+- rangos y, con rango a mano;
+- `testing.Driver`;
+- coste de las capas.
+
+Diferencias buscadas frente al prototipo, cada una anotada en su entrada:
+- el relleno sin `_sp`;
+- los niveles fijos, por separado para I y para Q U V;
+- los espectros solo si hay λ.

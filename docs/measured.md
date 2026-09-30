@@ -41,6 +41,7 @@ Copiado de `docs/plan.md` §4 el 2026-09-28.
 | io_uring no se puede usar en bel | `kernel.io_uring_disabled=2`: `EPERM` sin root | Diario 09-29, E1.10 |
 | Sin `_sp`, cada serie se lee con su fila entera (8 KB por imagen) | Primer λ–t 1.009 frente al prototipo (4/8); el vecino (x + 1) 0.10 frente a 17.6 ms (8/8); bel, fijado al nodo 0 | Diario 09-29, E1.13 |
 | Bloques de 1 fila, no de 8 | 8 filas (64 KB): primer λ–t 1.339 (1/8) con el almacenamiento rápido; igual con el lento (0.96×) | Diario 09-29, E1.13 |
+| El núcleo (estado, planificador, niveles, rangos y) sin Qt no encarece las lecturas | Frente a las mismas lecturas directas: en frío y en pasos dentro del ruido; +0.35 ms por movimiento a un píxel en caché (bel, 6173, fijado al nodo 0) | Diario 09-30, E2.7 |
 | Por `ssh -Y` solo llega `pgr` | vispy/gfx: ventana vacía (OpenGL en el servidor); napari igual (2026-09-26) | Fase 11 |
 | Puente X11 por defecto en pantalla remota | ~12 frente a ~8.5 imágenes/s; 1.3 frente a 4.8 B/px | F2, 2026-09-25 |
 | Lo que escala por X11 es lo repintado | Mismos bytes con 1 o 4 ventanas; 49 ms repintando todo frente a 20 ms solo cruz + 2 paneles | Fase 17 |
