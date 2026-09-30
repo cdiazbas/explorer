@@ -1055,3 +1055,31 @@ ventana, y aun así por `ssh -Y` hace falta un clic.
 - el enlace y el informe, según el plan.
 
 Pasa en el Mac y en bellatrix.
+
+### 2026-09-30: el panel de imagen (ROADMAP E3.5)
+
+**Implementado:** `ui/imageview.py`, desde `backend_pgr.py` y `backend_pg.py` del prototipo, con la
+reducción parcheada de `viewer.py` y su `ViewGuard`.
+- **Superficie:** una `ViewBox` de aspecto bloqueado, un `ImageItem` y la cruz del cursor.
+- **Solo la región visible:** reducida a los píxeles físicos de la vista, a u8, en una pasada
+  (`kernels.reduce_u8`, en franjas). Nivel 0 para el relleno, datos en 1..255.
+- **Un zum o un desplazamiento** vuelven a pintar. Una ráfaga pinta una vez, con un temporizador de
+  0 ms.
+- **`ViewGuard`,** traído tal cual con comentarios neutros:
+  - no más fuera que la imagen entera;
+  - como mucho 3×3 píxeles de dato dentro;
+  - al alejar, se recentra poco a poco;
+  - el centro nunca sale de la imagen.
+- **El ratón** da (y, x) en píxeles de dato. `show_all()` es el doble clic del prototipo.
+- **La conversión numba de pyqtgraph, apagada.** Costaba ~22 ms fijos por imagen, y aquí la imagen
+  ya llega en u8.
+
+Los gestos (doble clic, la mano al arrastrar) y la conexión con la sesión y el planificador van en
+la ventana (E3.6).
+
+**Pruebas (3, offscreen):**
+- lo que se entrega a pyqtgraph es la reducción de la región visible, con el relleno en 0;
+- el zum se queda entre la imagen entera y 3×3 píxeles, y dentro pinta a resolución completa;
+- el ratón da píxeles de dato y la cruz va al cursor.
+
+Pasa en el Mac, 3 de 3 ejecuciones, y en bellatrix.

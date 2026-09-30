@@ -54,7 +54,7 @@ sección que la origina.
 | E3.2 | ✅ | `choose_display()`: función pura con la tabla del prototipo (`startup.prepare`, `remote_x11`, `xbridge.wanted`): Linux sin pantalla → mensaje; `QT_QPA_PLATFORM` explícito se respeta; `--x11` gana; Linux local → xcb; `ssh -Y` → puente (hasta E6, xcb nativo con aviso); Mac local → cocoa; Mac por ssh sin X → mensaje. Pruebas sin Qt | E2 | 2026-09-30 | journal 09-30 |
 | E3.3 | ✅ | El bucle de Qt para el núcleo ([ADR 0007](decisions/0007-core-sin-qt.md)): `call_soon`, `post` al hilo principal, `call_later`; prueba de que lo que llega de otros hilos se aplica en el principal | E3.2 | 2026-09-30 | journal 09-30 |
 | E3.4 | ✅ | `Display` para cocoa, xcb y offscreen: preparar el entorno antes de Qt, operaciones básicas de ventana (tamaño, subir, activar) | E3.2 | 2026-09-30 | journal 09-30 |
-| E3.5 | ⬜ | Vista de imagen (`pgr`): reducción a los píxeles de pantalla con las franjas de `kernels`, tabla de color, niveles del núcleo, cruz del cursor; el ratón mueve la sesión | E3.3 | 2026-09-30 | — |
+| E3.5 | ✅ | Vista de imagen (`pgr`): reducción a los píxeles de pantalla con las franjas de `kernels`, tabla de color, niveles del núcleo, cruz del cursor; el ratón mueve la sesión | E3.3 | 2026-09-30 | journal 09-30 |
 | E3.6 | ⬜ | Ventana mínima: la imagen, teclas de t, λ, Stokes y bloqueo; `explorer cubo.fits` la abre, y el demo también | E3.5 | 2026-09-30 | — |
 | E3.7 | ⬜ | Medidas frente al prototipo, en ABBA: primera imagen (offscreen, xcb en Xvfb) y paso en t. Con el usuario: la traza por `ssh -Y` real (los 7–8 s del demo) y el estudio del foco sin clic (E6.1) | E3.6 | 2026-09-30 | — |
 | E4 | ⬜ | Espectros, λ–t, cursor, reproducción; niveles 2 y 3 de la comparación (PLAN §6, §7.1) | E3 | 2026-09-28 | — |
