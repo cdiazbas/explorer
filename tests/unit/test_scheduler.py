@@ -241,3 +241,22 @@ def test_a_step_back_from_padding_fills_both_panels_without_a_per_pixel_file():
     settle(sched)
     assert rec.kinds() == ["image", "spectra", "lambda_t"]
     cube_.executors.close()
+
+
+def test_nothing_runs_after_closing_not_even_the_sample_due_later(cube, caplog):
+    """The y-range sample is due SAMPLE_AFTER_S after the first image: a window closed before that (tests, a quick
+    look) left it to run on a closed cube and fail."""
+    d, _data = cube
+    ds = Dataset.open(d["im"], no_sp=True)
+    loop = ManualLoop()
+    sess = Session(loop, ds)
+    rec = Recorder()
+    sched = Scheduler(sess, rec)
+    settle(sched)
+    n = len(rec.calls)
+    sched.close()
+    ds.close()
+    loop.advance(5.0)                                   # the sample falls due
+    loop.pump()
+    assert len(rec.calls) == n
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]

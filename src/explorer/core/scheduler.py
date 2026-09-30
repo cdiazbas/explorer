@@ -68,6 +68,7 @@ class Scheduler:
         self.yrange = YRange(self.loop, r.ns, self._cont(), sink.y_range, sink.units,
                              self._start_quv, quv_ok=r.s is not None)
         self._sampled = False
+        self._closed = False
         self._pending: set[str] = set()                 # cursor work waiting for the latest image
         self._cleared = False
         self._futures: set[Future] = set()
@@ -77,6 +78,8 @@ class Scheduler:
         self._request_image(session.state)
 
     def close(self) -> None:
+        """No more work: what is due later (the y-range sample) or still on its way is dropped."""
+        self._closed = True
         self._off()
 
     # ---------------------------------------------------------------- bookkeeping for tests and idle checks
@@ -126,7 +129,7 @@ class Scheduler:
                 self.ds.prefetch(self.session.index(state=ahead))
 
     def _image_ready(self, g: int, idx: tuple, fut: Future) -> None:
-        if fut.cancelled():                             # the pools shut down: closing
+        if self._closed or fut.cancelled():            # closing: nothing more to show nor to read ahead
             return
         if fut.exception() is not None:
             log.warning("image %s not read: %r", idx, fut.exception())
@@ -177,6 +180,8 @@ class Scheduler:
             self._read_series(g, st, want_spec, want_lt)
 
     def _show(self, kind: str, g: int, arr, pixel, at: int) -> None:
+        if self._closed:
+            return
         if self.shown.accept(kind, g):
             if kind == "lambda_t":                      # Q U V symmetric about 0
                 self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=at > 0))
@@ -185,7 +190,7 @@ class Scheduler:
 
     # ---------------------------------------------------------------- the image's levels
     def _show_image(self) -> None:
-        if self.img is None or self.img_idx is None:
+        if self._closed or self.img is None or self.img_idx is None:
             return
         lim = self.levels.image(self.img_idx, self.session.state.s > 0, self.img)
         self.sink.image(self.img_idx, self.img, lim)
@@ -278,7 +283,7 @@ class Scheduler:
         """SAMPLE_N profiles at random valid pixels of the image shown, each at its own t (stats.sample_*), on the
         numba thread: the fixed y ranges of the padlock."""
         r = self.ds.roles
-        if self.img is None or r.l is None:
+        if self._closed or self.img is None or r.l is None:
             return
         pix = sample_pixels(self.img, getattr(self.ds, "path", ""), r.nt)
         if pix is None:
