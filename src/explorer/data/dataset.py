@@ -145,6 +145,22 @@ class Dataset:
             return self.executors.numba.submit(self.rowbands.series, int(y), int(x), tuple(idx), list(free_axes))
         return self.executors.numba.submit(self.frames.series, int(y), int(x), tuple(idx), list(free_axes))
 
+    def peek_series(self, y: int, x: int, idx, free_axes):
+        """The series from memory (the row blocks), or None: never reads, never waits. With a per-pixel file use
+        peek_block."""
+        return self.rowbands.peek(y, x, idx, free_axes) if self.rowbands is not None else None
+
+    def read_series(self, y: int, x: int, idx, free_axes):
+        """The series, read now on the calling thread, which must be the one that runs parallel numba (as
+        Executors.submit_latest does); from the row blocks when they hold it."""
+        if self.rowbands is not None:
+            return self.rowbands.series(int(y), int(x), tuple(idx), list(free_axes))
+        return self.frames.series(int(y), int(x), tuple(idx), list(free_axes))
+
+    def peek_block(self, y: int, x: int):
+        """The (s, t, lambda) block at (y, x) from the per-pixel file's cache, or None; never reads."""
+        return self.pixel.peek(y, x) if self.pixel is not None else None
+
     def slit(self, path_xy):
         """(iy, ix): the pixels under a slit path (view coordinates, pixel centres at .5)."""
         return slit_pixels(np.asarray(path_xy, np.float64), self.ny, self.nx)
