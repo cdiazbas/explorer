@@ -186,3 +186,78 @@ class SpectraPanel:
 
     def reset_view(self) -> None:
         self.plots[0].setXRange(*self.x_range, padding=0)      # the others are x-linked to it
+
+
+class AxisDrag(QtCore.QObject):
+    """The y range of a spectrum by hand, on the strip of its y axis (ROADMAP E4.1): a drag moves
+    the range, the wheel or a drag with the right button stretches it about its middle, a double click gives it
+    back to the automatic rules. The range then stays on that plot until F, reset or the double click (the core's
+    YRange.manual and auto). Over the curves a drag still picks lambda (gestures): only the axis strip is taken.
+    set_range(k, (lo, hi)) and auto(k) are the core's; installed after the gestures, so it sees the events first."""
+    STRETCH_PX = 100.0                                  # px of right-button drag per factor e
+    WHEEL = 0.85                                        # the range per wheel notch (in: narrower)
+
+    def __init__(self, panel: "SpectraPanel", set_range, auto):
+        super().__init__(panel.w)
+        self.panel, self.set_range, self.auto = panel, set_range, auto
+        self.drag = None                                # (k, button, press y px, range at the press)
+        vp = panel.w.viewport()
+        vp.setMouseTracking(True)
+        vp.installEventFilter(self)
+
+    def axis_at(self, scene_pos) -> int | None:
+        """The plot whose y axis strip is under scene_pos. The strip is the axis widget's own rectangle: its
+        bounding rect also covers the grid it draws over the whole plot."""
+        for k, p in enumerate(self.panel.plots):
+            ax = p.getAxis("left")
+            if ax.mapRectToScene(QtCore.QRectF(0, 0, ax.width(), ax.height())).contains(scene_pos):
+                return k
+        return None
+
+    def eventFilter(self, obj, e):
+        E, B = QtCore.QEvent.Type, QtCore.Qt.MouseButton
+        t = e.type()
+        if t not in (E.MouseButtonPress, E.MouseButtonRelease, E.MouseMove, E.MouseButtonDblClick, E.Wheel):
+            return False
+        pos = self.panel.w.mapToScene(e.position().toPoint())
+        if self.drag is not None:
+            k, button, y0, r0 = self.drag
+            if t == E.MouseMove:
+                dy = e.position().y() - y0
+                h = max(1.0, self.panel.plots[k].vb.sceneBoundingRect().height())
+                lo, hi = r0
+                if button == B.LeftButton:              # the range follows the pointer, as dragging the data
+                    d = dy / h * (hi - lo)
+                    self.set_range(k, (lo + d, hi + d))
+                else:                                   # down: wider, up: narrower, about the middle
+                    f = float(np.exp(dy / self.STRETCH_PX))
+                    mid, half = (lo + hi) / 2, (hi - lo) / 2 * f
+                    self.set_range(k, (mid - half, mid + half))
+                return True
+            if t == E.MouseButtonRelease and e.button() == button:
+                self.drag = None
+                return True
+            return True
+        k = self.axis_at(pos)
+        if k is None:
+            if t == E.MouseMove and not e.buttons():
+                obj.setCursor(QtCore.Qt.CursorShape.SizeHorCursor)     # over the curves: lambda
+            return False
+        if t == E.MouseMove and not e.buttons():
+            obj.setCursor(QtCore.Qt.CursorShape.SizeVerCursor)
+            return False
+        if t == E.MouseButtonDblClick and e.button() == B.LeftButton:
+            self.drag = None
+            self.auto(k)
+            return True
+        if t == E.MouseButtonPress and e.button() in (B.LeftButton, B.RightButton):
+            self.drag = (k, e.button(), e.position().y(), tuple(self.panel.plots[k].vb.viewRange()[1]))
+            return True
+        if t == E.Wheel:
+            lo, hi = self.panel.plots[k].vb.viewRange()[1]
+            notches = e.angleDelta().y() / 120.0
+            f = self.WHEEL ** notches
+            y = self.panel.plots[k].vb.mapSceneToView(pos).y()     # about the value under the pointer
+            self.set_range(k, (y - (y - lo) * f, y + (hi - y) * f))
+            return True
+        return False

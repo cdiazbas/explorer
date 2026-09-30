@@ -29,7 +29,7 @@ from .imageview import ImageView
 from .lambda_t import LambdaTPanel
 from .loop import QtLoop
 from .padlock import PanelLock
-from .spectra import SpectraPanel
+from .spectra import AxisDrag, SpectraPanel
 from .status import diagnostics_text, pixel_text
 from .toolbar import NavBar
 
@@ -212,6 +212,15 @@ class Shell(QtWidgets.QMainWindow):
         self._gestures = Gestures(self, picks, image)
         for vp in [*picks, image]:
             vp.installEventFilter(self._gestures)
+        if self.spectra is not None:                    # after the gestures: the y axis strip first (E4.1)
+            self._axis_drag = AxisDrag(self.spectra, self.scheduler_y_manual, self.scheduler_y_auto)
+
+    def scheduler_y_manual(self, k: int, r) -> None:
+        if r[1] > r[0]:
+            self.scheduler.set_y_manual(k, r)
+
+    def scheduler_y_auto(self, k: int) -> None:
+        self.scheduler.y_auto(k)
 
     def _panel_click(self, ev) -> None:
         if ev.button() == QtCore.Qt.MouseButton.RightButton:
