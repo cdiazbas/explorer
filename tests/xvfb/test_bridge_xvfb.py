@@ -365,3 +365,12 @@ def test_traffic_is_counted_and_an_expose_costs_no_pixels(x, app):
     assert s1["MB"] == s0["MB"]                         # copied again on the server, not sent
     bad, _ = same_as_qt(x, app, mw["xid"])
     assert bad == 0
+
+
+def test_the_link_probe_measures_the_display():
+    """The default playback rate over ssh comes from linkprobe.measure, on the bridge's own X11 client."""
+    from explorer.platform import linkprobe
+
+    r = linkprobe.measure(mb=1, display=XDISP)
+    assert r["MBps"] > 0 and r["rtt_ms"] >= 0
+    assert 2 <= linkprobe.suggest_fps(r["MBps"], 1.3 * 772 * 803) <= 30

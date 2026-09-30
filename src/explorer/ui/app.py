@@ -64,6 +64,9 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
         if shell.terminal_keys is not None:
             print(f"[{APP_NAME}] keys typed in this terminal also reach the window ({termkeys.ENV}=0: off)",
                   file=sys.stderr, flush=True)
+        link = disp.link()
+        if plan.remote and link.bytes_per_px is not None:
+            shell.start_link_probe(link)                # the default playback rate from what the link carries
         log.info("%s; %s", ds.describe(), disp.stats())
         if quit_after is not None:
             shell.after_first_image(quit_after, app.quit)

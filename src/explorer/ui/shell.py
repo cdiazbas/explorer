@@ -18,6 +18,7 @@ import time
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .._name import APP_NAME
 from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
@@ -101,6 +102,13 @@ class Shell(QtWidgets.QMainWindow):
         self.lt_dock = docks.dock(self, "λ–t", self.lt_panel, "lambda_t")
         self.setAnimated(False)
         self.nav = NavBar(self)
+        # playback: t forward at the toolbar's rate, round the end (the prototype's _toggle_play, _play_step)
+        self._play = QtCore.QTimer(self)
+        self._play.timeout.connect(self._play_step)
+        self._fps: list[float] = []
+        self.nav.play.toggled.connect(self.set_playing)
+        self.nav.fps.valueChanged.connect(lambda v: self._play.setInterval(int(1000 / v)))
+        self._play.setInterval(int(1000 / self.nav.fps.value()))
         # the padlocks, both open at start (the prototype's): closed = fixed, right click = fit to what is shown
         self.image_lock = PanelLock(self.view.widget, "Image contrast: closed = fixed, open = automatic per image. "
                                     "Click to switch; right click fixes it to this image")
@@ -241,6 +249,64 @@ class Shell(QtWidgets.QMainWindow):
         for axis, v in want.items():
             self.session.set_index(axis, v)
 
+    # ---------------------------------------------------------------- playback
+    def set_playing(self, on: bool) -> None:
+        self._fps = []
+        (self._play.start if on else self._play.stop)()
+        self.nav.play.setText("\u23f8 t" if on else "\u25b6 t")
+        if self.nav.play.isChecked() != on:
+            self.nav.play.setChecked(on)
+
+    def _play_step(self) -> None:
+        self.session.step("t", 1, wrap=True)
+        self._fps.append(time.perf_counter())
+        self._fps = self._fps[-30:]
+
+    def played_fps(self) -> float | None:
+        """The rate actually shown over the last steps (30 at most); None before three."""
+        f = self._fps
+        return (len(f) - 1) / (f[-1] - f[0]) if len(f) > 2 and f[-1] > f[0] else None
+
+    def start_link_probe(self, link) -> None:
+        """Over a remote X display: the link measured in the background 1.5 s after start (so it does not compete
+        with the start-up's traffic), and the default rate set to 60 % of it over one image, unless the rate was
+        already changed; the prototype's start_link_probe. link: the Display's LinkInfo (bytes per image pixel,
+        the rate not to go above)."""
+        import threading
+
+        from ..platform import linkprobe
+
+        res, default = {}, self.nav.fps.value()
+
+        def run():
+            try:
+                res.update(linkprobe.measure())
+            except Exception as e:                      # the display refused a second connection...: keep it
+                res["error"] = str(e)
+
+        th = threading.Thread(target=run, daemon=True, name="linkprobe")
+
+        def apply():
+            if th.is_alive():
+                QtCore.QTimer.singleShot(100, apply)
+                return
+            if "MBps" not in res:
+                print(f"[{APP_NAME}] link probe skipped: {res.get('error')}", file=sys.stderr)
+                return
+            cw = self.centralWidget()
+            fps = linkprobe.suggest_fps(res["MBps"], link.bytes_per_px * cw.width() * cw.height(), hi=link.fps_cap)
+            if self.nav.fps.value() == default:
+                self.nav.fps.setValue(fps)
+            msg = f"X11 link ~{res['MBps']:.0f} MB/s, round trip {res['rtt_ms']:.1f} ms: playback at {fps} fps"
+            self.statusBar().showMessage(msg, 10000)
+            print(f"[{APP_NAME}] {msg}", file=sys.stderr)
+
+        def start():
+            th.start()
+            QtCore.QTimer.singleShot(100, apply)
+
+        QtCore.QTimer.singleShot(1500, start)
+
     def _image_refit(self) -> None:
         """The image padlock's right click: the contrast fixed to the image shown now."""
         self.scheduler.fix_levels(True, refit=True)
@@ -305,6 +371,8 @@ class Shell(QtWidgets.QMainWindow):
             rows += [("F", "spectra: fit y to this pixel, and keep it", ((K.Key_F, self.fit_spectra),)),
                      ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
                       (("Shift+F", self.spectra_to_sample),))]
+        if s.present["t"] and s.sizes["t"] > 1:
+            rows.append(("Space", "play, pause t", ((K.Key_Space, lambda: self.nav.play.toggle()),)))
         rows += [("L", "lock, release the cursor", ((K.Key_L, lambda: s.lock(not s.state.locked)),)),
                  ("Esc", "release the cursor", ((K.Key_Escape, lambda: s.lock(False)),)),
                  ("F12", "the cube, storage and memory in the status bar",
@@ -396,6 +464,7 @@ class Shell(QtWidgets.QMainWindow):
     # ---------------------------------------------------------------- closing
     def closeEvent(self, ev) -> None:
         self._closing = True                            # the docks then say hidden: nothing to read any more
+        self._play.stop()
         self._mem.stop()
         self._off()
         self.scheduler.close()
