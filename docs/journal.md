@@ -830,3 +830,33 @@ el plan deja para después.
   4-D `s,l`, 3-D desconocido, 3-D `t` y 5-D. Pasos, espectros y λ–t en índices.
 
 El demo acepta `--axes`.
+
+### 2026-09-30: niveles de contraste (ROADMAP E2.4)
+
+**Lo que había en el prototipo.** No eran seis copias iguales, sino dos reglas:
+
+| Dónde | Regla |
+|---|---|
+| Imagen (`limits`, en caché en `_limits`) | submuestra `[::8, ::8]`, valores finitos y distintos de 0; I entre los percentiles 1 y 99; Q, U y V simétricos al p99 de \|v\|; caché por (índice, Q U V o no), LRU de 4096 |
+| λ–t y cortes de rendija (`_set_lt`, `_paint_slice`) | todos los valores finitos, ceros incluidos; p1–p99, o mín–máx con 10 valores o menos; (0, 1) si nada es finito |
+
+Además, `look.py` pone el λ–t y los cortes simétricos en Q, U y V (p99 de |v|, si es mayor que 0),
+y `_toggle_fix` / `_image_refit` fijan los niveles de la imagen.
+
+**Implementado:** `core/levels.py`, con las dos reglas en un solo sitio (`image_levels`, que es
+`stats.limits`, ya idéntico al prototipo en las pruebas de oro, y `panel_levels`), la caché y el
+modo fijo.
+- El planificador calcula los niveles y los pasa con cada imagen y cada λ–t.
+- `Scheduler.fix_levels(on, refit)` es el candado de la imagen.
+
+**Diferencia buscada.** El prototipo guardaba un solo par de niveles fijos: fijados en I, Q se
+seguía pintando con el rango de I. Aquí se guardan aparte para I y para Q U V.
+
+**Pruebas (5):**
+- la regla de la imagen es la del prototipo;
+- la regla del λ–t, con sus casos límite (todo NaN, pocos valores, plano, |v| = 0);
+- caché por índice, con desalojo, y niveles fijos separados para I y para Q U V;
+- con el planificador sobre el cubo sintético:
+  - la imagen llega con sus niveles, y fijados se mantienen al cambiar t;
+  - V tiene los suyos, simétricos;
+  - el λ–t de V es simétrico.
