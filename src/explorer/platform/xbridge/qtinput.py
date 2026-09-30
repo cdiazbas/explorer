@@ -349,8 +349,15 @@ class QtInput:
                 self._activate(h)
             if self._sink is not None and self._sink.isVisible():
                 self._sink.hide()
-        elif fw is not None and not self.is_sink(fw) and not self._focus_out.isActive():
-            self._activate(self._sink_window(fw))
+        elif not self._focus_out.isActive():
+            if fw is not None and not self.is_sink(fw):
+                self._activate(self._sink_window(fw))
+            else:
+                # a popup closed by the X focus leaving: Qt on Linux kept its parent active with no focus window
+                active = QtWidgets.QApplication.activeWindow()
+                h = active.windowHandle() if fw is None and active is not None else None
+                if h is not None:
+                    self._activate(self._sink_window(h))
 
     def _activate(self, h: QtGui.QWindow) -> None:
         self._following = True
