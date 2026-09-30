@@ -66,7 +66,8 @@ class Executors:
         self.numba_threads = self.numba.submit(_set_threads, n).result()
         self.io = ThreadPoolExecutor(max(1, io_threads), thread_name_prefix="io")
         strips = min(8, os.cpu_count() or 1) if strips is None else strips
-        self.strips = ThreadPoolExecutor(max(1, strips), thread_name_prefix="strips")
+        self.n_strips = max(1, strips)                  # the row strips a kernel is split into (kernels.reduce_u8)
+        self.strips = ThreadPoolExecutor(self.n_strips, thread_name_prefix="strips")
         self.background = ThreadPoolExecutor(1, thread_name_prefix="background")
         self.generations = Generations()
 

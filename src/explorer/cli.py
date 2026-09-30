@@ -25,6 +25,13 @@ def _parser() -> argparse.ArgumentParser:
         epilog=f"subcommands (explorer <subcommand> --help):\n{lines}")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     ap.add_argument("cube", nargs="?", help="a cube to open (_im.fits); its per-pixel file is found next to it")
+    ap.add_argument("--sp", help="this per-pixel file instead of the one found next to the cube")
+    ap.add_argument("--nosp", action="store_true", help="read without the per-pixel file")
+    ap.add_argument("--axes", help="what the leading axes are, slowest first, e.g. t,l or s,l (l is lambda), for "
+                                   "cubes whose header does not say it")
+    ap.add_argument("--x11", choices=("auto", "native", "bridge"), default="auto",
+                    help="over ssh -Y: Qt's own X11 (native) or the bridge; auto decides")
+    ap.add_argument("--quit-after", type=float, metavar="S", help="quit S seconds after the first image (measurements)")
     return ap
 
 
@@ -44,5 +51,9 @@ def main(argv: list[str] | None = None) -> int:
     if a.cube is None:
         _parser().print_help()
         return 0
-    print(f"{APP_NAME}: opening a cube is not implemented yet (ROADMAP E3): {a.cube}", file=sys.stderr)
-    return 2
+    if not os.path.exists(a.cube):
+        print(f"{APP_NAME}: no such file: {a.cube}", file=sys.stderr)
+        return 2
+    from .ui.app import run
+
+    return run(a.cube, sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11, quit_after=a.quit_after)

@@ -20,9 +20,9 @@ def test_no_arguments_prints_help(capsys):
     assert "usage: explorer" in out and "doctor" in out
 
 
-def test_cube_not_implemented_yet(capsys):
+def test_a_cube_that_does_not_exist(capsys):
     assert cli.main(["some_im.fits"]) == 2
-    assert "not implemented yet" in capsys.readouterr().err
+    assert "no such file" in capsys.readouterr().err
 
 
 def test_import_does_not_load_heavy_modules():

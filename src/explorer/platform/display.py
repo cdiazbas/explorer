@@ -11,6 +11,23 @@ from dataclasses import dataclass
 from .._name import APP_NAME
 from .plan import DisplayPlan
 
+# Qt's offscreen platform says so for every raise() and size-hint update (under the bridge, one line per mouse move
+# while a panel was dragged); only these messages are dropped, everything else still prints (the prototype's
+# _quiet_offscreen)
+OFFSCREEN_NOISE = ("This plugin does not support raise()", "This plugin does not support propagateSizeHints()",
+                   "This plugin does not support grabbing the mouse",
+                   "This plugin does not support grabbing the keyboard",
+                   "This plugin does not support setting window masks")
+
+
+def _quiet_offscreen() -> None:
+    from PySide6 import QtCore
+
+    def handler(mode, ctx, msg):
+        if msg not in OFFSCREEN_NOISE:
+            sys.stderr.write(msg + "\n")
+    QtCore.qInstallMessageHandler(handler)
+
 
 class NoDisplay(SystemExit):
     """The app cannot show a window here; the message says why and what to do."""
@@ -82,6 +99,8 @@ class Display:
             raise NoDisplay(f"[{APP_NAME}] no screen to show the window on. {where}.")
         if app.platformName() != "cocoa":
             app.setStyle("Fusion")                      # over X11 there is no desktop theme; the look comes in E5
+        if app.platformName() == "offscreen":
+            _quiet_offscreen()
         return app
 
     def attach(self, app, window) -> WindowOps:

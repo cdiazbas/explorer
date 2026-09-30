@@ -6,11 +6,11 @@ Without a cube it uses a small synthetic one (explorer.testing.synth), written o
 the right default on a machine without the shared test cubes (a Mac on its local disk, where big cubes are not
 welcome). scripts/demo.sh picks the real test cube when the project's data/ link resolves.
 
-What it runs grows with the ROADMAP; today: doctor on the cube, with a 2 s window that shows whether the display
-works (over ssh -Y too), then a cursor walk through the data layer: the cursor visits pixels across the field and
-each move prints how long the spectrum and the lambda-t took, with the per-pixel file (default, when there is one)
-or without it (--nosp), so both can be compared on the same cube: first jumps across the field, then a drag in
-1-pixel steps. From E3 on it opens the viewer.
+What it runs grows with the ROADMAP; today: doctor on the cube, then the viewer on it (the image, and keys for t,
+lambda and Stokes: ROADMAP E3.6). With --no-window, instead of the viewer, a cursor walk through the data layer:
+the cursor visits pixels across the field and each move prints how long the spectrum and the lambda-t took, with
+the per-pixel file (default, when there is one) or without it (--nosp), so both can be compared on the same cube:
+first jumps across the field, then a drag in 1-pixel steps.
 
     explorer demo [cube] [--nosp | --sp FILE] [--moves N] [--no-window]
 """
@@ -111,18 +111,22 @@ def main(argv=None) -> int:
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--nosp", action="store_true", help="read without the per-pixel file, from the image cube")
     g.add_argument("--sp", help="this per-pixel file instead of the one found next to the cube")
-    ap.add_argument("--moves", type=int, default=12, help="cursor moves in the walk (default 12)")
+    ap.add_argument("--moves", type=int, default=12, help="with --no-window: cursor moves in the walk (default 12)")
     ap.add_argument("--axes", help="what the leading axes are, slowest first, e.g. t,l or s,l (l is lambda); "
                                    "for cubes whose header does not say it")
     a = ap.parse_args(argv)
     cube = a.cube or synthetic_cube()
     kind = "synthetic" if a.cube is None else "given"
     print(f"{APP_NAME} {__version__} demo on the {kind} cube {cube}", flush=True)
-    print("  implemented so far: doctor (environment, numba, Qt, the cube's header) and the data layer (cursor walk);"
-          " the viewer comes with ROADMAP E3", flush=True)
+    print("  implemented so far: doctor (environment, numba, Qt, the cube's header), the data layer and the core "
+          "(cursor walk with --no-window), and the viewer's image window", flush=True)
     from . import doctor
 
-    rc = doctor.main([cube] + ([] if a.no_window else ["--show"]))
+    rc = doctor.main([cube])
+    if not a.no_window:
+        from .ui.app import run
+
+        return run(cube, sp=a.sp, no_sp=a.nosp, axes=a.axes) or rc
     if a.moves > 0:
         cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves, axes=a.axes)
         cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves, drag=True, axes=a.axes)
