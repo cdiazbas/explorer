@@ -1,0 +1,128 @@
+"""The display a plan chose, on Qt: the environment before Qt starts, the application, and what a window needs from
+the platform. The views see WindowOps only; nothing else in the UI branches on the operating system (docs/plan.md
+§3.5). From the prototype's app/startup.py (prepare, make_app, show, _mac_zoom_not_fullscreen, start_link_probe).
+The X11 bridge joins as another Display in ROADMAP E6.
+"""
+import os
+import sys
+from collections.abc import MutableMapping
+from dataclasses import dataclass
+
+from .._name import APP_NAME
+from .plan import DisplayPlan
+
+
+class NoDisplay(SystemExit):
+    """The app cannot show a window here; the message says why and what to do."""
+
+
+@dataclass(frozen=True)
+class LinkInfo:
+    """What the link to the screen carries: bytes per pixel of the image panel per image shown, and the playback
+    rate not to go above. None: a local screen, no limit. Measured 2026-09-24 (the prototype's start_link_probe):
+    Qt's own X11 ~4.8 B/px (4 B/px plus the side panels), capped at 30 fps; the live measurement of the link joins
+    with the bridge (ROADMAP E6)."""
+    bytes_per_px: float | None
+    fps_cap: int | None
+
+
+class WindowOps:
+    """What a view may ask of its window."""
+
+    def __init__(self, window, display: "Display"):
+        self.w, self._display = window, display
+
+    def resize(self, w: int, h: int) -> None:
+        self.w.resize(int(w), int(h))
+
+    def activate(self) -> None:
+        """Raise the window and give it the keyboard. Launched from a terminal, the first key (Space to play) went
+        to the terminal otherwise (the prototype's show); on a Mac this also brings the app to the front."""
+        self.w.raise_()
+        self.w.activateWindow()
+
+    def zoom(self) -> None:
+        self.w.showMaximized()
+
+    def minimize(self) -> None:
+        self.w.showMinimized()
+
+
+class Display:
+    def __init__(self, plan: DisplayPlan):
+        self.plan = plan
+
+    @property
+    def kind(self) -> str:
+        return self.plan.kind
+
+    def prepare_env(self, env: MutableMapping | None = None) -> None:
+        """Before Qt starts: stop with the plan's message if there is no way to show a window, else set what the plan
+        asks (QT_QPA_PLATFORM)."""
+        if self.plan.stop:
+            raise NoDisplay(f"[{APP_NAME}] {self.plan.stop}")
+        target = os.environ if env is None else env
+        for k, v in self.plan.env.items():
+            target[k] = v
+
+    def make_app(self, argv=None):
+        """The QApplication (the running one if there is one), named after the app. Stops when Qt sees no screen: a
+        Mac reached by ssh without X11 starts Qt and has none (the prototype's make_app)."""
+        from typing import cast
+
+        from PySide6 import QtWidgets
+
+        app = cast(QtWidgets.QApplication,
+                   QtWidgets.QApplication.instance() or QtWidgets.QApplication(list(argv or sys.argv[:1])))
+        app.setApplicationName(APP_NAME)
+        if not app.screens():
+            where = ("macOS over ssh has no window server: connect with ssh -Y (the window then comes through X11), "
+                     "or run it in a Terminal on that Mac" if sys.platform == "darwin"
+                     else "no display: check DISPLAY or ssh -Y")
+            raise NoDisplay(f"[{APP_NAME}] no screen to show the window on. {where}.")
+        if app.platformName() != "cocoa":
+            app.setStyle("Fusion")                      # over X11 there is no desktop theme; the look comes in E5
+        return app
+
+    def attach(self, app, window) -> WindowOps:
+        """Show the window, raise it and give it the keyboard; on a local Mac, its green button zooms rather than
+        opening a full-screen space."""
+        ops = WindowOps(window, self)
+        window.show()
+        ops.activate()
+        if sys.platform == "darwin" and app.platformName() == "cocoa":
+            _mac_zoom_not_fullscreen(window)
+        return ops
+
+    def link(self) -> LinkInfo:
+        if self.plan.remote and not self.plan.bridge:
+            return LinkInfo(bytes_per_px=4.8, fps_cap=30)
+        return LinkInfo(bytes_per_px=None, fps_cap=None)
+
+    def stats(self) -> dict:
+        return {"kind": self.kind, "platform": self.plan.platform, "remote": self.plan.remote,
+                "bridge": self.plan.bridge, "notes": list(self.plan.notes)}
+
+    def close(self) -> None:
+        pass
+
+
+def _mac_zoom_not_fullscreen(window) -> None:
+    """A local Mac: the green button zooms (fills the screen without the menu bar and the Dock) instead of opening a
+    full-screen space (decided by the user). Qt's WindowFullscreenButtonHint does not reach it: the NSWindow's
+    collectionBehavior is set directly, FullScreenPrimary (128) out, FullScreenNone (512) in. Measured in the
+    prototype: 128 -> 512, and a maximised window at the screen's visible frame."""
+    import ctypes
+
+    try:
+        objc = ctypes.cdll.LoadLibrary("/usr/lib/libobjc.A.dylib")
+        sel = objc.sel_registerName
+        sel.restype, sel.argtypes = ctypes.c_void_p, [ctypes.c_char_p]
+        get = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
+        put = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong)(("objc_msgSend", objc))
+        win = get(ctypes.c_void_p(int(window.winId())), sel(b"window"))      # the NSView's NSWindow
+        if win:
+            b = int(get(win, sel(b"collectionBehavior")) or 0)
+            put(win, sel(b"setCollectionBehavior:"), (b & ~128) | 512)
+    except (OSError, AttributeError, ValueError):
+        pass                                            # an unexpected Qt or macOS: the system's green button
