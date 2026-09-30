@@ -697,3 +697,33 @@ Esa mañana el almacenamiento iba rápido; con él cargado, la ganancia esperada
 - La sincronización se había saltado, así que esa ejecución midió el código viejo. Se descartó y se
   repitió.
 - Desde entonces cada paso remoto aborta si falla la comprobación.
+
+### 2026-09-30: estado del visor y un aviso por ráfaga (ROADMAP E2.1)
+
+**Decisión previa.** [ADR 0007](decisions/0007-core-sin-qt.md): `explorer.core` sin Qt. Un contrato
+de `lint-imports` lo comprueba.
+
+**Implementado:**
+- **`core/loop.py`:** `Loop`, con `call_soon` (la próxima pasada del bucle) y `post` (llevar algo al
+  hilo principal desde cualquier hilo). `ManualLoop` no ejecuta nada hasta `pump()`, así que la
+  prueba decide el orden. La versión de Qt llega en E3.
+- **`core/state.py`:**
+  - `ViewState` inmutable: t, s, λ, cursor, bloqueo, camino, reproducción y paneles visibles (el
+    planificador los necesita para no leer para un panel oculto; el plan no los listaba).
+  - `Store.set(**campos)` da un aviso por ráfaga, con los campos que difieren del último aviso,
+    como el temporizador de 0 ms del prototipo (`Viewer._hover_timer`). Un campo cambiado y
+    devuelto dentro de la ráfaga no se avisa.
+  - Un oyente que falla no silencia a los demás; va al registro.
+
+**Pruebas (7):**
+- una ráfaga da un aviso;
+- sin cambio no hay aviso;
+- las ráfagas se miden contra el último aviso;
+- el estado es inmutable y se rechazan campos desconocidos;
+- los oyentes están aislados;
+- desuscribirse y los cambios hechos durante un aviso;
+- `post` desde 8 hilos se ejecuta en el hilo que bombea.
+
+**Coste** (Mac M1, 20 000 movimientos × 5): 4.3 µs por movimiento con su aviso, 2.7 µs por `set`
+dentro de una ráfaga. Es ~0.05 % de los 6–15 ms que cuesta un movimiento del cursor en el
+prototipo.

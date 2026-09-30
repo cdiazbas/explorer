@@ -41,7 +41,14 @@ sección que la origina.
 | E1.11 | ✅ | Pruebas de comparación del nivel 1 (`tests/golden/test_data.py`): el caso sintético siempre; el real del 6173 en bellatrix (`-m golden_real`) | E1.1 | 2026-09-29 | journal 09-29 |
 | E1.12 | ✅ | Hilos por petición en las lecturas dispersas: pocos para las pequeñas o probablemente en caché (espectro, movimientos de 1 px), muchos para un λ–t en frío. Un 64 fijo ganó 33 % con el almacenamiento cargado, 4 % con el almacenamiento rápido, y fue más lento en el espectro (27 frente a 20 ms) y en un λ–t en caché del sistema (33 frente a 24 ms). Medir a distintas horas | E1.10 | 2026-09-29 | journal 09-30 |
 | E1.13 | ✅ | Vecinos gratis sin `_sp`: cada serie se lee con su fila entera (8 KB por imagen) y los píxeles de esa fila salen de memoria (`data/rowbands.py`). Primera lectura igual que el prototipo (1.009), el vecino 0.10 frente a 17.6 ms | E1.10 | 2026-09-29 | journal 09-29 |
-| E2 | ⬜ | `explorer.core` + `testing.Driver` (PLAN §3.3, §6) | E1 | 2026-09-28 | — |
+| E2 | 🔄 | `explorer.core` + `testing.Driver` (PLAN §3.3, §6; sin Qt, [ADR 0007](decisions/0007-core-sin-qt.md)): tareas E2.1–E2.7 | E1 | 2026-09-28 | — |
+| E2.1 | ✅ | `ViewState` inmutable y `Store`: `set(**campos)`, un aviso por ráfaga con los campos que cambiaron; el momento de avisar se inyecta (de `Viewer._on_hover`, `_hover_timer`) | E1 | 2026-09-30 | journal 09-30 |
+| E2.2 | ⬜ | `Session` con un cubo: tiempo maestro; por cubo, su λ, su Stokes y si van enlazados (trivial con uno, preparado para E8) | E2.1 | 2026-09-30 | — |
+| E2.3 | ⬜ | `scheduler`: una cola por `Dataset` donde solo vale la última petición; espectro antes que λ–t; qué dispara cada cambio (t → espectros, Stokes → λ–t, λ → marcas; de `set_index`, `_update_cursor`); nada sobre el relleno ni para paneles ocultos; el paso al hilo principal se inyecta | E2.1 | 2026-09-30 | — |
+| E2.4 | ⬜ | `levels`: límites de contraste por (Dataset, Stokes, idx), en caché, con modo fijo (de `Viewer._limits`, `_toggle_fix`) | E2.1 | 2026-09-30 | — |
+| E2.5 | ⬜ | `yrange`: crece al mover, ajuste tras 0.4 s quieto; rangos fijos desde la muestra; Q U V bajo pedido (de `_set_spectra`, `_yfit`, `_sample_ready`, `_quv_ready`) | E2.3 | 2026-09-30 | — |
+| E2.6 | ⬜ | `testing.Driver` sin pantalla: `hover`, `step`, `set_stokes`, `lock`, `state()`, `pump()`, `wait_idle()`; pruebas de generación, ráfagas y relleno | E2.3 | 2026-09-30 | — |
+| E2.7 | ⬜ | Coste de las capas frente a la línea base (PLAN §10): cursor y paso en t, ABBA frente al prototipo | E2.6 | 2026-09-30 | — |
 | E3 | ⬜ | `platform/plan.py`, `Display` (cocoa, xcb, offscreen), `Shell` mínima con la imagen (PLAN §3.5, §6) | E2 | 2026-09-28 | — |
 | E4 | ⬜ | Espectros, λ–t, cursor, reproducción; niveles 2 y 3 de la comparación (PLAN §6, §7.1) | E3 | 2026-09-28 | — |
 | E5 | ⬜ | Aspecto moderno como `Look`; `ActionRegistry`; disposición con esquema versionado (PLAN §3.6, §6) | E4 | 2026-09-28 | — |
