@@ -226,6 +226,20 @@ class Scheduler:
         fut = self._track(self.ds.pixel_block(y, x))
         fut.add_done_callback(lambda f: self.loop.post(lambda: arrived(f)))
 
+    def _as(self, arr, axes, want) -> np.ndarray:
+        """arr, read along `axes` in the cube's order, as an array over the axes in `want` (the panels' order):
+        a cube keeping lambda before t or Stokes (--axes l,t) gave lambda-t transposed and the spectra scrambled."""
+        r = self.ds.roles
+        size = {r.t: r.nt, r.s: r.ns, r.l: r.nl}
+        a = np.asarray(arr).reshape([size[ax] for ax in axes])
+        want = [ax for ax in want if ax is not None]
+        return a if list(axes) == want else a.transpose([list(axes).index(ax) for ax in want])
+
+    def _spec(self, arr, spec_axes) -> np.ndarray:
+        """The spectra as (Stokes, lambda), a single Stokes as one row."""
+        r = self.ds.roles
+        return self._as(arr, spec_axes, (r.s, r.l)).reshape(r.ns, r.nl)
+
     def _read_series(self, g: int, st: ViewState, want_spec: bool, want_lt: bool) -> None:
         r, (y, x) = self.ds.roles, st.cursor
         idx = self.session.index(state=st)
@@ -235,9 +249,9 @@ class Scheduler:
         spec = self.ds.peek_series(y, x, idx, spec_axes) if want_spec else None
         lt = self.ds.peek_series(y, x, idx, lt_axes) if want_lt else None
         if spec is not None:
-            self._show("spectra", g, spec.reshape(r.ns, r.nl), (y, x), st.t)
+            self._show("spectra", g, self._spec(spec, spec_axes), (y, x), st.t)
         if lt is not None:
-            self._show("lambda_t", g, lt, (y, x), st.s)
+            self._show("lambda_t", g, self._as(lt, lt_axes, (r.t, r.l)), (y, x), st.s)
         need_spec, need_lt = want_spec and spec is None, want_lt and lt is None
         if not (need_spec or need_lt):
             return
@@ -247,10 +261,10 @@ class Scheduler:
                 counter("core.cursor.skipped_stale")
                 return
             if need_spec:
-                sp = self.ds.read_series(y, x, idx, spec_axes).reshape(r.ns, r.nl)
+                sp = self._spec(self.ds.read_series(y, x, idx, spec_axes), spec_axes)
                 self.loop.post(lambda: self._show("spectra", g, sp, (y, x), st.t))
             if need_lt and not self.gens.stale("cursor", g):
-                lt_ = self.ds.read_series(y, x, idx, lt_axes)
+                lt_ = self._as(self.ds.read_series(y, x, idx, lt_axes), lt_axes, (r.t, r.l))
                 self.loop.post(lambda: self._show("lambda_t", g, lt_, (y, x), st.s))
 
         def failed(f: Future) -> None:

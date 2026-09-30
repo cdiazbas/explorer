@@ -71,3 +71,34 @@ def test_cubes_without_a_header(tmp_path, shape, axes, how, want):
             settle(sched)
             assert rec.calls and rec.calls[0][0] == "image"
         sched.close()
+
+
+class Values(Recorder):
+    def spectra(self, spec, pixel, t):
+        self.calls.append(("spectra", np.array(spec), pixel))
+
+    def lambda_t(self, lt, pixel, s, levels):
+        self.calls.append(("lambda_t", np.array(lt), pixel))
+
+
+@pytest.mark.parametrize("shape, axes", [((7, 5, 16, 12), "l,t"), ((7, 4, 16, 12), "l,s")])
+def test_lambda_before_t_or_stokes_still_reaches_the_panels_as_t_lambda_and_s_lambda(tmp_path, shape, axes):
+    """The panels take the spectra as (Stokes, lambda) and lambda-t as (t, lambda), whatever order the cube keeps
+    them in: read along the cube's order, a (lambda, t) cube's lambda-t came transposed and a (lambda, s) cube's
+    spectra scrambled."""
+    p = bare(tmp_path, shape)
+    data = fits.getdata(p)
+    with Dataset.open(p, no_sp=True, axes=axes) as ds:
+        sess = Session(ManualLoop(), ds)
+        rec = Values()
+        sched = Scheduler(sess, rec)
+        settle(sched)
+        y, x = sess.state.cursor
+        got = {c[0]: c[1] for c in rec.calls if c[0] in ("spectra", "lambda_t")}
+        if axes == "l,t":
+            assert np.allclose(got["lambda_t"], data[:, :, y, x].T)                 # (t, lambda)
+            assert np.allclose(got["spectra"], data[:, sess.state.t, y, x][None])
+        else:
+            assert "lambda_t" not in got
+            assert np.allclose(got["spectra"], data[:, :, y, x].T)                   # (s, lambda)
+        sched.close()
