@@ -57,6 +57,12 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
         geo = app.primaryScreen().availableGeometry()
         shell.resize(int(geo.width() * 0.8), int(geo.height() * 0.8))
         disp.attach(app, shell)
+        from . import termkeys
+
+        shell.terminal_keys = termkeys.attach(shell)     # over ssh -Y the keyboard stays in the terminal until a click
+        if shell.terminal_keys is not None:
+            print(f"[{APP_NAME}] keys typed in this terminal also reach the window ({termkeys.ENV}=0: off)",
+                  file=sys.stderr, flush=True)
         log.info("%s; %s", ds.describe(), disp.stats())
         if quit_after is not None:
             shell.after_first_image(quit_after, app.quit)
