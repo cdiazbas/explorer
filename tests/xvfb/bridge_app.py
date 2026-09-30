@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import time
 
 import numpy as np
@@ -81,11 +82,13 @@ def main():
                     maximized=bool(w.windowState() & QtCore.Qt.WindowState.WindowMaximized),
                     summary=bridge.summary())
 
+    grabs = tempfile.mkdtemp(prefix="bridge_app_")      # read back by the test, removed with the system's temp
+
     def grab(target):
         img = target.screen().grabWindow(target.winId()).toImage().convertToFormat(QtGui.QImage.Format.Format_RGB32)
         arr = np.frombuffer(img.constBits(), np.uint32).reshape(img.height(), img.bytesPerLine() // 4)
         arr = arr[:, :img.width()].copy()
-        path = f"/tmp/carlosjd_xvfbB/grab_{os.getpid()}_{id(target)}.npy"
+        path = os.path.join(grabs, f"grab_{id(target)}.npy")
         np.save(path, arr)
         return dict(path=path, w=img.width(), h=img.height())
 
