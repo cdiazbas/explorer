@@ -1215,3 +1215,108 @@ y la línea de estado. El panel de imagen mide 772×803 en los dos.
 - **Sin medir:** `ssh -Y` hasta XQuartz, es decir, las ~12 frente a ~8.5 imágenes/s y los bytes
   frente a xcb de la Fase F2. Necesita al usuario. El foco sin clic (E6.1) tampoco se ha medido: en
   Xvfb no hay gestor de ventanas.
+
+### 2026-09-30: el puente X11 reescrito, opción B de P4 (ROADMAP E6, borrador)
+
+**Qué.** Un puente nuevo, `platform/xbridge2/`, escrito sin copiar el del prototipo: `--x11 bridge2`
+o `EXPLORER_X11=bridge2`. `auto` no lo elige. Diseño y decisión propuesta en
+[ADR 0009](decisions/0009-puente-x11-reescrito.md). En paralelo, otro trabajo trae el del
+prototipo tal cual (opción A), para que el usuario compare.
+
+**Cómo está hecho:**
+- **Cliente X11 propio** (`xproto.py`) en lugar de python-xlib: peticiones en búfer, respuestas en
+  un hilo lector.
+  - Al empezar, átomos, extensiones, teclado, monitores y puntero salen juntos: tres idas y
+    vueltas antes de Qt.
+  - La conexión de imágenes se abre en su hilo mientras Qt arranca.
+- **Transporte** (`transport.py`, `kernels.py`): las ideas medidas del prototipo, reescritas.
+  - Teselas 32×32 y gris a 1 B/px por RENDER.
+  - Pixmap en el servidor y una CopyArea: nunca media actualización en pantalla.
+  - Peticiones escritas por numba.
+  - Como mucho dos actualizaciones sin confirmar por el servidor; la siguiente se captura cuando
+    el emisor queda libre.
+  - Un `Expose` se repinta desde el pixmap del servidor, sin volver a enviar píxeles.
+- **Ventanas** (`windows.py`): ICCCM/EWMH, transitorios, formas, cursores, iconificar,
+  maximizar, y ecos de `ConfigureNotify` por número de petición.
+  - El foco: `_NET_ACTIVE_WINDOW` con una hora del servidor al mapear la ventana,
+    `_NET_WM_USER_TIME`, `WM_TAKE_FOCUS`.
+  - Sin gestor de ventanas, el foco X directo.
+- **Entrada** (`qtinput.py`) **solo con API pública de Qt:** eventos enviados al `QWindow`,
+  `QCursor.setPos`, `requestActivate`. Qt hace casi todo con ellos. El puente añade el doble clic,
+  la propagación de la rueda y la activación que sigue al foco X.
+- **Portapapeles** (`clipboard.py`) con INCR en los dos sentidos.
+- **Sin sondeo cada 4 ms:** los eventos X despiertan a la interfaz de uno en uno, también dentro
+  del bucle de un menú (el cuelgue F45 del prototipo).
+
+**Encontrado por las pruebas mientras se escribía:**
+- **Doble clic.** Qt entrega a los widgets pulsar, soltar, doble clic, soltar, y la segunda
+  pulsación deja al widget como receptor del soltar. Mandar el doble clic tras una segunda
+  pulsación hacía que pyqtgraph viera un clic simple. Mandarlo sin ella hacía que Qt tirara el
+  soltar. Queda con `grabMouse` en ese widget hasta soltar.
+- **Salir.** La ventana auxiliar que deja a Qt sin ventana activa, cuando el foco X está en otra
+  aplicación, impedía salir al cerrar la última ventana. Medido: el proceso seguía vivo hasta el
+  tiempo límite (código 2) y ahora sale con 0. Ahora es secundaria de la última activa y solo se
+  enseña mientras hace falta.
+- **Modificadores.** El `keyboardModifiers()` de Qt sigue a las pulsaciones y al ratón, pero no
+  al soltar una tecla modificadora sola. Es el único desfase de la entrada pública que queda.
+  Medido y probado.
+- **Minimizar, con metacity.** Leer "minimizado" de Map/Unmap, como el prototipo, escondía la
+  ventana al maximizarla: metacity la desmapea para cambiarle el marco. Ahora se lee de
+  `WM_STATE`. Qt manda además Hide y Show espontáneos al minimizar y restaurar, y el puente
+  destruía la ventana X; ahora los ignora.
+- **No es del puente:** un clic derecho sobre la imagen abre el menú de pyqtgraph, en cualquier
+  plataforma. El prototipo lo apagaba (app/viewer.py:1023–1028).
+
+**Pruebas:**
+- 30 unitarias, sin X y en `offscreen`: bytes de las peticiones frente a python-xlib; las
+  teselas y peticiones se reproducen sobre arrays y dan la imagen exacta; teclado; la entrada
+  pública sobre la ventana de explorer y sobre widgets corrientes.
+- 7 contra un Xvfb privado (`tests/xvfb/`, con `EXPLORER_TEST_XDISPLAY`), con python-xlib como
+  otro cliente: la ventana mapeada con la imagen idéntica al píxel a la de Qt; teclas sin clic;
+  el puntero mueve el cursor y un clic lo bloquea; panel transitorio y con forma; popup; el
+  portapapeles con INCR en los dos sentidos; tráfico contado; un `Expose` sin bytes.
+- 2 con metacity en ese Xvfb (`EXPLORER_TEST_XWM`), 3 de 3 ejecuciones:
+  - la ventana toma el foco X y es la activa aunque una "terminal" acabe de recibir un clic y una
+    tecla, y la primera tecla llega al visor;
+  - el marco del gestor, y mover, maximizar y restaurar desde el gestor;
+  - Ctrl+M minimiza por el gestor y la barra de tareas la restaura;
+  - el panel queda encima de su ventana;
+  - el botón de cerrar, con la aplicación inactiva, termina el proceso con 0.
+
+  Las 7 de Xvfb pasan también con metacity en marcha.
+- `scripts/check.sh` en verde en el Mac (sin pantalla) y en bellatrix: 248 pruebas, 22
+  saltadas (entre ellas las 9 de X, que piden su Xvfb).
+
+**Medidas** (bellatrix, cubo 6173, ventana 1400×900, nodo NUMA 0, cerrojo compartido, 4 rondas
+ABBA; `bench/bridge_vs_prototype.py`, los dos puentes sobre la misma ventana de explorer, y
+píxeles releídos del servidor hasta que son los de Qt):
+
+| | Xvfb directo, 1.ª serie (pareado) | 2.ª serie (pareado) | Enlace emulado 16 ms / 25 MB/s: prototipo → B (pareado) |
+|---|---|---|---|
+| Primera imagen en el servidor | 2.005 → 1.935 s (0.967, 4/4) | 2.123 → 2.010 s (0.947, 4/4) | 2.933 → 2.051 s (0.698, 4/4) |
+| Paso en t | 30.2 → 29.9 ms (0.988, 3/4) | 29.9 → 29.8 ms (1.022, 1/4) | 76.4 → 63.9 ms (0.843, 4/4) |
+| Paso en λ | 26.8 → 27.3 ms (1.056, 1/4) | 28.8 → 24.5 ms (0.883, 4/4) | 75.1 → 62.2 ms (0.828, 4/4) |
+| Cambio de Stokes | 22.4 → 23.0 ms (1.038, 2/4) | 23.2 → 20.7 ms (0.898, 2/4) | 71.3 → 58.0 ms (0.820, 4/4) |
+| Bytes por paso (enlace) | — | — | 758.5 → 758.6 kB (1.000) |
+
+- **Sin latencia empatan:** las dos series dan el signo cambiado, y la carga de la máquina subió a
+  20–26 al final de ambas, por trabajos de otros. Resultados en `bench/results/` de
+  `explorer-bridgeB` en bellatrix (`bridges_link_r1.json`, `bridges_direct_r2.json`,
+  `selftest_bridge_r1.json`, `es_r2_*.json`). La 1.ª serie directa quedó solo en el registro:
+  el guion se paró al resumir bytes sin enlace, ya corregido.
+- **Con latencia, B gana en todo con los mismos bytes.** Un paso de B está en el mínimo físico
+  del enlace emulado.
+- **Coste del puente en la interfaz,** `bench/explorer_selftest.py` offscreen frente a
+  `bridge2`, 4 rondas ABBA, con `_sp`: pasos 1.19 (t), 1.22 (λ) y 1.17 (Stokes) veces más
+  largos, 2–4 ms. El del prototipo es el mismo: tiempos de Qt parejos en la comparación de
+  arriba.
+- **Negativo:** ese coste no baja con la reescritura.
+- **Las autopruebas de cada visor con su puente** (`bench/selftest_vs_prototype.py --modes
+  bridge`) comparan visores distintos (el prototipo dibuja espectros y λ–t; explorer todavía no),
+  así que no sirven para comparar puentes. Primera imagen de explorer 0.70 y 0.56 veces la del
+  prototipo. Pasos de explorer 1.17–1.57 veces más largos, y 4.1 en Stokes sin `_sp` (51 frente a
+  12 ms). Casi todo es la capa de datos de explorer: el mismo cubo en `offscreen`, sin puente, da
+  40–45 ms en ese caso. El puente añade el resto (2–4 ms, arriba).
+
+**Sin probar aquí:** XQuartz y quartz-wm, y qué aplicación pone macOS delante. Es la comprobación
+del usuario por `ssh -Y`.

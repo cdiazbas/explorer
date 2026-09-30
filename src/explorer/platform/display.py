@@ -1,7 +1,8 @@
 """The display a plan chose, on Qt: the environment before Qt starts, the application, and what a window needs from
 the platform. The views see WindowOps only; nothing else in the UI branches on the operating system (docs/plan.md
 §3.5). From the prototype's app/startup.py (prepare, make_app, show, _mac_zoom_not_fullscreen, start_link_probe).
-The X11 bridge is another Display (xbridge.display.BridgeDisplay); for_plan() picks the one a plan asks for.
+The X11 bridge is another Display: A, the prototype's brought over as it is (xbridge.display.BridgeDisplay); B, the
+rewritten one (xbridge2.Bridge2Display). for_plan() picks the one a plan asks for.
 """
 import os
 import sys
@@ -161,14 +162,18 @@ class Display:
 
     def stats(self) -> dict:
         return {"kind": self.kind, "platform": self.plan.platform, "remote": self.plan.remote,
-                "bridge": self.plan.bridge, "notes": list(self.plan.notes)}
+                "bridge": self.plan.bridge, "variant": self.plan.variant, "notes": list(self.plan.notes)}
 
     def close(self) -> None:
         pass
 
 
 def for_plan(plan: DisplayPlan) -> Display:
-    """The Display a plan asks for: the X11 bridge's, or Qt's own platform."""
+    """The Display a plan asks for: bridge B's (variant bridge2), bridge A's, or Qt's own platform."""
+    if plan.variant == "bridge2":
+        from .xbridge2 import Bridge2Display
+
+        return Bridge2Display(plan)
     if plan.bridge:
         from .xbridge.display import BridgeDisplay
 
