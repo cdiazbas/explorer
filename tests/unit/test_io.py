@@ -119,3 +119,32 @@ def test_band_values_at_flat_positions(dataset, tmp_path):
     cut.write_bytes(open(dataset["im"], "rb").read()[:lay.offset + lay.nbytes - 2 * SHAPE[3] * SHAPE[4] * 4])
     with FrameReader(formats.fits_layout(cut)) as r, pytest.raises(ShortRead):
         r.band_values([(1, 3, 2)], 0, 4, [0])
+
+
+def test_scattered_reads_use_at_most_one_thread_per_request(dataset):
+    """With a limit set, a read of n requests runs on min(n, limit, pool) numba threads; the values do not change."""
+    import numba
+
+    data = fits.getdata(dataset["im"]).astype(np.float32)
+    with FrameReader(formats.open_layout(dataset["im"])) as r:
+        r.gather_threads = 3
+        np.testing.assert_array_equal(r.series(9, 5, (0, 1, 0), [2]), data[0, 1, :, 9, 5])     # 3 requests
+        assert numba.get_num_threads() == min(3, numba.config.NUMBA_NUM_THREADS)
+        np.testing.assert_array_equal(r.series(9, 5, (0, 1, 0), [0]), data[:, 1, 0, 9, 5])     # 2 requests
+        assert numba.get_num_threads() == min(2, numba.config.NUMBA_NUM_THREADS)
+
+
+def test_numba_pool_holds_the_threads_scattered_reads_may_use():
+    """numba's pool is sized at import: at least 128 threads unless NUMBA_NUM_THREADS says otherwise."""
+    import os
+    import subprocess
+    import sys
+
+    code = "import explorer.data.gather, numba; print(numba.config.NUMBA_NUM_THREADS)"
+    env = {k: v for k, v in os.environ.items() if k != "NUMBA_NUM_THREADS"}
+    got = int(subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                             check=True).stdout)
+    assert got >= 128
+    env["NUMBA_NUM_THREADS"] = "3"
+    assert subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                          check=True).stdout.strip() == "3"

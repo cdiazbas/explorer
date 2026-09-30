@@ -31,6 +31,7 @@ from .slits import read_slit_bands, read_slit_slab, slit_pixels
 log = get_logger("data")
 
 IO_THREADS = 16             # the prototype's Cube pool: frame chunks and frames read ahead
+SLAB_THREADS = 64           # slabs along a slit: measured with 64 Python threads (E1.9), not beyond
 
 
 def _done(value) -> Future:
@@ -56,6 +57,7 @@ class Dataset:
             with span("data.open.probe"):
                 self.probe = probe if probe is not None else StorageProbe(self.frames)
             self.guard = guard if guard is not None else MemoryGuard()
+            self.frames.gather_threads = self.probe.gather_threads
             self.executors = Executors(gather_threads=self.probe.gather_threads, io_threads=1)
             self._images = ThreadPoolExecutor(max(1, self.probe.readers), thread_name_prefix="images")
             self._slab_pool: ThreadPoolExecutor | None = None
@@ -152,7 +154,8 @@ class Dataset:
         if self.pixel is None:
             raise LookupError(f"{self.path}: no per-pixel file; use bands()")
         if self._slab_pool is None:
-            self._slab_pool = ThreadPoolExecutor(self.probe.gather_threads, thread_name_prefix="slab")
+            self._slab_pool = ThreadPoolExecutor(min(SLAB_THREADS, self.probe.gather_threads),
+                                                 thread_name_prefix="slab")
         pool, sp = self._slab_pool, self.pixel
         return self._io.submit(lambda: read_slit_slab(sp, iy, ix, pool=pool)[0])
 

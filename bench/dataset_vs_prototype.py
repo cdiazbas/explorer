@@ -59,7 +59,9 @@ def main():
     proto_sp = (SpFits(ds.pixel.layout.path, (r.ns, r.nt, r.nl), strip=pprobe.strip)
                 if ds.pixel is not None and ds.pixel.kind == "sp.fits" else None)
     proto_bg = ThreadPoolExecutor(1)                      # the prototype's _bg: numba's threads set on it
-    n_thr = min(getattr(pprobe, "gather_threads", 32), numba.config.NUMBA_NUM_THREADS)   # as the prototype's Viewer
+    # the prototype's own process sizes numba's pool by the CPUs it may use, and its Viewer caps its threads there
+    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    n_thr = min(getattr(pprobe, "gather_threads", 32), cpus)
     proto_bg.submit(numba.set_num_threads, n_thr).result()
     zero = (0,) * len(ds.shape[:-2])
     lt_axes = sorted(x for x in (r.t, r.l) if x is not None)

@@ -38,6 +38,7 @@ class FrameReader:
         # frames per step of each leading axis, e.g. (ns*nl, nl, 1) for (t, s, lambda)
         self.strides = tuple(int(np.prod(lead[i + 1:], dtype=np.int64)) for i in range(len(lead)))
         self.fd = os.open(layout.path, os.O_RDONLY)
+        self.gather_threads: int | None = None          # scattered reads: threads at most (None: as numba is set)
         self._own_pool = pool is None
         self.pool = pool if pool is not None else ThreadPoolExecutor(max(1, self.chunks - 1),
                                                                    thread_name_prefix="frames")
@@ -130,7 +131,7 @@ class FrameReader:
         """Values at pixel (y, x) along the leading axes in free_axes, the others fixed at idx: one dimension per
         free axis, in axis order (profile: (nl,), lambda-t: (nt, nl), everything: (nt, ns, nl)). Read from the
         file every time, in the numba reader's threads (call it from the one thread that runs parallel numba)."""
-        from .gather import gather
+        from .gather import gather_limited
 
         if not 0 <= y < self.ny or not 0 <= x < self.nx:
             raise IndexError(f"pixel ({y}, {x}) outside {self.ny}x{self.nx}")
@@ -139,7 +140,7 @@ class FrameReader:
         offs = (self.layout.offset + fn * self.frame_bytes + (int(y) * self.nx + int(x)) * it).astype(np.int64)
         out = np.empty(offs.size * it, np.uint8)
         with span("data.series.read"):
-            if gather(self.fd, offs, it, out):
+            if gather_limited(self.fd, offs, it, out, self.gather_threads):
                 raise ShortRead(f"short reads for pixel ({y}, {x}) in {self.layout.path}")
         return self.to_float32(out.view(self.layout.dtype).reshape(sizes))
 
@@ -148,7 +149,7 @@ class FrameReader:
         read per frame in the numba reader's threads (call it from the one thread that runs parallel numba). On
         StorNext a whole row per request costs what 4 bytes do (rowbands.py), so the series of every pixel in the
         rows comes with the one asked for."""
-        from .gather import gather
+        from .gather import gather_limited
 
         if not 0 <= y0 < y1 <= self.ny:
             raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
@@ -157,7 +158,7 @@ class FrameReader:
         offs = (self.layout.offset + fn * self.frame_bytes + y0 * self.nx * self.layout.dtype.itemsize)
         out = np.empty(offs.size * n, np.uint8)
         with span("data.rowband.read"):
-            if gather(self.fd, offs.astype(np.int64), n, out):
+            if gather_limited(self.fd, offs.astype(np.int64), n, out, self.gather_threads):
                 raise ShortRead(f"short reads for rows {y0}..{y1} in {self.layout.path}")
         return out.view(self.layout.dtype).reshape(*sizes, y1 - y0, self.nx)
 
@@ -165,7 +166,7 @@ class FrameReader:
         """Values at pixels (ys[i], xs[i]), each at the frames frame_numbers[i, ...] (frame numbers in file order:
         the dot product of a leading-axes index with self.strides): float32 of frame_numbers' shape, in one gather
         (call it from the one thread that runs parallel numba)."""
-        from .gather import gather
+        from .gather import gather_limited
 
         fn = np.asarray(frame_numbers, np.int64)
         ys, xs = np.asarray(ys, np.int64), np.asarray(xs, np.int64)
@@ -180,7 +181,7 @@ class FrameReader:
         offs = (self.layout.offset + fn * self.frame_bytes + pix).ravel().astype(np.int64)
         out = np.empty(offs.size * it, np.uint8)
         with span("data.points.read"):
-            if gather(self.fd, offs, it, out):
+            if gather_limited(self.fd, offs, it, out, self.gather_threads):
                 raise ShortRead(f"short reads for {len(ys)} pixels in {self.layout.path}")
         return self.to_float32(out.view(self.layout.dtype).reshape(fn.shape))
 

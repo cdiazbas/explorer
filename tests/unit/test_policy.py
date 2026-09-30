@@ -45,7 +45,7 @@ def test_probe_decides_by_storage(reader):
     p = StorageProbe(reader)
     assert p.small_ms >= 0 and p.strip in (8, 32)
     p.decide("cvfs", 0.05)                               # StorNext, even with a fast read
-    assert (p.network, p.strip, p.read_ahead, p.gather_threads) == (True, 32, 4, 64)
+    assert (p.network, p.strip, p.read_ahead, p.gather_threads) == (True, 32, 4, 128)
     p.decide("apfs", 5.0)                                # a local type that answers like a network one
     assert p.network and p.strip == 32
     p.decide("apfs", 0.1)

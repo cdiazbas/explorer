@@ -57,14 +57,15 @@ class StorageProbe:
         self.decide(self.mount.get("fstype", ""), self.small_ms)
 
     def decide(self, fstype: str, small_ms: float) -> None:
-        """Network storage: requests are expensive and bytes cheap up to ~180 kB, so wide strips, more images
-        ahead and many threads for scattered reads (lambda-t on StorNext with 4/8/16/32/48/64 threads:
-        1255/679/369/178-204/144/146 ms for Halpha 66x21, 4735/1757/1058/406-573/310/282 ms for 6173). Local
-        SSD: 16 threads (40/22/15/14 ms with 4/8/16/32 on the Mac)."""
+        """Network storage: requests are expensive and bytes cheap for small reads, so wide strips, more images
+        ahead and many threads for scattered reads: a cold lambda-t of 6173 read a row per frame with 32/64/128
+        threads, 1.00/0.56/0.42 (bellatrix, 2026-09-29; the prototype's 64 came from 4-byte reads,
+        4735/1757/1058/406-573/310/282 ms with 4/8/16/32/48/64). Local SSD: 16 threads (40/22/15/14 ms with
+        4/8/16/32 on the Mac)."""
         self.fstype = fstype
         self.network = fstype in self.NETWORK_FS or small_ms > 1.0
         if self.network:
-            self.strip, self.read_ahead, self.readers, self.gather_threads = 32, 4, 4, 64
+            self.strip, self.read_ahead, self.readers, self.gather_threads = 32, 4, 4, 128
         else:
             self.strip, self.read_ahead, self.readers, self.gather_threads = 8, 2, 2, 16
 
