@@ -106,6 +106,13 @@ forbidden_modules = ["explorer.cli", "explorer.doctor", "explorer.demo", "explor
                      "PySide6", "pyqtgraph", "Xlib"]
 
 [[tool.importlinter.contracts]]
+name = "core never imports Qt, the display nor the command (docs/decisions/0007)"
+type = "forbidden"
+source_modules = ["explorer.core"]
+forbidden_modules = ["explorer.cli", "explorer.doctor", "explorer.demo", "explorer.testing",
+                     "PySide6", "pyqtgraph", "Xlib"]
+
+[[tool.importlinter.contracts]]
 name = "testing helpers never import the command nor Qt"
 type = "forbidden"
 source_modules = ["explorer.testing"]
