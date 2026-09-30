@@ -43,7 +43,7 @@ sección que la origina.
 | E1.13 | ✅ | Vecinos gratis sin `_sp`: cada serie se lee con su fila entera (8 KB por imagen) y los píxeles de esa fila salen de memoria (`data/rowbands.py`). Primera lectura igual que el prototipo (1.009), el vecino 0.10 frente a 17.6 ms | E1.10 | 2026-09-29 | journal 09-29 |
 | E2 | 🔄 | `explorer.core` + `testing.Driver` (PLAN §3.3, §6; sin Qt, [ADR 0007](decisions/0007-core-sin-qt.md)): tareas E2.1–E2.7 | E1 | 2026-09-28 | — |
 | E2.1 | ✅ | `ViewState` inmutable y `Store`: `set(**campos)`, un aviso por ráfaga con los campos que cambiaron; el momento de avisar se inyecta (de `Viewer._on_hover`, `_hover_timer`) | E1 | 2026-09-30 | journal 09-30 |
-| E2.2 | ⬜ | `Session` con un cubo: tiempo maestro; por cubo, su λ, su Stokes y si van enlazados (trivial con uno, preparado para E8) | E2.1 | 2026-09-30 | — |
+| E2.2 | ✅ | `Session` con un cubo: tiempo maestro; por cubo, su λ, su Stokes y si van enlazados (trivial con uno, preparado para E8) | E2.1 | 2026-09-30 | journal 09-30 |
 | E2.3 | ⬜ | `scheduler`: una cola por `Dataset` donde solo vale la última petición; espectro antes que λ–t; qué dispara cada cambio (t → espectros, Stokes → λ–t, λ → marcas; de `set_index`, `_update_cursor`); nada sobre el relleno ni para paneles ocultos; el paso al hilo principal se inyecta | E2.1 | 2026-09-30 | — |
 | E2.4 | ⬜ | `levels`: límites de contraste por (Dataset, Stokes, idx), en caché, con modo fijo (de `Viewer._limits`, `_toggle_fix`) | E2.1 | 2026-09-30 | — |
 | E2.5 | ⬜ | `yrange`: crece al mover, ajuste tras 0.4 s quieto; rangos fijos desde la muestra; Q U V bajo pedido (de `_set_spectra`, `_yfit`, `_sample_ready`, `_quv_ready`) | E2.3 | 2026-09-30 | — |

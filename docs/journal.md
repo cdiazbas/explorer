@@ -727,3 +727,33 @@ de `lint-imports` lo comprueba.
 **Coste** (Mac M1, 20 000 movimientos × 5): 4.3 µs por movimiento con su aviso, 2.7 µs por `set`
 dentro de una ráfaga. Es ~0.05 % de los 6–15 ms que cuesta un movimiento del cursor en el
 prototipo.
+
+### 2026-09-30: la sesión con un cubo (ROADMAP E2.2)
+
+**Implementado:** `core/session.py`, desde `Viewer` del prototipo (`__init__`, `set_index`, `_step`,
+`_on_hover`, `set_locked`) y el §3.2 del plan de ventanas enlazadas.
+- **Estado inicial:** λ en `nl // 2` y el cursor en el centro de la imagen, como el prototipo.
+- **`hover`:**
+  - no hace nada con el cursor bloqueado;
+  - recorta el píxel a la imagen;
+  - con el mismo píxel no hace nada y suma el contador `core.hover.same_pixel`, que en el prototipo
+    era `stats["skipped_same_pixel"]`.
+- **`set_index` y `step`:** recortan al eje. `step` da la vuelta solo con `wrap`, que es lo que usa
+  la reproducción. Un eje que el cubo no tiene se ignora.
+- **`lock` y `show`:** los paneles visibles están en el estado.
+- **`index(member)`:** el índice de los ejes delanteros que necesitan las lecturas de ese cubo.
+- **Preparado para varios cubos:**
+  - miembros y maestro del tiempo;
+  - λ y Stokes de cada cubo, enlazados o no (decisión D3);
+  - `add()` rechaza un segundo cubo hasta E8, donde está la correspondencia de píxeles y tiempos.
+
+**Pruebas (7):**
+- el estado inicial del prototipo;
+- `hover`: recorte, bloqueo y mismo píxel;
+- recorte y vuelta en los índices;
+- una ráfaga de pasos da un aviso;
+- un cubo sin Stokes;
+- paneles, y el rechazo del segundo cubo;
+- con un `Dataset` real (sintético): la imagen de `index()` es la de los datos.
+
+Pasa en el Mac y en bellatrix.
