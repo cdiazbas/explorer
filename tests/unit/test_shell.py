@@ -85,4 +85,4 @@ def test_explorer_opens_a_cube_and_reports_the_first_image(qapp, cube, capsys):
     from explorer import cli
 
     assert cli.main([str(cube), "--quit-after", "0.05"]) == 0
-    assert "first image on screen" in capsys.readouterr().err
+    assert "first image handed to the screen" in capsys.readouterr().err

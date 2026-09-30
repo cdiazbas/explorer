@@ -61,6 +61,7 @@ class Shell(QtWidgets.QMainWindow):
         self.dataset = dataset
         self.t0 = time.perf_counter() if t0 is None else t0
         self.first_image_s: float | None = None
+        self.breakdown: tuple | None = None
         self._after_first: list = []
         self.loop = QtLoop(self)
         self.session = Session(self.loop, dataset)
@@ -156,7 +157,21 @@ class Shell(QtWidgets.QMainWindow):
             return
         QtWidgets.QApplication.processEvents()          # on screen, not only handed to Qt
         self.first_image_s = time.perf_counter() - self.t0
-        print(f"first image on screen {self.first_image_s:.2f} s", file=sys.stderr, flush=True)
+        line = f"first image handed to the screen {self.first_image_s:.2f} s after opening started"
+        if self.breakdown is not None:                  # set by ui.app.run: where the time went
+            # what the user waits for is the time since the command started (Python, its imports, anything run
+            # before the window, as the demo's doctor): that leads; the breakdown follows
+            before, phases, platform, remote = self.breakdown
+            rest = self.first_image_s - sum(phases.values())
+            parts = ([f"start and imports {before:.2f} s"] if before is not None else []) + [
+                f"{k} {v:.2f} s" for k, v in phases.items()] + [f"first image {rest:.2f} s"]
+            where = f"{platform or 'default'}{' over ssh' if remote else ''}"
+            if before is not None:
+                line = f"first image handed to the screen {before + self.first_image_s:.2f} s after the command started"
+            line += f" ({', '.join(parts)}; {where})"
+            if remote:
+                line += "; over X11 the pixels may still be on their way to the screen"
+        print(line, file=sys.stderr, flush=True)
         for seconds, fn in self._after_first:
             QtCore.QTimer.singleShot(int(seconds * 1000), fn)
 

@@ -6,8 +6,9 @@ Without a cube it uses a small synthetic one (explorer.testing.synth), written o
 the right default on a machine without the shared test cubes (a Mac on its local disk, where big cubes are not
 welcome). scripts/demo.sh picks the real test cube when the project's data/ link resolves.
 
-What it runs grows with the ROADMAP; today: doctor on the cube, then the viewer on it (the image, and keys for t,
-lambda and Stokes: ROADMAP E3.6). With --no-window, instead of the viewer, a cursor walk through the data layer:
+What it runs grows with the ROADMAP; today: the viewer on the cube (the image, and keys for t, lambda and Stokes:
+ROADMAP E3.6), and doctor's checks only when the window cannot open or with --doctor. With --no-window, doctor
+and then, instead of the viewer, a cursor walk through the data layer:
 the cursor visits pixels across the field and each move prints how long the spectrum and the lambda-t took, with
 the per-pixel file (default, when there is one) or without it (--nosp), so both can be compared on the same cube:
 first jumps across the field, then a drag in 1-pixel steps.
@@ -108,6 +109,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog=f"{APP_NAME} demo", description="try what explorer can do so far, on a cube")
     ap.add_argument("cube", nargs="?", help="default: a small synthetic cube")
     ap.add_argument("--no-window", action="store_true", help="do not open any window (headless runs, tests)")
+    ap.add_argument("--doctor", action="store_true", help="run doctor's checks after the viewer closes")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--nosp", action="store_true", help="read without the per-pixel file, from the image cube")
     g.add_argument("--sp", help="this per-pixel file instead of the one found next to the cube")
@@ -122,11 +124,14 @@ def main(argv=None) -> int:
           "(cursor walk with --no-window), and the viewer's image window", flush=True)
     from . import doctor
 
-    rc = doctor.main([cube])
-    if not a.no_window:
-        from .ui.app import run
+    if not a.no_window:                                 # the viewer first, as the prototype's demo: doctor's checks
+        from .ui.app import run  # (numba, Qt in its own process) cost 4.1 s over ssh -Y
 
-        return run(cube, sp=a.sp, no_sp=a.nosp, axes=a.axes) or rc
+        rc = run(cube, sp=a.sp, no_sp=a.nosp, axes=a.axes)
+        if rc or a.doctor:                              # the window could not open: say why
+            rc = doctor.main([cube]) or rc
+        return rc
+    rc = doctor.main([cube])
     if a.moves > 0:
         cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves, axes=a.axes)
         cursor_walk(cube, sp=a.sp, no_sp=a.nosp, moves=a.moves, drag=True, axes=a.axes)

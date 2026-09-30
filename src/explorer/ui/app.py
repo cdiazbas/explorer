@@ -10,10 +10,23 @@ from ..obs import get_logger
 log = get_logger("ui")
 
 
+def process_age() -> float | None:
+    """Seconds since this process started (Linux: /proc), so the time to the first image includes Python's own start
+    and imports; None where it is not known."""
+    try:
+        start_ticks = int(open("/proc/self/stat").read().rsplit(")", 1)[1].split()[19])
+        uptime = float(open("/proc/uptime").read().split()[0])
+        return uptime - start_ticks / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float | None = None) -> int:
     """Open path and run the event loop until the window closes; returns the exit code. quit_after: seconds after the
     first image, then quit (measurements, as the prototype's --quit-after)."""
     t0 = time.perf_counter()
+    before = process_age()                              # Python's start and the imports up to here
+    phases: dict[str, float] = {}
     from ..platform.display import Display, NoDisplay
     from ..platform.plan import choose_display
 
@@ -23,16 +36,23 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
     disp = Display(plan)
     try:
         disp.prepare_env()
+        q = time.perf_counter()
         app = disp.make_app()
+        phases["Qt"] = time.perf_counter() - q
     except NoDisplay as e:
         print(e, file=sys.stderr)
         return 1
     from ..data.dataset import Dataset
     from .shell import Shell
 
+    q = time.perf_counter()
     ds = Dataset.open(path, sp=sp, no_sp=no_sp, axes=axes)
+    phases["cube"] = time.perf_counter() - q
     try:
+        q = time.perf_counter()
         shell = Shell(ds, title=f"{os.path.basename(str(path))} — {APP_NAME}", t0=t0)
+        phases["window"] = time.perf_counter() - q
+        shell.breakdown = (before, phases, plan.platform, plan.remote)
         geo = app.primaryScreen().availableGeometry()
         shell.resize(int(geo.width() * 0.8), int(geo.height() * 0.8))
         disp.attach(app, shell)
