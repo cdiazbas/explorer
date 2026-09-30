@@ -53,7 +53,8 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
         q = time.perf_counter()
         shell = Shell(ds, title=f"{os.path.basename(str(path))} — {APP_NAME}", t0=t0)
         phases["window"] = time.perf_counter() - q
-        shell.breakdown = (before, phases, plan.platform, plan.remote)
+        shown = ("X11 bridge B" if plan.variant == "bridge2" else "X11 bridge A") if plan.bridge else plan.platform
+        shell.breakdown = (before, phases, shown, plan.remote)
         geo = app.primaryScreen().availableGeometry()
         shell.resize(int(geo.width() * 0.8), int(geo.height() * 0.8))
         disp.attach(app, shell)

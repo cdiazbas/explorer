@@ -1,6 +1,6 @@
 """`explorer demo`: run the most complete thing explorer can do so far, on a cube, to try it at any moment.
 
-    explorer demo [cube_im.fits] [--no-window]
+    explorer demo [cube_im.fits] [--no-window] [--x11 auto|native|bridge|bridge2]
 
 Without a cube it uses a small synthetic one (explorer.testing.synth), written once to ~/.cache/explorer/demo/:
 the right default on a machine without the shared test cubes (a Mac on its local disk, where big cubes are not
@@ -114,6 +114,9 @@ def main(argv=None) -> int:
     g.add_argument("--nosp", action="store_true", help="read without the per-pixel file, from the image cube")
     g.add_argument("--sp", help="this per-pixel file instead of the one found next to the cube")
     ap.add_argument("--moves", type=int, default=12, help="with --no-window: cursor moves in the walk (default 12)")
+    ap.add_argument("--x11", choices=("auto", "native", "bridge", "bridge2"), default="auto",
+                    help="over ssh -Y: Qt's own X11 (native), bridge A (bridge, the prototype's) or bridge B (bridge2, "
+                         "the rewritten one); auto decides")
     ap.add_argument("--axes", help="what the leading axes are, slowest first, e.g. t,l or s,l (l is lambda); "
                                    "for cubes whose header does not say it")
     a = ap.parse_args(argv)
@@ -127,7 +130,7 @@ def main(argv=None) -> int:
     if not a.no_window:                                 # the viewer first, as the prototype's demo: doctor's checks
         from .ui.app import run  # (numba, Qt in its own process) cost 4.1 s over ssh -Y
 
-        rc = run(cube, sp=a.sp, no_sp=a.nosp, axes=a.axes)
+        rc = run(cube, sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11)
         if rc or a.doctor:                              # the window could not open: say why
             rc = doctor.main([cube]) or rc
         return rc
