@@ -1083,3 +1083,40 @@ la ventana (E3.6).
 - el ratón da píxeles de dato y la cruz va al cursor.
 
 Pasa en el Mac, 3 de 3 ejecuciones, y en bellatrix.
+
+### 2026-09-30: la ventana mínima y `explorer cubo.fits` (ROADMAP E3.6)
+
+**Implementado:**
+- **`ui/shell.py`, la ventana.** El panel de imagen, una línea de estado (x, y, t, λ, Stokes, valor
+  o relleno, bloqueado) y las teclas.
+  - Une vista, sesión y planificador: el ratón mueve el cursor; un clic lo mueve ahí y lo bloquea;
+    el derecho lo suelta; el doble clic enseña la imagen entera.
+  - La cruz sigue al cursor.
+  - Cada segundo, el presupuesto de memoria se ajusta (`Dataset.update_memory`, el `_memory` del
+    prototipo).
+- **Teclas,** en una sola tabla desde `_key_table`: ← → para λ, ↓ ↑ para t, 1–4 para Stokes, L,
+  Esc, Ctrl+W, Ctrl+M y Ctrl+Q (en el Mac, ⌘Q es el del menú).
+- **`ui/app.py`:** plan de pantalla, `Display`, aplicación, `Dataset` y ventana. Imprime el tiempo
+  hasta la primera imagen en pantalla.
+- **`explorer cubo.fits`** abre la ventana, con `--sp`, `--nosp`, `--axes`, `--x11` y
+  `--quit-after S`, este último para medir, como el del prototipo.
+- **El demo** abre el visor tras `doctor`, y ya no la ventana en blanco de 2 s. Con `--no-window`
+  hace los paseos del cursor.
+- **Ruido de `offscreen` filtrado:** solo los mensajes que filtraba el prototipo.
+- **`Executors.n_strips`,** público, en vez de leer un atributo privado del pool.
+
+**Arreglo frente al prototipo.** En `_key_table`, la fila de las teclas de Stokes estaba sangrada
+dentro de `if self.ta is not None:`, así que un cubo sin t no tenía teclas de Stokes. Aquí dependen
+solo de que haya Stokes. Hay una prueba con un cubo `--axes s,l`.
+
+**Pruebas (4, offscreen):**
+- primera imagen, teclas y estado;
+- el ratón mueve el cursor y la cruz;
+- teclas de Stokes sin t;
+- `explorer cubo.fits --quit-after` de punta a punta.
+
+3 de 3 ejecuciones en el Mac. Pasa en bellatrix.
+
+**Primera medida, sin ABBA** (bellatrix, cubo 6173, offscreen): primera imagen en 1.83–2.43 s desde
+el principio de la apertura. La línea base del prototipo en offscreen era 1.58–1.92 s. La
+comparación de verdad es E3.7.
