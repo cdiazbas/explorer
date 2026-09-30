@@ -13,7 +13,7 @@ The prototype's table (app/startup.py prepare and remote_x11, app/xbridge.py wan
 - A local display: Linux, Qt's xcb (or Wayland when that is all there is); a Mac, cocoa.
 - A Mac reached by ssh without X forwarding: no window server; stop with a message (the prototype found it out after
   Qt started, from an empty screen list: grove, 2026-09-24).
-The bridge is the one written anew (platform/xbridge2, docs/decisions/0009); it needs nothing beyond Qt.
+The bridge is the one written anew (platform/xbridge, docs/decisions/0009); it needs nothing beyond Qt.
 """
 from dataclasses import dataclass, field
 

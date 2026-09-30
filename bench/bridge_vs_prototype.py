@@ -1,5 +1,5 @@
 """The two X11 bridges on the same window: explorer's, shown by the prototype's bridge (its app/xbridge.py, imported
-from the prototype without changing it) or by the rewritten one (platform/xbridge2), each in its own process,
+from the prototype without changing it) or by the rewritten one (platform/xbridge), each in its own process,
 alternating (ABBA). What reaches the X server is measured from outside the bridges, by another X connection that
 reads the window's pixels back (GetImage) until they are Qt's:
 
@@ -9,7 +9,7 @@ reads the window's pixels back (GetImage) until they are Qt's:
   for both, and each bridge's own count of pixel bytes per update.
 
     python bench/bridge_vs_prototype.py <cube_im.fits> [--rounds 4] [--pin CPUS] [--out F]
-    python bench/bridge_vs_prototype.py <cube_im.fits> --one proto|bridge2 --out r.json      (one process)
+    python bench/bridge_vs_prototype.py <cube_im.fits> --one proto|explorer --out r.json      (one process)
 
 DISPLAY and XAUTHORITY: the X server to measure on (a private Xvfb; never a screen someone looks at), directly or
 through bench/xlink.py (an emulated ssh link); EXPLORER_BENCH_OBSERVE: the display the pixels are read back from
@@ -232,7 +232,7 @@ def one(cube: str, which: str, out: str) -> int:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cube")
-    ap.add_argument("--one", choices=("proto", "bridge2"))
+    ap.add_argument("--one", choices=("proto", "explorer"))
     ap.add_argument("--rounds", type=int, default=4)
     ap.add_argument("--pin", help="CPUs to pin both to (taskset -c), e.g. one NUMA node")
     ap.add_argument("--out")
@@ -248,7 +248,7 @@ def main():
                cube=os.path.basename(a.cube), pin=a.pin, load_before=os.getloadavg(),
                display=os.environ.get("DISPLAY"), rounds=[])
     for rd in range(a.rounds):
-        order = ["proto", "bridge2"] if rd % 2 == 0 else ["bridge2", "proto"]
+        order = ["proto", "explorer"] if rd % 2 == 0 else ["explorer", "proto"]
         row = {"order": order}
         for which in order:
             out = os.path.join(tmp, f"{which}_{rd}.json")
@@ -273,11 +273,11 @@ def main():
         pv, ev = [], []
         for row in res["rounds"]:
             if k.endswith(" Qt"):
-                g = [row[x]["actions"].get(base, {}).get("qt_ms") for x in ("proto", "bridge2")]
+                g = [row[x]["actions"].get(base, {}).get("qt_ms") for x in ("proto", "explorer")]
             elif k.endswith(" bytes"):
-                g = [row[x]["actions"].get(base, {}).get("link_kB_per_step") for x in ("proto", "bridge2")]
+                g = [row[x]["actions"].get(base, {}).get("link_kB_per_step") for x in ("proto", "explorer")]
             else:
-                g = [val(row[x], k) for x in ("proto", "bridge2")]
+                g = [val(row[x], k) for x in ("proto", "explorer")]
             if None not in g:
                 pv.append(g[0])
                 ev.append(g[1])
@@ -286,12 +286,12 @@ def main():
         ratio = [e / p for p, e in zip(pv, ev, strict=True) if p]
         if not ratio:                                   # no link counters (a direct display): no bytes
             continue
-        summary[k] = dict(prototype=round(statistics.median(pv), 3), bridge2=round(statistics.median(ev), 3),
-                          paired=round(statistics.median(ratio), 3), bridge2_better=sum(r < 1 for r in ratio),
+        summary[k] = dict(prototype=round(statistics.median(pv), 3), explorer=round(statistics.median(ev), 3),
+                          paired=round(statistics.median(ratio), 3), explorer_better=sum(r < 1 for r in ratio),
                           n=len(ratio))
         s = summary[k]
-        print(f"{k:22s} prototype {s['prototype']:9.3f}  bridge2 {s['bridge2']:9.3f}  paired {s['paired']:.3f} "
-              f"({s['bridge2_better']}/{s['n']} rounds better)", flush=True)
+        print(f"{k:22s} prototype {s['prototype']:9.3f}  explorer {s['explorer']:9.3f}  paired {s['paired']:.3f} "
+              f"({s['explorer_better']}/{s['n']} rounds better)", flush=True)
     res["summary"] = summary
     if a.out:
         os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)

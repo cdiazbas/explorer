@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from explorer.platform.xbridge2 import keys as K
-from explorer.platform.xbridge2 import xproto as X
+from explorer.platform.xbridge import keys as K
+from explorer.platform.xbridge import xproto as X
 from explorer.testing import synth
 
 SHAPE = (3, 4, 5, 48, 40)
@@ -51,7 +51,7 @@ def spin(qapp, until, timeout=5.0):
 
 @pytest.fixture
 def inp(qapp):
-    from explorer.platform.xbridge2.qtinput import QtInput
+    from explorer.platform.xbridge.qtinput import QtInput
 
     km = keymap()
     i = QtInput(lambda: km)
@@ -61,7 +61,7 @@ def inp(qapp):
 
 @pytest.fixture(scope="module")
 def cube(tmp_path_factory):
-    return synth.write_dataset(tmp_path_factory.mktemp("bridge2"), "c", shape=SHAPE, icube=False)["im"]
+    return synth.write_dataset(tmp_path_factory.mktemp("bridge"), "c", shape=SHAPE, icube=False)["im"]
 
 
 @pytest.fixture
@@ -323,7 +323,7 @@ QUIT_SCRIPT = """
 import os, sys
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 from PySide6 import QtCore, QtWidgets
-from explorer.platform.xbridge2.qtinput import QtInput
+from explorer.platform.xbridge.qtinput import QtInput
 app = QtWidgets.QApplication([])
 w = QtWidgets.QWidget(); w.resize(200, 100); w.show()
 inp = QtInput(lambda: None)
@@ -469,11 +469,11 @@ def test_window_ops_publish_the_shape_the_bridge_applies(qapp):
     the attribute the bridge reads. Without it the corners were square (the prototype's conformance suite)."""
     from PySide6 import QtGui, QtWidgets
 
-    from explorer.platform.xbridge2 import Bridge2WindowOps
-    from explorer.platform.xbridge2.windows import SHAPE_ATTR
+    from explorer.platform.xbridge import BridgeWindowOps
+    from explorer.platform.xbridge.windows import SHAPE_ATTR
 
     w = QtWidgets.QWidget()
-    ops = Bridge2WindowOps(w, None)
+    ops = BridgeWindowOps(w, None)
     r = QtGui.QRegion(0, 0, 40, 30, QtGui.QRegion.RegionType.Ellipse)
     ops.set_shape(r)
     assert getattr(w, SHAPE_ATTR) == r

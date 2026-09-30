@@ -123,7 +123,7 @@ def same_as_qt(x, app, xid, which=""):
 
 
 def main_window(app):
-    return next(w for w in app("state")["windows"] if w["title"] == "bridge2 test λ")
+    return next(w for w in app("state")["windows"] if w["title"] == "bridge test λ")
 
 
 def keycode(x, name):
@@ -152,7 +152,7 @@ def test_the_window_is_mapped_with_the_image_and_its_properties(x, app):
     win = x.create_resource_object("window", mw["xid"])
     assert win.get_attributes().map_state == X.IsViewable
     name = win.get_full_property(x.intern_atom("_NET_WM_NAME"), x.intern_atom("UTF8_STRING")).value
-    assert name.decode() == "bridge2 test λ"
+    assert name.decode() == "bridge test λ"
     assert win.get_wm_class() == ("explorer", "Explorer")
     assert win.get_full_property(x.intern_atom("_NET_WM_PID"), Xatom.CARDINAL).value[0] == app.hello["pid"]
     protocols = {x.get_atom_name(a) for a in win.get_wm_protocols()}
@@ -171,7 +171,7 @@ def test_keys_work_without_a_click(x, app):
     fake(x, 2, keycode(x, "Up"))                       # KeyPress
     fake(x, 3, keycode(x, "Up"))
     assert wait(lambda: app("state")["t"] == t0 + 1)
-    assert app("state")["active"] == "bridge2 test λ"
+    assert app("state")["active"] == "bridge test λ"
 
 
 def test_the_pointer_moves_the_cursor_and_a_click_locks_it(x, app):

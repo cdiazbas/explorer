@@ -1,7 +1,7 @@
 """The display a plan chose, on Qt: the environment before Qt starts, the application, and what a window needs from
 the platform. The views see WindowOps only; nothing else in the UI branches on the operating system (docs/plan.md
 §3.5). From the prototype's app/startup.py (prepare, make_app, show, _mac_zoom_not_fullscreen, start_link_probe).
-The X11 bridge is another Display (xbridge2.Bridge2Display); for_plan() picks the one a plan asks for.
+The X11 bridge is another Display (xbridge.BridgeDisplay); for_plan() picks the one a plan asks for.
 """
 import os
 import sys
@@ -45,7 +45,7 @@ class LinkInfo:
 
 class WindowOps:
     """What a view may ask of its window: here, of a window Qt shows itself (cocoa, xcb, offscreen); the bridge's
-    windows have their own (xbridge2.Bridge2WindowOps). The moving and shaping calls are the prototype's Mover
+    windows have their own (xbridge.BridgeWindowOps). The moving and shaping calls are the prototype's Mover
     (app/titlebar.py), for a title bar of ours (ROADMAP E5)."""
 
     def __init__(self, window, display: "Display"):
@@ -162,9 +162,9 @@ class Display:
 def for_plan(plan: DisplayPlan) -> Display:
     """The Display a plan asks for: the X11 bridge's, or Qt's own platform."""
     if plan.bridge:
-        from .xbridge2 import Bridge2Display
+        from .xbridge import BridgeDisplay
 
-        return Bridge2Display(plan)
+        return BridgeDisplay(plan)
     return Display(plan)
 
 

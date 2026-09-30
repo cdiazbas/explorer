@@ -23,7 +23,7 @@ from ..._name import APP_NAME
 from ...obs import get_logger
 from . import xproto as X
 
-log = get_logger("platform.xbridge2")
+log = get_logger("platform.xbridge")
 Qt, E = QtCore.Qt, QtCore.QEvent
 SHAPE_ATTR = "x11_shape"                                # a QRegion a top-level publishes as its shape (sync_shape)
 
@@ -33,7 +33,7 @@ ATOMS = ("WM_PROTOCOLS", "WM_DELETE_WINDOW", "WM_TAKE_FOCUS", "_NET_WM_PING", "W
          "_NET_WM_WINDOW_TYPE_TOOLTIP", "_NET_WM_WINDOW_TYPE_POPUP_MENU", "_MOTIF_WM_HINTS", "_NET_ACTIVE_WINDOW",
          "_NET_SUPPORTED", "_NET_WM_USER_TIME", "_NET_WM_STATE", "_NET_WM_STATE_MAXIMIZED_VERT",
          "_NET_WM_STATE_MAXIMIZED_HORZ", "_NET_WM_STATE_FULLSCREEN", "_NET_WM_STATE_HIDDEN", "_NET_WM_MOVERESIZE",
-         "XBRIDGE2_TIME")
+         "XBRIDGE_TIME")
 EVENTS = (X.ExposureMask | X.PointerMotionMask | X.ButtonPressMask | X.ButtonReleaseMask | X.KeyPressMask
           | X.KeyReleaseMask | X.StructureNotifyMask | X.FocusChangeMask | X.EnterWindowMask | X.LeaveWindowMask
           | X.PropertyChangeMask)

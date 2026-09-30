@@ -14,9 +14,9 @@ from PySide6 import QtWidgets
 from ...obs import get_logger
 from . import xproto as X
 
-log = get_logger("platform.xbridge2")
+log = get_logger("platform.xbridge")
 NAMES = ("CLIPBOARD", "TARGETS", "TIMESTAMP", "MULTIPLE", "TEXT", "text/plain;charset=utf-8", "text/plain", "INCR",
-         "INTEGER", "UTF8_STRING", "XBRIDGE2_CLIP")
+         "INTEGER", "UTF8_STRING", "XBRIDGE_CLIP")
 MAX_IN = 64 << 20                                      # a text larger than this from another client is refused
 PROPERTY_DELETE, PROPERTY_NEW = 1, 0
 
@@ -60,7 +60,7 @@ class Clipboard:
                 owner = struct.unpack_from("<I", reply, 8)[0]
                 if owner and owner != self.win:
                     self.c.convert_selection(self.win, self.A["CLIPBOARD"], self.A["UTF8_STRING"],
-                                             self.A["XBRIDGE2_CLIP"], X.CURRENT_TIME)
+                                             self.A["XBRIDGE_CLIP"], X.CURRENT_TIME)
                     self.c.flush()
         self.c.get_selection_owner(self.A["CLIPBOARD"]).then(got)
 
@@ -77,7 +77,7 @@ class Clipboard:
             self.owned = False
         elif code == X.SelectionNotify and e.requestor == self.win:
             self._notified(e)
-        elif code == X.PropertyNotify and e.window == self.win and e.atom == A["XBRIDGE2_CLIP"]:
+        elif code == X.PropertyNotify and e.window == self.win and e.atom == A["XBRIDGE_CLIP"]:
             if e.state == PROPERTY_NEW and self.incoming is not None:
                 self._read_piece()
         elif code == X.PropertyNotify and (e.window, e.atom) in self.outgoing:
@@ -141,14 +141,14 @@ class Clipboard:
         A = self.A
         if e.property == X.NONE:
             if e.target == A["UTF8_STRING"]:            # an old client: ask for Latin-1
-                self.c.convert_selection(self.win, A["CLIPBOARD"], X.ATOM_STRING, A["XBRIDGE2_CLIP"], X.CURRENT_TIME)
+                self.c.convert_selection(self.win, A["CLIPBOARD"], X.ATOM_STRING, A["XBRIDGE_CLIP"], X.CURRENT_TIME)
                 self.c.flush()
             return
         latin1 = e.target == X.ATOM_STRING
         def got(r, err):
             if err is None:
                 self._first(r, latin1)
-        self.c.get_property(self.win, A["XBRIDGE2_CLIP"], delete=True).then(got)
+        self.c.get_property(self.win, A["XBRIDGE_CLIP"], delete=True).then(got)
 
     # these three run on the reader thread, in the order of the server's answers: the start of an INCR transfer is
     # known before the event of its first piece is handled
@@ -165,7 +165,7 @@ class Clipboard:
         def got(r, err):
             if err is None:
                 self._piece(r)
-        self.c.get_property(self.win, self.A["XBRIDGE2_CLIP"], delete=True).then(got)
+        self.c.get_property(self.win, self.A["XBRIDGE_CLIP"], delete=True).then(got)
 
     def _piece(self, reply: bytes) -> None:
         t = self.incoming

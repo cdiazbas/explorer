@@ -31,7 +31,7 @@ from .qtinput import QtInput
 from .transport import Transport
 from .windows import ATOMS, Windows, XWin
 
-log = get_logger("platform.xbridge2")
+log = get_logger("platform.xbridge")
 Qt, E = QtCore.Qt, QtCore.QEvent
 MAX_RECTS = 8                                           # pieces of a repaint grabbed apart; more: one bounding box
 CHECK_S = 1.0                                           # every window grabbed whole this often: the tile comparison
@@ -48,7 +48,7 @@ class XLink:
         self.events = X.EventQueue(lambda: None)        # the bridge takes over the wake-up
         self.lost: BaseException | None = None
         self.ready_cb: Callable[[], None] | None = None
-        self.c = X.Connection(self.display, name="xbridge2-ctl", on_event=self.events.put,
+        self.c = X.Connection(self.display, name="xbridge-ctl", on_event=self.events.put,
                               on_error=self._error, on_lost=self._lost)
         self.connect_s = time.perf_counter() - t0
         self.transport = Transport(self.display, on_ready=self._ready, on_error=self._lost)
@@ -92,7 +92,7 @@ class XLink:
         cfg = dict(windowFrameMargins=False,
                    screens=[dict(name=f"X{i}", x=x, y=y, width=w, height=h, logicalDpi=96, logicalBaseDpi=96,
                                  physicalDpi=dpi, dpr=1) for i, (x, y, w, h) in enumerate(self.heads)])
-        f = tempfile.NamedTemporaryFile("w", prefix="xbridge2_", suffix=".json", delete=False)
+        f = tempfile.NamedTemporaryFile("w", prefix="xbridge_", suffix=".json", delete=False)
         json.dump(cfg, f)
         f.close()
 
@@ -131,7 +131,7 @@ class Bridge(QtCore.QObject):
             self.clip = clip_mod.Clipboard(self.c, {n: link.atom_cookies[n] for n in clip_mod.NAMES},
                                            lambda: self.windows.xtime, self.post)
             # a server time for what asks for one (activation, selection ownership) before any input came
-            self.c.change_property(self.clip.win, self.windows.atoms["XBRIDGE2_TIME"], X.ATOM_STRING, 8, b"",
+            self.c.change_property(self.clip.win, self.windows.atoms["XBRIDGE_TIME"], X.ATOM_STRING, 8, b"",
                                    X.PropModeAppend)
             self.c.flush()
         except (X.XError, TimeoutError, RuntimeError) as e:
@@ -459,7 +459,7 @@ class Bridge(QtCore.QObject):
 
     def _property(self, rec, e) -> None:
         A = self.windows.atoms
-        if e.atom == A["XBRIDGE2_TIME"]:
+        if e.atom == A["XBRIDGE_TIME"]:
             for r in self.windows:                      # the launch time, for the manager's focus rules
                 if not r.popup:
                     self.c.change_property(r.xid, A["_NET_WM_USER_TIME"], X.ATOM_CARDINAL, 32, [e.time])
@@ -578,7 +578,7 @@ class Bridge(QtCore.QObject):
         if self.dead:
             return
         self.dead = True
-        print(f"[xbridge2] the X display went away ({type(e).__name__}: {e}); closing", file=sys.stderr, flush=True)
+        print(f"[xbridge] the X display went away ({type(e).__name__}: {e}); closing", file=sys.stderr, flush=True)
         app = self.app
         app.setQuitOnLastWindowClosed(False)            # else closing the last window quits with 0 before exit(1)
         QtCore.QTimer.singleShot(0, lambda: (app.closeAllWindows(), app.exit(1)))
@@ -619,8 +619,8 @@ class Bridge(QtCore.QObject):
     def describe(self) -> str:
         d = self.summary()
         if not d["updates"]:
-            return "X11 bridge2: nothing sent yet"
-        return (f"X11 bridge2: {d['updates']} updates, {d['bytes_per_update'] / 1e3:.0f} kB of pixels each "
+            return "X11 bridge: nothing sent yet"
+        return (f"X11 bridge: {d['updates']} updates, {d['bytes_per_update'] / 1e3:.0f} kB of pixels each "
                 f"({d['wire_per_update'] / 1e3:.0f} kB on the wire), send {d['send_ms']} ms, confirmed "
                 f"{d['ack_ms']} ms median")
 

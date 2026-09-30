@@ -1,7 +1,7 @@
 """X keyboard to Qt keys, no Qt: the core protocol's keysym rules and the text of each key."""
 import struct
 
-from explorer.platform.xbridge2 import keys as K
+from explorer.platform.xbridge import keys as K
 
 SHIFT, LOCK, CTRL = 1, 2, 4
 MOD1, MOD2, MOD4, MOD5 = 8, 16, 64, 128

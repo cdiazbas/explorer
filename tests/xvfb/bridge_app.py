@@ -1,5 +1,5 @@
-"""explorer's window through the rewritten X11 bridge, driven by the X tests (test_bridge2_xvfb.py): the viewer runs
-as the user runs it (Bridge2Display, Shell) and answers commands on stdin, one per line, with one JSON line on stdout.
+"""explorer's window through the rewritten X11 bridge, driven by the X tests (test_bridge_xvfb.py): the viewer runs
+as the user runs it (BridgeDisplay, Shell) and answers commands on stdin, one per line, with one JSON line on stdout.
 
     python tests/xvfb/bridge_app.py <cube_im.fits> [--size 800x600]
     state | grab | copy TEXT | bigcopy N | panel | popup | mask | idle | quit
@@ -31,7 +31,7 @@ def main():
     from explorer.ui.shell import Shell
 
     ds = Dataset.open(a.cube)
-    w = Shell(ds, title="bridge2 test λ", t0=t0)
+    w = Shell(ds, title="bridge test λ", t0=t0)
     W, H = (int(v) for v in a.size.split("x"))
     w.resize(W, H)
     ops = disp.attach(app, w)

@@ -5,7 +5,7 @@ import struct
 import numpy as np
 import pytest
 
-from explorer.platform.xbridge2 import kernels as k
+from explorer.platform.xbridge import kernels as k
 
 RENDER_OP = 140
 

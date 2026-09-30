@@ -22,7 +22,7 @@ import numpy as np
 from ...obs import get_logger
 from . import xproto
 
-log = get_logger("platform.xbridge2")
+log = get_logger("platform.xbridge")
 MAX_UNACKED = 2
 
 
@@ -133,7 +133,7 @@ class Transport:
                                           diff_ms=[], encode_ms=[], send_ms=[], ack_ms=[], acked=0, last_ack=0.0,
                                           check_hits=0, copies=0)
         self.acked = threading.Condition()
-        self._thread = threading.Thread(target=self._run, name="xbridge2-sender", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="xbridge-sender", daemon=True)
         self._thread.start()
 
     # ---- interface thread
@@ -175,7 +175,7 @@ class Transport:
     # ---- sender thread
     def _run(self):
         try:
-            self.c = xproto.Connection(self.display, name="xbridge2-img", on_error=self._x_error)
+            self.c = xproto.Connection(self.display, name="xbridge-img", on_error=self._x_error)
             if self.want_grey:
                 g = Grey(self.c)
                 self.grey = g if g.ok else None

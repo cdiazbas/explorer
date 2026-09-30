@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from explorer.platform.xbridge2 import xproto as X
+from explorer.platform.xbridge import xproto as X
 
 
 def test_parse_display():

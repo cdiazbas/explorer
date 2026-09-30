@@ -301,7 +301,7 @@ class QtInput:
         window of its own would keep the application from quitting when its last widget window closes."""
         if self._sink is None:
             s = QtGui.QWindow()
-            s.setObjectName("xbridge2-focus-sink")
+            s.setObjectName("xbridge-focus-sink")
             s.setFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
             s.setGeometry(-(1 << 21), -(1 << 21), 1, 1)
             self._sink = s

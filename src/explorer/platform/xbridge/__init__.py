@@ -1,6 +1,6 @@
 """The X11 bridge, written anew (ROADMAP E6, decision P4 "rewrite"; docs/decisions/0009): Qt renders offscreen and
-its windows reach an X display through X windows of their own. Chosen with --x11 bridge2 or EXPLORER_X11=bridge2,
-next to the prototype's bridge, so the two can be compared.
+its windows reach an X display through X windows of their own. The display plan takes it over ssh, or with --x11
+bridge (EXPLORER_X11=bridge); it replaced the prototype's bridge brought over as it was (in the history).
 
     xproto.py     the X11 wire client (connection, requests, replies and events on a reader thread)
     transport.py  pixels: tile comparison, grey at 1 B/px through RENDER, double buffer, on a thread of its own
@@ -23,12 +23,12 @@ from ..plan import DisplayPlan
 if TYPE_CHECKING:
     from .bridge import Bridge, XLink
 
-log = get_logger("platform.xbridge2")
+log = get_logger("platform.xbridge")
 
 
-class Bridge2WindowOps(WindowOps):
+class BridgeWindowOps(WindowOps):
     """Activation, minimising and zoom asked of the X window manager, as a native window would."""
-    _display: "Bridge2Display"
+    _display: "BridgeDisplay"
 
     def activate(self) -> None:
         self.w.raise_()
@@ -55,7 +55,7 @@ class Bridge2WindowOps(WindowOps):
         setattr(self.w, SHAPE_ATTR, QtGui.QRegion() if region is None else QtGui.QRegion(region))
 
 
-class Bridge2Display(Display):
+class BridgeDisplay(Display):
     def __init__(self, plan: DisplayPlan):
         super().__init__(plan)
         self.xlink: XLink | None = None
@@ -84,7 +84,7 @@ class Bridge2Display(Display):
         return app
 
     def attach(self, app, window) -> WindowOps:
-        ops = Bridge2WindowOps(window, self)
+        ops = BridgeWindowOps(window, self)
         window.show()
         b = self.bridge
         assert b is not None, "make_app() first"
@@ -99,7 +99,7 @@ class Bridge2Display(Display):
 
     def stats(self) -> dict:
         d = super().stats()
-        d["bridge2"] = self.bridge.summary() if self.bridge is not None else None
+        d["xbridge"] = self.bridge.summary() if self.bridge is not None else None
         return d
 
     def close(self) -> None:

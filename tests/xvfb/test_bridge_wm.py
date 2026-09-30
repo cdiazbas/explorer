@@ -2,7 +2,7 @@
 also after a terminal had it; frames and moves; maximise, minimise, restore; panels above their window; the close
 button. Run only when the display has a manager running:
 
-    EXPLORER_TEST_XDISPLAY=:99 EXPLORER_TEST_XWM=metacity XAUTHORITY=<cookie> pytest tests/xvfb/test_bridge2_wm.py
+    EXPLORER_TEST_XDISPLAY=:99 EXPLORER_TEST_XWM=metacity XAUTHORITY=<cookie> pytest tests/xvfb/test_bridge_wm.py
 
 XQuartz (quartz-wm) and the macOS side (which application is in front) are not reproduced here: that check is the
 user's, on the screen.
@@ -12,7 +12,7 @@ import subprocess
 import time
 
 import pytest
-from test_bridge2_xvfb import App, fake, keycode, main_window, wait
+from test_bridge_xvfb import App, fake, keycode, main_window, wait
 
 XDISP = os.environ.get("EXPLORER_TEST_XDISPLAY")
 pytestmark = pytest.mark.skipif(not (XDISP and os.environ.get("EXPLORER_TEST_XWM")),
