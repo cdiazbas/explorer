@@ -123,6 +123,7 @@ class SpectraPanel:
                 p.setXLink(self.plots[0])
             p.disableAutoRange()
             p.setXRange(*self.x_range, padding=0)
+            p.setMouseEnabled(x=False, y=False)             # a control: click or drag picks lambda (gestures)
             p.setMenuEnabled(False)                     # no pyqtgraph menu (the prototype turned it off)
             p.vb.setMenuEnabled(False)
             if not self.physical:

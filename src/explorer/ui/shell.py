@@ -15,6 +15,7 @@ import math
 import sys
 import time
 
+import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.scheduler import Scheduler
@@ -22,6 +23,7 @@ from ..core.session import Session
 from ..core.state import ViewState
 from ..data.axes import STOKES
 from . import docks
+from .gestures import Gestures
 from .imageview import ImageView
 from .lambda_t import LambdaTPanel
 from .loop import QtLoop
@@ -125,6 +127,7 @@ class Shell(QtWidgets.QMainWindow):
         self.setWindowTitle(title or str(getattr(dataset, "path", "")))
         self.view.widget.scene().sigMouseClicked.connect(self._click)
         self._keys()
+        self._install_gestures()
         self._off = self.session.store.subscribe(self._on_state)
         self.scheduler = Scheduler(self.session, _Sink(self))
         st = self.session.state
@@ -176,6 +179,67 @@ class Shell(QtWidgets.QMainWindow):
         QtCore.QTimer.singleShot(0, self.reset_sizes)     # again once the layout has settled
         self.reset_view()
         self.statusBar().showMessage("panels and zoom back to the start", 4000)
+
+    # ---------------------------------------------------------------- picks on the panels
+    def _install_gestures(self) -> None:
+        """Click or drag picks on the spectra (lambda) and on lambda-t (t and lambda); a right click on either
+        releases the cursor; each panel's pointer names what it does."""
+        C = QtCore.Qt.CursorShape
+        self._wanted: dict = {}
+        self._pick_timer = QtCore.QTimer(self, singleShot=True, interval=0)
+        self._pick_timer.timeout.connect(self._pick_flush)
+        picks = {}
+        if self.spectra is not None:
+            vp = self.spectra.w.viewport()
+            vp.setCursor(C.SizeHorCursor)
+            picks[vp] = self._spectrum_pick
+            self.spectra.w.scene().sigMouseClicked.connect(self._panel_click)
+        if self.lambda_t is not None:
+            vp = self.lambda_t.w.viewport()
+            vp.setCursor(C.SizeAllCursor)
+            picks[vp] = self._lt_pick
+            self.lambda_t.w.scene().sigMouseClicked.connect(self._panel_click)
+        image = self.view.widget.viewport()
+        image.setCursor(C.CrossCursor)
+        self._gestures = Gestures(self, picks, image)
+        for vp in [*picks, image]:
+            vp.installEventFilter(self._gestures)
+
+    def _panel_click(self, ev) -> None:
+        if ev.button() == QtCore.Qt.MouseButton.RightButton:
+            self.session.lock(False)                    # the right click releases from any panel
+
+    def _spectrum_pick(self, pos, now: bool = True) -> None:
+        """lambda nearest to x on whichever spectrum plot is under pos."""
+        for p in self.spectra.plots:
+            if p.vb.sceneBoundingRect().contains(pos):
+                xv = p.vb.mapSceneToView(pos).x()
+                self._want_pick({"l": int(np.argmin(np.abs(self.spectra.xl - xv)))}, now)
+                return
+
+    def _lt_pick(self, pos, now: bool = True) -> None:
+        """(t, lambda) of the cell under pos on lambda-t."""
+        vb = self.lambda_t.w.getPlotItem().vb
+        if not vb.sceneBoundingRect().contains(pos):
+            return
+        q = vb.mapSceneToView(pos)
+        self._want_pick({"l": int(np.clip(int(q.x()), 0, self.lambda_t.nl - 1)),
+                         "t": int(np.clip(int(q.y()), 0, self.lambda_t.nt - 1))}, now)
+
+    def _want_pick(self, want: dict, now: bool) -> None:
+        """now: at once (a press); else the latest wins at the next pass of the event loop (a fast drag reads one
+        image per pass, not one per mouse event)."""
+        if now:
+            for axis, v in want.items():
+                self.session.set_index(axis, v)
+            return
+        self._wanted.update(want)
+        self._pick_timer.start()
+
+    def _pick_flush(self) -> None:
+        want, self._wanted = self._wanted, {}
+        for axis, v in want.items():
+            self.session.set_index(axis, v)
 
     def _image_refit(self) -> None:
         """The image padlock's right click: the contrast fixed to the image shown now."""
