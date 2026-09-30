@@ -34,7 +34,12 @@ src/explorer/
 
 ## Diferencias con el plan
 
-- **python-xlib va en las dependencias base, no en un extra** (plan §2): el puente es el camino
-  por defecto por `ssh -Y`.
+- **python-xlib va en las dependencias base, no en un extra** (plan §2): lo necesitaba el puente
+  del prototipo. El reescrito no lo usa (solo las pruebas y las medidas, como cliente X
+  independiente); pasarlo a un extra de desarrollo está pendiente, porque cambia el lock.
+- **El puente X11 se reescribió, no se trajo partido en módulos** (plan §3.5,
+  [ADR 0009](decisions/0009-puente-x11-reescrito.md)): cliente X11 propio y entrada en Qt solo
+  por API pública. Directorio `platform/xbridge/` (el plan decía `x11bridge/`). El del
+  prototipo, traído tal cual, queda en el historial (merge `c71e176`, quitado en `7f0f452`).
 - **`obs/` es un paquete propio en la raíz del código,** no `core/telemetry.py`: lo usa también
   `data`, que no puede depender de `core` (se añadió a plan §3.8 antes de congelarlo).

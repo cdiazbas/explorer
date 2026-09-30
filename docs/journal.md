@@ -1320,3 +1320,86 @@ píxeles releídos del servidor hasta que son los de Qt):
 
 **Sin probar aquí:** XQuartz y quartz-wm, y qué aplicación pone macOS delante. Es la comprobación
 del usuario por `ssh -Y`.
+
+
+### 2026-09-30: medidas de E3.7, los dos puentes comparados y P4 decidido (ROADMAP E3.7, E6, E6.1)
+
+**E3.7, la autoprueba frente a la del prototipo** (`bench/selftest_vs_prototype.py`, commit
+`524d1d0`). bellatrix, 2026-09-30 12:39–12:44, cubo de Stokes 6173, 4 rondas ABBA; offscreen y xcb
+sobre el Xvfb privado `:97`; el panel de imagen de explorer al tamaño del del prototipo (772×803:
+antes tenía el doble de píxeles que dibujar). Razón pareada explorer / prototipo (rondas en que
+explorer es más rápido):
+
+| | Primera imagen | Paso en t | Paso en λ | Cambio de Stokes |
+|---|---|---|---|---|
+| offscreen, con `_sp` | 0.742 (4/4) | 0.990 (2/4) | 0.874 (3/4) | 0.937 (4/4) |
+| xcb, con `_sp` | 0.715 (4/4) | 0.912 (3/4) | 0.952 (2/4) | 0.868 (4/4) |
+| offscreen, sin `_sp` | 0.593 (4/4) | 1.166 (0/4) | 1.427 (1/4) | 3.288 (0/4) |
+| xcb, sin `_sp` | 0.554 (4/4) | 1.310 (0/4) | 1.481 (0/4) | 3.755 (0/4) |
+
+Con `_sp`, igual o mejor en todo. Sin `_sp`, los pasos más lentos: sigue en E3.8, con lo medido y
+lo descartado.
+
+**El demo por `ssh -Y`.** Abre el visor primero y deja las comprobaciones de `doctor` para
+después (`1391549`): 4 s menos, según el usuario. La línea de la primera imagen cuenta desde que
+arranca la orden y reparte el tiempo (importaciones, Qt, cubo, ventana, imagen).
+
+**Los dos puentes (P4).** A, el del prototipo traído tal cual, y B, el reescrito, se escribieron
+en paralelo, cada uno en su rama, y se juntaron en una rama de comparación. Ahí, `scripts/demo.sh`
+elige A, B, xcb nativo o el prototipo con la primera palabra. Medidas y conformidad en
+[ADR 0009](decisions/0009-puente-x11-reescrito.md). En corto:
+- velocidad por el enlace emulado: B 0.68× A en la primera imagen y 0.84–0.85× por paso, con los
+  mismos bytes; xcb nativo, 4.1× los bytes y ~3× el tiempo por paso;
+- la suite de conformidad del prototipo, corrida sobre su visor sin cambiarlo: A difiere de xcb en
+  2 pasos de 147; B, en 51 al empezar y en 2 tras seis correcciones, cada una con su causa trazada
+  y una prueba que falla antes y pasa después.
+
+El usuario eligió B. A queda en el historial (merge `c71e176`, quitado en `7f0f452`).
+
+**Cómo se buscó cada causa** (herramientas fuera del repositorio, en la carpeta de trabajo):
+- `show_step.py`: un paso de la suite en xcb, A y B, campo por campo y evento a evento;
+- trazas de la cadena de ventanas X bajo el puntero en cada pulsación (`query_pointer`), de los
+  movimientos que llegan a cada `QWindow` con su origen, y de las decisiones del redimensionador;
+- bisección de los pasos previos para un fallo que solo salía en la secuencia completa
+  (`panel_two`: lo rompía un doble clic de `panel_cycle`).
+
+**Resultados negativos:**
+- **La primera lectura de la comparación era falsa en 7 de las 8 diferencias.** Las esquinas no
+  eran un fallo al redimensionar: en xcb y A la pulsación caía fuera de la ventana redondeada, y
+  B, sin la forma, redimensionaba. La cruz desplazada venía de movimientos sintéticos, no de la
+  compresión. Por eso ninguna diferencia se da por explicada sin traza.
+- **Una regla "misma posición" para el píxel del separador rompió 10 pasos que pasaban.** Venía
+  de leer en el código de Qt que la vía de plataforma descarta un movimiento sin cambio de
+  posición. La traza directa de xcb la desmintió: xcb entrega ese movimiento al `QWindow` las 7
+  veces, como B. Revertida. El píxel del separador sigue sin explicar.
+- **`QCursor.setPos` al punto donde ya está no hace nada** (sonda en offscreen): forzarlo no daba
+  el Leave de una ventana que se va de debajo del puntero. Se resuelve llevando el cursor fuera de
+  toda pantalla y volviendo.
+- **Una traza mía rompió una ejecución:** reutilicé el nombre `b` en el envoltorio de `press` y
+  XTEST recibió algo que no era un número. Descartada.
+- **Xcb nativo por el enlace emulado se colgaba** en la primera imagen: con el Xvfb en la misma
+  máquina, Qt usa memoria compartida y se salta el enlace. Con `QT_XCB_NO_MITSHM=1`, como por
+  `ssh`.
+
+**El foco sin clic (E6.1).** En macOS, ni A, ni B, ni xcb toman el teclado al aparecer la
+ventana. Las teclas van a la aplicación del frente (la terminal), y el foco X no la cambia.
+- Apple-WM `SetFrontProcess`, pedido desde bellatrix: XQuartz contesta con error. El servidor
+  trata como remoto a todo cliente cuyo proceso se llama `ssh` (xserver `os/access.c`,
+  `ComputeLocalClient`), a propósito.
+- Un ayudante local en el Mac (cliente X local que ve aparecer la ventana del visor):
+  `SetFrontProcess` contesta "Success", pero macOS lo ignoró en 4 de 5; `open -a XQuartz` trajo
+  XQuartz al frente en 9 de 9, con el foco X en la ventana del visor. Medido con `lsappinfo`; sin
+  capturas (VS Code no tiene permiso de grabación de pantalla) y sin teclas de verdad.
+- El usuario lo descarta: la solución tiene que valer en cualquier máquina y sistema sin
+  instalar nada.
+- La alternativa, probada con una copia de explorer: leer las teclas también de la terminal que
+  lo lanzó (modo cbreak, `QSocketNotifier`). El usuario, por `ssh -Y`: "funciona genial". Queda
+  como E6.2.
+
+**Las pruebas X de B en Linux.** Al pasar `tests/xvfb` en bellatrix salieron dos fallos:
+- `bridge_app.py` guardaba sus capturas en una carpeta de `/tmp` con nombre de usuario, borrada
+  al limpiar (`3afa460`);
+- con un popup abierto, Qt en Linux deja la ventana padre activa sin ventana con foco
+  (`a0a6228`).
+
+Tras los dos arreglos: 247 pasan y 3 se saltan (necesitan gestor de ventanas).

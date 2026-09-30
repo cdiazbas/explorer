@@ -13,7 +13,7 @@ Una decisión revocada no se borra: se marca **Sustituida por NNNN** y se crea l
 | [0006](0006-comprobaciones-locales.md) | Comprobaciones en local, mientras no haya CI remoto | Vigente | 2026-09-29 |
 | [0007](0007-core-sin-qt.md) | `explorer.core` sin Qt: avisos a funciones, momento y paso al hilo principal inyectados | Vigente | 2026-09-30 |
 | [0008](0008-solo-pgr.md) | Una sola superficie de imagen al principio: pyqtgraph (`pgr`) | Vigente | 2026-09-30 |
-| [0009](0009-puente-x11-reescrito.md) | El puente X11, reescrito (P4, opción B), junto al del prototipo para compararlos | Propuesta | 2026-09-30 |
+| [0009](0009-puente-x11-reescrito.md) | El puente X11, reescrito (P4, opción B); sustituye al del prototipo | Vigente | 2026-09-30 |
 
 ## Plantilla
 

@@ -1,9 +1,9 @@
 # 0009. El puente X11, reescrito (P4, opción B)
 
-- **Estado:** Propuesta
+- **Estado:** Vigente
 - **Fecha:** 2026-09-30
-- **Decide:** el usuario, tras comparar esta opción con la otra (traer el puente del prototipo tal
-  cual, partido en módulos)
+- **Decide:** el usuario, 2026-09-30, tras comparar esta opción con la otra (traer el puente del
+  prototipo tal cual, partido en módulos) en velocidad y en la suite de conformidad del prototipo
 
 ## Contexto
 
@@ -15,15 +15,15 @@ puente enseña las ventanas por X11 con python-xlib. Funciona, pero:
 - solo dpr = 1, sin arrastrar y soltar, sin IME, portapapeles sin INCR;
 - creció como un fichero de 1575 líneas de parches de auditoría.
 
-P4 del roadmap pregunta si traerlo tal cual o reescribirlo. Esta es la reescritura, junto al del
-prototipo para poder compararlos: `--x11 bridge2` o `EXPLORER_X11=bridge2`. `auto` no la elige.
+P4 del roadmap preguntaba si traerlo tal cual o reescribirlo. Esta es la reescritura. Se escribió
+junto al del prototipo para compararlos (`--x11 bridge2` mientras duró la comparación).
 
 ## Opciones
 
 - **A. Traer el puente del prototipo, partido en módulos.** Lo hace otro trabajo en paralelo;
   sus cifras son las del prototipo.
 - **B. Reescribirlo** (este ADR), con lo que el prototipo aprendió pero sin su código:
-  `platform/xbridge2/`.
+  `platform/xbridge/` (durante la comparación, `platform/xbridge2/`).
 
 ## Lo que hace B
 
@@ -64,7 +64,7 @@ Lo que Qt no hace con esos eventos lo hace B, con API pública:
   aplicación, se activa una `QWindow` sin widgets, secundaria de la última activa, para que no
   quede ninguna ventana de widgets activa sin impedir que la aplicación termine.
 
-**Lo que no se puede por API pública,** con prueba (`tests/unit/test_xbridge2_input.py`):
+**Lo que no se puede por API pública,** con prueba (`tests/unit/test_xbridge_input.py`):
 - `QGuiApplication.keyboardModifiers()` sigue al ratón y a las pulsaciones de tecla, pero al
   soltar una tecla modificadora sola queda desfasado hasta el siguiente evento. Con xcb se
   limpia.
@@ -77,7 +77,7 @@ Lo que Qt no hace con esos eventos lo hace B, con API pública:
 - Con gestor, B pide la activación por `_NET_ACTIVE_WINDOW` en cuanto la ventana se mapea, con
   una hora del servidor y `_NET_WM_USER_TIME`. También declara `WM_TAKE_FOCUS` y lo atiende, y
   responde a `_NET_WM_PING`.
-- Con metacity en el mismo Xvfb (`tests/xvfb/test_bridge2_wm.py`, 3 de 3 ejecuciones), la ventana
+- Con metacity en el mismo Xvfb (`tests/xvfb/test_bridge_wm.py`, 3 de 3 ejecuciones), la ventana
   toma el foco X y es la activa aunque una "terminal" acabe de recibir un clic y una tecla. La
   primera tecla llega al visor.
 - En esas pruebas, además:
@@ -133,13 +133,77 @@ servidor tiene los de Qt.
   comparación (~5 ms) + 758 kB a 25 MB/s (30 ms) + 8 ms de ida.
 - Menos bytes no se pueden sin compresión, que X11 no tiene: la imagen ya va a 1 B/px.
 
-## Decisión (propuesta)
+## Comparación final (2026-09-30)
 
-B, si la comprobación del usuario por `ssh -Y` (foco, menús, portapapeles, aspecto) no encuentra
-algo que A haga y B no. Entonces:
-- se quita la versión exacta de PySide6 que exigía el puente (`pyproject.toml`);
-- `auto` elige B;
-- el nombre `bridge2` desaparece.
+**Velocidad, las tres formas de llevar la ventana.** bellatrix, cubo de Stokes 6173, ventana
+1400×900, Xvfb privado tras el enlace emulado (`bench/xlink.py`: 8 ms por sentido, 25 MB/s).
+Fijado al nodo NUMA 0, bajo el cerrojo, carga 0.5 al empezar. Una ejecución de calentamiento por
+variante; después 6 rondas, una por cada orden de las tres. Otra conexión X relee los píxeles
+hasta que el servidor tiene los de Qt. Xcb nativo con `QT_XCB_NO_MITSHM=1`: con el Xvfb en la
+misma máquina, Qt usaba memoria compartida y se saltaba el enlace, cosa que por `ssh` no puede
+pasar (sin la variable, se quedaba colgado en la primera imagen). Mediana de las rondas y, entre
+paréntesis, la razón pareada B / A y en cuántas rondas B es más rápido. A es el puente del
+prototipo traído tal cual; B, este, con las correcciones de `e38dea3` (las dos posteriores tocan solo la entrada, que esta
+medida no ejercita).
+
+| Medida | A | B | xcb nativo |
+|---|---|---|---|
+| Primera imagen en el servidor X, desde que arranca el proceso | 2.98 s | 2.02 s (0.68, 6/6) | 4.93 s |
+| Paso en t | 77.0 ms | 64.7 ms (0.84, 5/6) | 229.5 ms |
+| Paso en λ | 74.8 ms | 63.5 ms (0.84, 6/6) | 229.3 ms |
+| Cambio de Stokes | 69.8 ms | 58.9 ms (0.85, 6/6) | 225.5 ms |
+| Bytes por paso por el enlace | 758 kB | 758 kB | 3107 kB |
+
+La ventaja de B al arrancar es sobre todo la conexión: A tarda ~1.2 s en hablar con X por
+python-xlib; B, ~0.25 s. Una serie anterior, con B sin corregir, dio lo mismo (0.71 y
+0.83–0.87).
+
+**Conformidad: la suite del prototipo** (`app/conformance.py`, 147 pasos de entrada X real por
+XTEST, que compara lo que recibe cada widget y el estado en que queda el visor). Se corrió sobre
+el visor del prototipo sin cambiarlo, con xcb, con A y con B. B entró por un adaptador de ~150
+líneas fuera del repositorio que traduce dos nombres: el `BridgeMover` de la barra de título (el
+`QtMover` del prototipo, el mismo que usa xcb) y el atributo de la forma (`_crispex_shape` →
+`x11_shape`). Xvfb privado 3840×1080 sin gestor de ventanas; dos rondas por variante. Una
+diferencia cuenta si sale en las dos rondas y no en dos ejecuciones del mismo modo (ruido:
+`play_button`, `resize_top`, `spin_hold_arrow`).
+
+| | A | B antes | B ahora |
+|---|---|---|---|
+| Pasos con el estado final distinto del de xcb | 2 | 51 | 2 |
+| Excepciones durante la suite | 0 | 33 | 0 |
+| Imagen del cursor distinta de xcb (aceptado para A por el prototipo) | 82 pasos | 78 | 73 |
+| Ventana activa tras arrastrar distinta de xcb (ídem) | 49 pasos | 52 | 51 |
+
+- Común a A y B: el portapapeles desde otro cliente X llega con los dos puentes, no con xcb
+  (`clipboard_from_x`).
+- Solo A: arrastrar un deslizador fuera de la ventana (`slider_drag_outside`).
+- Solo B: tras los pasos del separador, la cruz del cursor queda a 1 px (`separator_grab_
+  horizontal`). Xcb entrega al `QWindow` los mismos movimientos que B (medido); la diferencia
+  nace al pasarlos Qt a los widgets. Sin explicar.
+
+**Lo que la suite encontró en B, y su arreglo** (cada causa, trazada antes de tocar nada):
+
+| Síntoma | Causa | Commit |
+|---|---|---|
+| Redimensionar desde una esquina | B no aplicaba las esquinas redondeadas: `offscreen` no guarda máscaras y la barra de título deja la región en un atributo | `e38dea3` |
+| La cruz en otro píxel tras arrastrar | `offscreen` contesta cada `QCursor.setPos` con un movimiento sintético que xcb nunca manda | `e38dea3` |
+| Un panel dejaba de recibir el ratón | un doble clic que acopla el panel dejaba su `grabMouse()`: el soltar iba a una ventana ya desmapeada | `e38dea3` |
+| La lista de un combo seguía abierta al irse el foco X | con un popup abierto, B no avisaba a Qt | `e38dea3`, `a0a6228` (Linux) |
+| Excepción al subir un panel por encima del borde | `WM_NORMAL_HINTS` con x, y negativas empaquetadas sin signo | `e38dea3` |
+| La barra de título seguía resaltada al restaurar | la ventana se va de debajo del puntero quieto y `setPos` al mismo punto no hace nada | `72a9874` |
+
+## Decisión
+
+B. Hecho el 2026-09-30:
+- `auto` elige el puente por `ssh`; `--x11 bridge` es B; el nombre `bridge2` desaparece
+  (`7f0f452`, `7022d38`);
+- A se quita; queda en el historial (merge `c71e176`) y revertir `7f0f452` lo devuelve.
+
+Pendiente:
+- la comprobación del usuario por `ssh -Y` en XQuartz, que la suite (Xvfb sin gestor) no cubre;
+- quitar la versión exacta de PySide6 (`pyproject.toml`), que exigía A: se decide aparte, porque
+  cambia el lock;
+- python-xlib, a un extra de desarrollo (lo mismo).
 
 ## Consecuencias
 
