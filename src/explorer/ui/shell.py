@@ -1,5 +1,6 @@
-"""The window: for now the image panel, a status line and the keys that move through the cube (ROADMAP E3.6). The
-spectra and lambda-t panels come in E4, playback in E4, the look in E5, the slit in E7.
+"""The window: the image panel, the spectra and lambda-t panels in docks on the right (ROADMAP E4.2; their contents
+in E4.3 and E4.4), a status line and the keys that move through the cube (E3.6). Playback comes in E4, the look in
+E5, the slit in E7.
 
 It draws what explorer.core decides and turns input into core actions: the mouse over the image moves the cursor, a
 click locks it there and a right click releases it (the prototype's _image_click), a double click shows the whole
@@ -20,6 +21,7 @@ from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
 from ..data.axes import STOKES
+from . import docks
 from .imageview import ImageView
 from .loop import QtLoop
 
@@ -67,7 +69,14 @@ class Shell(QtWidgets.QMainWindow):
         self.session = Session(self.loop, dataset)
         ex = dataset.executors
         self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips)
-        self.setCentralWidget(self.view.widget)
+        self.setCentralWidget(docks.gutter(self.view.widget))
+        self.spec_panel, self.lt_panel = QtWidgets.QWidget(), QtWidgets.QWidget()       # filled in E4.3, E4.4
+        self.spec_dock = docks.dock(self, "Spectrum", self.spec_panel, "spectrum")
+        self.lt_dock = docks.dock(self, "λ–t", self.lt_panel, "lambda_t")
+        self.setAnimated(False)
+        self._closing = False
+        for d, panel in ((self.spec_dock, "spectra"), (self.lt_dock, "lambda_t")):
+            d.visibilityChanged.connect(lambda on, panel=panel: self._panel_shown(panel, on))
         self.status = QtWidgets.QLabel()
         self.statusBar().addWidget(self.status, 1)
         self.last: dict = {}
@@ -82,6 +91,40 @@ class Shell(QtWidgets.QMainWindow):
         self._mem.setInterval(int(MEMORY_S * 1000))
         self._mem.timeout.connect(self._memory)
         self._mem.start()
+        self._initial_state = self.saveState()          # before the first show: reset_panels comes back to it
+        self._sized = False
+
+    # ---------------------------------------------------------------- panels
+    def _panel_shown(self, panel: str, on: bool) -> None:
+        """A dock shown, closed or hidden: the core reads nothing for a hidden panel, and fills a shown one."""
+        if not self._closing:
+            self.session.show(panel, on)
+
+    def showEvent(self, ev) -> None:
+        super().showEvent(ev)
+        if not self._sized:                             # the fresh start's sizes, once the layout exists
+            self._sized = True
+            QtCore.QTimer.singleShot(0, self.reset_sizes)
+
+    def reset_sizes(self) -> None:
+        docks.reset_sizes(self, (self.spec_dock, self.lt_dock))
+
+    def reset_panels(self) -> None:
+        """Every panel docked where it started and shown, and the whole image in view again (the prototype's
+        reset_panels: one button brings everything back)."""
+        for d in (self.spec_dock, self.lt_dock):
+            d.setFloating(False)
+        self.restoreState(self._initial_state)
+        for d in (self.spec_dock, self.lt_dock):
+            if d.isHidden():
+                d.show()
+        self.reset_sizes()
+        QtCore.QTimer.singleShot(0, self.reset_sizes)     # again once the layout has settled
+        self.reset_view()
+        self.statusBar().showMessage("panels and zoom back to the start", 4000)
+
+    def reset_view(self) -> None:
+        self.view.show_all()
 
     # ---------------------------------------------------------------- input
     def _hover(self, y: float, x: float) -> None:
@@ -188,6 +231,7 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- closing
     def closeEvent(self, ev) -> None:
+        self._closing = True                            # the docks then say hidden: nothing to read any more
         self._mem.stop()
         self._off()
         self.scheduler.close()

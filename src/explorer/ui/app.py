@@ -54,8 +54,9 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
         shell.breakdown = (before, phases, shown, plan.remote)
-        geo = app.primaryScreen().availableGeometry()
-        shell.resize(int(geo.width() * 0.8), int(geo.height() * 0.8))
+        from . import docks
+
+        shell.setGeometry(docks.first_geometry(app))
         disp.attach(app, shell)
         from . import termkeys
 
