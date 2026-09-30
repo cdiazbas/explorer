@@ -38,6 +38,7 @@ BUTTONS = {1: Qt.MouseButton.LeftButton, 2: Qt.MouseButton.MiddleButton, 3: Qt.M
 STATE_BUTTONS = ((0x100, Qt.MouseButton.LeftButton), (0x200, Qt.MouseButton.MiddleButton),
                  (0x400, Qt.MouseButton.RightButton))
 REST_MS = 60                                            # the pointer at rest: Qt's cursor position is set
+OFF_SCREEN = (-(1 << 20), -(1 << 20))                   # Qt's cursor where no window is
 OWN_MOVE_S = 1.0                                        # a setPos's answering move comes within this
 POPUPS_MAX = 16                                         # nested popups closed when the X focus leaves
 FOCUS_OUT_MS = 400                                      # X focus gone from every window of ours (xcb waits the same)
@@ -116,11 +117,20 @@ class QtInput:
         QtCore.QCoreApplication.sendEvent(h, ev)
         self.stats["mouse"] += 1
 
-    def _set_cursor(self, x: int, y: int) -> None:
-        if QtGui.QCursor.pos() != QtCore.QPoint(x, y):
-            now = time.monotonic()
-            self._own_moves = [m for m in self._own_moves if now - m[2] < OWN_MOVE_S] + [(x, y, now)]
-            QtGui.QCursor.setPos(x, y)
+    def _set_cursor(self, x: int, y: int, force: bool = False) -> None:
+        """Qt's cursor position. force: even where it already is, so that offscreen finds again which window holds it
+        (a window that moved or resized under a still pointer gets its Leave or Enter). QCursor.setPos does nothing
+        where the cursor already is, so it goes off every screen first."""
+        if QtGui.QCursor.pos() == QtCore.QPoint(x, y):
+            if not force:
+                return
+            self._own_set_pos(*OFF_SCREEN)
+        self._own_set_pos(x, y)
+
+    def _own_set_pos(self, x: int, y: int) -> None:
+        now = time.monotonic()
+        self._own_moves = [m for m in self._own_moves if now - m[2] < OWN_MOVE_S] + [(x, y, now)]
+        QtGui.QCursor.setPos(x, y)
 
     def is_own_synthetic_move(self, e) -> bool:
         """e (a MouseMove to a QWindow) is offscreen's answer to one of our setPos, not input: dropped."""
@@ -250,16 +260,18 @@ class QtInput:
                 or e.detail in (X.NotifyVirtual, X.NotifyNonlinearVirtual):
             return
         self._root = (e.root_x, e.root_y)
+        # forced: the crossing may come from the window moving under a still pointer (a zoomed window restored away
+        # from it), where Qt's cursor is already at that point and offscreen would not look again
         if e.code == X.EnterNotify:
-            self._set_cursor(e.root_x, e.root_y)
+            self._set_cursor(e.root_x, e.root_y, force=True)
             return
         self._rest.stop()
         if self.windows_at(e.root_x, e.root_y):
             # still inside a Qt window by geometry (another client above it, or a shaped corner): offscreen would
             # not send the Leave, so Qt's cursor goes where no window is
-            self._set_cursor(-(1 << 20), -(1 << 20))
+            self._set_cursor(*OFF_SCREEN, force=True)
         else:
-            self._set_cursor(e.root_x, e.root_y)
+            self._set_cursor(e.root_x, e.root_y, force=True)
 
     # ---------------------------------------------------------------- keys
     def key(self, w: QtWidgets.QWidget, e, repeat: bool) -> None:

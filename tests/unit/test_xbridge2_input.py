@@ -443,3 +443,22 @@ def test_the_moves_offscreen_makes_for_our_set_pos_are_told_apart(qapp, widgets,
         assert seen == [False]
     finally:
         qapp.removeEventFilter(f)
+
+
+def test_a_window_that_moves_away_from_a_still_pointer_gets_its_leave(qapp, widgets, inp):
+    """A zoomed window restored away from the pointer: X sends LeaveNotify without any motion; Qt's cursor is already
+    at that point, and offscreen only finds the new window under it when setPos is called again."""
+    from PySide6 import QtCore, QtGui
+
+    w = widgets.w
+    g = w.geometry()
+    x, y = g.x() + 60, g.y() + 150
+    inp.crossing(w, ev(X.EnterNotify, w, 60, 150, mode=X.NotifyNormal, detail=0))
+    assert spin(qapp, lambda: w.underMouse())
+    w.resize(40, 40)                                   # the window leaves the pointer (restored away from it)
+    assert spin(qapp, lambda: w.width() == 40)
+    le = SimpleNamespace(code=X.LeaveNotify, detail=0, mode=X.NotifyNormal, x=0, y=0, root_x=x, root_y=y, state=0,
+                         time=now())
+    inp.crossing(w, le)
+    assert spin(qapp, lambda: not w.underMouse())
+    assert QtCore.QPoint(x, y) == QtGui.QCursor.pos()                        # and Qt's cursor is back there
