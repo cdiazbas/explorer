@@ -804,3 +804,29 @@ Con un cubo de prueba cuyas lecturas suelta la prueba:
 
 10 de 10 ejecuciones en el Mac y 3 de 3 en bellatrix, sin fallos intermitentes.
 
+### 2026-09-30: cubos sin cabecera de ejes (ROADMAP E1.14)
+
+**Problema** (medido con FITS sin cabecera). Sin CTYPE, un cubo de 3 o de 4 dimensiones se quedaba
+sin papeles: solo la imagen, sin espectro, sin λ–t y sin pasos. El `axis_positions` del prototipo
+solo supone el orden con exactamente tres ejes delanteros, y explorer lo había traído tal cual.
+
+**Regla, decidida por el usuario:**
+- **4-D sin nombres:** (t, λ, y, x) por defecto.
+- **3-D:** puede ser (t, y, x) o (λ, y, x), así que se trata como caso general. El eje se recorre y
+  se dibuja como un perfil en índices, y la interfaz no lo llama λ ni t (`Roles.how == "unknown"`).
+- **5-D:** en orden SOLARNET, como antes.
+- **`--axes`** dice otra cosa: una letra por eje delantero, del más lento al más rápido (`t`, `s`,
+  `l`), p. ej. `s,l` o `t`. Un valor mal formado se rechaza.
+- **`Roles.how`** dice de dónde salieron los papeles: `header`, `SOLARNET order`,
+  `default (t, lambda)`, `unknown` o `--axes`.
+
+**Arreglo en el planificador.** Pide espectro solo si hay λ, y λ–t solo si hay t y λ. Una serie
+temporal (`--axes t`) queda con la imagen y sus pasos. Su panel natural sería una curva de luz, que
+el plan deja para después.
+
+**Pruebas:**
+- `roles` por nombre y por número de ejes, `--axes` y sus errores;
+- de punta a punta (`Dataset`, `Session`, `Scheduler`) con FITS sin cabecera: 4-D por defecto,
+  4-D `s,l`, 3-D desconocido, 3-D `t` y 5-D. Pasos, espectros y λ–t en índices.
+
+El demo acepta `--axes`.
