@@ -255,15 +255,18 @@ class QtInput:
         self.stats["keys"] += 1
 
     # ---------------------------------------------------------------- activation
-    def _sink_window(self) -> QtGui.QWindow:
-        """A 1x1 QWindow without widgets, far from every screen: activating it leaves no widget window active."""
+    def _sink_window(self, parent: QtGui.QWindow) -> QtGui.QWindow:
+        """A 1x1 QWindow without widgets, far from every screen: activating it leaves no widget window active. It is
+        shown only while in use, as a secondary window of the one that was active (transient parent): a visible
+        window of its own would keep the application from quitting when its last widget window closes."""
         if self._sink is None:
             s = QtGui.QWindow()
             s.setObjectName("xbridge2-focus-sink")
             s.setFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
             s.setGeometry(-(1 << 21), -(1 << 21), 1, 1)
-            s.show()
             self._sink = s
+        self._sink.setTransientParent(parent)
+        self._sink.show()
         return self._sink
 
     def is_sink(self, h) -> bool:
@@ -295,8 +298,10 @@ class QtInput:
             h = w.windowHandle()
             if h is not None and fw is not h and w.isVisible():
                 self._activate(h)
+            if self._sink is not None and self._sink.isVisible():
+                self._sink.hide()
         elif fw is not None and not self.is_sink(fw) and not self._focus_out.isActive():
-            self._activate(self._sink_window())
+            self._activate(self._sink_window(fw))
 
     def _activate(self, h: QtGui.QWindow) -> None:
         self._following = True

@@ -319,6 +319,37 @@ def test_qt_activation_follows_the_x_focus(qapp, widgets, inp):
         other.close()
 
 
+QUIT_SCRIPT = """
+import os, sys
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+from PySide6 import QtCore, QtWidgets
+from explorer.platform.xbridge2.qtinput import QtInput
+app = QtWidgets.QApplication([])
+w = QtWidgets.QWidget(); w.resize(200, 100); w.show()
+inp = QtInput(lambda: None)
+QtCore.QTimer.singleShot(100, lambda: inp.x_focus(w, True))
+QtCore.QTimer.singleShot(200, lambda: inp.x_focus(w, False))      # the X focus leaves: no active window after 400 ms
+QtCore.QTimer.singleShot(900, lambda: print("active", app.activeWindow(), flush=True))
+QtCore.QTimer.singleShot(1000, w.close)                            # the last widget window closes
+QtCore.QTimer.singleShot(4000, lambda: app.exit(2))                # still running: it did not quit
+sys.exit(app.exec())
+"""
+
+
+def test_no_active_window_does_not_keep_the_application_open():
+    """With the X focus elsewhere, closing the last widget window still quits (Qt decides it inside exec(), hence a
+    process of its own): the stand-in window that leaves no widget window active does not count."""
+    import os
+    import subprocess
+    import sys
+
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
+    env.pop("DISPLAY", None)
+    p = subprocess.run([sys.executable, "-c", QUIT_SCRIPT], env=env, capture_output=True, text=True, timeout=60)
+    assert "active None" in p.stdout, p.stdout + p.stderr[-500:]
+    assert p.returncode == 0, p.stdout + p.stderr[-500:]
+
+
 def test_global_modifiers_follow_the_input_but_not_a_modifier_release(qapp, widgets, inp):
     """QGuiApplication.keyboardModifiers() follows mouse events (the X state) and key presses; the release of a modifier
     key alone leaves it stale until the next mouse event or key press: only a platform plugin can set it, and xcb

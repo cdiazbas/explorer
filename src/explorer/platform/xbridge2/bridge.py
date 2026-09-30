@@ -226,6 +226,8 @@ class Bridge(QtCore.QObject):
                 self._child_moved(obj, e, t)
             return False
         rec = self.windows.get(obj)
+        if t in (E.Type.Show, E.Type.Hide) and e.spontaneous():
+            return False                                # minimised or restored, not shown or hidden by the program
         if t == E.Type.Show:
             if rec is None and self.main is not None and obj.windowType() != Qt.WindowType.Desktop:
                 self._add(obj)
@@ -465,6 +467,11 @@ class Bridge(QtCore.QObject):
                 if err is None:
                     self.post(self._net_state, rec, r)
             self.c.get_property(rec.xid, A["_NET_WM_STATE"], X.ATOM_ATOM).then(got)
+        elif rec is not None and e.atom == A["WM_STATE"] and not rec.popup:
+            def got_state(r, err):
+                if err is None:
+                    self.post(self._wm_state, rec, r)
+            self.c.get_property(rec.xid, A["WM_STATE"], A["WM_STATE"]).then(got_state)
 
     def _net_state(self, rec: XWin, reply: bytes) -> None:
         """The manager maximised or restored the window (its own button, a double click on its frame): Qt's state
@@ -507,18 +514,27 @@ class Bridge(QtCore.QObject):
             rec.w.move(x, y)
 
     def _mapped(self, rec: XWin, mapped: bool) -> None:
-        """The manager showed, iconified or restored a window of ours: Qt is told, as xcb tells it from WM_STATE,
-        and nothing is sent to an iconified window."""
+        """Mapped: the window can take the focus, and the one shown first asks for it. Map and unmap do not say
+        iconified: a manager that reparents the window into a new frame (metacity, when maximising) unmaps and maps
+        it (the prototype read iconify from them and hid the viewer's window); WM_STATE says it (_wm_state)."""
         if mapped:
             rec.viewable = True
             if rec.activate_on_map:
                 rec.activate_on_map = False
                 self.windows.activate(rec)
-        if rec.popup or mapped == (not rec.iconic):
+
+    def _wm_state(self, rec: XWin, reply: bytes) -> None:
+        """The manager iconified or restored a window of ours (ICCCM WM_STATE: 3 iconic, 1 normal): Qt is told, as
+        xcb tells it, and nothing is sent to an iconified window."""
+        _t, fmt, val, _ = self.c.property_value(reply)
+        if fmt != 32 or len(val) < 4 or self.windows.get(rec.w) is not rec:
             return
-        rec.iconic = not mapped
+        iconic = struct.unpack_from("<I", val)[0] == 3
+        if iconic == rec.iconic:
+            return
+        rec.iconic = iconic
         st = rec.w.windowState()
-        if mapped:
+        if not iconic:
             rec.dirty = QtGui.QRegion(rec.w.rect())
             self._schedule()
             if st & Qt.WindowState.WindowMinimized:

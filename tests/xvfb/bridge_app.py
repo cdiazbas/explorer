@@ -37,6 +37,18 @@ def main():
     ops = disp.attach(app, w)
     bridge = disp.bridge
     extra: dict = {}
+    if os.environ.get("XB2_TRACE"):                    # who ends the application, and when
+        import traceback
+
+        app.lastWindowClosed.connect(lambda: (print("lastWindowClosed", file=sys.stderr), traceback.print_stack()))
+        app.aboutToQuit.connect(lambda: (print("aboutToQuit", file=sys.stderr), traceback.print_stack()))
+        destroy = bridge.windows.destroy
+
+        def traced(w_):
+            print("X window destroyed for", w_.windowTitle(), file=sys.stderr)
+            traceback.print_stack()
+            return destroy(w_)
+        bridge.windows.destroy = traced
 
     def out(d):
         sys.stdout.write(json.dumps(d) + "\n")
@@ -66,6 +78,7 @@ def main():
                                   iconic=r.iconic) for r in bridge.windows],
                     popup=bool(QtWidgets.QApplication.activePopupWidget()), hits=list(extra.get("hits", [])),
                     minimized=bool(w.windowState() & QtCore.Qt.WindowState.WindowMinimized),
+                    maximized=bool(w.windowState() & QtCore.Qt.WindowState.WindowMaximized),
                     summary=bridge.summary())
 
     def grab(target):

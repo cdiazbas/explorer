@@ -194,6 +194,7 @@ class Windows:
         rec = self.by_widget.pop(w, None)
         if rec is None:
             return None
+        log.debug("X window %#x of %r destroyed", rec.xid, w.windowTitle())
         self.by_xid.pop(rec.xid, None)
         if rec.grab and not any(r.grab for r in self.by_widget.values()):
             self.c.ungrab_pointer(self.xtime)
