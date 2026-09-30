@@ -4,10 +4,14 @@
 
 The display is the caller's: QT_QPA_PLATFORM=offscreen, or xcb with DISPLAY and XAUTHORITY of a private Xvfb.
 - open_to_first_frame_s: from after the application exists to the first image on screen (as the prototype's t0);
+- the cursor phase before the steps, as the prototype's (app/selftest.py:58-103): 30 positions from
+  default_rng(1) in [50, n-50), at least 40 px apart, each waiting for lambda-t without a per-pixel file; 30 moves
+  over padding; a burst of 50 moves in one pass. Stepping right after opening instead (the y-range sample still
+  reading) made the steps without a per-pixel file look 1.4-2.9x slower (ROADMAP E3.8);
 - step in t / step in lambda: 10 steps each (wrapping), each timed until the new image is on screen;
 - change Stokes: 2 x ns changes, the same way.
-What the prototype's steps also did and explorer does not draw yet: the spectra (ROADMAP E4); its cursor numbers
-include drawing spectra and lambda-t, so the cursor is left out here until then.
+What the prototype's cursor and steps also do and explorer does not draw yet: the spectra and lambda-t (ROADMAP E4);
+explorer reads them but only keeps them, so its cursor numbers are not comparable until then.
 """
 import argparse
 import json
@@ -75,6 +79,50 @@ def main():
 
     print(f"{res['cube']} {res['shape']} sp={res['sp']} platform={res['platform']} display={res['display']}"
           f"\n  {res['probe']}\n  open to first frame {res['open_to_first_frame_s']} s", flush=True)
+    # the prototype's cursor phase (app/selftest.py:58-103), before its steps: the same state when stepping
+    rng = np.random.default_rng(1)
+    my, mx = min(50, ds.ny // 4), min(50, ds.nx // 4)   # the prototype's 50 px; less only on a small (synthetic) cube
+    ts_c, lt_lat, prev = [], [], None
+    for _ in range(30):
+        while True:
+            y, x = int(rng.integers(my, ds.ny - my)), int(rng.integers(mx, ds.nx - mx))
+            if prev is None or abs(y - prev[0]) + abs(x - prev[1]) > min(40, (ds.ny + ds.nx) // 8):
+                break
+        prev = (y, x)
+        q = time.perf_counter()
+        w.session.hover(y, x)
+        app.processEvents()
+        app.processEvents()
+        ts_c.append(time.perf_counter() - q)
+        if ds.pixel is None:                            # lambda-t arrives from the reader
+            end = time.perf_counter() + 5
+            while (w.last.get("lambda_t") or (None, None))[1] != (y, x) and time.perf_counter() < end:
+                app.processEvents()
+                time.sleep(0.001)
+            if (w.last.get("lambda_t") or (None, None))[1] == (y, x):
+                lt_lat.append(time.perf_counter() - q)
+    rec("cursor (no drawing of the panels yet)", ts_c)
+    if lt_lat:
+        rec("cursor: lambda-t arrived (no sp)", lt_lat)
+    img = w.scheduler.img
+    st = w.session.state
+    pad = np.argwhere(~np.isfinite(img) | ((img == 0) & (st.s == 0)))
+    if len(pad):
+        ts_p = []
+        for k in rng.choice(len(pad), size=min(30, len(pad)), replace=False):
+            y, x = (int(c) for c in pad[k])
+            q = time.perf_counter()
+            w.session.hover(y, x)
+            app.processEvents()
+            app.processEvents()
+            ts_p.append(time.perf_counter() - q)
+        rec("cursor over padding", ts_p)
+    q = time.perf_counter()
+    for _ in range(50):
+        w.session.hover(int(rng.integers(0, ds.ny)), int(rng.integers(0, ds.nx)))
+    app.processEvents()
+    app.processEvents()
+    rec("burst of 50 moves, coalesced", [time.perf_counter() - q])
     r = ds.roles
     if r.t is not None and r.nt > 1:
         rec("step in t", step("t", 10))
