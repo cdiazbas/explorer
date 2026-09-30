@@ -1,8 +1,7 @@
 """The display a plan chose, on Qt: the environment before Qt starts, the application, and what a window needs from
 the platform. The views see WindowOps only; nothing else in the UI branches on the operating system (docs/plan.md
 §3.5). From the prototype's app/startup.py (prepare, make_app, show, _mac_zoom_not_fullscreen, start_link_probe).
-The X11 bridge is another Display: A, the prototype's brought over as it is (xbridge.display.BridgeDisplay); B, the
-rewritten one (xbridge2.Bridge2Display). for_plan() picks the one a plan asks for.
+The X11 bridge is another Display (xbridge2.Bridge2Display); for_plan() picks the one a plan asks for.
 """
 import os
 import sys
@@ -38,7 +37,7 @@ class NoDisplay(SystemExit):
 class LinkInfo:
     """What the link to the screen carries: bytes per pixel of the image panel per image shown, and the playback
     rate not to go above. None: a local screen, no limit. Measured 2026-09-24 (the prototype's start_link_probe):
-    Qt's own X11 ~4.8 B/px (4 B/px plus the side panels), capped at 30 fps; the bridge's in xbridge.display. The
+    Qt's own X11 ~4.8 B/px (4 B/px plus the side panels), capped at 30 fps; the bridge's in its Display. The
     link's own rate is measured by platform.linkprobe when playback sets its default (ROADMAP E4)."""
     bytes_per_px: float | None
     fps_cap: int | None
@@ -46,7 +45,7 @@ class LinkInfo:
 
 class WindowOps:
     """What a view may ask of its window: here, of a window Qt shows itself (cocoa, xcb, offscreen); the bridge's
-    windows have their own (xbridge.display.BridgeWindowOps). The moving and shaping calls are the prototype's Mover
+    windows have their own (xbridge2.Bridge2WindowOps). The moving and shaping calls are the prototype's Mover
     (app/titlebar.py), for a title bar of ours (ROADMAP E5)."""
 
     def __init__(self, window, display: "Display"):
@@ -82,17 +81,9 @@ class WindowOps:
         else:
             self.w.setMask(region)
 
-    def set_resizer(self, resizer) -> None:
-        """Only the bridge's legacy input feeds an edge resizer; elsewhere it watches the QWindow."""
-
     @property
     def active(self) -> bool:
         return self.w.isActiveWindow()
-
-    @property
-    def qwindow_events(self) -> bool:
-        """Mouse input reaches the QWindow, so an edge resizer can watch it there."""
-        return True
 
     def activate(self) -> None:
         """Raise the window and give it the keyboard. Launched from a terminal, the first key (Space to play) went
@@ -162,22 +153,18 @@ class Display:
 
     def stats(self) -> dict:
         return {"kind": self.kind, "platform": self.plan.platform, "remote": self.plan.remote,
-                "bridge": self.plan.bridge, "variant": self.plan.variant, "notes": list(self.plan.notes)}
+                "bridge": self.plan.bridge, "notes": list(self.plan.notes)}
 
     def close(self) -> None:
         pass
 
 
 def for_plan(plan: DisplayPlan) -> Display:
-    """The Display a plan asks for: bridge B's (variant bridge2), bridge A's, or Qt's own platform."""
-    if plan.variant == "bridge2":
+    """The Display a plan asks for: the X11 bridge's, or Qt's own platform."""
+    if plan.bridge:
         from .xbridge2 import Bridge2Display
 
         return Bridge2Display(plan)
-    if plan.bridge:
-        from .xbridge.display import BridgeDisplay
-
-        return BridgeDisplay(plan)
     return Display(plan)
 
 

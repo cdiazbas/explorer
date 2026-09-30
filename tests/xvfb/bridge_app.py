@@ -23,7 +23,7 @@ def main():
     from explorer.platform.plan import choose_display
 
     t0 = time.perf_counter()
-    disp = for_plan(choose_display(os.environ, sys.platform, "bridge2"))
+    disp = for_plan(choose_display(os.environ, sys.platform, "bridge"))
     disp.prepare_env()
     app = disp.make_app()
     from PySide6 import QtCore, QtGui, QtWidgets

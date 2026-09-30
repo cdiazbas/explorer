@@ -462,3 +462,20 @@ def test_a_window_that_moves_away_from_a_still_pointer_gets_its_leave(qapp, widg
     inp.crossing(w, le)
     assert spin(qapp, lambda: not w.underMouse())
     assert QtCore.QPoint(x, y) == QtGui.QCursor.pos()                        # and Qt's cursor is back there
+
+
+def test_window_ops_publish_the_shape_the_bridge_applies(qapp):
+    """Offscreen keeps no masks: a window's outline (a title bar's rounded corners) reaches the X SHAPE only through
+    the attribute the bridge reads. Without it the corners were square (the prototype's conformance suite)."""
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.platform.xbridge2 import Bridge2WindowOps
+    from explorer.platform.xbridge2.windows import SHAPE_ATTR
+
+    w = QtWidgets.QWidget()
+    ops = Bridge2WindowOps(w, None)
+    r = QtGui.QRegion(0, 0, 40, 30, QtGui.QRegion.RegionType.Ellipse)
+    ops.set_shape(r)
+    assert getattr(w, SHAPE_ATTR) == r
+    ops.set_shape(None)
+    assert getattr(w, SHAPE_ATTR).isEmpty()

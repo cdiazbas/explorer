@@ -45,6 +45,15 @@ class Bridge2WindowOps(WindowOps):
     def minimize(self) -> None:
         self.w.showMinimized()                          # the bridge asks the manager (WindowStateChange)
 
+    def set_shape(self, region) -> None:
+        """Offscreen keeps no masks: the region is published where the bridge reads it for the X SHAPE
+        (windows.SHAPE_ATTR). None or empty: rectangular."""
+        from PySide6 import QtGui
+
+        from .windows import SHAPE_ATTR
+
+        setattr(self.w, SHAPE_ATTR, QtGui.QRegion() if region is None else QtGui.QRegion(region))
+
 
 class Bridge2Display(Display):
     def __init__(self, plan: DisplayPlan):

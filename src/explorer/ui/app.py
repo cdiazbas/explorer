@@ -27,11 +27,10 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
     t0 = time.perf_counter()
     before = process_age()                              # Python's start and the imports up to here
     phases: dict[str, float] = {}
-    from ..platform import xbridge
     from ..platform.display import NoDisplay, for_plan
     from ..platform.plan import choose_display
 
-    plan = choose_display(os.environ, sys.platform, x11, bridge_available=xbridge.available())
+    plan = choose_display(os.environ, sys.platform, x11)
     for note in plan.notes:
         print(f"[{APP_NAME}] {note}", file=sys.stderr)
     disp = for_plan(plan)
@@ -53,7 +52,7 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
         q = time.perf_counter()
         shell = Shell(ds, title=f"{os.path.basename(str(path))} — {APP_NAME}", t0=t0)
         phases["window"] = time.perf_counter() - q
-        shown = ("X11 bridge B" if plan.variant == "bridge2" else "X11 bridge A") if plan.bridge else plan.platform
+        shown = "X11 bridge" if plan.bridge else plan.platform
         shell.breakdown = (before, phases, shown, plan.remote)
         geo = app.primaryScreen().availableGeometry()
         shell.resize(int(geo.width() * 0.8), int(geo.height() * 0.8))

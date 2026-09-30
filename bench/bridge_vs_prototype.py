@@ -95,7 +95,7 @@ def one(cube: str, which: str, out: str) -> int:
         from explorer.platform.plan import choose_display
 
         t = time.perf_counter()
-        disp = for_plan(choose_display(os.environ, sys.platform, "bridge2"))
+        disp = for_plan(choose_display(os.environ, sys.platform, "bridge"))
         disp.prepare_env()
         res["connect_s"] = round(time.perf_counter() - t, 3)
         app = disp.make_app()

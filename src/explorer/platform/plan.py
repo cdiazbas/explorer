@@ -13,18 +13,14 @@ The prototype's table (app/startup.py prepare and remote_x11, app/xbridge.py wan
 - A local display: Linux, Qt's xcb (or Wayland when that is all there is); a Mac, cocoa.
 - A Mac reached by ssh without X forwarding: no window server; stop with a message (the prototype found it out after
   Qt started, from an empty screen list: grove, 2026-09-24).
-Where the bridge cannot run (python-xlib missing: xbridge.available) a plan that wants it falls back to Qt's xcb, and
-says so.
-- --x11 bridge2 (EXPLORER_X11=bridge2): the rewritten bridge (platform/xbridge2, docs/decisions/0009), chosen
-  only explicitly, so it can be compared with the prototype's; everything else as for the bridge.
+The bridge is the one written anew (platform/xbridge2, docs/decisions/0009); it needs nothing beyond Qt.
 """
 from dataclasses import dataclass, field
 
 from .._name import APP_NAME
 
-X11_VAR = f"{APP_NAME.upper()}_X11"                     # native | bridge | bridge2: the same as --x11
-CHOICES = ("auto", "native", "bridge", "bridge2")
-BRIDGES = ("bridge", "bridge2")
+X11_VAR = f"{APP_NAME.upper()}_X11"                     # native | bridge: the same as --x11
+CHOICES = ("auto", "native", "bridge")
 
 
 @dataclass(frozen=True)
@@ -35,7 +31,6 @@ class DisplayPlan:
     stop: str | None = None                             # why the app cannot show a window here (then nothing else)
     env: dict = field(default_factory=dict)             # variables to set before Qt starts
     notes: tuple[str, ...] = ()
-    variant: str | None = None                          # "bridge2": the rewritten bridge
 
     @property
     def kind(self) -> str:
@@ -45,9 +40,8 @@ class DisplayPlan:
         return "x11bridge" if self.bridge else "x11" if self.remote else (self.platform or "default")
 
 
-def choose_display(env, platform: str, x11: str = "auto", bridge_available: bool = False) -> DisplayPlan:
-    """env: the process environment (a mapping); platform: sys.platform; x11: --x11 (auto, native, bridge, bridge2);
-    bridge_available: whether this install can run the bridge (platform.xbridge.available())."""
+def choose_display(env, platform: str, x11: str = "auto") -> DisplayPlan:
+    """env: the process environment (a mapping); platform: sys.platform; x11: --x11 (auto, native or bridge)."""
     if x11 not in CHOICES:
         raise ValueError(f"--x11 must be one of {CHOICES}, not {x11!r}")
     linux, mac = platform.startswith("linux"), platform == "darwin"
@@ -55,13 +49,12 @@ def choose_display(env, platform: str, x11: str = "auto", bridge_available: bool
     ssh = bool(env.get("SSH_CONNECTION"))
     if x11 == "auto" and env.get(X11_VAR) in CHOICES[1:]:
         x11 = env[X11_VAR]
-    notes: list[str] = []
 
     if linux and not disp and not env.get("WAYLAND_DISPLAY") and not qpa:
         return DisplayPlan(None, stop="no display to show the window on (DISPLAY is not set): run it in a desktop "
                                       "session, or connect with ssh -Y so the window reaches your screen")
     if qpa:                                             # chosen by whoever launched it
-        wants_bridge = x11 in BRIDGES
+        wants_bridge = x11 == "bridge"
         remote = wants_bridge or (qpa.startswith("xcb") and ssh and bool(disp) and not disp.startswith(":"))
         if not wants_bridge:
             return DisplayPlan(qpa, remote=remote)
@@ -70,7 +63,7 @@ def choose_display(env, platform: str, x11: str = "auto", bridge_available: bool
         if mac and ssh and not disp:
             return DisplayPlan(None, stop="macOS over ssh has no window server: connect with ssh -Y (the window "
                                           "then comes through X11), or run it in a Terminal on that Mac")
-        wants_bridge = x11 in BRIDGES or (x11 == "auto" and remote_display)
+        wants_bridge = x11 == "bridge" or (x11 == "auto" and remote_display)
         if not wants_bridge:
             if mac and not remote_display:
                 return DisplayPlan("cocoa")
@@ -80,12 +73,5 @@ def choose_display(env, platform: str, x11: str = "auto", bridge_available: bool
                                env={"QT_QPA_PLATFORM": "xcb"} if disp else {})
     # the bridge is wanted
     if not disp:
-        return DisplayPlan(None, stop=f"--x11 {x11 if x11 in BRIDGES else 'bridge'} needs an X display (DISPLAY is "
-                                      "not set)")
-    if x11 == "bridge2":
-        return DisplayPlan("offscreen", bridge=True, remote=True, env={"QT_QPA_PLATFORM": "offscreen"},
-                           variant="bridge2")
-    if not bridge_available:
-        notes.append("the X11 bridge needs python-xlib, which is not installed: using Qt's own X11 (xcb)")
-        return DisplayPlan("xcb", remote=True, env={"QT_QPA_PLATFORM": "xcb"}, notes=tuple(notes))
+        return DisplayPlan(None, stop="--x11 bridge needs an X display (DISPLAY is not set)")
     return DisplayPlan("offscreen", bridge=True, remote=True, env={"QT_QPA_PLATFORM": "offscreen"})
