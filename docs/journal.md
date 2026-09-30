@@ -1403,3 +1403,28 @@ ventana. Las teclas van a la aplicación del frente (la terminal), y el foco X n
   (`a0a6228`).
 
 Tras los dos arreglos: 247 pasan y 3 se saltan (necesitan gestor de ventanas).
+
+
+### 2026-09-30: las teclas desde la terminal (ROADMAP E6.2)
+
+**Implementado** (`ui/termkeys.py`, enganchado en `ui/app.run` tras mostrar la ventana): lo que el
+usuario probó con una copia fuera del repositorio, con dos cambios:
+- **Las teclas se comparan como combinaciones de Qt** (`QKeyCombination`: tecla y modificadores),
+  no como texto. El texto de un `QKeySequence` cambia de orden y de forma entre sistemas; la
+  combinación es lo que compara un `QShortcut`.
+- **El corte en teclas es una clase aparte** (`KeyStream`), probada sin Qt: secuencias partidas
+  entre lecturas, Escape solo (espera 50 ms), UTF-8 entero, Escape seguido de otra tecla (Alt).
+
+Una mayúscula llega como Mayúsculas + letra, como en la ventana: `L` no bloquea el cursor, `l` sí.
+
+**Pruebas:**
+- `tests/unit/test_termkeys.py`: la tabla de secuencias (flechas CSI y SS3, modificadores, `~`,
+  control, Alt, UTF-8); el corte; un pseudoterminal unido a una `Shell` real: ↑ mueve t, dos →
+  en una lectura mueven λ dos pasos, `2` pone Q, `l` bloquea y Escape desbloquea tras 50 ms. La
+  terminal vuelve como estaba, salvo `PENDIN`, que macOS pone solo al volver al modo canónico.
+- macOS y Linux (bellatrix): pasan.
+- La orden real (`scripts/run.sh`) bajo un pseudoterminal, en el Xvfb privado por el puente: la
+  línea que lo anuncia, 9 actualizaciones tras ↑ → `2`, y Ctrl+W cierra con 0.
+
+**Sin probar:** Ctrl+Z y `fg` (al volver, la terminal quizá no esté en modo cbreak), y la
+comprobación del usuario por `ssh -Y` con esta versión.
