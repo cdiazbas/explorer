@@ -373,3 +373,73 @@ def test_global_modifiers_follow_the_input_but_not_a_modifier_release(qapp, widg
     inp.motion(w, ev(X.MotionNotify, w, 52, 150, state=0))
     qapp.processEvents()
     assert QtGui.QGuiApplication.keyboardModifiers() == M.NoModifier
+
+
+def test_a_double_click_grab_ends_when_the_buttons_are_up(qapp, widgets, inp):
+    """A double click holds its widget (grabMouse) until the release. When the double click unmaps the window under
+    the pointer (a floating panel docked by it), X sends that release nowhere: the next move or press with no
+    button held ends the grab, which otherwise kept every later press from the other windows."""
+    from PySide6 import QtWidgets
+
+    w = widgets.w
+    t = now()
+    inp.button(w, ev(X.ButtonPress, w, 50, 75, detail=1, t=t))
+    inp.button(w, ev(X.ButtonRelease, w, 50, 75, detail=1, state=0x100, t=t + 10))
+    inp.button(w, ev(X.ButtonPress, w, 50, 75, detail=1, t=t + 20))                # the double click
+    assert spin(qapp, lambda: QtWidgets.QWidget.mouseGrabber() is not None)
+    inp.motion(w, ev(X.MotionNotify, w, 60, 120, state=0))                        # no release came; buttons up
+    assert spin(qapp, lambda: QtWidgets.QWidget.mouseGrabber() is None)
+    inp.button(w, ev(X.ButtonPress, w, 50, 75, detail=1, t=t + 900))
+    inp.button(w, ev(X.ButtonRelease, w, 50, 75, detail=1, state=0x100, t=t + 910))
+    inp.button(w, ev(X.ButtonPress, w, 50, 75, detail=1, t=t + 920))
+    assert spin(qapp, lambda: QtWidgets.QWidget.mouseGrabber() is not None)
+    inp.button(w, ev(X.ButtonPress, w, 50, 25, detail=1, t=t + 3000))             # a new press, buttons up before
+    assert QtWidgets.QWidget.mouseGrabber() is None
+    inp.button(w, ev(X.ButtonRelease, w, 50, 25, detail=1, state=0x100, t=t + 3010))
+
+
+def test_popups_close_when_the_x_focus_leaves_the_application(qapp, widgets, inp):
+    """xcb: the X focus goes to another client while a combo's list is open; the list closes and no window stays
+    active. Qt's popup mode keeps its activation while the X focus is ours."""
+    from PySide6 import QtCore, QtWidgets
+
+    w = widgets.w
+    inp.x_focus(w, True)
+    assert spin(qapp, lambda: qapp.activeWindow() is w)
+    menu = QtWidgets.QMenu(w)
+    menu.addAction("one")
+    menu.popup(QtCore.QPoint(500, 300))
+    assert spin(qapp, lambda: QtWidgets.QApplication.activePopupWidget() is menu)
+    inp.x_focus(w, False)
+    qapp.processEvents()
+    assert menu.isVisible()                            # not before the X focus has really left (400 ms)
+    assert spin(qapp, lambda: not menu.isVisible() and qapp.activeWindow() is None, 2.0)
+
+
+def test_the_moves_offscreen_makes_for_our_set_pos_are_told_apart(qapp, widgets, inp):
+    """Offscreen answers each QCursor.setPos with a mouse move (MouseEventSynthesizedByQt) that xcb never sends:
+    after a pan, the one following the release moved the crosshair to another pixel. The bridge drops exactly those
+    (its eventFilter); moves from X input are kept."""
+    from PySide6 import QtCore, QtGui
+
+    seen = []
+
+    class F(QtCore.QObject):
+        def eventFilter(self, o, e):
+            if e.type() == QtCore.QEvent.Type.MouseMove and isinstance(o, QtGui.QWindow):
+                seen.append(inp.is_own_synthetic_move(e))
+            return False
+
+    f = F()
+    qapp.installEventFilter(f)
+    try:
+        w = widgets.w
+        g = w.geometry()
+        inp._set_cursor(g.x() + 120, g.y() + 150)
+        assert spin(qapp, lambda: True in seen)
+        seen.clear()
+        inp.motion(w, ev(X.MotionNotify, w, 130, 160))
+        assert spin(qapp, lambda: bool(seen))
+        assert seen == [False]
+    finally:
+        qapp.removeEventFilter(f)

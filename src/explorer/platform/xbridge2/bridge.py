@@ -205,6 +205,8 @@ class Bridge(QtCore.QObject):
         if self.dead:
             return False
         t = e.type()
+        if t == E.Type.MouseMove and isinstance(obj, QtGui.QWindow) and self.input.is_own_synthetic_move(e):
+            return True                                 # offscreen's answer to our setPos, not input (qtinput)
         if t == E.Type.Paint:
             if isinstance(obj, QtWidgets.QWidget):
                 top = obj.window()

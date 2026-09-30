@@ -15,7 +15,9 @@ events. What it does not do, and this module does instead:
   Qt does not pass it on to the parents (a QSpinBox's line edit ignored it); here each widget up the chain gets it
   until one accepts it, with Qt's popup and modal rules;
 - the cursor position: QCursor.setPos on offscreen also makes Qt's window Enter/Leave (by window geometry); it is
-  set when the pointer enters or leaves, at each press and release, and once the pointer rests;
+  set when the pointer enters or leaves, at each press and release, and once the pointer rests. Offscreen also
+  sends a mouse move for each setPos (source MouseEventSynthesizedByQt) that xcb never sends: after a pan, the one
+  after the release moved the crosshair to another pixel. Those moves are dropped (is_own_synthetic_move);
 - activation: offscreen activates every window it shows; Qt's active window is set from the X focus with
   requestActivate, and with no X focus in the application, a plain QWindow (no widgets) is activated, so that no
   widget window is active.
@@ -23,6 +25,8 @@ Not covered (Qt has no public way in, stated with the tests): QGuiApplication.ke
 events and key presses, but the release of a modifier key alone leaves it stale until the next of those (xcb clears
 it); input methods (no IME); drag and drop between applications.
 """
+import time
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from . import keys as K
@@ -34,6 +38,8 @@ BUTTONS = {1: Qt.MouseButton.LeftButton, 2: Qt.MouseButton.MiddleButton, 3: Qt.M
 STATE_BUTTONS = ((0x100, Qt.MouseButton.LeftButton), (0x200, Qt.MouseButton.MiddleButton),
                  (0x400, Qt.MouseButton.RightButton))
 REST_MS = 60                                            # the pointer at rest: Qt's cursor position is set
+OWN_MOVE_S = 1.0                                        # a setPos's answering move comes within this
+POPUPS_MAX = 16                                         # nested popups closed when the X focus leaves
 FOCUS_OUT_MS = 400                                      # X focus gone from every window of ours (xcb waits the same)
 
 
@@ -60,6 +66,7 @@ class QtInput:
         self._last_press = None                         # (button, X time, root x, y): double clicks
         self._grabbed: QtWidgets.QWidget | None = None  # the widget of a double click's press
         self._root = None                               # last pointer position, root coordinates
+        self._own_moves: list = []                      # (x, y, time) of our setPos: offscreen answers with a move
         self._rest = QtCore.QTimer()
         self._rest.setSingleShot(True)
         self._rest.setInterval(REST_MS)
@@ -111,7 +118,21 @@ class QtInput:
 
     def _set_cursor(self, x: int, y: int) -> None:
         if QtGui.QCursor.pos() != QtCore.QPoint(x, y):
+            now = time.monotonic()
+            self._own_moves = [m for m in self._own_moves if now - m[2] < OWN_MOVE_S] + [(x, y, now)]
             QtGui.QCursor.setPos(x, y)
+
+    def is_own_synthetic_move(self, e) -> bool:
+        """e (a MouseMove to a QWindow) is offscreen's answer to one of our setPos, not input: dropped."""
+        if e.source() != Qt.MouseEventSource.MouseEventSynthesizedByQt or not self._own_moves:
+            return False
+        g = e.globalPosition().toPoint()
+        now = time.monotonic()
+        for i, (x, y, t) in enumerate(self._own_moves):
+            if (x, y) == (g.x(), g.y()) and now - t < OWN_MOVE_S:
+                del self._own_moves[i]
+                return True
+        return False
 
     def _at_rest(self) -> None:
         if self._root is not None and self.buttons == Qt.MouseButton.NoButton:
@@ -125,6 +146,8 @@ class QtInput:
         self._root = (e.root_x, e.root_y)
         buttons = self._state_buttons(e.state)
         self.buttons = buttons
+        if buttons == Qt.MouseButton.NoButton:
+            self._end_double_grab()                     # its release went to a window that was gone
         self._send_mouse(h, E.Type.MouseMove, e, Qt.MouseButton.NoButton, buttons, self.mods(e.state))
         if buttons == Qt.MouseButton.NoButton:
             self._rest.start()
@@ -143,6 +166,11 @@ class QtInput:
         if b is None:
             return
         before = self._state_buttons(e.state)
+        if press and before == Qt.MouseButton.NoButton:
+            # a double click's grab whose release never came: its widget's window was unmapped under the pointer (a
+            # floating panel docked by the double click), so X sent the release nowhere; the grab kept every later
+            # press away from the other windows
+            self._end_double_grab()
         self.buttons = (before | b) if press else (before & ~b)
         self._root = (e.root_x, e.root_y)
         if not press:
@@ -288,10 +316,19 @@ class QtInput:
             self.follow()
 
     def follow(self) -> None:
-        """Make Qt's active window the one with the X focus (or none). Not while a popup is open: Qt's popup mode
-        manages activation itself."""
-        if not self._known or QtWidgets.QApplication.activePopupWidget() is not None:
+        """Make Qt's active window the one with the X focus (or none). While a popup is open Qt's popup mode manages
+        activation itself, unless the X focus has left the application: then its popups close first, as with xcb
+        (a combo's list stayed open, and the window active, when the X focus went to another client)."""
+        if not self._known:
             return
+        if QtWidgets.QApplication.activePopupWidget() is not None:
+            if self.xfocus is not None or self._focus_out.isActive():
+                return
+            for _ in range(POPUPS_MAX):
+                p = QtWidgets.QApplication.activePopupWidget()
+                if p is None:
+                    break
+                p.close()
         fw = QtGui.QGuiApplication.focusWindow()
         w = self.xfocus
         if w is not None:

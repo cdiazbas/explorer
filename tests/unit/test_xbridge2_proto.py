@@ -83,6 +83,13 @@ def test_requests_match_python_xlib():
     assert rq                                           # python-xlib's request structures, the reference here
 
 
+def test_negative_int32_property_values_go_as_twos_complement():
+    """WM_NORMAL_HINTS' x and y are INT32: a panel dragged above the screen's top edge has a negative y, which
+    struct.pack("I") refused, and its X window was never created (the prototype's conformance suite, F23 steps)."""
+    assert _ours(lambda c: c.change_property(5, 40, 40, 32, [1, -8, -3])) == _ours(
+        lambda c: c.change_property(5, 40, 40, 32, [1, 0xFFFFFFF8, 0xFFFFFFFD]))
+
+
 def test_client_message_and_events_match_python_xlib():
     from Xlib.protocol import event as XE
 

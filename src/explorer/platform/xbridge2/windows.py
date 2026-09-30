@@ -19,6 +19,8 @@ import struct
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+SHAPE_ATTR = "x11_shape"                                # a QRegion a top-level publishes as its shape (sync_shape)
+
 from ..._name import APP_NAME
 from ...obs import get_logger
 from . import xproto as X
@@ -304,7 +306,14 @@ class Windows:
 
     # ---- shape and cursor
     def sync_shape(self, rec: XWin) -> None:
+        """The window's mask as its X SHAPE. Offscreen keeps no masks, so a window may publish its shape as a QRegion
+        in the attribute SHAPE_ATTR (the title bar's rounded corners): without it the corners were square, and a
+        press at a corner that xcb leaves outside the window resized it."""
         m = rec.w.mask()
+        if m.isEmpty():
+            published = getattr(rec.w, SHAPE_ATTR, None)
+            if isinstance(published, QtGui.QRegion):
+                m = published
         if rec.mask is not None and m == rec.mask:
             return
         if rec.mask is None and m.isEmpty():

@@ -612,7 +612,9 @@ class Connection:
             raw = struct.pack(f"<{len(data)}H", *data)
             n = len(data)
         else:
-            raw = struct.pack(f"<{len(data)}I", *data)
+            # INT32 fields as two's complement: WM_NORMAL_HINTS' x and y of a window above or left of the screen's
+            # origin (a panel dragged above its top edge) raised struct.error and the window was never created
+            raw = struct.pack(f"<{len(data)}I", *(int(v) & 0xFFFFFFFF for v in data))
             n = len(data)
         self.request(18, mode, struct.pack("<IIIBxxxI", wid, prop, type_, fmt, n) + raw)
 
