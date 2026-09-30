@@ -25,6 +25,7 @@ from . import docks
 from .imageview import ImageView
 from .lambda_t import LambdaTPanel
 from .loop import QtLoop
+from .padlock import PanelLock
 from .spectra import SpectraPanel
 from .status import diagnostics_text, pixel_text
 from .toolbar import NavBar
@@ -39,6 +40,7 @@ class _Sink:
         self.shell = shell
 
     def image(self, idx, img, levels):
+        self.shell.last["image"] = (idx, levels)
         self.shell.view.set_image(img, levels)
         self.shell.update_status()
         self.shell.first_image()
@@ -97,6 +99,18 @@ class Shell(QtWidgets.QMainWindow):
         self.lt_dock = docks.dock(self, "λ–t", self.lt_panel, "lambda_t")
         self.setAnimated(False)
         self.nav = NavBar(self)
+        # the padlocks, both open at start (the prototype's): closed = fixed, right click = fit to what is shown
+        self.image_lock = PanelLock(self.view.widget, "Image contrast: closed = fixed, open = automatic per image. "
+                                    "Click to switch; right click fixes it to this image")
+        self.image_lock.toggled.connect(lambda on: self.scheduler.fix_levels(on))
+        self.image_lock.refit.connect(self._image_refit)
+        self.spec_lock = None
+        if self.spectra is not None:
+            self.spec_lock = PanelLock(self.spectra.w, "Spectra y range: open = automatic, closed = fixed (I from "
+                                       "100 random profiles, Q U V from the whole image). Click to switch; right click "
+                                       "(or F) fixes it to this pixel")
+            self.spec_lock.toggled.connect(lambda on: self.scheduler.set_y_fixed(on))
+            self.spec_lock.refit.connect(self.fit_spectra)
         self._closing = False
         for d, panel in ((self.spec_dock, "spectra"), (self.lt_dock, "lambda_t")):
             d.visibilityChanged.connect(lambda on, panel=panel: self._panel_shown(panel, on))
@@ -163,6 +177,23 @@ class Shell(QtWidgets.QMainWindow):
         self.reset_view()
         self.statusBar().showMessage("panels and zoom back to the start", 4000)
 
+    def _image_refit(self) -> None:
+        """The image padlock's right click: the contrast fixed to the image shown now."""
+        self.scheduler.fix_levels(True, refit=True)
+        self.image_lock.set_closed(True)
+
+    def fit_spectra(self) -> None:
+        """F, or the spectra padlock's right click: each plot fitted to this pixel's profile, and kept (closed)."""
+        self.scheduler.fit_y()
+        if self.spec_lock is not None:
+            self.spec_lock.set_closed(self.scheduler.yrange.fixed)
+
+    def spectra_to_sample(self) -> None:
+        """Shift+F: back to the sample's ranges, fixed (as closing the padlock)."""
+        self.scheduler.y_to_sample()
+        if self.spec_lock is not None:
+            self.spec_lock.set_closed(self.scheduler.yrange.fixed)
+
     def reset_view(self) -> None:
         """The whole image, the spectra's whole lambda range, and their y ranges as the padlock says: the sample's
         when closed, this pixel's when open (the prototype's reset_view)."""
@@ -206,6 +237,10 @@ class Shell(QtWidgets.QMainWindow):
             n = s.sizes["s"]
             rows.append((f"1–{n}", "Stokes " + " ".join(STOKES[:n]),
                          tuple((str(k + 1), lambda k=k: s.set_index("s", k)) for k in range(n))))
+        if self.spectra is not None:
+            rows += [("F", "spectra: fit y to this pixel, and keep it", ((K.Key_F, self.fit_spectra),)),
+                     ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
+                      (("Shift+F", self.spectra_to_sample),))]
         rows += [("L", "lock, release the cursor", ((K.Key_L, lambda: s.lock(not s.state.locked)),)),
                  ("Esc", "release the cursor", ((K.Key_Escape, lambda: s.lock(False)),)),
                  ("F12", "the cube, storage and memory in the status bar",
