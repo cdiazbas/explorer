@@ -189,9 +189,11 @@ def test_the_pointer_moves_the_cursor_and_a_click_locks_it(x, app):
     fake(x, 4, 3)                                       # right: release the cursor
     fake(x, 5, 3)
     assert wait(lambda: not app("state")["locked"])
-    # pyqtgraph's own menu opens on a right click, as with xcb (explorer does not turn it off yet): it holds the
-    # pointer, and Escape, typed while the X focus is on the main window, closes it
-    assert wait(lambda: app("state")["popup"])
+    # a right click opens no menu, as in the prototype (app/viewer.py:1018-1028)
+    assert not wait(lambda: app("state")["popup"], timeout=0.5)
+    # a menu holds the pointer, and Escape, typed while the X focus is on the main window, closes it
+    app("popup")
+    assert app("state")["popup"]
     fake(x, 2, keycode(x, "Escape"))
     fake(x, 3, keycode(x, "Escape"))
     assert wait(lambda: not app("state")["popup"] and not any(w["popup"] for w in app("state")["windows"]))
