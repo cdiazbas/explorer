@@ -1,14 +1,14 @@
 # explorer
 
-Visor de cubos solares espectropolarimétricos [t, Stokes, λ, y, x], sucesor de CRISPEX.
-En construcción: qué hay y qué falta, en [docs/roadmap.md](docs/roadmap.md); toda la
-documentación, en [docs/](docs/README.md).
+Viewer for solar spectropolarimetric cubes [t, Stokes, λ, y, x], successor of CRISPEX.
+Under construction: what is there and what is missing, in [docs/roadmap.md](docs/roadmap.md);
+all the documentation, in [docs/](docs/README.md) (in Spanish).
 
 ```bash
-scripts/setup_env.sh --dev     # entorno de esta máquina (.venv-<OS>-<arch>); se puede repetir
-scripts/demo.sh                # probar lo que haya, en el cubo de prueba o en uno sintético
-scripts/run.sh doctor          # comprobar entorno, numba, Qt y pantalla
-scripts/check.sh               # todo lo que haría el CI: higiene, lint, capas, tipos, pruebas
-scripts/install_hooks.sh       # una vez por clon: ganchos de git (higiene y formato de commits)
-python3 scripts/sync.py -n     # qué se subiría a bellatrix (necesita la conexión maestra de ssh abierta)
+scripts/setup_env.sh --dev     # this machine's environment (.venv-<OS>-<arch>); safe to repeat
+scripts/demo.sh                # try what there is, on the test cube or a synthetic one
+scripts/run.sh doctor          # check the environment, numba, Qt and the display
+scripts/check.sh               # everything CI would run: hygiene, lint, layers, types, tests
+scripts/install_hooks.sh       # once per clone: git hooks (hygiene and commit format)
+python3 scripts/sync.py -n     # what would go to bellatrix (needs the ssh master connection open)
 ```
