@@ -22,3 +22,30 @@ def qapp():
     from PySide6 import QtWidgets
 
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def _no_windows_left():
+    """The main windows a test creates are deleted after it (once its own fixtures have closed them), and what they
+    own goes with them. Left alive, they keep their timers and readers, and each change of the application's style
+    re-polishes every widget of every one of them: 8425 widgets after the unit tests, 0.82 s per setStyle through
+    the Python style (ui.style). Only main windows: pyqtgraph's menus are parentless but held by its plots, and
+    deleting one before its plot crashes the plot's own deletion."""
+    import sys
+
+    qt = sys.modules.get("PySide6.QtWidgets")
+    app = qt.QApplication.instance() if qt is not None else None
+    before = {id(w) for w in qt.QApplication.topLevelWidgets()} if app is not None else set()
+    yield
+    qt = sys.modules.get("PySide6.QtWidgets")
+    app = qt.QApplication.instance() if qt is not None else None
+    if app is None:
+        return
+    from PySide6 import QtCore
+
+    for w in qt.QApplication.topLevelWidgets():
+        if id(w) not in before and isinstance(w, qt.QMainWindow):
+            w.close()
+            w.deleteLater()
+    QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+    app.processEvents()
