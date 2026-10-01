@@ -1830,3 +1830,29 @@ diagonal; en macOS se puede agarrar incluso un poco por fuera.
   reducida parecía blanco en el prototipo.
 - La primera captura de explorer salió negra: cogí la ventana de una ejecución anterior del
   prototipo, aún abierta con el mismo título. La captura toma ahora la más reciente.
+
+### 2026-10-01 (7): la vista 2×2 (ROADMAP E5.11)
+
+**Pedido por el usuario:** I Q U V en cuatro paneles enlazados, cada uno pintando solo lo visible a
+resolución de pantalla, con sus límites y su mapa de color; tecla 5 o «All»; un clic cambia λ-t a
+ese Stokes.
+- **Origen:** el prototipo la tenía en su aspecto "glass" (tecla G; `app/look_glass.py`,
+  StokesGrid 221-315).
+- **Implementación** (`94518a1`): explorer la monta sobre su `ImageView`, cuatro veces, con los
+  ViewBox enlazados. El scheduler lee el cuadro de cada Stokes en cada cambio de t o λ y los lee
+  por adelantado.
+
+**Encontrado al probarla: el factor de reducción** de `ImageView` salía de la región recortada a la
+imagen, no del rango de la vista.
+- Allí donde la vista es más ancha o más alta que la imagen, la pintaba a resolución completa: una
+  imagen de 400x360 en un panel de 80x215 (factor 1), 4.5 veces los píxeles que se ven.
+- El prototipo hacía lo mismo (`viewer/backend_pgr.py:52-53`). Corregido. El test de "no más
+  píxeles que el panel" falla con el cálculo anterior.
+
+**Coste** (bellatrix, cubo real, offscreen, fijado al nodo 0, ABBA de 4 rondas, carga 0.6–1.0):
+- Paso en t: la vista única 21.5–22.1 ms; la 2×2, 64.3–67.6 ms.
+- En un paso de la 2×2: render 46.9 ms (5 renders) y límites 10.4 ms; las lecturas aciertan en la
+  caché 97 de 100.
+- El quinto render era la vista única, tapada. Ahora no pinta mientras la cubre la 2×2: de 70–73 a
+  64–68 ms.
+- Reproducir a 20 fps no da (50 ms por cuadro).
