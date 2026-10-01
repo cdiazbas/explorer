@@ -1817,3 +1817,16 @@ a 373/372) salió en una sola ejecución. En cuatro más (tres en vivo y una con
 puntos están a 3 px de la esquina, y la forma redondeada (radio 16) ya ha cortado la ventana ahí; una
 ventana X no recibe eventos fuera de su forma. Para agarrar una esquina hay que entrar unos 7 px en
 diagonal; en macOS se puede agarrar incluso un poco por fuera.
+
+**Capturas lado a lado** (E5.6; Xvfb, xcb, aspecto clásico, mismo cubo y tamaño, 1476x923;
+`bench/results/e56_screens_2026-10-01/`, sin versionar):
+- Iguales salvo:
+  - el botón `?`;
+  - la línea de estado, que en el prototipo aún decía "start-up";
+  - las etiquetas del eje Δλ de λ-t: el prototipo pisa +0.3 y +0.4;
+  - el marcador de λ en λ-t, 5 px más a la derecha. Es del mismo orden que el desplazamiento del área
+    del gráfico, pero no lo he medido con precisión.
+- El marcador es del mismo rojo en los dos, (255, 80, 80), leído en los píxeles: en la imagen
+  reducida parecía blanco en el prototipo.
+- La primera captura de explorer salió negra: cogí la ventana de una ejecución anterior del
+  prototipo, aún abierta con el mismo título. La captura toma ahora la más reciente.
