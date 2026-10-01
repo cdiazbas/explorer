@@ -287,7 +287,20 @@ class ProtoViewer:
 
     @property
     def _img(self):
-        return self._w.scheduler.img
+        """The image of the frame the session is at. The prototype read it inside set_index (show_frame), so after a
+        slider moved its _img was the new frame's; explorer reads it on its I/O pool, so a read still on its way is
+        waited for here. Without it, 'λ slider changes the image' (20 ms after the move) failed on a cold frame
+        (50-100 ms on StorNext)."""
+        s = self._w.scheduler
+        want = tuple(self._w.session.index())
+        if s.img_idx is not None and tuple(s.img_idx) != want:
+            from PySide6 import QtWidgets
+
+            app = QtWidgets.QApplication.instance()
+            end = time.perf_counter() + HOVER_WAIT_S
+            while tuple(s.img_idx) != want and time.perf_counter() < end:
+                app.processEvents()
+        return s.img
 
     @property
     def _req(self):
