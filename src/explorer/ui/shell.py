@@ -4,7 +4,7 @@ the look in E5, the slit in E7.
 
 It draws what explorer.core decides and turns input into core actions: the mouse over the image moves the cursor, a
 click locks it there and a right click releases it (the prototype's _image_click), a double click shows the whole
-image again. The keys, from the prototype's _key_table, in one table (the ? sheet and the ActionRegistry come in E5):
+image again. The keys, from the prototype's _key_table, in one table (ui.actions: shortcuts, terminal, ? sheet):
 - Left / Right: lambda, previous / next tuning; Down / Up: t, previous / next frame (each arrow moves its line the
   way it points: lambda is horizontal on the spectra and lambda-t, t vertical on lambda-t);
 - 1..ns: that Stokes, whenever the cube has Stokes (the prototype registered them only when it also had t);
@@ -16,7 +16,7 @@ import sys
 import time
 
 import numpy as np
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from .._name import APP_NAME
 from ..core.scheduler import Scheduler
@@ -24,6 +24,7 @@ from ..core.session import Session
 from ..core.state import ViewState
 from ..data.axes import STOKES
 from . import docks, style
+from .actions import ActionRegistry, KeySheet, mod_key
 from .gestures import Gestures
 from .imageview import ImageView
 from .lambda_t import LambdaTPanel
@@ -372,8 +373,10 @@ class Shell(QtWidgets.QMainWindow):
         self.session.lock(True)
 
     def key_table(self):
-        """(keys as shown, what they do, ((key sequence, action), ...)) for this cube."""
+        """(keys as shown, what they do, ((key sequence, action), ...)) for this cube: the shortcuts, the terminal's
+        keys and the ? sheet all come from it (ui.actions)."""
         K, s = QtCore.Qt.Key, self.session
+        mod = mod_key()
         rows: list[tuple[str, str, tuple]] = []
         if s.present["l"]:
             rows.append(("← →", "λ: previous, next tuning",
@@ -385,26 +388,51 @@ class Shell(QtWidgets.QMainWindow):
             n = s.sizes["s"]
             rows.append((f"1–{n}", "Stokes " + " ".join(STOKES[:n]),
                          tuple((str(k + 1), lambda k=k: s.set_index("s", k)) for k in range(n))))
+        if s.present["t"] and s.sizes["t"] > 1:
+            rows.append(("Space", "play, pause t", ((K.Key_Space, lambda: self.nav.play.toggle()),)))
+        rows.append(("L", "lock, release the cursor", ((K.Key_L, lambda: s.lock(not s.state.locked)),)))
         if self.spectra is not None:
             rows += [("F", "spectra: fit y to this pixel, and keep it", ((K.Key_F, self.fit_spectra),)),
                      ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
                       (("Shift+F", self.spectra_to_sample),))]
-        if s.present["t"] and s.sizes["t"] > 1:
-            rows.append(("Space", "play, pause t", ((K.Key_Space, lambda: self.nav.play.toggle()),)))
-        rows += [("L", "lock, release the cursor", ((K.Key_L, lambda: s.lock(not s.state.locked)),)),
-                 ("Esc", "release the cursor", ((K.Key_Escape, lambda: s.lock(False)),)),
+        rows += [("Esc", "release the cursor (first closes this sheet)", ((K.Key_Escape, self._escape),)),
+                 (mod + "W", "close the window", (("Ctrl+W", self.close),)),
+                 (mod + "M", "minimise", (("Ctrl+M", self.showMinimized),)),
+                 # on a Mac the application menu's own, which closes through closeEvent and keeps the layout
+                 (mod + "Q", "quit", () if sys.platform == "darwin" else (("Ctrl+Q", self.close),)),
                  ("F12", "the cube, storage and memory in the status bar",
                   ((K.Key_F12, lambda: self.set_diagnostics(not self.diagnostics)),)),
-                 ("Ctrl+W", "close the window", (("Ctrl+W", self.close),)),
-                 ("Ctrl+M", "minimise", (("Ctrl+M", self.showMinimized),)),
-                 ("Ctrl+Q", "quit", () if sys.platform == "darwin" else (("Ctrl+Q", self.close),))]
+                 # "?" alone misses Shift+/ on the offscreen platform, so through the X11 bridge
+                 ("?", "this sheet", (("?", self.toggle_sheet), ("Shift+?", self.toggle_sheet)))]
+        return rows
+
+    def mouse_table(self):
+        """(gesture, what it does) for the ? sheet; the handlers are ui.gestures and _click."""
+        rows = [("click on the image", "lock the cursor there"), ("right click on the image", "release it")]
+        if self.spectra is not None:
+            rows += [("click on a spectrum", "pick λ"),
+                     ("drag on a spectrum's y axis", "move its range; right drag or wheel: stretch it; "
+                                                     "double click: automatic again")]
+        if self.lambda_t is not None:
+            rows.append(("click on λ–t", "pick t and λ"))
+        rows.append(("padlock, top right of the image and of the spectra",
+                     "fixed ⇄ automatic scale; right click: fit it to what is shown"))
         return rows
 
     def _keys(self) -> None:
-        for _keys, _what, binds in self.key_table():
-            for seq, fn in binds:
-                sc = QtGui.QShortcut(QtGui.QKeySequence(seq), self)
-                sc.activated.connect(fn)
+        self.actions = ActionRegistry(self.key_table(), self.mouse_table())
+        self.actions.install(self)
+        self.sheet = KeySheet(self, self.actions.sheet_html(self.palette()))
+
+    def toggle_sheet(self) -> None:
+        self.sheet.toggle()
+
+    def _escape(self) -> None:
+        """Esc closes the ? sheet if it is open, and only that; otherwise it releases the cursor."""
+        if self.sheet.isVisible():
+            self.sheet.set_shown(False)
+        else:
+            self.session.lock(False)
 
     # ---------------------------------------------------------------- state
     def _on_state(self, st: ViewState, changed: frozenset) -> None:

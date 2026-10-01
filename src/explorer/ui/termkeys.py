@@ -5,7 +5,7 @@ application in front, and nothing on the remote side can bring XQuartz there (Ap
 journal 2026-09-30). The terminal forwards its keys over ssh to explorer's standard input, so they are read there
 too. When standard input is a terminal and explorer runs in its foreground, the terminal goes to cbreak mode (key by
 key, no echo; Ctrl+C and output as usual; restored at exit) and each key runs the action the window binds to it
-(Shell.key_table). Once the window has the keyboard the terminal gets nothing, so no key acts twice.
+(Shell.actions). Once the window has the keyboard the terminal gets nothing, so no key acts twice.
 
     decode(seq)            a key's bytes (xterm sequences, which Terminal.app, iTerm2, GNOME Terminal, Konsole and
                            Windows Terminal send) to Qt's key combination, or None
@@ -206,13 +206,12 @@ def combined(key, mods) -> int:
 
 
 def actions_of(shell) -> dict:
-    """(key, modifiers) as one int -> the action, from the window's own key table."""
+    """(key, modifiers) as one int -> the action, from the window's own table (ui.actions)."""
     out = {}
-    for _shown, _what, binds in shell.key_table():
-        for seq, fn in binds:
-            ks = QtGui.QKeySequence(seq)
-            if ks.count() == 1:
-                out[ks[0].toCombined()] = fn
+    for seq, fn in shell.actions.binds():
+        ks = QtGui.QKeySequence(seq)
+        if ks.count() == 1:
+            out[ks[0].toCombined()] = fn
     return out
 
 
