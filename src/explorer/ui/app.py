@@ -64,10 +64,12 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", quit
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
         shell.breakdown = (before, phases, shown, plan.remote)
-        from . import docks
+        from . import docks, titlebar
 
+        ops = disp.ops(shell)                           # before show: our title bar makes the window frameless
+        shell.title_bar = titlebar.chrome(app, shell, ops, disp.ops, bridge=plan.bridge)
         shell.setGeometry(docks.first_geometry(app))
-        disp.attach(app, shell)
+        disp.attach(app, shell, ops)
         from . import termkeys
 
         shell.terminal_keys = termkeys.attach(shell)     # over ssh -Y the keyboard stays in the terminal until a click

@@ -6,10 +6,10 @@ E4.11): the functions first, then speed (bench/selftest_vs_prototype.py).
 
 smoke.py builds its viewer through app/startup.py and reads app/viewer.py; here those two are stand-ins that open
 the cube with explorer's Dataset and its Shell, seen through bench/protoface.py under the prototype's names, and
-its style module is explorer's (ui.style). Every other module of the prototype is kept out: a check that imports
-one (its title bar) would test the prototype, so it fails with "not in explorer yet" instead. The table at the end
-adds a status, NOT YET, never counted as PASS or FAIL: a check that failed on something explorer has no
-counterpart for, and every check of a feature explorer has not yet (NOT_YET_CHECKS), whatever it gave, SKIP
+its style and titlebar modules are explorer's (ui.style, ui.titlebar). Every other module of the prototype is
+kept out: a check that imports one would test the prototype, so it fails with "not in explorer yet" instead. The
+table at the end adds a status, NOT YET, never counted as PASS or FAIL: a check that failed on something explorer
+has no counterpart for, and every check of a feature explorer has not yet (NOT_YET_CHECKS), whatever it gave, SKIP
 included.
 
 The prototype is found at $EXPLORER_PROTOTYPE, else ../prototype next to this repository. Nothing is written into
@@ -37,7 +37,7 @@ class _KeepOut(importlib.abc.MetaPathFinder):
         if "." not in name and name not in self.allow and os.path.exists(os.path.join(self.app_dir, name + ".py")):
             from protoface import LATER
 
-            what = {"titlebar": LATER["title"], "style": LATER["look"], "look": LATER["look"]}.get(name, name)
+            what = {"look": LATER["look"]}.get(name, name)
             raise ImportError(f"not in explorer yet: the prototype's {name}.py ({what})")
         return None
 
@@ -73,11 +73,12 @@ def startup_module():
 
     def make_viewer(app, s, cube, sp, probe, guard, kind=None):
         from explorer._name import APP_NAME
+        from explorer.ui import docks, titlebar
         from explorer.ui.shell import Shell
 
         w = Shell(cube, title=f"{os.path.basename(str(cube.path))} — {APP_NAME}")
-        from explorer.ui import docks
-
+        w.ops = s.disp.ops(w)                           # as ui.app.run: the chrome before show
+        w.title_bar = titlebar.chrome(app, w, w.ops, s.disp.ops, bridge=s.plan.bridge)
         w.setGeometry(docks.first_geometry(app))
         return adopt(w)
 
@@ -85,18 +86,15 @@ def startup_module():
         if size is not None:                            # the prototype's show: a size given, no restore(), so its
             v.resize(*size)                             # docks keep Qt's own sizes; explorer's first-show sizing
             v._sized = True                             # (the fresh start's) is skipped the same way
-        s.ops = s.disp.attach(app, v)
+        s.disp.attach(app, v, v.ops)
 
     return SimpleNamespace(prepare=prepare, make_app=make_app, open_cube=open_cube, make_viewer=make_viewer, show=show,
                            _OFFSCREEN_NOISE=xdisplay.OFFSCREEN_NOISE, _quiet_offscreen=xdisplay._quiet_offscreen)
 
 
-# checks of what explorer has not yet, by a word of their name: NOT YET whatever they gave. The last ones need the
-# prototype's own title bar, edges and dock titles, and are SKIP without them: a silent SKIP would hide the gap
-NOT_YET_CHECKS = (("slit", "slit (E7)"), ("persist:", "layout persistence (E5)"),
-                  ("edgeresizer", "window edges (E5)"), ("minimum size by the edges", "window edges (E5)"),
-                  ("title docks it back", "own dock titles (E5)"), ("window: zoom", "own title bar (E5)"),
-                  ("window: minimise", "own title bar (E5)"))
+# checks of what explorer has not yet, by a word of their name: NOT YET whatever they gave (a SKIP there would hide
+# the gap)
+NOT_YET_CHECKS = (("slit", "slit (E7)"), ("persist:", "layout persistence (E5)"))
 
 
 def table(path, rc):
@@ -151,9 +149,10 @@ def main():
 
     sys.modules["startup"] = startup_module()
     sys.modules["viewer"] = protoface.viewer_module()
-    from explorer.ui import style
+    from explorer.ui import style, titlebar
 
-    sys.modules["style"] = style                        # the theme check imports it: explorer's own
+    sys.modules["style"] = style                        # the theme and title bar checks import them: explorer's own
+    sys.modules["titlebar"] = titlebar
     sys.meta_path.insert(0, _KeepOut(app_dir))
     sys.argv = [smoke] + sys.argv[1:]
     runpy.run_path(smoke, run_name="__main__")

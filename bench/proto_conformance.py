@@ -12,7 +12,7 @@ The run goes through the stand-ins of bench/proto_smoke.py: explorer's Dataset a
 names (bench/protoface.py), and no other module of the prototype. The comparison is the prototype's own (compare():
 events in order without moves, moves as a set per widget, the end state exact), on both runs put in common terms
 first: the names the two programs give the same widget (NAMES), and the steps of what explorer has not yet
-(NOT_YET: its title bar and edges, the slit), which are listed apart and not compared.
+(NOT_YET: the slit), which are listed apart and not compared.
 """
 import collections
 import json
@@ -26,13 +26,10 @@ sys.dont_write_bytecode = True
 
 # the same widget under each program's name: explorer's -> the prototype's
 NAMES = (("ProtoViewer", "Viewer"), ("Shell", "Viewer"), ("QWidget#gutter", "QWidget#crispex_gutter"))
-# state of what explorer has not yet, left out of every state: the prototype's own title bar
-NOT_YET_STATE = ("bar_active", "bar_hover", "bar_press")
+# state of what explorer has not yet, left out of every state
+NOT_YET_STATE: tuple = ()
 # steps of what explorer has not yet: prefix -> the task that brings it
-NOT_YET = (("title_", "own title bar (E5)"), ("light", "own title bar (E5)"), ("api_zoom", "own title bar (E5)"),
-           ("api_minimize", "own title bar (E5)"), ("resize_", "window edges (E5)"),
-           ("right_click_titlebar", "own title bar (E5)"), ("panel_band_", "panel edges (E5)"),
-           ("panel_resize_", "panel edges (E5)"), ("slit_", "slit (E7)"))
+NOT_YET = (("slit_", "slit (E7)"),)
 
 
 def _prototype_app():
@@ -120,9 +117,10 @@ def main():
 
     sys.modules["startup"] = proto_smoke.startup_module()
     sys.modules["viewer"] = protoface.viewer_module()
-    from explorer.ui import style
+    from explorer.ui import style, titlebar
 
     sys.modules["style"] = style
+    sys.modules["titlebar"] = titlebar
     sys.meta_path.insert(0, proto_smoke._KeepOut(app_dir, allow=("conformance",)))
     sys.path.insert(0, app_dir)
     import conformance

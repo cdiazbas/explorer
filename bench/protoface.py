@@ -131,6 +131,8 @@ class ProtoViewer:
         self.fix = _Flag(self.image_lock)
         self.slit_dock, self.slit_btn = _Missing("slit_dock", "slit"), _Missing("slit_btn", "slit")
         self._yfit_timer = _RestTimer(self.scheduler.yrange)
+        for pe in getattr(self, "_panel_edges", None) or ():   # each panel's resizer, where the tests look for it
+            pe.d._crispex_resizer = pe.resizer
 
     # ------------------------------------------------------------------ what is missing
     # no slit in explorer yet: its state reads as the prototype's with none (off, no points, no slit), and leaving or
@@ -161,14 +163,28 @@ class ProtoViewer:
     def SLIT_UI(self, value):
         self._pf_slit_ui = value
 
+    # the title bar's zoom: the geometry before it while zoomed (the prototype kept it on the window)
     @property
     def _crispex_unzoomed(self):
-        raise NotInExplorer("_crispex_unzoomed", "title")
+        bar = self.menuWidget()
+        if bar is None:
+            raise NotInExplorer("_crispex_unzoomed", "title")
+        return bar.m.unzoomed
 
     @_crispex_unzoomed.setter
     def _crispex_unzoomed(self, value):
-        if value is not None:                           # the tests only clear it
+        bar = self.menuWidget()
+        if bar is not None:
+            bar.m.unzoomed = value
+        elif value is not None:
             raise NotInExplorer("_crispex_unzoomed", "title")
+
+    @property
+    def _crispex_panel_edges(self):
+        edges = getattr(self, "_panel_edges", None)
+        if edges is None:
+            raise AttributeError("_crispex_panel_edges")
+        return edges
 
     # ------------------------------------------------------------------ axes and indices
     ta = property(lambda self: self._pf_roles.t)
@@ -357,12 +373,10 @@ def adopt(shell):
 
 
 def monitor_rect(app, point=None):
-    """The usable rectangle of the monitor at point (default: the pointer): what explorer sizes its first window in
-    (ui.docks.first_geometry)."""
-    from PySide6 import QtGui
+    """The usable rectangle of the monitor at point (default: the pointer): explorer's (platform.screens)."""
+    from explorer.platform.screens import monitor_rect as explorer_monitor_rect
 
-    point = QtGui.QCursor.pos() if point is None else point
-    return (app.screenAt(point) or app.primaryScreen()).availableGeometry()
+    return explorer_monitor_rect(app, point)
 
 
 def viewer_module():

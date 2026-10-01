@@ -1,0 +1,204 @@
+"""Our title bar and edges (ROADMAP E5.2), offscreen: the window becomes frameless with a 32-px bar and a rounded
+shape; the zoom light and a double click on the bar fill the monitor and come back; a drag on the bar moves the
+window; the edges resize it, down to its minimum, with the pointer naming the edge, and a button in the band keeps
+its clicks; every dock gets its close and float buttons; where the bar is not wanted nothing is installed."""
+import sys
+
+import pytest
+
+
+@pytest.fixture
+def win(qapp):
+    from PySide6 import QtCore, QtWidgets
+
+    from explorer.platform.display import Display
+    from explorer.platform.plan import DisplayPlan
+    from explorer.ui import titlebar
+
+    disp = Display(DisplayPlan("offscreen"))
+    w = QtWidgets.QMainWindow()
+    w.setCentralWidget(QtWidgets.QLabel("image"))
+    for name in ("spectrum", "lambda_t"):
+        d = QtWidgets.QDockWidget(name, w)
+        d.setObjectName(name)
+        d.setWidget(QtWidgets.QLabel(name))
+        w.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, d)
+    ops = disp.ops(w)
+    titlebar.dock_titles(w)
+    bar = titlebar.install(w, ops)
+    w.setGeometry(100, 80, 900, 600)
+    disp.attach(qapp, w, ops)
+    qapp.processEvents()
+    yield w, bar, ops
+    ops.set_cursor(None)
+    w.close()
+
+
+def mouse(qapp, widget, kind, pos, button=None, buttons=None):
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    B = QtCore.Qt.MouseButton
+    p = QtCore.QPointF(pos)
+    ev = QtGui.QMouseEvent(kind, p, QtCore.QPointF(widget.mapToGlobal(pos)), button or B.NoButton,
+                           buttons if buttons is not None else B.NoButton, QtCore.Qt.KeyboardModifier.NoModifier)
+    QtWidgets.QApplication.sendEvent(widget, ev)
+    qapp.processEvents()
+
+
+def test_frameless_with_the_bar_and_a_rounded_shape(win):
+    from PySide6 import QtCore
+
+    from explorer.ui import titlebar
+
+    w, bar, _ops = win
+    assert w.windowFlags() & QtCore.Qt.WindowType.FramelessWindowHint
+    assert w.menuWidget() is bar and bar.height() == titlebar.TitleBar.H == 32
+    region = bar.corners.region
+    assert region.contains(QtCore.QPoint(20, 20)) and not region.contains(QtCore.QPoint(0, 0))
+    assert not region.contains(QtCore.QPoint(w.width() - 1, w.height() - 1))
+
+
+def test_the_zoom_light_and_a_double_click_fill_the_monitor_and_come_back(qapp, win):
+    from PySide6 import QtCore
+
+    from explorer.platform.screens import monitor_rect
+
+    w, bar, ops = win
+    E = QtCore.QEvent.Type
+    B = QtCore.Qt.MouseButton
+    g0 = w.geometry()
+    zoom = bar._lights()[2].center().toPoint()
+    mouse(qapp, bar, E.MouseButtonPress, zoom, B.LeftButton, B.LeftButton)
+    mouse(qapp, bar, E.MouseButtonRelease, zoom, B.LeftButton)
+    mon = monitor_rect(qapp, g0.center())
+    assert w.geometry() == mon and ops.unzoomed == g0
+    mid = QtCore.QPoint(bar.width() // 2, bar.height() // 2)
+    mouse(qapp, bar, E.MouseButtonDblClick, mid, B.LeftButton, B.LeftButton)
+    assert w.geometry() == g0 and ops.unzoomed is None
+
+
+def test_a_drag_on_the_bar_moves_the_window(qapp, win):
+    from PySide6 import QtCore
+
+    w, bar, _ops = win
+    E = QtCore.QEvent.Type
+    B = QtCore.Qt.MouseButton
+    p0, at = w.pos(), QtCore.QPoint(bar.width() // 2, 10)
+    mouse(qapp, bar, E.MouseButtonPress, at, B.LeftButton, B.LeftButton)
+    mouse(qapp, bar, E.MouseMove, at + QtCore.QPoint(40, 25), None, B.LeftButton)
+    mouse(qapp, bar, E.MouseButtonRelease, at + QtCore.QPoint(40, 25), B.LeftButton)
+    assert w.pos() == p0 + QtCore.QPoint(40, 25)
+
+
+def test_the_edges_resize_down_to_the_minimum_and_name_the_edge(qapp, win):
+    from PySide6 import QtCore, QtWidgets
+
+    w, bar, _ops = win
+    E = QtCore.QEvent.Type
+    B = QtCore.Qt.MouseButton
+    C = QtCore.Qt.CursorShape
+    rz = bar.resizer
+    g0 = w.geometry()
+    p = QtCore.QPoint(w.width() - 2, w.height() // 2)
+    gp = w.mapToGlobal(p)
+    rz.mouse(E.MouseMove, p, gp, B.NoButton)
+    assert QtWidgets.QApplication.overrideCursor().shape() == C.SizeHorCursor
+    rz.mouse(E.MouseMove, QtCore.QPoint(w.width() // 2, w.height() // 2), gp, B.NoButton)
+    assert QtWidgets.QApplication.overrideCursor() is None            # only ours, and it is gone
+    corner = QtCore.QPoint(w.width() - 3, w.height() - 3)
+    rz.mouse(E.MouseMove, corner, gp, B.NoButton)
+    assert QtWidgets.QApplication.overrideCursor().shape() == C.SizeFDiagCursor
+    assert rz.mouse(E.MouseButtonPress, p, gp, B.LeftButton)
+    rz.mouse(E.MouseMove, p, gp + QtCore.QPoint(-100, 0), B.LeftButton)
+    rz.mouse(E.MouseButtonRelease, p, gp + QtCore.QPoint(-100, 0), B.NoButton)
+    qapp.processEvents()
+    assert w.width() == g0.width() - 100
+    gc = w.mapToGlobal(corner)
+    rz.mouse(E.MouseButtonPress, corner, gc, B.LeftButton)
+    rz.mouse(E.MouseMove, corner, gc - QtCore.QPoint(5000, 5000), B.LeftButton)
+    rz.mouse(E.MouseButtonRelease, corner, gc - QtCore.QPoint(5000, 5000), B.NoButton)
+    qapp.processEvents()
+    assert (w.width(), w.height()) == (rz.MIN_W, rz.MIN_H)
+
+
+def test_a_button_in_the_band_keeps_its_clicks(win):
+    from PySide6 import QtCore
+
+    w, bar, _ops = win
+    d = w.findChild(QtCore.QObject, "spectrum")
+    d.setFloating(True)
+    from explorer.ui import titlebar
+
+    rz = titlebar.EdgeResizer(d, bar.m, titlebar.PANEL_MIN)
+    b = d.titleBarWidget().button
+    at = b.mapTo(d, b.rect().center())
+    assert rz.edges_at(at) == QtCore.Qt.Edge(0)
+    d.setFloating(False)
+
+
+def test_every_dock_gets_its_close_and_float_buttons(qapp, win):
+    from PySide6 import QtWidgets
+
+    w, _bar, _ops = win
+    for d in w.findChildren(QtWidgets.QDockWidget):
+        t = d.titleBarWidget()
+        names = sorted(b.objectName() for b in t.findChildren(QtWidgets.QToolButton))
+        assert names == ["qt_dockwidget_closebutton", "qt_dockwidget_floatbutton"]
+        t.button.click()
+        qapp.processEvents()
+        assert d.isFloating()
+        t.button.click()
+        qapp.processEvents()
+        assert not d.isFloating()
+
+
+@pytest.mark.parametrize("platform, env, bridge, bar, titles", [
+    ("linux", None, False, True, True),
+    ("darwin", None, False, False, False),               # a Mac's own windows: its native frame
+    ("darwin", None, True, True, True),                  # a Mac's screen through the bridge: an X display
+    ("linux", "wm", False, False, False),
+    ("linux", "wm", True, False, True),                  # the bridge's floating panels still need a title Qt draws
+])
+def test_where_the_bar_is_wanted(qapp, monkeypatch, platform, env, bridge, bar, titles):
+    from PySide6 import QtWidgets
+
+    from explorer.platform.display import Display
+    from explorer.platform.plan import DisplayPlan
+    from explorer.ui import titlebar
+
+    monkeypatch.setattr(sys, "platform", platform)
+    if env:
+        monkeypatch.setenv(titlebar.ENV, env)
+    else:
+        monkeypatch.delenv(titlebar.ENV, raising=False)
+    disp = Display(DisplayPlan("offscreen"))
+    w = QtWidgets.QMainWindow()
+    QtWidgets.QDockWidget("spectrum", w)
+    got = titlebar.chrome(qapp, w, disp.ops(w), disp.ops, bridge=bridge)
+    assert (got is not None) == bar
+    assert (w.findChild(QtWidgets.QDockWidget).titleBarWidget() is not None) == titles
+    w.close()
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_the_bar_and_hairline_paint_in_both_themes(qapp, win, theme):
+    from explorer.ui import style
+
+    w, bar, _ops = win
+    errors = []
+    hook, sys.excepthook = sys.excepthook, lambda t, e, tb: errors.append(f"{t.__name__}: {e}")
+    import pyqtgraph as pg
+    from PySide6 import QtGui, QtWidgets
+
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    try:
+        style.apply_theme(qapp, theme)
+        bar._set_hover(True)
+        assert not w.grab().isNull()
+    finally:
+        sys.excepthook = hook
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+        qapp.setProperty("explorer_light", False)
+        pg.setConfigOptions(background="k", foreground="d")
+    assert errors == []

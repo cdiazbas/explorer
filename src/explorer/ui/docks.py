@@ -5,7 +5,7 @@ and the window's first size from restore (2392, ASPECT and FILL at 2314).
 A dock that is closed or hidden reads nothing: its visibility goes to Session.show, and the scheduler skips a hidden
 panel (the prototype's skipped_hidden); shown again, it is filled for the cursor as it is.
 """
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 PANEL_GUTTER = 5            # px round each panel: flush against the window's edge the plots read as cut off
 PANELS_W = 0.434            # the panels' share of the window's width at a fresh start (640 of 1476 px)
@@ -52,8 +52,9 @@ def reset_sizes(window: QtWidgets.QMainWindow, docks) -> None:
 def first_geometry(app: QtWidgets.QApplication) -> QtCore.QRect:
     """The window at a first start: FILL of the height of the monitor under the pointer, at most ASPECT times as
     wide as high, centred on it (the prototype's restore without a saved geometry)."""
-    screen = app.screenAt(QtGui.QCursor.pos()) or app.primaryScreen()
-    mon = screen.availableGeometry()
+    from ..platform.screens import monitor_rect
+
+    mon = monitor_rect(app)
     h = int(mon.height() * FILL)
     w = min(int(mon.width() * FILL), int(h * ASPECT))
     return QtCore.QRect(mon.x() + (mon.width() - w) // 2, mon.y() + (mon.height() - h) // 2, w, h)

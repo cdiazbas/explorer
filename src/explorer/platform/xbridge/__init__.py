@@ -27,7 +27,8 @@ log = get_logger("platform.xbridge")
 
 
 class BridgeWindowOps(WindowOps):
-    """Activation, minimising and zoom asked of the X window manager, as a native window would."""
+    """Activation and minimising asked of the X window manager, as a native window would; the shape published for the
+    X SHAPE. Zoom is WindowOps', by geometry, which the bridge carries to X."""
     _display: "BridgeDisplay"
 
     def activate(self) -> None:
@@ -36,11 +37,6 @@ class BridgeWindowOps(WindowOps):
         b = self._display.bridge
         if b is not None:
             b.activate(self.w)
-
-    def zoom(self) -> None:
-        b = self._display.bridge
-        if b is None or not b.zoom(self.w):
-            self.w.showMaximized()
 
     def minimize(self) -> None:
         self.w.showMinimized()                          # the bridge asks the manager (WindowStateChange)
@@ -83,8 +79,11 @@ class BridgeDisplay(Display):
         self.bridge = Bridge(self.xlink, app)
         return app
 
-    def attach(self, app, window) -> WindowOps:
-        ops = BridgeWindowOps(window, self)
+    def ops(self, window) -> WindowOps:
+        return BridgeWindowOps(window, self)
+
+    def attach(self, app, window, ops: WindowOps | None = None) -> WindowOps:
+        ops = ops or self.ops(window)
         window.show()
         b = self.bridge
         assert b is not None, "make_app() first"

@@ -45,11 +45,15 @@ class LinkInfo:
 
 class WindowOps:
     """What a view may ask of its window: here, of a window Qt shows itself (cocoa, xcb, offscreen); the bridge's
-    windows have their own (xbridge.BridgeWindowOps). The moving and shaping calls are the prototype's Mover
-    (app/titlebar.py), for a title bar of ours (ROADMAP E5)."""
+    windows have their own (xbridge.BridgeWindowOps). The moving, shaping, zoom and cursor calls are the prototype's
+    Mover (app/titlebar.py), what its title bar and edges ask of a window (ROADMAP E5.2)."""
+
+    qwindow_events = True                               # the mouse reaches the window's QWindow (xcb, the bridge)
 
     def __init__(self, window, display: "Display"):
         self.w, self._display = window, display
+        self.unzoomed = None                            # the geometry before a zoom, while zoomed
+        self._override = False
 
     def resize(self, w: int, h: int) -> None:
         self.w.resize(int(w), int(h))
@@ -92,10 +96,33 @@ class WindowOps:
         self.w.activateWindow()
 
     def zoom(self) -> None:
-        self.w.showMaximized()
+        """Fill the monitor the window is on, or go back to the geometry it had: by geometry, so without a window
+        manager too (Xvfb; XQuartz's offers no maximise to a frameless window)."""
+        if self.unzoomed is not None:
+            g, self.unzoomed = self.unzoomed, None
+        else:
+            from PySide6 import QtWidgets
+
+            from .screens import monitor_rect
+
+            app = QtWidgets.QApplication.instance()
+            g, self.unzoomed = monitor_rect(app, self.w.geometry().center()), self.w.geometry()
+        self.set_geometry(g)
 
     def minimize(self) -> None:
         self.w.showMinimized()
+
+    def set_cursor(self, shape) -> None:
+        """An override cursor (the widget under an edge may set its own), or none: only this one is removed, never
+        other overrides on the stack. The bridge copies Qt's cursor to its X window."""
+        from PySide6 import QtWidgets
+
+        if self._override:
+            QtWidgets.QApplication.restoreOverrideCursor()
+            self._override = False
+        if shape is not None:
+            QtWidgets.QApplication.setOverrideCursor(shape)
+            self._override = True
 
 
 class Display:
@@ -136,10 +163,15 @@ class Display:
             _quiet_offscreen()
         return app
 
-    def attach(self, app, window) -> WindowOps:
+    def ops(self, window) -> WindowOps:
+        """What a view may ask of window (move, resize, zoom, shape, cursor), before it is shown: a title bar of ours
+        makes the window frameless first."""
+        return WindowOps(window, self)
+
+    def attach(self, app, window, ops: WindowOps | None = None) -> WindowOps:
         """Show the window, raise it and give it the keyboard; on a local Mac, its green button zooms rather than
-        opening a full-screen space."""
-        ops = WindowOps(window, self)
+        opening a full-screen space. ops: the window's, when its title bar already holds them."""
+        ops = ops or self.ops(window)
         window.show()
         ops.activate()
         if sys.platform == "darwin" and app.platformName() == "cocoa":

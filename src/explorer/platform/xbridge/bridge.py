@@ -193,13 +193,6 @@ class Bridge(QtCore.QObject):
         if rec is not None and not self.dead:
             self.windows.minimize(rec)
 
-    def zoom(self, w: QtWidgets.QWidget) -> bool:
-        """Maximise through the manager; False when it cannot (then Qt's own maximise, which X follows)."""
-        rec = self.windows.get(w)
-        if rec is None or self.dead:
-            return False
-        return self.windows.set_net_state(rec, True, "_NET_WM_STATE_MAXIMIZED_VERT", "_NET_WM_STATE_MAXIMIZED_HORZ")
-
     # ---------------------------------------------------------------- Qt events
     def eventFilter(self, obj, e) -> bool:
         if self.dead:
