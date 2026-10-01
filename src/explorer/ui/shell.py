@@ -40,6 +40,7 @@ from .status import diagnostics_text, pixel_text
 from .toolbar import NavBar
 
 MEMORY_S = 1.0                                          # the caches' budget follows the machine's memory (Dataset)
+STATUS_INSET = 8            # px each side of the status line: half the rounded corners' 16, its text clear of the curve
 
 
 class _Sink:
@@ -139,6 +140,7 @@ class Shell(QtWidgets.QMainWindow):
             d.visibilityChanged.connect(lambda on, panel=panel: self._panel_shown(panel, on))
         self.status = QtWidgets.QLabel()
         self.status.setTextFormat(QtCore.Qt.TextFormat.PlainText)
+        self.statusBar().setContentsMargins(STATUS_INSET, 0, STATUS_INSET, 0)
         self.statusBar().addWidget(self.status, 1)
         self.sys_status = QtWidgets.QLabel()
         self.statusBar().addPermanentWidget(self.sys_status)

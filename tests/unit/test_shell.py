@@ -58,6 +58,26 @@ def test_first_image_keys_and_status(shell):
     assert spin(qapp, lambda: not w.session.state.locked)
 
 
+def test_the_status_line_keeps_clear_of_the_rounded_corners(shell):
+    """The window's bottom corners are rounded (16 px): the status text started 2 px from the edge, its first
+    character partly cut by the curve. Both sides keep clear of it."""
+    import numpy as np
+    from PySide6 import QtGui
+
+    from explorer.ui import shell as S
+
+    w, qapp = shell
+    inset = getattr(S, "STATUS_INSET", 8)
+    sb = w.statusBar()
+    m = sb.contentsMargins()
+    assert m.left() >= inset and m.right() >= inset
+    w.status.setText("x −672.7″  y +271.5″")
+    qapp.processEvents()
+    img = sb.grab().toImage()
+    cols = np.array([[QtGui.QColor(img.pixel(x, y)).lightness() for x in range(inset)] for y in range(img.height())])
+    assert np.ptp(cols) < 40                            # nothing drawn in the corner's columns
+
+
 def test_the_mouse_moves_the_cursor_and_the_crosshair(shell):
     from PySide6 import QtCore
 
