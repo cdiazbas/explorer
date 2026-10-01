@@ -74,3 +74,26 @@ def test_a_scheduler_on_qt_delivers_on_the_main_thread(qapp, tmp_path):
         assert spin(qapp, lambda: not sched.in_flight())
         assert threads == {main} and np.all(np.isfinite(sched.img[24, 10:20]))
         sched.close()
+
+
+def test_nothing_runs_after_the_loop_is_gone(qapp):
+    """What is due soon or later on a loop whose window was deleted is dropped: it would act on panels that no
+    longer exist (the spectra's refit at rest, 0.4 s after the last spectrum)."""
+    import time
+
+    from PySide6 import QtCore, QtWidgets
+
+    from explorer.ui.loop import QtLoop
+
+    owner = QtWidgets.QWidget()
+    loop = QtLoop(owner)
+    ran = []
+    loop.call_soon(lambda: ran.append("soon"))
+    loop.call_later(0.05, lambda: ran.append("later"))
+    owner.deleteLater()
+    QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+    end = time.perf_counter() + 0.2
+    while time.perf_counter() < end:
+        qapp.processEvents()
+        time.sleep(0.005)
+    assert ran == []

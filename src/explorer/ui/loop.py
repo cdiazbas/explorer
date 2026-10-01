@@ -6,7 +6,8 @@ thread, runs on the thread that owns the windows.
 - call_later(seconds, fn): a QTimer with a delay (the spectra's refit at rest, the y-range sample). Main thread only.
 - post(fn): from any thread; a queued signal takes fn to the main thread, where it runs. Reads finish on worker
   threads; touching a widget from one of them corrupts or hangs Qt.
-A callback that raises is logged; the loop and the other callbacks go on.
+A callback that raises is logged; the loop and the other callbacks go on. The timers have the loop as their context:
+what is due on a loop whose window was deleted is dropped, not run on panels that no longer exist.
 """
 from collections.abc import Callable
 
@@ -35,10 +36,10 @@ class QtLoop(QtCore.QObject):
         self._posted.connect(self._run, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def call_soon(self, fn: Callable[[], None]) -> None:
-        QtCore.QTimer.singleShot(0, _safe(fn))
+        QtCore.QTimer.singleShot(0, self, _safe(fn))
 
     def call_later(self, seconds: float, fn: Callable[[], None]) -> None:
-        QtCore.QTimer.singleShot(max(0, int(round(float(seconds) * 1000))), _safe(fn))
+        QtCore.QTimer.singleShot(max(0, int(round(float(seconds) * 1000))), self, _safe(fn))
 
     def post(self, fn: Callable[[], None]) -> None:
         self._posted.emit(fn)
