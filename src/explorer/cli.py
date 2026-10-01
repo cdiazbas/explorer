@@ -22,7 +22,7 @@ def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog=APP_NAME, formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Viewer for solar spectropolarimetric cubes [t, Stokes, lambda, y, x].",
-        epilog=f"subcommands (explorer <subcommand> --help):\n{lines}")
+        epilog=f"subcommands (explorer <subcommand> --help):\n{lines}\n\nexplorer --demo is explorer demo")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     ap.add_argument("cube", nargs="?", help="a cube to open (_im.fits); its per-pixel file is found next to it")
     ap.add_argument("--sp", help="this per-pixel file instead of the one found next to the cube")
@@ -50,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     obs.setup_from_env()                                # EXPLORER_LOG
     if os.environ.get(ENV_PREFIX + "TRACE"):            # EXPLORER_TRACE=t.json: Perfetto trace of the spans
         obs.trace.start(os.environ[ENV_PREFIX + "TRACE"])
+    if argv and argv[0] == "--demo":                    # the subcommand as one would guess it, an option
+        argv = ["demo"] + argv[1:]
     if argv and argv[0] in SUBCOMMANDS:
         import importlib
 

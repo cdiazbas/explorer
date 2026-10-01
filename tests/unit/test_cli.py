@@ -31,3 +31,17 @@ def test_import_does_not_load_heavy_modules():
             "print(sorted(m for m in ('PySide6', 'numba', 'numpy', 'astropy') if m in sys.modules))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
     assert out == "[]"
+
+
+def test_demo_as_an_option_too(monkeypatch):
+    """explorer --demo is explorer demo (the synthetic cube unless one is given), as one would guess it."""
+    import importlib
+
+    from explorer import cli
+
+    seen = []
+    fake = type("M", (), {"main": staticmethod(lambda argv: seen.append(argv) or 0)})
+    real = importlib.import_module
+    monkeypatch.setattr(importlib, "import_module", lambda name, pkg=None: fake if name == ".demo" else real(name, pkg))
+    assert cli.main(["--demo"]) == 0 and cli.main(["--demo", "x_im.fits"]) == 0
+    assert seen == [[], ["x_im.fits"]]

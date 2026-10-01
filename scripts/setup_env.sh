@@ -5,6 +5,10 @@
 #   scripts/setup_env.sh --dev        # also pytest, ruff, pyright, import-linter
 #   scripts/setup_env.sh --venv DIR   # build it in DIR instead
 #   scripts/setup_env.sh --force      # delete the environment first
+#   scripts/setup_env.sh --link       # also the `explorer` command on the PATH, from any folder: a link
+#                                     # ~/.local/bin/explorer (or $XDG_BIN_HOME/explorer) to scripts/run.sh,
+#                                     # which picks this machine's environment, so a home shared by macOS
+#                                     # and Linux serves both
 #
 # One directory on shared storage serves Linux and Macs: each builds its own .venv-<OS>-<arch>.
 # Tools, as in the prototype's setup_env.sh: uv (on PATH, or its per-platform copy in
@@ -21,11 +25,12 @@ qtlibs="$root/.qtlibs"
 cd "$root"
 unset LD_LIBRARY_PATH                               # another env's Qt on this path breaks PySide6
 
-venv="$root/.venv-$plat" dev=0 force=0
+venv="$root/.venv-$plat" dev=0 force=0 link=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dev) dev=1 ;;
     --force) force=1 ;;
+    --link) link=1 ;;
     --venv) venv="$2"; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -92,3 +97,16 @@ echo "== checking (explorer doctor, headless)"
 [ -d "$qtlibs/only" ] && [ "$(uname -s)" = Linux ] && export LD_LIBRARY_PATH="$qtlibs/only"
 env -u DISPLAY QT_QPA_PLATFORM=offscreen "$venv/bin/explorer" doctor
 echo "== done: $venv. Run with  scripts/run.sh <cube_im.fits>"
+
+if [ "$link" = 1 ]; then                            # the command on the PATH: a link to run.sh, never a copy
+  bin="${XDG_BIN_HOME:-$HOME/.local/bin}"
+  cmd="$bin/explorer"
+  if [ -e "$cmd" ] && [ ! -L "$cmd" ]; then
+    echo "[setup_env] $cmd exists and is not a link: left alone" >&2
+    exit 1
+  fi
+  mkdir -p "$bin"
+  ln -sfn "$here/run.sh" "$cmd"
+  echo "[setup_env] $cmd -> $here/run.sh"
+  case ":$PATH:" in *":$bin:"*) ;; *) echo "[setup_env] $bin is not on your PATH: add it to use 'explorer'" >&2 ;; esac
+fi

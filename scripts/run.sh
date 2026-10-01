@@ -6,8 +6,15 @@
 # - drops an inherited LD_LIBRARY_PATH (another env's Qt breaks PySide6) and adds .qtlibs/only on Linux
 #   (libxcb-cursor for X11, see setup_env.sh);
 # - more reader threads than cores: scattered reads wait on the disk, not on the CPU (docs/measured.md).
-# Relative paths in the arguments are relative to where you call it from.
-here="$(cd "$(dirname "$0")" && pwd)"
+# Relative paths in the arguments are relative to where you call it from. It may be called through a link (the
+# `explorer` command that setup_env.sh --link puts on the PATH): the link is followed to find the code.
+src="$0"
+while [ -L "$src" ]; do                             # readlink -f is not on every macOS
+  dir="$(cd "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+here="$(cd "$(dirname "$src")" && pwd)"
 root="$(dirname "$here")"
 plat="$(uname -s)-$(uname -m)"
 venv="${EXPLORER_VENV:-$root/.venv-$plat}"
