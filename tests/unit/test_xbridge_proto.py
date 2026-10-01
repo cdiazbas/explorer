@@ -126,6 +126,23 @@ def test_event_queue_wakes_once_per_batch_and_again_for_nested_loops():
     assert len(wakes) == 3                              # empty again: the next event wakes
 
 
+def test_an_event_after_a_nested_loop_started_wakes_it():
+    """A click that opens a menu (Panels: QMenu::exec) is the last event in the queue when it is handled; the
+    release comes later, while the menu's nested loop runs, and must wake it. It did not: the queue still counted
+    the owner as woken, nothing read X any more and the viewer hung (the user on XQuartz, 2026-10-01; gdb: the main
+    thread in QEventLoop::exec under QToolButton::mousePressEvent, in poll). XTEST on Xvfb sends both at once,
+    which hid it."""
+    wakes = []
+    q = X.EventQueue(lambda: wakes.append(1))
+    q.put("press")
+    assert len(wakes) == 1
+    assert q.take() == "press"
+    q.rewake()                                          # nothing left: the handler opens the menu, never returns
+    q.put("release")                                    # comes while the menu's loop runs
+    assert len(wakes) == 2
+    assert q.take() == "release"
+
+
 def test_sequence_numbers_expand_past_16_bits():
     c = X.Connection.__new__(X.Connection)
     c._seq = 0x1_0005

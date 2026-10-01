@@ -802,10 +802,15 @@ class EventQueue:
             return self._q[0] if self._q else None
 
     def rewake(self) -> None:
-        """Wake the owner again for what is left: an event handler may start a nested event loop (a menu's exec),
-        and the events after it must reach that loop."""
+        """Before each event is handled: an event handler may start a nested event loop (a menu's exec) and never
+        return to take the next. What is left wakes the owner again; with nothing left, the next event will, since
+        the owner may be inside that loop by then. Otherwise a release coming after a click that opened a menu
+        found the owner counted as woken and nothing read X any more (Panels hung on XQuartz; XTEST on Xvfb sends
+        both at once, so the release was already queued)."""
         with self._lock:
             call = bool(self._q)
+            if not call:
+                self._waiting = False
         if call:
             self._wake()
 

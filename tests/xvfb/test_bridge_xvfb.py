@@ -345,6 +345,28 @@ def test_the_stokes_drop_down_opens_and_picks_with_real_clicks(x, app):
         app("look classic")
 
 
+def test_the_panels_menu_with_a_slow_release_and_a_click_in_it(x, app):
+    """Panels opens its menu with QMenu::exec, a nested event loop, on the press. On XQuartz the release comes
+    later, while that loop runs, and the bridge never woke for it: the viewer hung (the user, 2026-10-01). XTEST
+    sends press and release at once unless told otherwise: here they are 0.3 s apart, as a hand makes them, and the
+    menu must then take a click on an item through X."""
+    def click(xy, hold=0.3):
+        fake(x, None, xy=xy)
+        time.sleep(0.15)                                # the pointer there first, as a hand brings it
+        fake(x, 4, 1)
+        time.sleep(hold)
+        fake(x, 5, 1)
+
+    assert app("state")["docks"]["spectrum"]
+    for want in (False, True):                          # hide the spectrum panel, then show it again
+        click(app("where panels")["centre"])
+        assert wait(lambda: app("state")["popup"])
+        items = app("menu")["items"]
+        spec = next(i for i in items if "pectrum" in i["text"])
+        click(spec["centre"], hold=0.15)
+        assert wait(lambda w=want: app("state")["docks"]["spectrum"] == w and not app("state")["popup"])
+
+
 def test_clipboard_both_ways_with_incr(app):
     cc = ClipboardClient()
     try:

@@ -2,7 +2,8 @@
 as the user runs it (BridgeDisplay, Shell) and answers commands on stdin, one per line, with one JSON line on stdout.
 
     python tests/xvfb/bridge_app.py <cube_im.fits> [--size 800x600]
-    state | grab | copy TEXT | bigcopy N | panel | popup | mask | look NAME | stokes | idle | quit
+    state | grab | copy TEXT | bigcopy N | panel | popup | mask | look NAME | stokes | where NAME | menu | idle
+    | quit
 """
 import argparse
 import json
@@ -78,6 +79,7 @@ def main():
                     windows=[dict(title=r.w.windowTitle(), xid=r.xid, popup=r.popup, geometry=r.w.geometry().getRect(),
                                   iconic=r.iconic) for r in bridge.windows],
                     popup=bool(QtWidgets.QApplication.activePopupWidget()), hits=list(extra.get("hits", [])),
+                    docks={d.objectName(): d.isVisible() for d in (w.spec_dock, w.lt_dock)},
                     minimized=bool(w.windowState() & QtCore.Qt.WindowState.WindowMinimized),
                     maximized=bool(w.windowState() & QtCore.Qt.WindowState.WindowMaximized),
                     summary=bridge.summary())
@@ -150,6 +152,16 @@ def main():
                 return b.mapToGlobal(b.rect().center()).toTuple()
             out(dict(button=centre(d), open=d.panel.isVisible(), label=d.text(),
                      items=[centre(b) for b in d.segments.group.buttons()] if d.panel.isVisible() else []))
+        elif cmd == "where":                            # a toolbar control (its NavBar name): its centre on screen
+            b = getattr(w.nav, arg)
+            settle()
+            out(dict(centre=b.mapToGlobal(b.rect().center()).toTuple()))
+        elif cmd == "menu":                             # the open menu's items: text and centre on the screen
+            m = QtWidgets.QApplication.activePopupWidget()
+            items = [] if not isinstance(m, QtWidgets.QMenu) else [
+                dict(text=a.text(), centre=m.mapToGlobal(m.actionGeometry(a).center()).toTuple())
+                for a in m.actions() if a.isVisible()]
+            out(dict(items=items))
         elif cmd == "activate":
             ops.activate()
             settle()
