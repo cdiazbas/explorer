@@ -5,7 +5,10 @@ counter for every way of drawing (Qt's xcb, either bridge), so their traffic com
     python bench/xlink.py --display 150 --to 99 [--delay-ms 8] [--mbps 25] --stats /tmp/.../link.json
 
 Listens on 127.0.0.1:6000+display only. Clients use DISPLAY=localhost:<display> with a cookie for that display in
-their XAUTHORITY (the X server's own cookie). --stats is rewritten (atomically) when the counters change:
+their XAUTHORITY (the X server's own cookie). Qt's xcb through it needs QT_XCB_NO_MITSHM=1: the X server is on this
+machine, so Qt tries shared memory, which hangs through this TCP proxy (a bare QLabel never drew; with it, 50 passes
+of the loop in 0.53 s). Over a real ssh -Y the server is elsewhere and Qt never uses it.
+--stats is rewritten (atomically) when the counters change:
 {"up": bytes client to server, "down": ..., "connections": n}. The delay applies to each chunk as it arrives; the
 bandwidth paces the upward direction (what images need). Measured through ssh -Y to the user's XQuartz: 14-16 ms
 round trips and 17-29 MB/s (docs/measured.md, the prototype's F2).
