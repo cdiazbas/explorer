@@ -22,13 +22,17 @@ from .._name import APP_NAME
 from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
-from ..data.axes import STOKES
+from ..data.axes import STOKES, unit_text
+from ..look import get_look
+from ..look.colormaps import ColormapRegistry
 from . import docks, style
 from .actions import ActionRegistry, KeySheet, mod_key
+from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
 from .gestures import Gestures
-from .imageview import ImageView
+from .imageview import CURSOR_PEN, ImageView
 from .lambda_t import LambdaTPanel
 from .loop import QtLoop
+from .overlays import ColourKey
 from .padlock import PanelLock
 from .spectra import AxisDrag, SpectraPanel
 from .status import diagnostics_text, pixel_text
@@ -46,6 +50,7 @@ class _Sink:
     def image(self, idx, img, levels):
         self.shell.last["image"] = (idx, levels)
         self.shell.view.set_image(img, levels)
+        self.shell._paint_colour()
         self.shell.update_status()
         self.shell.first_image()
 
@@ -59,6 +64,8 @@ class _Sink:
         self.shell.last["lambda_t"] = (lt, pixel, s, levels)
         if self.shell.lambda_t is not None:
             self.shell.lambda_t.show(lt, levels)
+            if self.shell.colours is not None:
+                self.shell.lambda_t.set_lut(self.shell.colours.lut(s))
 
     def cleared(self, pixel):
         self.shell.last.pop("spectra", None)
@@ -78,7 +85,7 @@ class _Sink:
 
 
 class Shell(QtWidgets.QMainWindow):
-    def __init__(self, dataset, title: str | None = None, t0: float | None = None):
+    def __init__(self, dataset, title: str | None = None, t0: float | None = None, look=None):
         """t0: perf_counter() when opening started, for the time to the first image."""
         super().__init__()
         self.dataset = dataset
@@ -90,7 +97,9 @@ class Shell(QtWidgets.QMainWindow):
         self.session = Session(self.loop, dataset)
         ex = dataset.executors
         light = style.is_light()                        # the theme the application was given (ui.style)
-        self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light)
+        self.look = look if look is not None else get_look()
+        self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light,
+                              reticle=self.look.has("reticle"))
         self.setCentralWidget(docks.gutter(self.view.widget))
         r = dataset.roles
         # a cube without lambda has no spectra: that dock stays empty and hidden
@@ -103,7 +112,7 @@ class Shell(QtWidgets.QMainWindow):
         self.spec_dock = docks.dock(self, "Spectrum", self.spec_panel, "spectrum")
         self.lt_dock = docks.dock(self, "λ–t", self.lt_panel, "lambda_t")
         self.setAnimated(False)
-        self.nav = NavBar(self)
+        self.nav = NavBar(self, segmented=self.look.has("stokes"))
         # playback: t forward at the toolbar's rate, round the end (the prototype's _toggle_play, _play_step)
         self._play = QtCore.QTimer(self)
         self._play.timeout.connect(self._play_step)
@@ -159,6 +168,64 @@ class Shell(QtWidgets.QMainWindow):
         self._initial_state = self.saveState()          # before the first show: reset_panels comes back to it
         self._sized = False
         style.separators(self)                          # 8 px to grab between the docked panels, with the theme
+        self._wear(light)
+
+    # ---------------------------------------------------------------- the look (look.Look; the prototype's app/look.py)
+    def _wear(self, light: bool) -> None:
+        L, app = self.look, QtWidgets.QApplication.instance()
+        st = app.style()
+        if hasattr(st, "SLIDER"):                       # the sliders in the colour of the markers they move
+            st.SLIDER = None if L.has("marks") else CURSOR_PEN.color()
+        if L.has("marks"):
+            acc = style.accent()
+            if self.spectra is not None:
+                self.spectra.set_marks(acc, light)
+            if self.lambda_t is not None:
+                self.lambda_t.set_marks(acc)
+        self.colours = self.colour_key = None
+        if L.has("colour"):
+            self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light)
+            self.colour_key = ColourKey(self.view.widget, unit_text(getattr(self.dataset.axes, "bunit", None) or ""))
+        panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel) if p is not None]
+        if L.has("cards"):
+            if st.name() == "macos":                    # the native style's light seams between dark cards
+                self._seams = MacSeams()
+                for w in (self, self.spec_dock, self.lt_dock):
+                    w.setStyle(self._seams)
+            card = CARD_LIGHT if light else CARD
+            for w in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None)):
+                if w is not None:
+                    w.setBackground(card)
+        self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
+        self._shown_lut = object()
+
+    def _paint_colour(self) -> None:
+        """The image's colour table and the key, for the Stokes shown (the modern look's colour part)."""
+        if self.colours is None:
+            return
+        s = self.session.state.s
+        tab = self.colours.image_lut(s)
+        if tab is not self._shown_lut:
+            self.view.set_lut(tab)
+            self._shown_lut = tab
+        last = self.last.get("image")
+        if self.colour_key is not None and last is not None:
+            ns = self.session.sizes["s"] if self.session.present["s"] else 1
+            self.colour_key.set(STOKES[s] if ns > 1 else "I", last[1], self.colours.lut(s), self.colours.maps[s])
+
+    def cycle_colours(self, step: int) -> None:
+        """C / Shift+C: the next or previous map for the Stokes shown; image, lambda-t and key follow, nothing is
+        read again."""
+        if self.colours is None:
+            return
+        s = self.session.state.s
+        name = self.colours.cycle(s, step)
+        self._shown_lut = object()
+        self._paint_colour()
+        if self.lambda_t is not None:
+            self.lambda_t.set_lut(self.colours.lut(s))
+        if self.colour_key is not None:
+            self.colour_key.flash(name)
 
     # ---------------------------------------------------------------- panels
     def _panel_shown(self, panel: str, on: bool) -> None:
@@ -395,6 +462,9 @@ class Shell(QtWidgets.QMainWindow):
             rows += [("F", "spectra: fit y to this pixel, and keep it", ((K.Key_F, self.fit_spectra),)),
                      ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
                       (("Shift+F", self.spectra_to_sample),))]
+        if self.look.has("cmap"):
+            rows.append(("C  \u21e7C", "colours: next, previous map for the Stokes shown",
+                         (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1)))))
         rows += [("Esc", "release the cursor (first closes this sheet)", ((K.Key_Escape, self._escape),)),
                  (mod + "W", "close the window", (("Ctrl+W", self.close),)),
                  (mod + "M", "minimise", (("Ctrl+M", self.showMinimized),)),
@@ -439,6 +509,8 @@ class Shell(QtWidgets.QMainWindow):
         self.nav.sync(st, changed)
         if "cursor" in changed:
             self.view.set_crosshair(*st.cursor)
+        if "locked" in changed:
+            self.view.set_locked(st.locked)
         if "l" in changed and self.spectra is not None:
             self.spectra.set_lambda(st.l)
         if changed & {"t", "l"} and self.lambda_t is not None:

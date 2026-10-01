@@ -22,14 +22,16 @@ pg.setConfigOptions(imageAxisOrder="row-major", antialias=False, useNumba=False)
 # off, bellatrix); the image here is uint8 already, reduced by explorer's own kernel
 
 CURSOR_PEN = pg.mkPen((255, 80, 80), width=1)
+LOCK_PEN = pg.mkPen((255, 190, 60), width=1.5)          # the crosshair while the cursor is locked
 
 
 class ImageView:
     def __init__(self, on_hover: Callable[[float, float], None] | None = None, strips=None, parts: int = 1,
-                 light: bool = False):
+                 light: bool = False, reticle: bool = False):
         """on_hover(y, x): the mouse over the image, in data pixels; strips, parts: the pool and the number of row
         strips the reduction runs in (Executors.strips); light: the surround and the padding white (the light
-        theme), else black."""
+        theme), else black; reticle: a short cross with a halo instead of two lines across the image (the modern
+        look)."""
         self.on_hover = on_hover
         self.strips, self.parts = strips, parts
         self.widget = pg.GraphicsLayoutWidget()
@@ -45,6 +47,14 @@ class ImageView:
         self.hl, self.vl = pg.InfiniteLine(angle=0, pen=CURSOR_PEN), pg.InfiniteLine(angle=90, pen=CURSOR_PEN)
         self.vb.addItem(self.hl)
         self.vb.addItem(self.vl)
+        self.reticle = None
+        if reticle:
+            from .overlays import Reticle
+
+            self.reticle = Reticle()
+            self.vb.addItem(self.reticle, ignoreBounds=True)
+            self.hl.setVisible(False)
+            self.vl.setVisible(False)
         self.widget.scene().sigMouseMoved.connect(self._moved)
         self._full: np.ndarray | None = None
         self._lim = (0.0, 1.0)
@@ -76,6 +86,19 @@ class ImageView:
     def set_crosshair(self, y: int, x: int) -> None:
         self.hl.setValue(y + 0.5)
         self.vl.setValue(x + 0.5)
+        if self.reticle is not None:
+            self.reticle.setPos(x + 0.5, y + 0.5)
+
+    def set_locked(self, on: bool) -> None:
+        """The cursor locked: the crosshair in its own colour (the reticle yellow with a ring)."""
+        for ln in (self.hl, self.vl):
+            ln.setPen(LOCK_PEN if on else CURSOR_PEN)
+        if self.reticle is not None:
+            self.reticle.set_locked(on)
+
+    def set_lut(self, table) -> None:
+        """The colour table of the uint8 image (level 0: padding); None: pyqtgraph's own grey."""
+        self.img.setLookupTable(table)
 
     def show_all(self) -> None:
         """The whole image in view (the double click on the image)."""

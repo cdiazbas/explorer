@@ -31,7 +31,7 @@ def themed_app(disp, theme: str = "auto"):
     return app, style.apply_theme(app, "dark" if disp.plan.bridge and theme == "auto" else theme)
 
 
-def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", reset_layout=False,
+def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look="classic", reset_layout=False,
         quit_after: float | None = None) -> int:
     """Open path and run the event loop until the window closes; returns the exit code. quit_after: seconds after the
     first image, then quit (measurements, as the prototype's --quit-after)."""
@@ -61,7 +61,9 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", rese
     phases["cube"] = time.perf_counter() - q
     try:
         q = time.perf_counter()
-        shell = Shell(ds, title=f"{os.path.basename(str(path))} — {APP_NAME}", t0=t0)
+        from ..look import get_look
+
+        shell = Shell(ds, title=f"{os.path.basename(str(path))} — {APP_NAME}", t0=t0, look=get_look(look))
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
         shell.breakdown = (before, phases, shown, plan.remote)

@@ -145,6 +145,16 @@ class LambdaTPanel:
     def clear(self) -> None:
         self.img.clear()
 
+    def set_lut(self, lut) -> None:
+        """The colour table of the lambda-t image (the modern look's colour part); None: grey."""
+        self.img.setLookupTable(lut)
+
+    def set_marks(self, colour) -> None:
+        """The t and lambda markers in colour, 2 px (1.4 px came out 1 px and grey at 1x), above the image."""
+        for ln in (self.t_line, self.l_line):
+            ln.setZValue(max(ln.zValue(), 10.0) + 1)
+            ln.setPen(pg.mkPen(colour, width=2.0))
+
     def set_markers(self, t: int, l: int) -> None:  # noqa: E741
         self.t_line.setValue(t + 0.5)
         self.l_line.setValue(l + 0.5)

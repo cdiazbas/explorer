@@ -760,3 +760,21 @@ def plot_theme(app) -> bool:
 def is_light() -> bool:
     app = QtWidgets.QApplication.instance()
     return bool(app is not None and app.property("explorer_light"))
+
+
+def accent() -> QtGui.QColor:
+    """The accent our own drawings use: the style's (dark or light); under a Mac's native style the system's, which
+    its controls take whatever is set, so the window keeps one accent."""
+    app = QtWidgets.QApplication.instance()
+    if app is not None and app.style().name() == "macos":
+        role = getattr(QtGui.QPalette.ColorRole, "Accent", QtGui.QPalette.ColorRole.Highlight)
+        return QtGui.QColor(app.palette().color(role))
+    acc = getattr(app.style(), "ACC", None) if app is not None else None
+    return QtGui.QColor(acc) if acc is not None else QtGui.QColor(ACCENT)
+
+
+def selected() -> QtGui.QColor:
+    """The fill of anything on, with white text on it: the accent darkened as macOS does for selected content."""
+    app = QtWidgets.QApplication.instance()
+    sel = getattr(app.style(), "SEL", None) if app is not None else None
+    return QtGui.QColor(sel) if sel is not None else accent().darker(123)

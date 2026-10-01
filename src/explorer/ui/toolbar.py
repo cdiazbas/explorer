@@ -14,6 +14,48 @@ SLIDER_W = (90, 220)                                    # px: the t and lambda s
 FPS = (1, 120, 20)                                      # the rate box: minimum, maximum, default
 
 
+class StokesSegments(QtWidgets.QWidget):
+    """I Q U V as a segmented control, one click, instead of a drop-down, two (the modern look's stokes part; the
+    prototype's app/look.py _stokes, 581)."""
+
+    def __init__(self, ns: int, current: int, pick):
+        super().__init__()
+        from . import style
+
+        self.setObjectName("stokes_segments")
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
+        pal = self.palette()
+        text = pal.color(QtGui.QPalette.ColorRole.ButtonText)
+        hover, track = QtGui.QColor(text), QtGui.QColor(text)
+        hover.setAlphaF(0.10)
+        track.setAlphaF(0.07)
+        H = QtGui.QColor.NameFormat.HexArgb
+        self.setStyleSheet(
+            f"#stokes_segments {{ background: {track.name(H)}; border-radius: 7px; }}"
+            f"QToolButton {{ border: none; border-radius: 5px; padding: 2px 10px; margin: 2px;"
+            f" color: {text.name()}; background: transparent; }}"
+            f"QToolButton:hover:!checked {{ background: {hover.name(H)}; }}"
+            f"QToolButton:checked {{ background: {style.selected().name()}; color: white; }}")
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self.group = QtWidgets.QButtonGroup(self)
+        self.group.setExclusive(True)
+        for k in range(ns):
+            b = QtWidgets.QToolButton()
+            b.setText(STOKES[k])
+            b.setCheckable(True)
+            b.setToolTip(f"Stokes {STOKES[k]} in the image (key {k + 1})")
+            self.group.addButton(b, k)
+            lay.addWidget(b)
+        self.group.button(current).setChecked(True)
+        self.group.idClicked.connect(pick)
+
+    def set(self, s: int) -> None:
+        if self.group.checkedId() != s:
+            self.group.button(s).setChecked(True)
+
+
 class JumpSlider(QtWidgets.QSlider):
     """A click on the track jumps to the value under the pointer, as a macOS slider does, and a drag goes on from
     there. Qt's own click steps one page (10): on a 14-tuning slider a click anywhere left of the handle went to 0."""
@@ -37,7 +79,8 @@ class JumpSlider(QtWidgets.QSlider):
 class NavBar:
     """The toolbar of a Shell: built from its session's axes, kept in step with the state (sync)."""
 
-    def __init__(self, shell):
+    def __init__(self, shell, segmented: bool = False):
+        """segmented: Stokes as segments (the modern look) in place of the combo, which stays, hidden."""
         self.shell, s = shell, shell.session
         self.ax = shell.dataset.axes
         r = shell.dataset.roles
@@ -65,16 +108,21 @@ class NavBar:
             tb.addWidget(sl)
             tb.addWidget(lab)
             self.sliders[axis], self.labels[axis] = sl, lab
-        self.stokes = None
+        self.stokes = self.segments = None
         if s.present["s"] and self.n["s"] > 1:
-            tb.addWidget(QtWidgets.QLabel(" Stokes "))
+            self._stokes_label = tb.addWidget(QtWidgets.QLabel(" Stokes "))
             self.stokes = QtWidgets.QComboBox()
             self.stokes.addItems(list(STOKES[:self.n["s"]]))
             self.stokes.setCurrentIndex(st.s)
             self.stokes.currentIndexChanged.connect(lambda v: s.set_index("s", v))
             self.stokes.setToolTip("Stokes shown in the image: keys " + ", ".join(
                 f"{k + 1} {STOKES[k]}" for k in range(self.n["s"])))
-            tb.addWidget(self.stokes)
+            act = tb.addWidget(self.stokes)
+            if segmented:                               # the segments in its place; the combo stays, hidden
+                self.segments = StokesSegments(self.n["s"], st.s, lambda k: s.set_index("s", k))
+                tb.insertWidget(act, self.segments)
+                act.setVisible(False)
+                self._stokes_label.setVisible(False)
         tb.addSeparator()
         self.play = QtWidgets.QToolButton()
         self.play.setText("▶ t")
@@ -141,6 +189,8 @@ class NavBar:
             self.stokes.blockSignals(True)
             self.stokes.setCurrentIndex(st.s)
             self.stokes.blockSignals(False)
+        if "s" in changed and self.segments is not None:
+            self.segments.set(st.s)
 
     def fit(self, width: int) -> None:
         """Sliders between SLIDER_W so the whole toolbar fits `width`: at a fixed 220 px it needed 1210 px, and below

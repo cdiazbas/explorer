@@ -159,6 +159,28 @@ class SpectraPanel:
             else:
                 p.setLabel("left", f"{name}/I<sub>c</sub> [%]")
 
+    def set_marks(self, colour, light: bool) -> None:
+        """The modern look's marks: the lambda markers in colour, quieter curves and grid, and a dashed zero line on
+        Q U V, where zero is at a glance."""
+        from PySide6 import QtGui
+
+        mark = pg.mkPen(colour, width=1.2)
+        for ln in self.lines:
+            ln.setPen(mark)
+        ink = QtGui.QColor(30, 30, 34) if light else QtGui.QColor(235, 235, 240)
+        dot = QtGui.QColor(ink)
+        dot.setAlpha(190)
+        for k, (p, c) in enumerate(zip(self.plots, self.curves, strict=True)):
+            c.setPen(pg.mkPen(ink, width=1.4))
+            c.setSymbolSize(3)
+            c.setSymbolPen(None)
+            c.setSymbolBrush(dot)
+            p.showGrid(x=True, y=True, alpha=0.07)
+            if k > 0:
+                zero = QtGui.QColor(0, 0, 0, 70) if light else QtGui.QColor(255, 255, 255, 70)
+                pen = pg.mkPen(zero, width=1, style=QtCore.Qt.PenStyle.DashLine)
+                p.addItem(pg.InfiniteLine(pos=0, angle=0, pen=pen), ignoreBounds=True)
+
     def set_units(self, iscale: float | None) -> None:
         self.iscale = iscale
         self.label_stokes()
