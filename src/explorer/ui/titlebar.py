@@ -19,6 +19,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 Qt = QtCore.Qt
 E = QtCore.QEvent.Type
 ENV = "EXPLORER_TITLEBAR"
+RESIZE_ENV = "EXPLORER_RESIZE"                         # live: resize at every step of a drag, not on release
 
 
 def wanted(bridge: bool) -> bool:
@@ -240,10 +241,51 @@ class Hairline(QtWidgets.QWidget):
 
 
 # ---------------------------------------------------------------- resizing from every edge, as on macOS
+class Outline:
+    """The size a window is being dragged to, as four thin windows round it (ToolTip: override-redirect, never
+    focused, on top; no pointer grab, unlike a popup). Four strips and not one window with a shape: a window resized
+    is sent whole (the bridge marks all of it dirty), its shape or not."""
+    T = 2                                               # px
+
+    def __init__(self, owner: QtWidgets.QWidget):
+        flags = Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowDoesNotAcceptFocus
+        colour = owner.palette().color(QtGui.QPalette.ColorRole.Highlight)
+        self.bars = []
+        for _ in range(4):
+            b = QtWidgets.QWidget(owner, flags)
+            b.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+            b.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            pal = b.palette()
+            pal.setColor(QtGui.QPalette.ColorRole.Window, colour)
+            b.setPalette(pal)
+            b.setAutoFillBackground(True)
+            self.bars.append(b)
+
+    def show(self, r: QtCore.QRect) -> None:
+        t = self.T
+        for b, g in zip(self.bars, (QtCore.QRect(r.x(), r.y(), r.width(), t),
+                                    QtCore.QRect(r.x(), r.bottom() - t + 1, r.width(), t),
+                                    QtCore.QRect(r.x(), r.y(), t, r.height()),
+                                    QtCore.QRect(r.right() - t + 1, r.y(), t, r.height())), strict=True):
+            b.setGeometry(g)
+            if not b.isVisible():
+                b.show()
+            b.raise_()
+
+    def hide(self) -> None:
+        for b in self.bars:
+            b.hide()
+
+
 class EdgeResizer(QtCore.QObject):
     """Without the window manager's frame there are no resize borders: a 7-px band inside every edge and 16-px corner
     zones (the corner radius) resize the window, with the matching pointer. The window manager does it when it can
-    (startSystemResize: GNOME, KDE); XQuartz's cannot, so then this resizes, at most every 25 ms while dragging.
+    (startSystemResize: GNOME, KDE); XQuartz's cannot, so then this resizes it: an outline (Outline) follows the
+    pointer, at most every 25 ms, and the window takes that size once, where the pointer is released. Resized at
+    every step, over X11 the whole window was redrawn and sent each time, and it flickered: through an emulated ssh
+    link (bench/xlink.py, 8 ms each way, 20 MB/s, the bridge) a 1-s drag of 200 px sent 17.7 MB while dragging, the
+    link full, 24.9 MB in all; with the outline 0.7-0.9 MB, 3.3-3.5 MB in all. EXPLORER_RESIZE=live resizes at every
+    step, as before.
     7 px: macOS grabs an edge 3 pt inside and 4 pt outside the window; an X window takes no input outside itself (no
     ARGB visual on XQuartz, a SHAPE only cuts), so the same 7 go inside. A button inside the band keeps its clicks:
     a floating panel's float button sits in the top-right corner zone, and a band taking it lost about half of the
@@ -264,6 +306,7 @@ class EdgeResizer(QtCore.QObject):
         self._pending = None
         self._timer = QtCore.QTimer(self, singleShot=True, interval=25)
         self._timer.timeout.connect(self._apply)
+        self.outline = Outline(window) if os.environ.get(RESIZE_ENV) != "live" else None
 
     def edges_at(self, p):
         w, h, x, y = self.w.width(), self.w.height(), p.x(), p.y()
@@ -300,19 +343,7 @@ class EdgeResizer(QtCore.QObject):
         """True when the event is the resize's, so nothing below gets it."""
         if kind == E.MouseMove:
             if self._drag:
-                edges, g0, geom = self._drag
-                d = gpos - g0
-                r = QtCore.QRect(geom)
-                # QRect's right and bottom are its last pixel: MIN - 1 from the opposite edge is MIN wide
-                if edges & Qt.Edge.LeftEdge:
-                    r.setLeft(min(geom.left() + d.x(), geom.right() - self.MIN_W + 1))
-                if edges & Qt.Edge.RightEdge:
-                    r.setRight(max(geom.right() + d.x(), geom.left() + self.MIN_W - 1))
-                if edges & Qt.Edge.TopEdge:
-                    r.setTop(min(geom.top() + d.y(), geom.bottom() - self.MIN_H + 1))
-                if edges & Qt.Edge.BottomEdge:
-                    r.setBottom(max(geom.bottom() + d.y(), geom.top() + self.MIN_H - 1))
-                self._pending = r
+                self._pending = self._rect(gpos)
                 if not self._timer.isActive():
                     self._timer.start()
                 return True
@@ -327,16 +358,38 @@ class EdgeResizer(QtCore.QObject):
                 self._drag = (edges, QtCore.QPoint(gpos), self.w.geometry())
             return True
         if kind == E.MouseButtonRelease and self._drag:
+            self._pending = self._rect(gpos)            # where it is released: the moves before may not all have come
             self._drag = None
             self._timer.stop()
-            self._apply()
+            self._apply(final=True)
             return True
         return False
 
-    def _apply(self):
-        if self._pending is not None:
-            r, self._pending = self._pending, None
-            self.m.set_geometry(r)
+    def _rect(self, gpos) -> QtCore.QRect:
+        edges, g0, geom = self._drag
+        d = gpos - g0
+        r = QtCore.QRect(geom)
+        # QRect's right and bottom are its last pixel: MIN - 1 from the opposite edge is MIN wide
+        if edges & Qt.Edge.LeftEdge:
+            r.setLeft(min(geom.left() + d.x(), geom.right() - self.MIN_W + 1))
+        if edges & Qt.Edge.RightEdge:
+            r.setRight(max(geom.right() + d.x(), geom.left() + self.MIN_W - 1))
+        if edges & Qt.Edge.TopEdge:
+            r.setTop(min(geom.top() + d.y(), geom.bottom() - self.MIN_H + 1))
+        if edges & Qt.Edge.BottomEdge:
+            r.setBottom(max(geom.bottom() + d.y(), geom.top() + self.MIN_H - 1))
+        return r
+
+    def _apply(self, final: bool = False):
+        if self._pending is None:
+            return
+        r, self._pending = self._pending, None
+        if self.outline is not None and not final:
+            self.outline.show(r)
+            return
+        if self.outline is not None:
+            self.outline.hide()
+        self.m.set_geometry(r)
 
     def eventFilter(self, obj, e):                   # on the window's QWindow: every mouse event passes it
         t = e.type()

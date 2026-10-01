@@ -148,6 +148,56 @@ def test_the_edges_resize_down_to_the_minimum_and_name_the_edge(qapp, win):
     assert (w.width(), w.height()) == (rz.MIN_W, rz.MIN_H)
 
 
+def test_a_resize_shows_an_outline_and_resizes_once_on_release(qapp, win):
+    """Over X11 every resize step redrew the whole window and sent it: through an emulated ssh link (8 ms, 20 MB/s)
+    a 1-s drag of 200 px sent 17.7 MB, the link full. While dragging, four thin windows outline the size to come and
+    the window is left alone; it takes that size once, on release (3.3-3.5 MB in all)."""
+    from PySide6 import QtCore
+
+    w, bar, _ops = win
+    E = QtCore.QEvent.Type
+    B = QtCore.Qt.MouseButton
+    rz = bar.resizer
+    g0 = w.geometry()
+    p = QtCore.QPoint(w.width() - 2, w.height() // 2)
+    gp = w.mapToGlobal(p)
+    assert rz.mouse(E.MouseButtonPress, p, gp, B.LeftButton)
+    rz.mouse(E.MouseMove, p, gp + QtCore.QPoint(120, 0), B.LeftButton)
+    rz._timer.timeout.emit()                            # the outline's next update, without waiting 25 ms
+    qapp.processEvents()
+    want = QtCore.QRect(g0.x(), g0.y(), g0.width() + 120, g0.height())
+    bars = rz.outline.bars
+    assert w.geometry() == g0                                            # left alone while dragging
+    assert all(b.isVisible() for b in bars)
+    hull = bars[0].geometry()
+    for b in bars[1:]:
+        hull = hull.united(b.geometry())
+    assert hull == want                                                  # the outline is the size to come
+    assert sum(b.width() * b.height() for b in bars) < 0.02 * want.width() * want.height()   # thin: few pixels
+    rz.mouse(E.MouseButtonRelease, p, gp + QtCore.QPoint(120, 0), B.NoButton)
+    qapp.processEvents()
+    assert w.geometry() == want and not any(b.isVisible() for b in bars)
+
+
+def test_the_release_point_sets_the_size(qapp, win):
+    """The size is where the pointer was released, not the last move handled: a busy window may get the release
+    before the moves that came just before it."""
+    from PySide6 import QtCore
+
+    w, bar, _ops = win
+    E = QtCore.QEvent.Type
+    B = QtCore.Qt.MouseButton
+    rz = bar.resizer
+    g0 = w.geometry()
+    p = QtCore.QPoint(w.width() - 2, w.height() // 2)
+    gp = w.mapToGlobal(p)
+    rz.mouse(E.MouseButtonPress, p, gp, B.LeftButton)
+    rz.mouse(E.MouseMove, p, gp + QtCore.QPoint(40, 0), B.LeftButton)
+    rz.mouse(E.MouseButtonRelease, p, gp + QtCore.QPoint(300, 0), B.NoButton)      # the moves between never came
+    qapp.processEvents()
+    assert w.width() == g0.width() + 300
+
+
 def test_a_button_in_the_band_keeps_its_clicks(win):
     from PySide6 import QtCore
 
