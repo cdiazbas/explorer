@@ -1708,3 +1708,55 @@ síncrona.
 **El hook de los mensajes** (`510137a`): ahora exige la línea en blanco tras el asunto y, en
 `[ADD]`, `[DEV]`, `[FIX]` y `[PERF]`, las líneas `Behaviour:` y `Tests:` de la ADR 0005. Los últimos
 40 mensajes lo pasan.
+
+### 2026-10-01 (4): la ventana por X11 hacia un Mac (ROADMAP E5.7–E5.9), y el paso en t (E4.13)
+
+**E4.13, la causa del paso en t lento** (`9f4d058`). El paso en t de explorer era bimodal: la mitad
+de los pasos en ~15 ms, como el prototipo, y la otra mitad en 18–20 ms.
+- Descartadas: la muestra del rango y en segundo plano (16.5 frente a 17.1 ms) y el recolector de
+  basura (igual de bimodal con `gc.disable()`).
+- Causa: la lectura anticipada se pedía dentro del paso, y sus lecturas frenaban el pintado. Ahora se
+  pide en la siguiente vuelta del bucle.
+- Mediana de los 10 pasos por ejecución: de 17.9–19.3 a 13.8–15.0 ms. El prototipo, 15.8.
+- Serie canónica (8 rondas ABBA; la carga subió a 19.6 durante la serie):
+  - sin `_sp`: 1.100 → 0.933, explorer más rápido 8/8;
+  - con `_sp`: 1.109 → 1.022, 3/8. Pendiente de repetir con carga baja.
+
+**El techo** (`5afaee9`, E5.7): arrastrada por su barra, la ventana subía por encima de la pantalla.
+Solo por X11: con quartz-wm la barra mueve la ventana por sí misma, sin límite (heredado del
+prototipo). Ahora no sube del borde superior de su monitor. El usuario lo confirma en XQuartz.
+
+**La barra de estado** (`61d455c`): el texto empezaba a 2 px del borde, dentro de la esquina
+redondeada de 16 px. Ahora hay 8 px a cada lado. El usuario lo confirma.
+
+**El redimensionado por los bordes** (`854686f`, `8f3c10f`, E5.8):
+- En vivo, cada paso redimensionaba la ventana entera. Por un enlace emulado (8 ms, 20 MB/s,
+  puente), un arrastre de 200 px en 1 s mandaba 17.7 MB, con el enlace lleno.
+- Con un contorno de cuatro tiras dibujadas por Qt: 0.7–0.9 MB. Pero en XQuartz el contorno salía
+  blanco, se volvía azul y llegaba al puntero segundos tarde.
+- Medido en XQuartz con `bench/x_ops.py` (por `ssh -Y`):
+  - ida y vuelta: 1 ms;
+  - una tira: 10 ms;
+  - las cuatro tiras de un paso: 57 ms (p90 536);
+  - una ventana con forma: 33 ms;
+  - una ventana grande redimensionada: 406 ms.
+
+  Lo caro es el servidor, no el enlace: a un paso cada 25 ms, las tiras se encolaban.
+- Ahora el contorno lo dibuja el propio servidor X: una ventana con forma de anillo, sin píxeles por
+  el enlace, en una conexión propia. Un hilo aplica el último tamaño pedido y espera a que el
+  servidor lo haya hecho antes del siguiente; lo que no da tiempo a dibujar se salta.
+- Abrir la conexión en cada arrastre añadía 0.32–1.42 s a la primera respuesta. Ahora se abre una
+  vez por ventana.
+- Por el enlace emulado, con el puente y con xcb: primera respuesta 0.04–0.11 s; el contorno llega
+  al puntero 0–0.09 s después del último movimiento. En vivo con xcb, en cambio, se quedaba 1.34 s
+  atrás.
+- El usuario lo ve "mucho más fluido". Quedan líneas y artefactos, pendientes de sus capturas.
+
+**Retirado:** dije que en vivo la ventana "solo siguió 223 de los 800 px del puntero" y que al
+soltar "se quedó 577 px por detrás". Era falso: el Xvfb de 3840 px se parte en dos monitores de 1920,
+y la ventana topaba con el borde. El arreglo de tomar el tamaño en el punto de soltar se mantiene,
+correcto en lógica, pero sin evidencia de que fallara en el enlace.
+
+**E5.9, no es un defecto:** Qt en xcb no arrancaba por el enlace emulado porque, con el Xvfb en la
+misma máquina, intenta memoria compartida (MIT-SHM), que se queda esperando a través del proxy TCP.
+Con `QT_XCB_NO_MITSHM=1` funciona; por un `ssh -Y` real nunca la usa.
