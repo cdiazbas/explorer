@@ -8,9 +8,13 @@ Only reads and the same actions as the prototype's API; nothing here changes how
 mapping is not one to one, the comment says what is compared.
 """
 import os
+import time
 from types import SimpleNamespace
 
 import numpy as np
+
+HOVER_WAIT_S = 3.0          # smoke.py's own wait for the reader thread
+HOVER_ASK_S = 0.2           # for the cursor's read to be asked: a few turns of the loop
 
 # which later task brings what a missing name belongs to (ROADMAP)
 LATER = {"slit": "slit (E7)", "title": "own title bar (E5)", "persist": "layout persistence (E5)",
@@ -254,7 +258,24 @@ class ProtoViewer:
         self._w.session.lock(bool(on))
 
     def _on_hover(self, y, x):
+        """With a per-pixel file the prototype read the cursor's block inside _on_hover: its spectrum and lambda-t
+        were on screen when it returned, and smoke.py's hover() relies on it (it waits only for the reader thread,
+        without one). Explorer reads it on its I/O pool, so this waits for that result to be shown: the checks that
+        follow see the new pixel, and the cursor's timing (perf: cursor update) counts the read, as the
+        prototype's did. Without the wait, a cold block (20-50 ms on StorNext) made 'spectrum follows' compare the
+        first pixel's spectrum with itself, or pass comparing it with an empty plot."""
+        req0 = self._req
         self._w.session.hover(int(y), int(x))
+        if self.sp is not None:
+            from PySide6 import QtWidgets
+
+            app = QtWidgets.QApplication.instance()
+            q = time.perf_counter()
+            # the read is asked on the loop's next turn, and not at all on padding or the same pixel
+            while self._req == req0 and time.perf_counter() - q < HOVER_ASK_S:
+                app.processEvents()
+            while self._shown_req < self._req and time.perf_counter() - q < HOVER_WAIT_S:
+                app.processEvents()
 
     def _update_cursor(self, changed=None):
         """The prototype's redraw of the cursor's panels; explorer's scheduler follows the session by itself."""
