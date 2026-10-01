@@ -1784,3 +1784,36 @@ título, ~1 s por monitor):
   - en el otro, 0,0 1920x1080: sin Dock.
 - La suposición de explorer (70 pt abajo, en todo monitor) sobra 5 px en el principal y quita 70 que
   no hacen falta en el otro.
+
+### 2026-10-01 (6): el coste del estilo, `resize_top` y las esquinas (ROADMAP E5.6, E4.12)
+
+**El coste de nuestro estilo** (ABBA 6+6, autoprueba en offscreen, fijada al nodo 0, carga estable
+1.6–1.9; `EXPLORER_STYLE=0` deja Fusion con la misma paleta). Mediana de las medianas:
+
+| | con estilo | sin él | diferencia |
+|---|---|---|---|
+| paso en t | 14.14 ms | 13.67 ms | +0.47 (+3 %) |
+| paso en λ | 16.22 ms | 15.30 ms | +0.92 (+6 %) |
+| cambio de Stokes | 8.69 ms | 8.13 ms | +0.56 (+7 %) |
+
+- Medido dentro del estilo, durante los pasos: 0.82 ms por paso.
+- Por elemento:
+  - el fondo de la barra de estado: 48 veces, 196 µs cada una, 0.34 ms por paso;
+  - el slider: 280 µs por paso de t o λ;
+  - el combo de Stokes: 270 µs.
+- **Hipótesis descartada:** que el fondo de la barra costara por estar estirada la etiqueta de estado
+  (en explorer ocupa todo el ancho; en el prototipo no se estira, `app/viewer.py:1001`). Sin
+  estirarla cuesta lo mismo, 195–201 µs, y los pasos quedan dentro del ruido.
+- El prototipo usa el mismo estilo portado: esto no es una diferencia con él. No lo toco por ahora.
+
+**`resize_top`, no reproducible:** la diferencia de 1 px en el reparto entre paneles (374/371 frente
+a 373/372) salió en una sola ejecución. En cuatro más (tres en vivo y una con el contorno) da
+373/372, como el prototipo.
+
+**Los pasos de redimensionado con el contorno:** durante el arrastre, la ventana conserva su tamaño
+(a propósito); al final, el tamaño es idéntico al de en vivo en los ocho pasos.
+
+**Las esquinas:** los cuatro pasos de esquina no redimensionan, en el prototipo ni en explorer. Sus
+puntos están a 3 px de la esquina, y la forma redondeada (radio 16) ya ha cortado la ventana ahí; una
+ventana X no recibe eventos fuera de su forma. Para agarrar una esquina hay que entrar unos 7 px en
+diagonal; en macOS se puede agarrar incluso un poco por fuera.
