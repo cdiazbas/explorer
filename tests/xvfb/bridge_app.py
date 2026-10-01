@@ -2,7 +2,7 @@
 as the user runs it (BridgeDisplay, Shell) and answers commands on stdin, one per line, with one JSON line on stdout.
 
     python tests/xvfb/bridge_app.py <cube_im.fits> [--size 800x600]
-    state | grab | copy TEXT | bigcopy N | panel | popup | mask | idle | quit
+    state | grab | copy TEXT | bigcopy N | panel | popup | mask | look NAME | stokes | idle | quit
 """
 import argparse
 import json
@@ -136,6 +136,20 @@ def main():
             settle()
             out(dict(ok=True, geometry=m.geometry().getRect(),
                      items=[m.actionGeometry(act).center().toTuple() for act in m.actions()]))
+        elif cmd == "look":
+            from explorer.look import get_look
+
+            w.set_look(get_look(arg, {}))
+            settle()
+            out(dict(ok=True))
+        elif cmd == "stokes":                           # the modern look's drop-down, where it is on the screen
+            d = w.nav.drop
+            settle()
+
+            def centre(b):
+                return b.mapToGlobal(b.rect().center()).toTuple()
+            out(dict(button=centre(d), open=d.panel.isVisible(), label=d.text(),
+                     items=[centre(b) for b in d.segments.group.buttons()] if d.panel.isVisible() else []))
         elif cmd == "activate":
             ops.activate()
             settle()

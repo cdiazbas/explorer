@@ -323,6 +323,28 @@ class ClipboardClient:
         self.d.close()
 
 
+def test_the_stokes_drop_down_opens_and_picks_with_real_clicks(x, app):
+    """The modern look's Stokes: a click drops the segments in a popup of their own, a click on V picks it and closes
+    them; no nested event loop, so the bridge keeps painting."""
+    app("look modern")
+    try:
+        st = app("stokes")
+        assert not st["open"] and st["label"].startswith("Stokes ")
+        fake(x, None, xy=st["button"])
+        fake(x, 4, 1)
+        fake(x, 5, 1)
+        assert wait(lambda: app("stokes")["open"])
+        assert wait(lambda: any(w["popup"] for w in app("state")["windows"]))
+        fake(x, None, xy=app("stokes")["items"][3])
+        fake(x, 4, 1)
+        fake(x, 5, 1)
+        assert wait(lambda: app("state")["s"] == 3)
+        assert wait(lambda: not app("stokes")["open"] and not app("state")["popup"])
+        assert app("stokes")["label"] == "Stokes V ▾"
+    finally:
+        app("look classic")
+
+
 def test_clipboard_both_ways_with_incr(app):
     cc = ClipboardClient()
     try:
