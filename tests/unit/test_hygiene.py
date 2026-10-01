@@ -42,8 +42,30 @@ def test_audit_files_are_refused_by_name():
 ])
 def test_commit_subjects(tmp_path, subject, ok):
     p = tmp_path / "msg"
-    p.write_text(subject + "\n\nBody.\n")
+    p.write_text(subject + "\n\nBody.\n\nBehaviour: unchanged\nTests: none\n")
     assert (hygiene.check_message(p) == []) is ok
+
+
+@pytest.mark.parametrize("body, found", [
+    ("\nWhy.\n\nBehaviour: unchanged\nTests: test_x\n", []),
+    ("Why, right under the subject.\n\nBehaviour: unchanged\nTests: test_x\n", ["no blank line after the subject"]),
+    ("\nWhy.\n\nTests: test_x\n", ["no 'Behaviour:' line"]),
+    ("\nWhy.\n\nBehaviour: unchanged\n", ["no 'Tests:' line"]),
+    ("\nWhy.\n\nBehaviour: faster\nTests: test_x\n", ["no 'Behaviour:' line"]),   # unchanged | changes <what>
+    ("\nBehaviour: changes the window\nTests: test_x\n", []),
+])
+def test_the_closing_lines_and_the_blank_line(tmp_path, body, found):
+    """ADR 0005: [ADD] [DEV] [FIX] [PERF] end with Behaviour: and Tests:; the body starts after a blank line (git
+    reads a body run into the subject as one long subject)."""
+    p = tmp_path / "msg"
+    p.write_text("[FIX] a fix\n" + body)
+    assert [f[1].split(" (")[0] for f in hygiene.check_message(p)] == found
+
+
+def test_other_tags_need_no_closing_lines(tmp_path):
+    p = tmp_path / "msg"
+    p.write_text("[DOC] a page\n\nWhy.\n")
+    assert hygiene.check_message(p) == []
 
 
 def test_co_author_trailer_is_refused(tmp_path):
