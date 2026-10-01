@@ -51,3 +51,10 @@ def _no_windows_left():
             w.deleteLater()
     QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
     app.processEvents()
+    # widgets a test left in Python reference cycles (pyqtgraph's) are freed now, not whenever the collector runs:
+    # inside a Python callback of Qt's (the style's polish while a palette change walks every widget) it freed one
+    # Qt was still walking, and the suite crashed about one run in four
+    import gc
+
+    gc.collect()
+    QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
