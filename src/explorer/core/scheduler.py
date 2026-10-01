@@ -74,8 +74,23 @@ class Scheduler:
         self._futures: set[Future] = set()
         self._flock = threading.Lock()
         self._off = session.store.subscribe(self._on_change)
+        self._first_units(session.state)
         self._pending.add("cursor")                     # the first image brings the first cursor
         self._request_image(session.state)
+
+    def _first_units(self, st: ViewState) -> None:
+        """With a per-pixel file, the cursor's block read now, as the window is built (the prototype's first
+        spectrum, app/viewer.py _set_spectra 1927): I's title has its power of ten from the first frame, and the axis
+        does not widen once the spectrum comes. One small read (0.1 ms on a synthetic cube), then in the cache: the
+        first cursor read finds it there. Without that file the first spectrum brings it, as in the prototype."""
+        if getattr(self.ds, "pixel", None) is None or self.ds.roles.l is None:
+            return
+        try:
+            blk = self.ds.pixel.block(*st.cursor)
+        except Exception as e:                          # the first cursor read then reports and retries it
+            log.warning("first block (%d, %d) not read: %r", *st.cursor, e)
+            return
+        self.yrange.first(blk[0, st.t, :])
 
     def close(self) -> None:
         """No more work: what is due later (the y-range sample) or still on its way is dropped."""

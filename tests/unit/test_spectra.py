@@ -58,6 +58,23 @@ def test_four_stokes_as_two_by_two_with_physical_axes_and_units(qapp, shell):
     assert labels[0].startswith("I [10") and all("/I<sub>c</sub> [%]" in t for t in labels[1:])
 
 
+def test_stokes_i_has_its_power_of_ten_from_the_start(qapp, cube):
+    """With a per-pixel file, I's power of ten from the cursor's block read as the window is built (the prototype's
+    first spectrum): the title never shows without it, and never widens its axis once the spectrum comes."""
+    from explorer.data.dataset import Dataset
+    from explorer.ui.shell import Shell
+
+    with Dataset.open(cube) as ds:
+        assert ds.pixel is not None
+        w = Shell(ds)                                   # no event processed yet
+        try:
+            assert w.spectra.iscale is not None
+            assert w.spectra.plots[0].getAxis("left").labelText.startswith("I [10")
+            assert ds.peek_block(*w.session.state.cursor) is not None      # the first spectrum: no second read
+        finally:
+            w.close()
+
+
 def test_it_draws_the_cores_spectrum_with_the_cores_ranges_and_lambda(qapp, shell):
     sp, s = shell.spectra, shell.session
     s.hover(20, 15)

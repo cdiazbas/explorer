@@ -61,13 +61,17 @@ class YRange:
             self.fit(force=False)
 
     # ---------------------------------------------------------------- a spectrum on screen
+    def first(self, i_profile) -> None:
+        """I's power of ten from the first profile of I that has one; later ones change nothing."""
+        if self.iscale is None:
+            self.iscale = power_of_ten(np.asarray(i_profile, dtype=np.float64))
+            if self.iscale is not None:
+                self._units(self.iscale)
+
     def spectrum(self, spec) -> np.ndarray:
         """spec: (ns, nl) as read; returns it in the plots' units, and updates the ranges."""
         spec = np.asarray(spec, dtype=np.float64)
-        if self.iscale is None:
-            self.iscale = power_of_ten(spec[0])
-            if self.iscale is not None:
-                self._units(self.iscale)
+        self.first(spec[0])
         out = plot_units(spec, self.cont, self.iscale)
         refit = False
         for k in range(min(self.ns, out.shape[0])):
