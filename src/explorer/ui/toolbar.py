@@ -15,8 +15,7 @@ FPS = (1, 120, 20)                                      # the rate box: minimum,
 
 
 class StokesSegments(QtWidgets.QWidget):
-    """I Q U V as a segmented control, one click, instead of a drop-down, two (the modern look's stokes part; the
-    prototype's app/look.py _stokes, 581)."""
+    """I Q U V as a segmented control (the prototype's app/look.py _stokes, 581), in the modern look's drop-down."""
 
     def __init__(self, ns: int, current: int, pick):
         super().__init__()
@@ -56,6 +55,38 @@ class StokesSegments(QtWidgets.QWidget):
             self.group.button(s).setChecked(True)
 
 
+class StokesDrop(QtWidgets.QToolButton):
+    """The modern look's Stokes: a button as narrow as the classic combo ("Stokes V ▾") that drops the segments
+    below it; a pick closes them. The segments in the toolbar took 165 px, which the sliders gave up in a narrow
+    window. Shown with show(), never a menu's exec(): a nested event loop inside the X11 bridge's timer hung the
+    prototype."""
+
+    def __init__(self, ns: int, current: int, pick):
+        super().__init__()
+        self.setObjectName("stokes_drop")
+        self.setAutoRaise(True)
+        self.setToolTip("Stokes shown in the image: keys " + ", ".join(f"{k + 1} {STOKES[k]}" for k in range(ns)))
+        self.panel = QtWidgets.QFrame(self, QtCore.Qt.WindowType.Popup)
+        self.panel.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+        self.panel.setAutoFillBackground(True)
+        lay = QtWidgets.QHBoxLayout(self.panel)
+        lay.setContentsMargins(4, 4, 4, 4)
+        self.segments = StokesSegments(ns, current, pick)
+        self.segments.group.idClicked.connect(lambda _k: self.panel.hide())
+        lay.addWidget(self.segments)
+        self.clicked.connect(self.drop)
+        self.set(current)
+
+    def drop(self) -> None:
+        self.panel.adjustSize()
+        self.panel.move(self.mapToGlobal(QtCore.QPoint(0, self.height())))
+        self.panel.show()
+
+    def set(self, s: int) -> None:
+        self.setText(f"Stokes {STOKES[s]} ▾")
+        self.segments.set(s)
+
+
 class JumpSlider(QtWidgets.QSlider):
     """A click on the track jumps to the value under the pointer, as a macOS slider does, and a drag goes on from
     there. Qt's own click steps one page (10): on a 14-tuning slider a click anywhere left of the handle went to 0."""
@@ -79,8 +110,8 @@ class JumpSlider(QtWidgets.QSlider):
 class NavBar:
     """The toolbar of a Shell: built from its session's axes, kept in step with the state (sync)."""
 
-    def __init__(self, shell, segmented: bool = False):
-        """segmented: Stokes as segments (the modern look) in place of the combo, which stays, hidden."""
+    def __init__(self, shell, drop: bool = False):
+        """drop: Stokes as the modern look's drop-down in place of the combo, which stays, hidden."""
         self.shell, s = shell, shell.session
         self.ax = shell.dataset.axes
         r = shell.dataset.roles
@@ -108,7 +139,7 @@ class NavBar:
             tb.addWidget(sl)
             tb.addWidget(lab)
             self.sliders[axis], self.labels[axis] = sl, lab
-        self.stokes = self.segments = self._segments_act = None
+        self.stokes = self.drop = self._drop_act = None
         if s.present["s"] and self.n["s"] > 1:
             self._stokes_label = tb.addWidget(QtWidgets.QLabel(" Stokes "))
             self.stokes = QtWidgets.QComboBox()
@@ -159,8 +190,8 @@ class NavBar:
         self.help.setToolTip("What the keys and the mouse do (?)")
         self.help.clicked.connect(shell.toggle_sheet)
         tb.addWidget(self.help)
-        if segmented:
-            self.set_segmented(True)
+        if drop:
+            self.set_stokes_drop(True)
 
     def text(self, axis: str, v: int) -> str:
         """A slider's label: t in UT with the frame index quieter beside it; lambda as delta-lambda, the continuum
@@ -178,17 +209,18 @@ class NavBar:
             return f"Δλ {fmt_signed(dl[v], 3)} Å" + ("  (cont.)" if v == self.ax.cont else "")
         return f"{v}/{n - 1}"
 
-    def set_segmented(self, on: bool) -> None:
-        """Stokes as segments (the modern look) in place of the combo, which stays, hidden; or the combo back."""
+    def set_stokes_drop(self, on: bool) -> None:
+        """Stokes as the modern look's drop-down in place of the combo, which stays, hidden; or the combo back."""
         if self.stokes is None:
             return
-        if on and self.segments is None:
+        if on and self.drop is None:
             s = self.shell.session
-            self.segments = StokesSegments(self.n["s"], s.state.s, lambda k: s.set_index("s", k))
-            self._segments_act = self.tb.insertWidget(self._stokes_label, self.segments)
-        if self.segments is not None:
-            self.segments.set(self.shell.session.state.s)
-            self._segments_act.setVisible(on)
+            self.drop = StokesDrop(self.n["s"], s.state.s, lambda k: s.set_index("s", k))
+            self._drop_act = self.tb.insertWidget(self._stokes_label, self.drop)
+        if self.drop is not None:
+            self.drop.set(self.shell.session.state.s)
+            self.drop.panel.hide()
+            self._drop_act.setVisible(on)
         self._stokes_act.setVisible(not on)
         self._stokes_label.setVisible(not on)
 
@@ -207,8 +239,8 @@ class NavBar:
             self.stokes.blockSignals(True)
             self.stokes.setCurrentIndex(st.s)
             self.stokes.blockSignals(False)
-        if "s" in changed and self.segments is not None:
-            self.segments.set(st.s)
+        if "s" in changed and self.drop is not None:
+            self.drop.set(st.s)
 
     def fit(self, width: int) -> None:
         """Sliders between SLIDER_W so the whole toolbar fits `width`: at a fixed 220 px it needed 1210 px, and below

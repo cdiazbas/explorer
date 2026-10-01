@@ -188,7 +188,7 @@ class Shell(QtWidgets.QMainWindow):
             for sl in self.nav.sliders.values():
                 sl.update()
         self.view.set_reticle(L.has("reticle"))
-        self.nav.set_segmented(L.has("stokes"))
+        self.nav.set_stokes_drop(L.has("stokes"))
         acc = style.accent()
         if self.spectra is not None:
             self.spectra.set_marks(acc, light) if L.has("marks") else self.spectra.clear_marks()

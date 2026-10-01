@@ -11,7 +11,7 @@
   - marks: the markers in the accent colour, quieter curves and grid, a zero line on Q U V;
   - cards: the plots on dark grey cards instead of black;
 The spectra's grid is quiet in both looks (alpha 0.07): at 0.2 its lines read as a mesh over the curves.
-  - stokes: I Q U V as a segmented control, one click, instead of a drop-down.
+  - stokes: I Q U V as a segmented control, in a drop-down as narrow as the classic combo.
 """
 import os
 from dataclasses import dataclass

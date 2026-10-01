@@ -1,7 +1,7 @@
 """The looks (ROADMAP E5.5), offscreen: which parts each has; the colour tables (grey exact, padding at level 0,
 one map per Stokes, cycling); classic: the sliders in the cursor's red, the crosshair in its locked colour, rounded
-panels, no colour keys; modern: the reticle instead of two lines, the Stokes segments in step with the state, C
-recolouring image, lambda-t and key, the zero lines and the cards."""
+panels, no colour keys; modern: the reticle instead of two lines, the Stokes drop-down in step with the state and
+no wider than the classic combo, C recolouring image, lambda-t and key, the zero lines and the cards."""
 import sys
 import time
 
@@ -103,7 +103,7 @@ def test_classic(themed, cube):
         w.session.lock(False)
         themed.processEvents()
         assert w.view.hl.pen.color() == CURSOR_PEN.color()
-        assert w.colours is None and w.colour_key is None and w.nav.segments is None
+        assert w.colours is None and w.colour_key is None and w.nav.drop is None
         assert len(w._rounders) == 3                                    # image, spectra, lambda-t
         before = list(w.colours.maps) if w.colours is not None else None
         w.cycle_colours(1)                                              # C: the modern look's only
@@ -125,13 +125,18 @@ def test_modern(themed, cube):
         w.session.lock(True)
         themed.processEvents()
         assert w.view.reticle.locked
-        seg = w.nav.segments
-        assert seg is not None and seg.isVisible() and not w.nav.stokes.isVisible()   # the combo stays, hidden
-        seg.group.button(3).click()
+        drop = w.nav.drop
+        assert drop is not None and drop.isVisible() and not w.nav.stokes.isVisible()  # the combo stays, hidden
+        assert not drop.panel.isVisible()
+        drop.click()
+        assert drop.panel.isVisible() and drop.panel.geometry().top() >= drop.mapToGlobal(drop.rect().bottomLeft()).y()
+        drop.segments.group.button(3).click()
+        assert not drop.panel.isVisible()                              # a pick closes it
         assert spin(themed, lambda: w.session.state.s == 3 and w.nav.stokes.currentIndex() == 3)
+        assert drop.text() == "Stokes V ▾"
         w.session.set_index("s", 1)
         themed.processEvents()
-        assert seg.group.checkedId() == 1
+        assert drop.segments.group.checkedId() == 1 and drop.text() == "Stokes Q ▾"
         w.session.set_index("s", 3)
         assert spin(themed, lambda: w.last.get("image", (None,))[0] is not None and w.last["image"][0][1] == 3)
         assert spin(themed, lambda: w.last.get("lambda_t", (0, 0, -1))[2] == 3)
@@ -157,7 +162,7 @@ def test_parts_can_be_left_out(themed, cube, monkeypatch):
 
     with Dataset.open(cube) as ds:
         w = Shell(ds, look=get_look("modern", {"EXPLORER_LOOK_OFF": "reticle,stokes,colour"}))
-        assert w.view.reticle is None and w.nav.segments is None and w.colours is None
+        assert w.view.reticle is None and w.nav.drop is None and w.colours is None
         w.close()
 
 
@@ -174,7 +179,7 @@ def classic_state(w):
     from PySide6 import QtGui
 
     return dict(lines=w.view.hl.isVisible(), reticle=w.view.reticle is not None and w.view.reticle.isVisible(),
-                segments=w.nav.segments is not None and w.nav.segments.isVisible(), combo=w.nav.stokes.isVisible(),
+                drop=w.nav.drop is not None and w.nav.drop.isVisible(), combo=w.nav.stokes.isVisible(),
                 slider=QtGui.QGuiApplication.instance().style().SLIDER, lut=w.view.img.lut, lt_lut=w.lambda_t.img.lut,
                 mark=w.spectra.lines[0].pen.color().name(), curve=w.spectra.curves[0].opts["pen"],
                 zeros=any(z.isVisible() for z in w.spectra._zeros),
@@ -191,7 +196,7 @@ def test_m_switches_to_modern_and_back_to_exactly_classic(themed, cube):
         fire(w, "M")
         themed.processEvents()
         assert w.look.name == "modern" and w.view.reticle.isVisible() and not w.view.hl.isVisible()
-        assert w.nav.segments.isVisible() and not w.nav.stokes.isVisible() and themed.style().SLIDER is None
+        assert w.nav.drop.isVisible() and not w.nav.stokes.isVisible() and themed.style().SLIDER is None
         assert any(z.isVisible() for z in w.spectra._zeros) and w.colour_key.isVisible()
         fire(w, "C")                                                    # V on its first diverging map
         assert w.colours.maps[3] == "CET-D4" and w.view.img.lut is not None
@@ -229,3 +234,22 @@ def test_the_layout_keeps_the_look(qapp, tmp_path):
     store.save(w, look="modern")
     assert LayoutStore("other", store.path).look() == "modern"        # one look for every way of displaying
     w.close()
+
+
+def test_the_modern_stokes_is_no_wider_than_the_classic(themed, cube):
+    """The sliders keep their width in the modern look: its Stokes takes the classic label and combo's room."""
+    widths = {}
+    for name in ("classic", "modern"):
+        w, ds = make(themed, cube, name)
+        try:
+            w.resize(1100, 600)
+            assert spin(themed, lambda: False, timeout=0.3) is False
+            nav = w.nav
+            stokes = (nav.drop.width() if nav.drop is not None and nav.drop.isVisible()
+                      else nav.tb.widgetForAction(nav._stokes_label).width() + nav.stokes.width())
+            widths[name] = (stokes, nav.sliders["t"].width())
+        finally:
+            w.close()
+            ds.close()
+    assert widths["modern"][0] <= widths["classic"][0], widths
+    assert widths["modern"][1] >= widths["classic"][1], widths

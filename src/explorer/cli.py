@@ -34,7 +34,7 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--theme", choices=("auto", "dark", "light", "native"), default="auto",
                     help="dark or light everywhere; native: the system's (macOS); auto: native on a Mac, else dark")
     ap.add_argument("--look", choices=("classic", "modern"), default=None,
-                    help="classic: red cursor and markers; modern: reticle, accent marks, cards, Stokes segments, "
+                    help="classic: red cursor and markers; modern: reticle, accent marks, cards, Stokes drop-down, "
                          "colour maps on C (EXPLORER_LOOK_OFF=part,...: leave parts out). M switches while it runs; "
                          "without --look, the one worn at the last close")
     ap.add_argument("--reset-layout", action="store_true",
