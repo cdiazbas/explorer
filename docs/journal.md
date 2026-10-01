@@ -1582,3 +1582,43 @@ dado, el `show` del prototipo no llama a `restore()` y sus paneles quedan con el
 (`_sized`). Su barra de título propia (32 px, E5) desplaza las posiciones en la ventana: en el
 clic sobre la imagen, los 14 eventos son los mismos y en el mismo orden, a 32 px en y. Pendiente:
 leer la segunda comparación, ya hecha en bellatrix (`scratch_focus/pconf/run_xcb2.log`).
+
+
+### 2026-10-01: el aspecto, la barra de título, la disposición y la hoja `?` (ROADMAP E5.1–E5.5)
+
+**Implementado, probado en el Mac (offscreen); falta Linux** (la conexión a bellatrix se cortó):
+- **Temas** (`119d5b1`): el estilo del prototipo (`app/style.py`) sobre Fusion, oscuro y claro;
+  `--theme auto|dark|light|native`. La prueba de humo del prototipo comprueba ya el estilo de
+  explorer, no el suyo.
+- **Barra de título propia, esquinas y bordes** (`254c3b1`): `app/titlebar.py` entero. `WindowOps`
+  es ahora el `Mover` del prototipo: el zoom llena el monitor por geometría (sin gestor de ventanas
+  también), y existen antes de mostrar la ventana. `platform/screens.py` porta `monitor_rect`
+  (cabezas Xinerama por el cliente X propio; el Dock del Mac fuera por XQuartz).
+- **La disposición entre sesiones** (`83bbb03`): geometría y paneles por tipo de pantalla, esquema
+  con versión en el nombre del grupo (`app/v1.<tipo>/`), `--reset-layout`.
+- **La hoja `?`** (`7ef8b63`): una sola tabla de teclas y ratón para los atajos, la terminal y la
+  hoja.
+- **Los aspectos `classic` y `modern`** (`9044182`), como datos que toman la ventana y sus vistas;
+  nada se sustituye sobre ellas, al contrario que en `app/look.py`. Por defecto `classic`.
+
+**Encontrado al portar, del prototipo:** dos cosas de su ventana de todos los días que explorer no
+tenía. Los deslizadores de t y λ van rellenos del rojo de los marcadores que mueven
+(`app/viewer.py:1044-1049`). La cruz cambia de color con el cursor bloqueado
+(`app/viewer.py:1245-1249`): en explorer un cursor bloqueado se veía igual que uno libre.
+
+**Encontrado en las pruebas:**
+- Las pruebas dejaban vivas todas sus ventanas: 8425 widgets al llegar a las del estilo, y cada
+  `setStyle` por el estilo en Python costaba 0.82 s. Al borrarlas, la suite pasó de 40 a 18 s.
+- Borrarlas sacó un fallo real: lo pendiente en el bucle (`call_soon`, `call_later`) se ejecutaba
+  después de borrada su ventana. El reajuste del rango y en reposo fallaba con un error en el
+  registro. Corregido con el bucle como contexto de los temporizadores (`7f20bd3`), con una prueba
+  que fallaba antes.
+- Un segfault al borrar ventanas venía de mi accesorio, no de explorer: borraba antes que su gráfico
+  los menús de pyqtgraph, que no tienen padre en Qt. Ahora solo borra ventanas principales.
+- La prueba de humo del prototipo en el Mac da lo mismo que su propia ejecución, salvo el título de
+  Stokes I (E4.14), la rendija y las comprobaciones `persist:`, que dibujan una rendija antes de
+  cerrar.
+
+**Pendiente (E5.6):** en Linux, la prueba de humo y la de conformidad en xcb y por el puente; la
+barra de título vista por un servidor X de verdad; el coste del estilo (cada dibujo pasa por
+Python) frente al prototipo; y que el usuario mire las dos apariencias y elija la de por defecto.
