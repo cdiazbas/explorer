@@ -15,8 +15,11 @@ first: the names the two programs give the same widget (NAMES), and the steps of
 (NOT_YET: the slit), which are listed apart and not compared.
 """
 import collections
+import contextlib
+import io
 import json
 import os
+import re
 import sys
 import tempfile
 
@@ -57,6 +60,35 @@ def not_yet(name):
     return next((what for key, what in NOT_YET if name.startswith(key)), None)
 
 
+TABBAR = {"WindowDeactivate QMainWindowTabBar[0]", "WindowActivate QMainWindowTabBar[0]"}
+
+
+def classify(report: str) -> dict:
+    """The differing steps of a comparison report, by kind: "order" (the same events, in another order between
+    sibling widgets), "tab bar" (only the prototype's extra (de)activation of its first tab bar: it keeps a dozen,
+    explorer one) and "other" (to be read: states, events one side only). From the report's lines, so the
+    prototype's compare stays as it is."""
+    out = {"order": [], "tab bar": [], "other": []}
+    for block in re.split(r"\n(?=## )", report):
+        if not block.startswith("## "):
+            continue
+        name = block.split()[1]
+        lines = block.splitlines()[1:]
+        pe = collections.Counter(ln.split("only explorer: ", 1)[1] for ln in lines if "only explorer: " in ln)
+        pp = collections.Counter(ln.split("only prototype: ", 1)[1] for ln in lines if "only prototype: " in ln)
+        other = [ln for ln in lines if ln.strip() and "only explorer" not in ln and "only prototype" not in ln
+                 and "events (" not in ln and not ln.startswith(("X cursors", "**", "Identical", "Not compared",
+                                                                    "Events on"))]
+        e, p = pe - pp, pp - pe
+        if not e and not p and not other:
+            out["order"].append(name)
+        elif not e and set(p) <= TABBAR and not other:
+            out["tab bar"].append(name)
+        else:
+            out["other"].append(name)
+    return out
+
+
 def compare(fa, fb, md=None):
     app_dir = _prototype_app()
     sys.path.insert(0, app_dir)
@@ -93,8 +125,15 @@ def compare(fa, fb, md=None):
         p = os.path.join(tmp, f"{who}.json")
         json.dump(r, open(p, "w"))
         runs.append(p)
-    n = conformance.compare(*runs, md=md)
-    note = f"Not compared, not in explorer yet ({len(apart)}): " + ", ".join(apart)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        n = conformance.compare(*runs, md=md)
+    report = buf.getvalue()
+    print(report, end="")
+    kinds = classify(report)
+    note = (f"By kind: {len(kinds['order'])} in another order only, {len(kinds['tab bar'])} the prototype's tab bar "
+            f"only, {len(kinds['other'])} to read: " + ", ".join(kinds["other"]) + "\n")
+    note += f"Not compared, not in explorer yet ({len(apart)}): " + ", ".join(apart)
     for who, c in zip(("prototype", "explorer"), only, strict=True):
         note += (f"\nEvents on widgets only the {who} has, left out ({sum(c.values())} events, {len(c)} widgets): "
                  + ", ".join(f"{w} {k}" for w, k in c.most_common(12)) + (" ..." if len(c) > 12 else ""))
