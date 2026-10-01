@@ -119,6 +119,28 @@ def test_zoom_linked_and_each_panel_renders_what_it_shows(qapp, shell):
     assert all(v.last_render["factor"] == 1 for v in g.views)                 # at full resolution there
 
 
+def test_no_panel_zooms_out_past_the_whole_image(qapp, shell):
+    """The single view's rule (ViewGuard: no further out than the whole image, 1x) in every panel, whichever one the
+    wheel turns: zoomed out in a panel other than I's, the view went past 1x (the user, 2026-10-01)."""
+    from PySide6 import QtCore
+
+    w, data = shell
+    w.set_grid(True)
+    g = w.grid
+    assert spin(qapp, lambda: shown(g, data, w.session.state))
+    ny, nx = data.shape[-2:]
+    for k in (2, 1, 3, 0):                              # the wheel over each panel in turn, far out
+        vb = g.views[k].vb
+        for _ in range(6):
+            vb.scaleBy((1.5, 1.5), center=QtCore.QPointF(nx * 0.3, ny * 0.7))
+            qapp.processEvents()
+        for v in g.views:
+            (x0, x1), (y0, y1) = v.vb.viewRange()
+            W, H = v.vb.width(), v.vb.height()
+            scale, fit = min(W / (x1 - x0), H / (y1 - y0)), min(W / nx, H / ny)
+            assert scale >= fit * 0.999, (k, scale, fit)
+
+
 def test_a_step_in_t_updates_the_four(qapp, shell):
     w, data = shell
     w.set_grid(True)
