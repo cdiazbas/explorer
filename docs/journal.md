@@ -1622,3 +1622,60 @@ tenía. Los deslizadores de t y λ van rellenos del rojo de los marcadores que m
 **Pendiente (E5.6):** en Linux, la prueba de humo y la de conformidad en xcb y por el puente; la
 barra de título vista por un servidor X de verdad; el coste del estilo (cada dibujo pasa por
 Python) frente al prototipo; y que el usuario mire las dos apariencias y elija la de por defecto.
+
+### 2026-10-01 (2): Linux, la tecla M, la hoja `?`, Stokes desplegable y un panel que volvía mal
+
+**La copia de bellatrix estaba atrasada.** El arranque del demo en Linux había pasado de 2–3 s a
+5–7 s: la copia remota era anterior al puente y usaba el X11 nativo. Sincronizada, vuelve a lo de
+antes. Decía además `explorer 0.0.0`: la versión sale de git al instalar (hatch-vcs) y la copia
+remota no tiene git. `scripts/sync.py` escribe ahora `src/explorer/_version.py` en cada push, aquí y
+allí (`40e54d4`).
+
+**El aspecto** (`fc73f5e`, `9e6e009`, `19e8c72`):
+- M cambia entre `classic` y `modern` mientras corre. Vuelve exactamente al clásico, y los mapas
+  elegidos con C se conservan. El aspecto de la última sesión es el de la siguiente, salvo que
+  `--look` diga otro.
+- Un botón `?` abre la hoja de teclas, ahora una tarjeta redondeada y algo translúcida.
+- En el clásico, ninguna línea clara bajo los títulos de panel; el fondo sigue negro y el eje de
+  velocidad se conserva.
+- Los deslizadores de t y λ miden 0.95 de los del prototipo (209 px como máximo), en los dos
+  aspectos.
+- En el moderno, Stokes es un desplegable ("Stokes V ▾", 71 px) en lugar de los segmentos en la
+  barra (165 px). Con la ventana a 1100 px, los deslizadores del moderno miden ahora 204 px; antes
+  medían 157 y los del clásico, 192.
+
+**En Linux (bellatrix, Xvfb :97):**
+- Pruebas unitarias offscreen: 335 pasan, 1 se salta.
+- Pruebas X: 9 pasan y 2 se saltan (necesitan gestor de ventanas). Una prueba esperaba aún el menú
+  de pyqtgraph al hacer clic derecho, que `7ddd945` quitó como en el prototipo; corregida
+  (`c0d2266`).
+- Una prueba nueva maneja el desplegable de Stokes con clics XTEST a través del puente (`7603fc4`).
+
+**Encontrado con la suite de conformidad del prototipo (xcb):** λ–t reacoplado con su botón de
+flotar quedaba en (590, 466) de una ventana de 1200 px. Es decir, donde había flotado, ahora como
+hijo, y 40 px más allá en cada flotar y reacoplar. Los clics posteriores en λ–t caían 80 px
+desplazados.
+- Qt 6.11 hace lo mismo con una `QMainWindow` desnuda, en xcb y offscreen: el sitio del dock en el
+  layout no ha cambiado, así que Qt no lo vuelve a colocar. Ni `invalidate()` ni repetir la
+  geometría del layout lo mueven.
+- El arreglo (`d459486`): cada dock recuerda dónde estuvo acoplado y vuelve allí cuando Qt lo deja
+  donde flotaba.
+- Desplazar todo el layout un píxel y volver también funcionaba, pero repintaba la ventana entera:
+  1.26 Mpx frente a 0.51 por reacople (offscreen). El arreglo elegido mueve solo el dock: 0.51.
+
+**El prototipo tiene el mismo fallo, y contamina su referencia.** En su ejecución, el espectro
+acaba acoplado a 520×420 o 580×470, su tamaño de flotante, sobre un hueco de 650×353. De ahí que:
+- sus pasos `separator_grab_*` midieran separadores de 858 y −134 px;
+- en `panel_cycle`, su último doble clic no hiciera flotar el panel.
+
+Explorer, arreglado, difiere ahora de él en esos pasos: 61 pasos distintos frente a 45, 83
+idénticos. Las diferencias nuevas son de dos clases:
+- los paneles, donde explorer hace lo que el paso pide;
+- los deslizadores al 0.95, porque los clics a una fracción de su largo caen en otro valor.
+
+**Pendiente:**
+- `separator_central_docks`: el rango y del espectro difiere ([2, 4] frente a [0, 4]).
+- `dock_float_dblclick_redock`: el espectro mide 353 frente a 347.
+- `enter_leave_window`: el puntero cruza el botón `Panels` en el prototipo y un widget sin nombre en
+  explorer. Sin rastrear.
+- E4.13, E4.14 y E5.6.
