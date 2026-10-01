@@ -1458,3 +1458,127 @@ así que en el 6173 las posiciones son las del prototipo.
 **Sin medir:** pasar en los primeros segundos tras abrir, con la muestra en marcha, en los dos
 programas. La autoprueba del prototipo nunca mide ese momento. Queda para E4, cuando los paneles
 dibujen.
+
+
+### 2026-09-30: los paneles (ROADMAP E4.1–E4.9) y sus medidas
+
+**Implementado:** docks (`f950798`); espectros, λ–t, barra de herramientas y de estado
+(`270639b`, con `86b2f96` para el orden de los paneles); candados y F / Mayús+F (`3a80855`);
+clics en los paneles (`7f3015b`); reproducción y la sonda del enlace sobre el cliente X del
+puente (`f8dc797`); el rango y de un espectro a mano, en la franja de su eje (`63e1be3`).
+
+**Velocidad frente al prototipo** (`bench/selftest_vs_prototype.py`: la autoprueba de cada
+programa, 10 pasos por acción tras su fase del cursor). bellatrix, offscreen, fijado al nodo
+NUMA 0, 4 rondas ABBA salvo donde se dice. Razón pareada explorer / prototipo (rondas en que
+explorer es más rápido):
+
+| Tras | `_sp` | Primera imagen | Paso en t | Paso en λ | Cambio de Stokes |
+|---|---|---|---|---|---|
+| E4.3 | sí | 0.945 (4/4) | 0.986 (3/4) | 0.822 (4/4) | 0.732 (4/4) |
+| E4.3 | no | 0.713 (4/4) | 0.962 (3/4) | 0.820 (3/4) | 0.724 (4/4) |
+| E4.4 | sí | 0.915 (4/4) | 0.930 (4/4) | 0.815 (4/4) | 0.889 (4/4) |
+| E4.4 | no | 0.695 (4/4) | 0.971 (3/4) | 0.892 (4/4) | 0.696 (4/4) |
+| E4.8 | sí | 0.910 (4/4) | **1.107 (0/4)** | 0.850 (4/4) | 0.812 (4/4) |
+| E4.8 | no | 0.690 (4/4) | **1.037 (1/4)** | 0.875 (4/4) | 0.816 (4/4) |
+| E4.8, 8 rondas | sí | 0.929 (7/8) | **1.026 (1/8)** | 0.910 (7/8) | 0.797 (8/8) |
+| E4.8, 8 rondas | no | 0.676 (8/8) | **1.044 (3/8)** | 0.882 (6/8) | 0.767 (7/8) |
+
+Carga de otros usuarios: hasta 29 al acabar la serie de E4.4 y 37 al empezar la de 8 rondas
+(pesa igual en cada par, no en cada ronda).
+
+### 2026-09-30: el paso en t tras E4.8 (ROADMAP E4.13)
+
+Tras E4.8 la autoprueba da el paso en t de explorer un 3–11 % más lento que el del prototipo,
+lo que la regla de la hoja de ruta no permite. Lo medido, en orden:
+
+1. **Qué parte de la ventana cuesta** (en un mismo proceso, 48 bloques de 10 pasos, variantes
+   alternadas por bloque; bellatrix, offscreen, fijado). Mediana del paso en t, ms:
+
+   | | con `_sp` | sin `_sp` |
+   |---|---|---|
+   | completa | 15.46 | 15.48 |
+   | sin barra de estado | 14.42 | 14.44 |
+   | sin candados | 14.75 | 15.04 |
+   | sin sincronizar la barra de herramientas | 14.06 | 14.51 |
+
+   Cada widget que cambia en un paso cuesta 0.5–1.4 ms. Pero el prototipo tiene los mismos.
+2. **Hipótesis: explorer repinta la ventana más veces por paso. Rechazada.** Contados los
+   repintados por widget y los volcados de la ventana en los dos programas (Mac, offscreen, cubo
+   sintético 12×4×21×200×180), el prototipo también vuelca 4 veces por paso con `_sp` y pinta dos
+   veces su barra de estado. Diferencias: explorer repinta además los separadores de los docks
+   tras cada reajuste de la ventana principal, y su línea de estado, estirada, ocupa 1374 px
+   frente a 717. Ni fijar la altura de la etiqueta de t ni ignorar el tamaño de la de estado
+   quitan ese repintado; lo que lo dispara es el reajuste de la ventana, que el prototipo también
+   hace. `setAnimated(False)` ya estaba.
+3. **Hipótesis: la lectura en otro hilo. Rechazada.** Con la imagen en caché, `sink.image`
+   llega dentro de la propia llamada del paso.
+4. **Las fases de un paso, en 200 pasos seguidos** (bellatrix, 2 rondas alternadas): explorer
+   es **más rápido**, 21.1 frente a 26.6–27.0 ms con `_sp` (0.79×) y 25.6–27.5 frente a 31.1 ms
+   sin él (0.85×).
+5. **El procedimiento de la autoprueba repetido 6 veces en un proceso** (fase del cursor y 10
+   pasos, 60 pasos por ejecución; 4 ejecuciones por programa y modo): explorer más rápido en
+   las 8 parejas. Con `_sp`, 20.3–21.3 frente a 21.2–22.9 ms; sin él, 20.1–23.4 frente a
+   24.2–29.8 ms. Los rangos y cambian igual de poco en los dos (0–0.17 por paso), y el primer paso
+   tras la fase del cursor cuesta ~29 ms en ambos.
+
+6. **Los 10 primeros pasos tras abrir, aparte** (el mismo guion; la primera repetición es lo que
+   mide la autoprueba; carga 0.3–3). Mediana del paso en t con `_sp`, ms:
+
+   | ronda | prototipo | explorer |
+   |---|---|---|
+   | 1 | 17.36 | 16.66 |
+   | 2 | 15.95 | 17.30 |
+   | 3 | 17.98 | 17.13 |
+   | 4 | 15.82 | 16.34 |
+
+   Empate: explorer más rápido en 2 de 4. Las repeticiones 2–6, 20.6–21.8 frente a 21.3–23.3 ms.
+   En los dos programas la primera repetición es más rápida que las siguientes.
+
+**Resultado provisional:** con `_sp`, en los 10 primeros pasos, empate dentro del ruido; después,
+explorer algo más rápido. La serie de 8 rondas (1.026, 1/8) corrió con carga 19–37 de otro
+usuario. Pendiente, en bellatrix: la parte sin `_sp` de la medida 6 y la serie de 8 rondas con
+carga baja (`scratch_focus/e38/st2.log`, `e48c.log`; la conexión se cortó antes de leerlas).
+
+
+### 2026-09-30: las pruebas del prototipo sobre explorer (ROADMAP E4.11, E4.12)
+
+**Por qué:** repetir los casos del prototipo con su mismo software, primero las funciones y
+después la velocidad, en vez de pruebas nuevas escritas para explorer.
+
+**Cómo** (`2398b33`, `0d14e05`): `bench/protoface.py` pone los nombres del prototipo
+(`v.spec_dock`, `v.idx`, `v._yr`, `v.stats`...) sobre la `Shell`, mezclados en su clase, así que
+la ventana que manejan las pruebas es la de explorer, también para las comparaciones de
+identidad. `bench/proto_smoke.py` sustituye `app/startup.py` y `app/viewer.py` y deja fuera
+cualquier otro módulo del prototipo: ninguna comprobación puede pasar probando el prototipo.
+Lo que explorer aún no tiene (rendija, disposición guardada, barra de título y bordes propios,
+temas) cuenta como NO AÚN, nunca como pasada ni fallo, también cuando se salta: un salto
+silencioso escondería el hueco.
+
+**La prueba de humo** (`app/smoke.py`), bellatrix, cubo 6173:
+
+| modo | prototipo | explorer |
+|---|---|---|
+| offscreen | 108 pasan, 23 se saltan | 82 pasan, 1 falla, 25 NO AÚN, 22 se saltan |
+| xcb (Xvfb) | 125 pasan, 6 se saltan | 99 pasan, 1 falla, 24 NO AÚN, 6 se saltan |
+
+Igual con y sin `_sp`. En xcb, los saltos de explorer son los del prototipo.
+
+**Fallos encontrados y su causa:**
+- **Menús contextuales** (corregido, `7ddd945`): el clic derecho abría el menú de pyqtgraph sobre
+  la imagen y el de `QMainWindow` sobre la barra, los títulos de los paneles y los deslizadores.
+  El prototipo los quita (`app/viewer.py:1018-1028`). Con un menú abierto, además, las teclas
+  siguientes no llegaban: con los dos quitados, las 5 comprobaciones de teclas pasan. Mi primera
+  hipótesis, que un deslizador se quedaba el foco, era falsa: el foco siguió en ninguno. La
+  prueba nueva falla sin el arreglo (`QMenu`, `QMenu`, `ViewBoxMenu`).
+- **El título de Stokes I** (E4.14, abierto): sin su 10ⁿ hasta que llega el primer espectro,
+  0.39 s tras abrir en el Mac. El prototipo lee el primer espectro al construir la ventana. Sin
+  `_sp`, el prototipo falla la misma comprobación: allí también llega por su hilo lector.
+- **El aviso de fuentes de Qt** en el Mac, offscreen: el prototipo da el mismo. Es del Mac.
+
+**La suite de conformidad** (`app/conformance.py`, xcb): corren los 147 pasos sobre explorer. En
+la primera comparación todos los pasos difieren por una sola causa de partida: con un tamaño
+dado, el `show` del prototipo no llama a `restore()` y sus paneles quedan con el tamaño de Qt
+(650 px), mientras explorer los dimensionaba al mostrarse (520 px). Corregido en el adaptador
+(`_sized`). Su barra de título propia (32 px, E5) desplaza las posiciones en la ventana: en el
+clic sobre la imagen, los 14 eventos son los mismos y en el mismo orden, a 32 px en y. Pendiente:
+leer la segunda comparación, ya hecha en bellatrix (`scratch_focus/pconf/run_xcb2.log`).
