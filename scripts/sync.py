@@ -11,7 +11,8 @@
 - pull brings back bench/results/ only, and never overwrites a newer local file.
 - push also stamps src/explorer/_version.py, here and there, with this tree's version from git: the remote has no
   git, so its install fell back to 0.0.0, and the local file only changes when the package is reinstalled.
-- Nothing is ever deleted on either side.
+- Nothing is ever deleted on either side. A file left on the remote that is no longer pushed (moved or deleted
+  here) is listed after the push and by -n, for whoever decides to remove it.
 - push refuses while <remote>/.editing_on_server exists: someone is editing there, and a push would silently
   overwrite their work.
 - It never opens a new ssh connection: it checks for an open ControlMaster first (`ssh -O check`, which connects
@@ -123,6 +124,42 @@ def files_to_push():
     return sorted({f for f in r.stdout.split("\0") if f and os.path.isfile(os.path.join(ROOT, f))})
 
 
+GENERATED = ("__pycache__/", ".pyc", ".egg-info/", "src/explorer/_version.py")   # made there, never pushed
+
+
+def stale_files(remote_files, pushed, ignored=()):
+    """Files on the remote, under what is pushed, that this copy no longer pushes (moved or deleted here): pulled
+    results, what an install or Python makes there, and what .gitignore keeps out on purpose (the real cube's
+    golden files, made there) are not stale."""
+    keep, ignored = set(pushed), set(ignored)
+    return sorted(f for f in remote_files if f and f not in keep and f not in ignored and not f.startswith(PULL)
+                  and not any(g in f or f.endswith(g) for g in GENERATED))
+
+
+def git_ignored(paths):
+    """Those of paths that .gitignore excludes here."""
+    if not paths:
+        return set()
+    r = run(["git", "check-ignore", "--stdin", "-z"], input="\0".join(paths))
+    return {f for f in r.stdout.split("\0") if f}
+
+
+def remote_files(host, rdir, pushed):
+    """What the remote holds under the folders and top-level files that are pushed (find, read only)."""
+    tops = sorted({f.split("/", 1)[0] for f in pushed})
+    q = " ".join(shlex.quote(x) for x in tops)
+    r = remote(host, f"cd {shlex.quote(rdir)} 2>/dev/null && find {q} -type f 2>/dev/null")
+    return [line for line in r.stdout.splitlines() if line]
+
+
+def report_stale(host, rdir, pushed):
+    found = remote_files(host, rdir, pushed)
+    stale = stale_files(found, pushed, git_ignored([f for f in found if f not in set(pushed)]))
+    if stale:
+        print(f"--- on {host} but no longer pushed ({len(stale)}; nothing deleted, remove them by hand if unwanted):")
+        print("\n".join("  " + f for f in stale))
+
+
 def rsync(args, dry, stdin=None):
     cmd = ["rsync", "-a", "--itemize-changes"] + (["--dry-run"] if dry else []) + args
     print("$", " ".join(shlex.quote(c) for c in cmd), flush=True)
@@ -172,6 +209,7 @@ def main():
             remote(host, f"mkdir -p {shlex.quote(rdir)}")
         rsync(["--files-from=-", "--from0", "./", dest], a.dry_run, stdin="\0".join(files))
         stamp_version(host, rdir, a.dry_run)
+        report_stale(host, rdir, files)
     if a.action in ("sync", "pull"):
         print(f"--- pull  {dest}{PULL} -> {PULL}")
         exists = remote(host, f"test -d {shlex.quote(rdir + '/' + PULL)} && echo yes").stdout.strip() == "yes"
