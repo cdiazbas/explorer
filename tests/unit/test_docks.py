@@ -1,5 +1,5 @@
 """The panels in docks (ROADMAP E4.2), offscreen: where they sit, their sizes, what a hidden panel reads, the way
-back to the start, and the window's first size."""
+back to the start, a panel docked again in its place, and the window's first size."""
 import time
 
 import pytest
@@ -81,6 +81,40 @@ def test_reset_brings_every_panel_back_docked_and_sized(qapp, shell):
     want = int(shell.width() * docks.PANELS_W)
     assert spin(qapp, lambda: abs(shell.spec_dock.width() - want) <= 8)
     assert {"spectra", "lambda_t"} <= shell.session.state.panels
+
+
+def test_a_panel_docked_again_is_back_in_its_place(qapp, shell):
+    """Its float button twice, three times: where it was docked, inside the window. Qt left it at the place it had
+    floating at (the conformance suite's dock_float_button_back, xcb: lambda-t at 590,466 in a 1200-px window, and
+    40 px further each time)."""
+    from PySide6 import QtCore, QtWidgets
+
+    d = shell.lt_dock
+    home = d.geometry()
+    for _ in range(3):
+        for _floating in (True, False):
+            d.findChild(QtWidgets.QAbstractButton, "qt_dockwidget_floatbutton").click()
+            assert spin(qapp, lambda f=_floating: d.isFloating() == f)
+        assert spin(qapp, lambda: d.geometry() == home, timeout=2), (d.geometry(), home)
+    assert QtCore.QRect(QtCore.QPoint(), shell.size()).contains(d.geometry())
+
+
+def test_a_panel_docked_after_the_window_changed_takes_its_new_place(qapp, shell):
+    """The window narrower while the panel floats: docked again at the right edge of the new width, inside it, not
+    at the place it had before."""
+    from PySide6 import QtCore, QtWidgets
+
+    d = shell.lt_dock
+    home = d.geometry()
+    button = lambda: d.findChild(QtWidgets.QAbstractButton, "qt_dockwidget_floatbutton")      # noqa: E731
+    button().click()
+    assert spin(qapp, lambda: d.isFloating())
+    shell.resize(1200, 800)
+    assert spin(qapp, lambda: shell.width() == 1200)
+    button().click()
+    assert spin(qapp, lambda: not d.isFloating())
+    assert spin(qapp, lambda: QtCore.QRect(QtCore.QPoint(), shell.size()).contains(d.geometry()), timeout=2)
+    assert d.geometry() != home and abs(d.geometry().right() - shell.spec_dock.geometry().right()) <= 1
 
 
 def test_the_first_window_fills_the_monitor_height_at_most_one_point_six_wide(qapp):

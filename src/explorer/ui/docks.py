@@ -34,7 +34,38 @@ def dock(window: QtWidgets.QMainWindow, title: str, widget: QtWidgets.QWidget, n
     d.setWidget(gutter(widget))
     d.setFeatures(F.DockWidgetMovable | F.DockWidgetFloatable | F.DockWidgetClosable)
     window.addDockWidget(area, d)
+    d._home = DockHome(d)
     return d
+
+
+class DockHome(QtCore.QObject):
+    """A dock docked again by setFloating(False) (its float button) stayed where it had floated, as a child of the
+    window: lambda-t at 590,466 in a 1200-px window, then 40 px further at each float and dock (Qt 6.11, xcb and
+    offscreen). The layout's place for it had not changed, so Qt did not set it again; neither invalidate() nor the
+    layout's own geometry again moved it. Where Qt leaves it so, it goes back to where it was last docked: only the
+    dock moves (moving the whole layout one pixel and back repainted the window, 1.26 Mpx against 0.51). Where its
+    place did change (the window resized meanwhile, another area), Qt has set it, and it is left alone."""
+
+    def __init__(self, dock: QtWidgets.QDockWidget):
+        super().__init__(dock)
+        self.d = dock
+        self.home = QtCore.QRect()
+        dock.installEventFilter(self)
+        dock.topLevelChanged.connect(self._changed)
+
+    def eventFilter(self, obj, e):
+        if e.type() in (QtCore.QEvent.Type.Move, QtCore.QEvent.Type.Resize) and not self.d.isFloating():
+            self.home = self.d.geometry()
+        return False
+
+    def _changed(self, floating: bool) -> None:
+        if not floating:
+            left = self.d.geometry()                     # where it floated: Qt sets its place later, if at all
+            QtCore.QTimer.singleShot(0, self, lambda: self._back(left))
+
+    def _back(self, left: QtCore.QRect) -> None:
+        if not self.d.isFloating() and self.home.isValid() and self.d.geometry() == left != self.home:
+            self.d.setGeometry(self.home)
 
 
 def reset_sizes(window: QtWidgets.QMainWindow, docks) -> None:
