@@ -21,7 +21,17 @@ def process_age() -> float | None:
         return None
 
 
-def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float | None = None) -> int:
+def themed_app(disp, theme: str = "auto"):
+    """The QApplication with its theme (ui.style), before any window builds its plots; returns (app, theme applied).
+    Through the X11 bridge auto is dark: the bridge shows what Qt draws, wherever the display is (the prototype's
+    make_app)."""
+    from . import style
+
+    app = disp.make_app()
+    return app, style.apply_theme(app, "dark" if disp.plan.bridge and theme == "auto" else theme)
+
+
+def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", quit_after: float | None = None) -> int:
     """Open path and run the event loop until the window closes; returns the exit code. quit_after: seconds after the
     first image, then quit (measurements, as the prototype's --quit-after)."""
     t0 = time.perf_counter()
@@ -37,7 +47,7 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", quit_after: float 
     try:
         disp.prepare_env()
         q = time.perf_counter()
-        app = disp.make_app()
+        app, theme = themed_app(disp, theme)
         phases["Qt"] = time.perf_counter() - q
     except NoDisplay as e:
         print(e, file=sys.stderr)

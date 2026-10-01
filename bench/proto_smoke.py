@@ -5,11 +5,12 @@ E4.11): the functions first, then speed (bench/selftest_vs_prototype.py).
     python bench/proto_smoke.py <cube_im.fits> [--mode offscreen|xcb|bridge] [--out r.json] [--no-sp]
 
 smoke.py builds its viewer through app/startup.py and reads app/viewer.py; here those two are stand-ins that open
-the cube with explorer's Dataset and its Shell, seen through bench/protoface.py under the prototype's names. Every
-other module of the prototype is kept out: a check that imports one (its title bar, its style) would test the
-prototype, so it fails with "not in explorer yet" instead. The table at the end adds a status, NOT YET, never
-counted as PASS or FAIL: a check that failed on something explorer has no counterpart for, and every check of a
-feature explorer has not yet (NOT_YET_CHECKS), whatever it gave, SKIP included.
+the cube with explorer's Dataset and its Shell, seen through bench/protoface.py under the prototype's names, and
+its style module is explorer's (ui.style). Every other module of the prototype is kept out: a check that imports
+one (its title bar) would test the prototype, so it fails with "not in explorer yet" instead. The table at the end
+adds a status, NOT YET, never counted as PASS or FAIL: a check that failed on something explorer has no
+counterpart for, and every check of a feature explorer has not yet (NOT_YET_CHECKS), whatever it gave, SKIP
+included.
 
 The prototype is found at $EXPLORER_PROTOTYPE, else ../prototype next to this repository. Nothing is written into
 it: no bytecode, and smoke.py's own settings file is never used (explorer does not save a layout yet).
@@ -57,10 +58,12 @@ def startup_module():
         return SimpleNamespace(plan=plan, disp=disp, bridge=None)
 
     def make_app(s, theme="auto"):
-        app = s.disp.make_app()
+        from explorer.ui.app import themed_app
+
+        app, applied = themed_app(s.disp, theme)
         b = getattr(s.disp, "bridge", None)
         s.bridge = BridgeView(b) if b is not None else None
-        return app, "not in explorer yet: themes (the modern look (E5))"
+        return app, applied
 
     def open_cube(path, sp_path=None, no_sp=False):
         from explorer.data.dataset import Dataset
@@ -148,6 +151,9 @@ def main():
 
     sys.modules["startup"] = startup_module()
     sys.modules["viewer"] = protoface.viewer_module()
+    from explorer.ui import style
+
+    sys.modules["style"] = style                        # the theme check imports it: explorer's own
     sys.meta_path.insert(0, _KeepOut(app_dir))
     sys.argv = [smoke] + sys.argv[1:]
     runpy.run_path(smoke, run_name="__main__")

@@ -25,15 +25,23 @@ CURSOR_PEN = pg.mkPen((255, 80, 80), width=1)
 
 
 class ImageView:
-    def __init__(self, on_hover: Callable[[float, float], None] | None = None, strips=None, parts: int = 1):
+    def __init__(self, on_hover: Callable[[float, float], None] | None = None, strips=None, parts: int = 1,
+                 light: bool = False):
         """on_hover(y, x): the mouse over the image, in data pixels; strips, parts: the pool and the number of row
-        strips the reduction runs in (Executors.strips)."""
+        strips the reduction runs in (Executors.strips); light: the surround and the padding white (the light
+        theme), else black."""
         self.on_hover = on_hover
         self.strips, self.parts = strips, parts
         self.widget = pg.GraphicsLayoutWidget()
         self.vb = self.widget.addViewBox(lockAspect=True)
         self.img = pg.ImageItem()
         self.vb.addItem(self.img)
+        self.widget.setBackground("w" if light else "k")
+        if light:                                       # data on 1..255 black to white, level 0 (padding) white
+            grey = np.repeat(np.arange(256, dtype=np.uint8)[:, None], 3, 1)
+            grey[1:] = grey[np.round(np.linspace(0, 255, 255)).astype(int)]
+            grey[0] = 255
+            self.img.setLookupTable(grey)
         self.hl, self.vl = pg.InfiniteLine(angle=0, pen=CURSOR_PEN), pg.InfiniteLine(angle=90, pen=CURSOR_PEN)
         self.vb.addItem(self.hl)
         self.vb.addItem(self.vl)

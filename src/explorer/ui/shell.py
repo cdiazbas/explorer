@@ -23,7 +23,7 @@ from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
 from ..data.axes import STOKES
-from . import docks
+from . import docks, style
 from .gestures import Gestures
 from .imageview import ImageView
 from .lambda_t import LambdaTPanel
@@ -88,11 +88,12 @@ class Shell(QtWidgets.QMainWindow):
         self.loop = QtLoop(self)
         self.session = Session(self.loop, dataset)
         ex = dataset.executors
-        self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips)
+        light = style.is_light()                        # the theme the application was given (ui.style)
+        self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light)
         self.setCentralWidget(docks.gutter(self.view.widget))
         r = dataset.roles
         # a cube without lambda has no spectra: that dock stays empty and hidden
-        self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, dataset.axes) \
+        self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, dataset.axes, light=light) \
             if r.l is not None else None
         self.spec_panel = self.spectra.widget if self.spectra is not None else QtWidgets.QWidget()
         # lambda-t needs both t and lambda
@@ -111,14 +112,14 @@ class Shell(QtWidgets.QMainWindow):
         self._play.setInterval(int(1000 / self.nav.fps.value()))
         # the padlocks, both open at start (the prototype's): closed = fixed, right click = fit to what is shown
         self.image_lock = PanelLock(self.view.widget, "Image contrast: closed = fixed, open = automatic per image. "
-                                    "Click to switch; right click fixes it to this image")
+                                    "Click to switch; right click fixes it to this image", light=light)
         self.image_lock.toggled.connect(lambda on: self.scheduler.fix_levels(on))
         self.image_lock.refit.connect(self._image_refit)
         self.spec_lock = None
         if self.spectra is not None:
             self.spec_lock = PanelLock(self.spectra.w, "Spectra y range: open = automatic, closed = fixed (I from "
                                        "100 random profiles, Q U V from the whole image). Click to switch; right click "
-                                       "(or F) fixes it to this pixel")
+                                       "(or F) fixes it to this pixel", light=light)
             self.spec_lock.toggled.connect(lambda on: self.scheduler.set_y_fixed(on))
             self.spec_lock.refit.connect(self.fit_spectra)
         self._closing = False
@@ -154,6 +155,7 @@ class Shell(QtWidgets.QMainWindow):
         self._mem.start()
         self._initial_state = self.saveState()          # before the first show: reset_panels comes back to it
         self._sized = False
+        style.separators(self)                          # 8 px to grab between the docked panels, with the theme
 
     # ---------------------------------------------------------------- panels
     def _panel_shown(self, panel: str, on: bool) -> None:

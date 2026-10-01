@@ -28,6 +28,7 @@ def main():
     ap.add_argument("--nosp", action="store_true")
     ap.add_argument("--panel", default="772x803", help="the image panel's size: the prototype's at 1400x900 (its "
                     "panels share the window; explorer's image had it all, twice the pixels to draw per step)")
+    ap.add_argument("--theme", default="auto", help="the window's theme, as the prototype's --theme (ui.style)")
     ap.add_argument("--out")
     a = ap.parse_args()
     from explorer.data.dataset import Dataset
@@ -37,7 +38,9 @@ def main():
 
     disp = Display(choose_display(os.environ, sys.platform))
     disp.prepare_env()
-    app = disp.make_app()
+    from explorer.ui.app import themed_app
+
+    app, theme = themed_app(disp, a.theme)
     t0 = time.perf_counter()
     ds = Dataset.open(a.cube, no_sp=a.nosp)
     w = Shell(ds, t0=t0)
@@ -57,7 +60,8 @@ def main():
         app.processEvents()
     res = dict(cube=os.path.basename(a.cube), shape=list(ds.shape), sp=ds.pixel.kind if ds.pixel else None,
                panel=[w.view.widget.width(), w.view.widget.height()],
-               platform=app.platformName(), display=os.environ.get("DISPLAY") if app.platformName() == "xcb" else None,
+               platform=app.platformName(), theme=theme,
+               display=os.environ.get("DISPLAY") if app.platformName() == "xcb" else None,
                probe=ds.probe.describe(), open_to_first_frame_s=round(float(w.first_image_s or np.nan), 2), actions={})
 
     def rec(name, ts):

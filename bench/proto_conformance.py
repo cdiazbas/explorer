@@ -120,6 +120,9 @@ def main():
 
     sys.modules["startup"] = proto_smoke.startup_module()
     sys.modules["viewer"] = protoface.viewer_module()
+    from explorer.ui import style
+
+    sys.modules["style"] = style
     sys.meta_path.insert(0, proto_smoke._KeepOut(app_dir, allow=("conformance",)))
     sys.path.insert(0, app_dir)
     import conformance
