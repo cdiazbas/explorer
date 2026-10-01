@@ -1760,3 +1760,27 @@ correcto en lógica, pero sin evidencia de que fallara en el enlace.
 **E5.9, no es un defecto:** Qt en xcb no arrancaba por el enlace emulado porque, con el Xvfb en la
 misma máquina, intenta memoria compartida (MIT-SHM), que se queda esperando a través del proxy TCP.
 Con `QT_XCB_NO_MITSHM=1` funciona; por un `ssh -Y` real nunca la usa.
+
+### 2026-10-01 (5): el Dock de macOS por X11 (ROADMAP E5.10) y Panels por el puente
+
+**Panels colgaba el visor por el puente** (`42998b4`), como F45 en el prototipo:
+- gdb en el proceso del usuario: el hilo principal dentro del bucle anidado del menú
+  (`QMenu::exec` desde `QToolButton::mousePressEvent`), en `poll`.
+- Causa: la liberación del botón llegó cuando ya corría el bucle del menú, y la cola de eventos
+  del puente seguía contando al hilo principal como despierto.
+- Ahora se libera esa marca antes de cada evento. El test X suelta 0.3 s después de pulsar, como
+  una mano: sin el arreglo falla 2/2, con él pasa 3/3.
+- XTEST manda pulsar y soltar a la vez, y por eso las pruebas no lo veían. El usuario lo confirma
+  resuelto.
+
+**El Dock, medido en el XQuartz del usuario** (consultas de solo lectura, y una ventana de prueba con
+título, ~1 s por monitor):
+- No hay `_NET_WORKAREA` ni propiedad de la raíz que describa el Dock. Apple-WM está presente, pero
+  trata de marcos de ventana.
+- Xinerama da dos monitores: el principal en 1920,30 1920x1050 (ya sin la barra de menús) y otro en
+  0,0 1920x1080. `_NATIVE_SCREEN_ORIGIN` es (−1920, 0).
+- quartz-wm anuncia `_NET_WM_STATE_MAXIMIZED_*`. Maximizada, la ventana de prueba tomó:
+  - en el monitor principal, 1920,30 1920x985: el Dock abajo, 65 px;
+  - en el otro, 0,0 1920x1080: sin Dock.
+- La suposición de explorer (70 pt abajo, en todo monitor) sobra 5 px en el principal y quita 70 que
+  no hacen falta en el otro.
