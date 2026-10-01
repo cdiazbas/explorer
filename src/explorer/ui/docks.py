@@ -49,22 +49,27 @@ class DockHome(QtCore.QObject):
     def __init__(self, dock: QtWidgets.QDockWidget):
         super().__init__(dock)
         self.d = dock
-        self.home = QtCore.QRect()
+        self.home = QtCore.QRect()                       # where it was last docked
+        self.floated = QtCore.QRect()                    # where it last floated, in the screen's coordinates
         dock.installEventFilter(self)
         dock.topLevelChanged.connect(self._changed)
 
     def eventFilter(self, obj, e):
-        if e.type() in (QtCore.QEvent.Type.Move, QtCore.QEvent.Type.Resize) and not self.d.isFloating():
-            self.home = self.d.geometry()
+        if e.type() in (QtCore.QEvent.Type.Move, QtCore.QEvent.Type.Resize):
+            if self.d.isFloating():
+                self.floated = self.d.geometry()
+            else:
+                self.home = self.d.geometry()
         return False
 
     def _changed(self, floating: bool) -> None:
         if not floating:
-            left = self.d.geometry()                     # where it floated: Qt sets its place later, if at all
-            QtCore.QTimer.singleShot(0, self, lambda: self._back(left))
+            QtCore.QTimer.singleShot(0, self, self._back)
 
-    def _back(self, left: QtCore.QRect) -> None:
-        if not self.d.isFloating() and self.home.isValid() and self.d.geometry() == left != self.home:
+    def _back(self) -> None:
+        """Only a dock still exactly where it floated, now as a child: one Qt placed (a double click on its title,
+        a drag onto the window) is in its new place already, and home may be stale there."""
+        if not self.d.isFloating() and self.home.isValid() and self.d.geometry() == self.floated != self.home:
             self.d.setGeometry(self.home)
 
 
