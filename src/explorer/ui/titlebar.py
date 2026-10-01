@@ -51,7 +51,7 @@ class TitleBar(QtWidgets.QWidget):
         self.w, self.m = window, ops
         self.setFixedHeight(self.H)
         self.setMouseTracking(True)                      # hover over the lights shows their symbols
-        self._drag = self._press = None
+        self._drag = self._press = self._monitor = None
         self._hover = False
         window.windowTitleChanged.connect(lambda _t: self.update())
 
@@ -137,7 +137,7 @@ class TitleBar(QtWidgets.QWidget):
         self._press = self._light_at(e.position())
         if self._press is not None:
             self.update(self._lights_rect())
-        self._drag = None
+        self._drag = self._monitor = None
         if self._press is None and e.button() == Qt.MouseButton.LeftButton and not self.m.begin_drag():
             self._drag = (e.globalPosition().toPoint(), self.w.pos())   # the manager cannot: we move it
 
@@ -145,8 +145,20 @@ class TitleBar(QtWidgets.QWidget):
         self._set_hover(self._over_lights(e.position()))
         if self._drag:
             g0, p0 = self._drag
-            d = e.globalPosition().toPoint() - g0
-            self.m.move(p0.x() + d.x(), p0.y() + d.y())
+            gp = e.globalPosition().toPoint()
+            d = gp - g0
+            self.m.move(p0.x() + d.x(), max(p0.y() + d.y(), self._top(gp)))
+
+    def _top(self, gp) -> int:
+        """The top of the monitor under the pointer: the window goes no higher, as a macOS window's bar stays below
+        the menu bar (by the sides and the bottom it may leave). Over XQuartz the bar moves the window itself and
+        nothing else held it: dragged up, it left the screen. Asked again only when the pointer leaves that
+        monitor (on X11 its heads are an X request)."""
+        if self._monitor is None or not self._monitor.contains(gp):
+            from ..platform.screens import monitor_rect
+
+            self._monitor = monitor_rect(QtWidgets.QApplication.instance(), gp)
+        return self._monitor.top()
 
     def leaveEvent(self, e):
         self._set_hover(False)

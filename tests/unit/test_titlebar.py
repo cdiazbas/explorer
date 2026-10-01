@@ -1,7 +1,9 @@
 """Our title bar and edges (ROADMAP E5.2), offscreen: the window becomes frameless with a 32-px bar and a rounded
 shape; the zoom light and a double click on the bar fill the monitor and come back; a drag on the bar moves the
-window; the edges resize it, down to its minimum, with the pointer naming the edge, and a button in the band keeps
-its clicks; every dock gets its close and float buttons; where the bar is not wanted nothing is installed."""
+window, no higher than the top of its monitor, as a macOS window stays below the menu bar, while the sides and the
+bottom may leave it; the edges resize it, down to its minimum, with the pointer naming the edge, and a button in the
+band keeps its clicks; every dock gets its close and float buttons; where the bar is not wanted nothing is
+installed."""
 import sys
 
 import pytest
@@ -88,6 +90,31 @@ def test_a_drag_on_the_bar_moves_the_window(qapp, win):
     mouse(qapp, bar, E.MouseMove, at + QtCore.QPoint(40, 25), None, B.LeftButton)
     mouse(qapp, bar, E.MouseButtonRelease, at + QtCore.QPoint(40, 25), B.LeftButton)
     assert w.pos() == p0 + QtCore.QPoint(40, 25)
+
+
+def test_a_drag_stops_at_the_top_of_the_monitor_not_at_the_sides_nor_the_bottom(qapp, win):
+    """Over XQuartz the bar moves the window itself (quartz-wm offers no system move) and nothing kept it below the
+    menu bar: dragged up, the window left the screen by the top. A macOS window's bar stays below the menu bar; by
+    the sides and the bottom it may leave."""
+    from PySide6 import QtCore
+
+    from explorer.platform.screens import monitor_rect
+
+    w, bar, _ops = win
+    E = QtCore.QEvent.Type
+    B = QtCore.Qt.MouseButton
+    top = monitor_rect(qapp, w.geometry().center()).top()
+    p0, at = w.pos(), QtCore.QPoint(bar.width() // 2, 10)
+    g0 = bar.mapToGlobal(at)
+
+    def to(dx, dy):                                     # the pointer dx, dy from where it was pressed, in bar terms
+        return bar.mapFromGlobal(g0 + QtCore.QPoint(dx, dy))
+    mouse(qapp, bar, E.MouseButtonPress, at, B.LeftButton, B.LeftButton)
+    mouse(qapp, bar, E.MouseMove, to(-p0.x() - 300, -p0.y() - 400), None, B.LeftButton)   # past the left, above the top
+    assert w.y() == top and w.x() == -300                                 # stopped at the top, not at the left
+    mouse(qapp, bar, E.MouseMove, to(0, 3000), None, B.LeftButton)
+    mouse(qapp, bar, E.MouseButtonRelease, to(0, 3000), B.LeftButton)
+    assert w.pos() == p0 + QtCore.QPoint(0, 3000)                          # and down past the bottom
 
 
 def test_the_edges_resize_down_to_the_minimum_and_name_the_edge(qapp, win):
