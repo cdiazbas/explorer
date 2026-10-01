@@ -1856,3 +1856,31 @@ imagen, no del rango de la vista.
 - El quinto render era la vista única, tapada. Ahora no pinta mientras la cubre la 2×2: de 70–73 a
   64–68 ms.
 - Reproducir a 20 fps no da (50 ms por cuadro).
+
+### 2026-10-01 (8): la conformidad, cerrada (ROADMAP E4.12) y la velocidad (E4.13)
+
+**E4.12, conformidad del prototipo en xcb**, con el código de hoy y `EXPLORER_RESIZE=live`, para que
+los pasos de redimensionado se comparen como con como:
+- **Primera ejecución, inválida:** la carga de otro usuario era de 10–17 y la entrada X llegó
+  errática. El doble clic recibió 56 eventos, el paso siguiente ninguno, otro 120; lo normal son 9–25.
+  Salieron 107 pasos distintos.
+- **Repetida esperando a carga < 2:** 77 idénticos y 67 distintos. `--compare` los clasifica ya solo
+  (`832df18`):
+  - 2 solo en el orden de los eventos;
+  - 28 solo en la barra de pestañas que el prototipo acumula;
+  - 37 por leer, todos explicados:
+
+| causa | pasos |
+|---|---|
+| cambios de la barra hechos a propósito: sliders al 0.95, `?`, «All» ensancha el combo (el clic cae 3 px más a la derecha) | 17 |
+| margen de 8 px de la línea de estado | 1 |
+| reacople del prototipo con su tamaño de flotante, que explorer corrige (`d459486`) | 15 |
+| tiempos: repetición automática, tooltips, 1 px de redondeo en `resize_top` (2 de 6 ejecuciones), orden de activación | 4 |
+
+**E4.13, cerrada.** Cinco series de 8 rondas, y en todas la carga de otro usuario subió durante la
+serie, hasta 20–30.
+- Sin `_sp`, explorer es más rápido en todo.
+- Con `_sp`, los pasos en t y λ empatan: medianas entre 0.98 y 1.02, con cada ronda entre 0.80 y
+  1.24.
+- No hay evidencia de que explorer sea más lento. Resolver un 2 % pediría muchas más rondas con la
+  carga quieta.
