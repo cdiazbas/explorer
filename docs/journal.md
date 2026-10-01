@@ -1679,3 +1679,32 @@ idénticos. Las diferencias nuevas son de dos clases:
 - `enter_leave_window`: el puntero cruza el botón `Panels` en el prototipo y un widget sin nombre en
   explorer. Sin rastrear.
 - E4.13, E4.14 y E5.6.
+
+### 2026-10-01 (3): el título de Stokes I desde el principio (ROADMAP E4.14) y el hover del adaptador
+
+**E4.14, corregido (`272ad24`).** Con fichero por píxel, el prototipo lee el primer espectro al
+construir la ventana (`app/viewer.py` `_set_spectra`, 1927). Explorer lo leía en su pool de E/S,
+así que el título de I salía sin su 10ⁿ y el eje se ensanchaba al llegar el espectro.
+- Ahora el scheduler lee el bloque del cursor al construirse. El bloque queda en la caché, así que
+  la primera lectura del cursor lo encuentra allí.
+- Coste en bellatrix, cubo real: 2–24 ms en un proceso nuevo (24 en frío). En el Mac, con el cubo
+  sintético, 0.1 ms.
+
+**Encontrado al medirlo: la prueba de humo comparaba mal el cursor.** `hover()` del prototipo bombea
+10 ms y solo espera al lector cuando no hay fichero por píxel, porque con él la lectura era
+síncrona.
+- En explorer, "spectrum follows" comparaba lo que hubiera en pantalla. Con un bloque en frío
+  (20–50 ms en StorNext) comparaba el espectro del primer píxel consigo mismo y fallaba. O
+  comparaba el primer espectro con un gráfico vacío y pasaba por suerte.
+- ABBA 4+4 en offscreen, cubo real, con la espera aún sin corregir:
+  - con el arreglo: "spectrum follows" falla 3/4;
+  - sin él: el título falla 4/4.
+- Una primera espera en el adaptador no hizo nada: la lectura del cursor se pide en la siguiente
+  vuelta del bucle, no dentro de `hover()`.
+- Corregida (`e3a7e71`): con el arreglo, 0 FAIL en 4/4; sin él, el título falla 4/4.
+- La comprobación de tiempo del cursor cuenta ahora la lectura, como en el prototipo: mediana de
+  12–15 ms (límite 60).
+
+**El hook de los mensajes** (`510137a`): ahora exige la línea en blanco tras el asunto y, en
+`[ADD]`, `[DEV]`, `[FIX]` y `[PERF]`, las líneas `Behaviour:` y `Tests:` de la ADR 0005. Los últimos
+40 mensajes lo pasan.
