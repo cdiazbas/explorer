@@ -278,7 +278,12 @@ class ProtoViewer:
                 app.processEvents()
 
     def _update_cursor(self, changed=None):
-        """The prototype's redraw of the cursor's panels; explorer's scheduler follows the session by itself."""
+        """The prototype's redraw of the cursor's panels, from the cursor as it is. Explorer's scheduler follows the
+        session by itself; this asks it once more for the same pixel, which matters after conformance's reset: it
+        forgets the y ranges the cursor grew (_yr) and redraws, so they grow again from that pixel. Without it the
+        next pixel's spectrum was fitted from nothing ([2, 4] against the prototype's [0, 4] in
+        separator_central_docks)."""
+        self._w.scheduler._evaluate(self._w.session.state, {"cursor"})
 
     @property
     def _img(self):
