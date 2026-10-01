@@ -55,21 +55,23 @@ class ActionRegistry:
 
 
 class KeySheet(QtWidgets.QLabel):
-    """The ? sheet over the image, until ? or Esc (a click on it closes it too). Non-modal: a plain opaque child
-    label painted once when shown; nothing in it follows the mouse or animates (over X11 every repainted pixel is
-    paid), and Qt leaves an opaque child's area out of the image's repaints under it. Never a dialog's exec(): a
-    nested event loop inside the X11 bridge's timer hung the prototype."""
+    """The ? sheet over the image, until ? or Esc (a click on it closes it too). Non-modal: a child label on a rounded,
+    slightly translucent card, painted when shown; nothing in it follows the mouse or animates (over X11 every
+    repainted pixel is paid). Translucent, what changes under it while it is open (the image, playing) is repainted
+    under it too: a cost only while it is being read. Never a dialog's exec(): a nested event loop inside the X11
+    bridge's timer hung the prototype."""
+    RADIUS = 10
+    OPACITY = 0.88
 
     def __init__(self, window: QtWidgets.QMainWindow, text: str):
         super().__init__(window)
         self.window_ = window
         self.setTextFormat(QtCore.Qt.TextFormat.RichText)
         self.setText(text)
-        self.setBackgroundRole(QtGui.QPalette.ColorRole.Base)
         self.setForegroundRole(QtGui.QPalette.ColorRole.Text)
-        self.setAutoFillBackground(True)
+        self.setAutoFillBackground(False)               # the card is painted, with its corners and its opacity
         self.setMargin(16)
-        self.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+        self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.hide()
 
@@ -96,6 +98,20 @@ class KeySheet(QtWidgets.QLabel):
         if e.type() in (QtCore.QEvent.Type.Resize, QtCore.QEvent.Type.Move):
             self._place()
         return False
+
+    def paintEvent(self, e):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        pal = self.palette()
+        fill = QtGui.QColor(pal.color(QtGui.QPalette.ColorRole.Base))
+        fill.setAlphaF(self.OPACITY)
+        edge = QtGui.QColor(pal.color(QtGui.QPalette.ColorRole.WindowText))
+        edge.setAlphaF(0.18)
+        p.setPen(QtGui.QPen(edge, 1))
+        p.setBrush(fill)
+        p.drawRoundedRect(QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), self.RADIUS, self.RADIUS)
+        p.end()
+        super().paintEvent(e)                           # the text
 
     def mousePressEvent(self, e):
         self.set_shown(False)

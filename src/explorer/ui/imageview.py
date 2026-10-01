@@ -48,13 +48,10 @@ class ImageView:
         self.vb.addItem(self.hl)
         self.vb.addItem(self.vl)
         self.reticle = None
+        self._locked = False
+        self.base_lut = self.img.lut                    # the look's grey: pyqtgraph's own, or the light theme's
         if reticle:
-            from .overlays import Reticle
-
-            self.reticle = Reticle()
-            self.vb.addItem(self.reticle, ignoreBounds=True)
-            self.hl.setVisible(False)
-            self.vl.setVisible(False)
+            self.set_reticle(True)
         self.widget.scene().sigMouseMoved.connect(self._moved)
         self._full: np.ndarray | None = None
         self._lim = (0.0, 1.0)
@@ -91,13 +88,29 @@ class ImageView:
 
     def set_locked(self, on: bool) -> None:
         """The cursor locked: the crosshair in its own colour (the reticle yellow with a ring)."""
+        self._locked = on
         for ln in (self.hl, self.vl):
             ln.setPen(LOCK_PEN if on else CURSOR_PEN)
         if self.reticle is not None:
             self.reticle.set_locked(on)
 
+    def set_reticle(self, on: bool) -> None:
+        """The modern look's reticle in place of the two lines across the image, or the lines back. Made once, then
+        shown or hidden."""
+        if on and self.reticle is None:
+            from .overlays import Reticle
+
+            self.reticle = Reticle()
+            self.vb.addItem(self.reticle, ignoreBounds=True)
+            self.reticle.setPos(self.vl.value(), self.hl.value())
+            self.reticle.set_locked(self._locked)
+        if self.reticle is not None:
+            self.reticle.setVisible(on)
+        self.hl.setVisible(not on)
+        self.vl.setVisible(not on)
+
     def set_lut(self, table) -> None:
-        """The colour table of the uint8 image (level 0: padding); None: pyqtgraph's own grey."""
+        """The colour table of the uint8 image (level 0: padding); None: pyqtgraph's own grey (base_lut: the look's)."""
         self.img.setLookupTable(table)
 
     def show_all(self) -> None:

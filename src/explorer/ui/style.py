@@ -14,7 +14,8 @@ keep Fusion's heights, so the plots keep their size):
   - QToolButton: flat and rounded, hover / pressed, accent with a white label when on (playing);
   - QCheckBox: rounded square, accent when on, white tick, focus ring round the box only;
   - QToolBar: flat, no grip drawn (the grip still drags), faint short separators;
-  - QDockWidget title bars: flat, semibold title, hairline below, square.on.square float button;
+  - QDockWidget title bars: flat, semibold title, no line below (the panel's gutter parts it from the title),
+    square.on.square float button;
   - QStatusBar: hairline on top, size grip not drawn (it still resizes);
   - the separators between docked panels (separators(window)): 8 px to grab, a 1-px hairline to see;
   - tool tips, and the rows of the pop-up list (rounded accent row);
@@ -482,9 +483,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
     def _dock_title(self, opt, p, w):
         r = opt.rect
         p.save()
-        p.fillRect(r, opt.palette.color(QtGui.QPalette.ColorRole.Window))
-        p.setPen(QtGui.QPen(self.SEP, 1))
-        p.drawLine(r.bottomLeft(), r.bottomRight())
+        p.fillRect(r, opt.palette.color(QtGui.QPalette.ColorRole.Window))   # no line under it: the gutter parts
         if opt.title:
             f = QtGui.QFont(w.font() if w is not None else p.font())
             f.setWeight(QtGui.QFont.Weight.DemiBold)

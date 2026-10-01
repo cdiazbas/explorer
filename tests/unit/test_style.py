@@ -152,3 +152,28 @@ def test_the_slider_track_is_filled_with_the_accent_up_to_the_knob(restore):
     near = np.abs(px - accent).sum(1) < 30
     assert near[img.width() // 4: img.width() // 2].all()   # filled well before the knob (at 80 %)
     assert not near[int(img.width() * 0.92):].any()         # and not after it
+
+
+def test_no_line_under_a_panel_title(restore):
+    """The panel's title runs into the window: the gutter parts it from the panel, a 1-px light line read as a frame."""
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    from explorer.ui import style, titlebar
+
+    style.apply_theme(restore, "dark")
+    win = QtWidgets.QMainWindow()
+    win.setCentralWidget(QtWidgets.QLabel("image"))
+    d = QtWidgets.QDockWidget("Spectrum", win)
+    d.setWidget(QtWidgets.QLabel("x"))
+    win.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, d)
+    titlebar.dock_titles(win)                           # our own title (Linux, the bridge), drawn by the style
+    win.resize(500, 300)
+    win.show()
+    restore.processEvents()
+    t = d.titleBarWidget()
+    img = t.grab().toImage()
+    window = restore.palette().color(QtGui.QPalette.ColorRole.Window).name()
+    start = t.buttons[-1].geometry().right() + 8                     # right of the buttons (they sit on the left)
+    bottom = {QtGui.QColor(img.pixel(x, img.height() - 1)).name() for x in range(start, img.width() - 4)}
+    assert img.width() - 4 > start and bottom == {window}
+    win.close()

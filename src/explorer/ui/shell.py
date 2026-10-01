@@ -16,6 +16,7 @@ import sys
 import time
 
 import numpy as np
+import pyqtgraph as pg
 from PySide6 import QtCore, QtWidgets
 
 from .._name import APP_NAME
@@ -64,7 +65,7 @@ class _Sink:
         self.shell.last["lambda_t"] = (lt, pixel, s, levels)
         if self.shell.lambda_t is not None:
             self.shell.lambda_t.show(lt, levels)
-            if self.shell.colours is not None:
+            if self.shell.colours is not None and self.shell.look.has("colour"):
                 self.shell.lambda_t.set_lut(self.shell.colours.lut(s))
 
     def cleared(self, pixel):
@@ -98,8 +99,7 @@ class Shell(QtWidgets.QMainWindow):
         ex = dataset.executors
         light = style.is_light()                        # the theme the application was given (ui.style)
         self.look = look if look is not None else get_look()
-        self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light,
-                              reticle=self.look.has("reticle"))
+        self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light)
         self.setCentralWidget(docks.gutter(self.view.widget))
         r = dataset.roles
         # a cube without lambda has no spectra: that dock stays empty and hidden
@@ -112,7 +112,7 @@ class Shell(QtWidgets.QMainWindow):
         self.spec_dock = docks.dock(self, "Spectrum", self.spec_panel, "spectrum")
         self.lt_dock = docks.dock(self, "λ–t", self.lt_panel, "lambda_t")
         self.setAnimated(False)
-        self.nav = NavBar(self, segmented=self.look.has("stokes"))
+        self.nav = NavBar(self)
         # playback: t forward at the toolbar's rate, round the end (the prototype's _toggle_play, _play_step)
         self._play = QtCore.QTimer(self)
         self._play.timeout.connect(self._play_step)
@@ -168,40 +168,62 @@ class Shell(QtWidgets.QMainWindow):
         self._initial_state = self.saveState()          # before the first show: reset_panels comes back to it
         self._sized = False
         style.separators(self)                          # 8 px to grab between the docked panels, with the theme
-        self._wear(light)
+        panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel) if p is not None]
+        self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
+        self.colours = self.colour_key = None           # made the first time the look has colour
+        self._seams = None
+        self._shown_lut = object()
+        self.set_look(self.look)
 
     # ---------------------------------------------------------------- the look (look.Look; the prototype's app/look.py)
-    def _wear(self, light: bool) -> None:
-        L, app = self.look, QtWidgets.QApplication.instance()
+    def set_look(self, look) -> None:
+        """Wear look (look.Look): every part put on or taken off, so the window can switch while it runs (M). The
+        colour maps chosen with C stay for the next time the colour part is on."""
+        self.look, L = look, look
+        light = style.is_light()
+        app = QtWidgets.QApplication.instance()
         st = app.style()
         if hasattr(st, "SLIDER"):                       # the sliders in the colour of the markers they move
             st.SLIDER = None if L.has("marks") else CURSOR_PEN.color()
-        if L.has("marks"):
-            acc = style.accent()
-            if self.spectra is not None:
-                self.spectra.set_marks(acc, light)
-            if self.lambda_t is not None:
-                self.lambda_t.set_marks(acc)
-        self.colours = self.colour_key = None
-        if L.has("colour"):
+            for sl in self.nav.sliders.values():
+                sl.update()
+        self.view.set_reticle(L.has("reticle"))
+        self.nav.set_segmented(L.has("stokes"))
+        acc = style.accent()
+        if self.spectra is not None:
+            self.spectra.set_marks(acc, light) if L.has("marks") else self.spectra.clear_marks()
+        if self.lambda_t is not None:
+            self.lambda_t.set_marks(acc) if L.has("marks") else self.lambda_t.clear_marks()
+        if L.has("colour") and self.colours is None:
             self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light)
             self.colour_key = ColourKey(self.view.widget, unit_text(getattr(self.dataset.axes, "bunit", None) or ""))
-        panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel) if p is not None]
-        if L.has("cards"):
-            if st.name() == "macos":                    # the native style's light seams between dark cards
-                self._seams = MacSeams()
-                for w in (self, self.spec_dock, self.lt_dock):
-                    w.setStyle(self._seams)
-            card = CARD_LIGHT if light else CARD
-            for w in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None)):
-                if w is not None:
-                    w.setBackground(card)
-        self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
+        if self.colour_key is not None:
+            self.colour_key.setVisible(L.has("colour"))
         self._shown_lut = object()
+        if L.has("colour"):
+            self._paint_colour()
+        else:
+            self.view.set_lut(self.view.base_lut)
+        if self.lambda_t is not None:
+            lt = self.last.get("lambda_t")
+            self.lambda_t.set_lut(self.colours.lut(lt[2]) if L.has("colour") and lt is not None else None)
+        if st.name() == "macos" and self._seams is None:   # the native style's light lines under the panel titles
+            self._seams = MacSeams()                    # and on the separators: in the window's colour, in both looks
+            for w in (self, self.spec_dock, self.lt_dock):
+                w.setStyle(self._seams)
+        card = (CARD_LIGHT if light else CARD) if L.has("cards") else pg.getConfigOption("background")
+        for w in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None)):
+            if w is not None:
+                w.setBackground(card)
+
+    def toggle_look(self) -> None:
+        """M: classic and modern in turn."""
+        self.set_look(get_look("classic" if self.look.name == "modern" else "modern"))
+        self.statusBar().showMessage(f"{self.look.name} look (M switches)", 3000)
 
     def _paint_colour(self) -> None:
         """The image's colour table and the key, for the Stokes shown (the modern look's colour part)."""
-        if self.colours is None:
+        if self.colours is None or not self.look.has("colour"):
             return
         s = self.session.state.s
         tab = self.colours.image_lut(s)
@@ -215,8 +237,9 @@ class Shell(QtWidgets.QMainWindow):
 
     def cycle_colours(self, step: int) -> None:
         """C / Shift+C: the next or previous map for the Stokes shown; image, lambda-t and key follow, nothing is
-        read again."""
-        if self.colours is None:
+        read again. Only in a look with the colour maps (the modern one)."""
+        if self.colours is None or not self.look.has("cmap"):
+            self.statusBar().showMessage("colour maps: the modern look (M)", 3000)
             return
         s = self.session.state.s
         name = self.colours.cycle(s, step)
@@ -462,9 +485,10 @@ class Shell(QtWidgets.QMainWindow):
             rows += [("F", "spectra: fit y to this pixel, and keep it", ((K.Key_F, self.fit_spectra),)),
                      ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
                       (("Shift+F", self.spectra_to_sample),))]
-        if self.look.has("cmap"):
-            rows.append(("C  \u21e7C", "colours: next, previous map for the Stokes shown",
-                         (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1)))))
+        # always bound: the terminal's keys are read once, and the look can change while the window runs
+        rows += [("M", "look: classic \u21c4 modern", ((K.Key_M, self.toggle_look),)),
+                 ("C  \u21e7C", "colours: next, previous map for the Stokes shown (modern look)",
+                  (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1))))]
         rows += [("Esc", "release the cursor (first closes this sheet)", ((K.Key_Escape, self._escape),)),
                  (mod + "W", "close the window", (("Ctrl+W", self.close),)),
                  (mod + "M", "minimise", (("Ctrl+M", self.showMinimized),)),
@@ -583,7 +607,7 @@ class Shell(QtWidgets.QMainWindow):
     def closeEvent(self, ev) -> None:
         if self.layout is not None and not self._closing:   # before the docks say hidden
             ops = self.window_ops
-            self.layout.save(self, zoomed=ops is not None and ops.unzoomed is not None)
+            self.layout.save(self, zoomed=ops is not None and ops.unzoomed is not None, look=self.look.name)
         self._closing = True                            # the docks then say hidden: nothing to read any more
         self._play.stop()
         self._mem.stop()

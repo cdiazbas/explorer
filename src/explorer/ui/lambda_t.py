@@ -155,6 +155,11 @@ class LambdaTPanel:
             ln.setZValue(max(ln.zValue(), 10.0) + 1)
             ln.setPen(pg.mkPen(colour, width=2.0))
 
+    def clear_marks(self) -> None:
+        """The classic look's red markers again."""
+        for ln in (self.t_line, self.l_line):
+            ln.setPen(CURSOR_PEN)
+
     def set_markers(self, t: int, l: int) -> None:  # noqa: E741
         self.t_line.setValue(t + 0.5)
         self.l_line.setValue(l + 0.5)

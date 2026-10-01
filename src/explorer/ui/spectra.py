@@ -19,6 +19,8 @@ from .._name import APP_NAME
 from ..data.axes import C_KMS, STOKES, SUP, fmt_signed, unit_text
 from .imageview import CURSOR_PEN
 
+GRID = 0.07                                             # the grid's alpha: at 0.2 its lines read as a mesh
+
 X_PAD = 0.04                                            # of the lambda span, each side
 AXIS_W = 56                                             # px: tick digits changing never re-lays out the plots
 FREEZE_VAR = f"{APP_NAME.upper()}_RESIZE_FREEZE"
@@ -117,7 +119,7 @@ class SpectraPanel:
             if vk:
                 axis_items["top"] = VelocityAxis("top", vk)
             p = self.w.addPlot(row=k // ncol, col=k % ncol, axisItems=axis_items)
-            p.showGrid(x=True, y=True, alpha=0.2)
+            p.showGrid(x=True, y=True, alpha=GRID)
             p.getAxis("left").setWidth(AXIS_W)
             if k:
                 p.setXLink(self.plots[0])
@@ -136,6 +138,9 @@ class SpectraPanel:
             self.plots.append(p)
             self.curves.append(c)
             self.lines.append(ln)
+        # the classic look's curves, to come back to after the modern marks
+        self._classic = [(c.opts["pen"], c.opts["symbolPen"], c.opts["symbolBrush"]) for c in self.curves]
+        self._zeros: list = []
         for p in self.plots[-ncol:]:
             p.setLabel("bottom", "Δλ [Å]" if self.physical else "λ index")
         if vk:
@@ -170,16 +175,30 @@ class SpectraPanel:
         ink = QtGui.QColor(30, 30, 34) if light else QtGui.QColor(235, 235, 240)
         dot = QtGui.QColor(ink)
         dot.setAlpha(190)
-        for k, (p, c) in enumerate(zip(self.plots, self.curves, strict=True)):
+        for c in self.curves:
             c.setPen(pg.mkPen(ink, width=1.4))
-            c.setSymbolSize(3)
             c.setSymbolPen(None)
             c.setSymbolBrush(dot)
-            p.showGrid(x=True, y=True, alpha=0.07)
-            if k > 0:
-                zero = QtGui.QColor(0, 0, 0, 70) if light else QtGui.QColor(255, 255, 255, 70)
-                pen = pg.mkPen(zero, width=1, style=QtCore.Qt.PenStyle.DashLine)
-                p.addItem(pg.InfiniteLine(pos=0, angle=0, pen=pen), ignoreBounds=True)
+        if not self._zeros:
+            zero = QtGui.QColor(0, 0, 0, 70) if light else QtGui.QColor(255, 255, 255, 70)
+            pen = pg.mkPen(zero, width=1, style=QtCore.Qt.PenStyle.DashLine)
+            for p in self.plots[1:]:
+                ln = pg.InfiniteLine(pos=0, angle=0, pen=pen)
+                p.addItem(ln, ignoreBounds=True)
+                self._zeros.append(ln)
+        for ln in self._zeros:
+            ln.setVisible(True)
+
+    def clear_marks(self) -> None:
+        """The classic look's marks again: red lambda markers, the curves as built, no zero lines."""
+        for ln in self.lines:
+            ln.setPen(CURSOR_PEN)
+        for c, (pen, spen, sbrush) in zip(self.curves, self._classic, strict=True):
+            c.setPen(pen)
+            c.setSymbolPen(spen)
+            c.setSymbolBrush(sbrush)
+        for ln in self._zeros:
+            ln.setVisible(False)
 
     def set_units(self, iscale: float | None) -> None:
         self.iscale = iscale

@@ -132,3 +132,21 @@ def test_question_mark_typed_in_the_terminal_opens_the_sheet(qapp, shell):
     finally:
         os.close(master)
         os.close(slave)
+
+
+def test_the_sheet_is_a_rounded_translucent_card(qapp, shell):
+    """Its corners show the image's panel behind; inside, the window's base colour lets what is under it through."""
+    from PySide6 import QtCore, QtGui
+
+    fire(shell, "?")
+    qapp.processEvents()
+    sh = shell.sheet
+    img = shell.grab().toImage()
+    def at(x, y):
+        return QtGui.QColor(img.pixel(sh.mapTo(shell, QtCore.QPoint(x, y))))
+    base = shell.palette().color(QtGui.QPalette.ColorRole.Base)
+    assert not sh.autoFillBackground()
+    assert at(0, 0) != at(sh.width() // 2, 4)                      # the corner is not the card
+    inside = at(sh.width() - 30, sh.height() - 8)
+    assert inside != base or base.alpha() < 255 or sh.OPACITY == 1  # blended with what is behind it
+    fire(shell, "?")

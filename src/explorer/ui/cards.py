@@ -55,9 +55,10 @@ class Rounder(QtCore.QObject):
 
 
 class MacSeams(QtWidgets.QProxyStyle):
-    """On a local Mac's native style, the seams between the cards in the window's own colour: Qt's macOS style draws
-    the dock separators and a line under each dock title in light greys even in dark mode, and between dark cards
-    they read as bright frames. The gutters already part the cards. Set on the main window and its docks only."""
+    """On a local Mac's native style, the seams between the panels in the window's own colour: Qt's macOS style draws
+    the dock separators and a line under each dock title in light greys even in dark mode, and next to the dark
+    panels they read as bright frames. The gutters already part the panels. Set on the main window and its docks
+    only, in both looks (ui.style draws no such line either)."""
 
     def __init__(self):
         super().__init__(QtWidgets.QStyleFactory.create("macos"))

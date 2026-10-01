@@ -31,7 +31,7 @@ def themed_app(disp, theme: str = "auto"):
     return app, style.apply_theme(app, "dark" if disp.plan.bridge and theme == "auto" else theme)
 
 
-def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look="classic", reset_layout=False,
+def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look=None, reset_layout=False,
         quit_after: float | None = None) -> int:
     """Open path and run the event loop until the window closes; returns the exit code. quit_after: seconds after the
     first image, then quit (measurements, as the prototype's --quit-after)."""
@@ -61,8 +61,14 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look
     phases["cube"] = time.perf_counter() - q
     try:
         q = time.perf_counter()
-        from ..look import get_look
+        from ..look import LOOKS, get_look
+        from .layout import LayoutStore
 
+        store = LayoutStore(plan.kind)
+        if reset_layout:
+            store.forget()
+        if look is None:                                # the one worn at the last close, else classic
+            look = store.look() if store.look() in LOOKS else "classic"
         shell = Shell(ds, title=f"{os.path.basename(str(path))} — {APP_NAME}", t0=t0, look=get_look(look))
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
@@ -71,11 +77,7 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look
 
         ops = shell.window_ops = disp.ops(shell)        # before show: our title bar makes the window frameless
         shell.title_bar = titlebar.chrome(app, shell, ops, disp.ops, bridge=plan.bridge)
-        from .layout import LayoutStore
-
-        shell.layout = LayoutStore(plan.kind)
-        if reset_layout:
-            shell.layout.forget()
+        shell.layout = store
         if shell.layout.restore(shell, app):            # the last session's panels, their sizes with them
             shell._sized = True
         disp.attach(app, shell, ops)

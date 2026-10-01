@@ -108,7 +108,7 @@ class NavBar:
             tb.addWidget(sl)
             tb.addWidget(lab)
             self.sliders[axis], self.labels[axis] = sl, lab
-        self.stokes = self.segments = None
+        self.stokes = self.segments = self._segments_act = None
         if s.present["s"] and self.n["s"] > 1:
             self._stokes_label = tb.addWidget(QtWidgets.QLabel(" Stokes "))
             self.stokes = QtWidgets.QComboBox()
@@ -117,12 +117,7 @@ class NavBar:
             self.stokes.currentIndexChanged.connect(lambda v: s.set_index("s", v))
             self.stokes.setToolTip("Stokes shown in the image: keys " + ", ".join(
                 f"{k + 1} {STOKES[k]}" for k in range(self.n["s"])))
-            act = tb.addWidget(self.stokes)
-            if segmented:                               # the segments in its place; the combo stays, hidden
-                self.segments = StokesSegments(self.n["s"], st.s, lambda k: s.set_index("s", k))
-                tb.insertWidget(act, self.segments)
-                act.setVisible(False)
-                self._stokes_label.setVisible(False)
+            self._stokes_act = tb.addWidget(self.stokes)
         tb.addSeparator()
         self.play = QtWidgets.QToolButton()
         self.play.setText("▶ t")
@@ -157,6 +152,15 @@ class NavBar:
         self.reset.clicked.connect(shell.reset_panels)
         tb.setIconSize(icons.size(icons.RESET))
         tb.addWidget(self.reset)
+        self.help = QtWidgets.QToolButton()             # the keys and the mouse, for whoever does not know ? yet
+        self.help.setObjectName("help")
+        self.help.setText("?")
+        self.help.setAutoRaise(True)
+        self.help.setToolTip("What the keys and the mouse do (?)")
+        self.help.clicked.connect(shell.toggle_sheet)
+        tb.addWidget(self.help)
+        if segmented:
+            self.set_segmented(True)
 
     def text(self, axis: str, v: int) -> str:
         """A slider's label: t in UT with the frame index quieter beside it; lambda as delta-lambda, the continuum
@@ -173,6 +177,20 @@ class NavBar:
         if dl is not None and len(dl) == n:
             return f"Δλ {fmt_signed(dl[v], 3)} Å" + ("  (cont.)" if v == self.ax.cont else "")
         return f"{v}/{n - 1}"
+
+    def set_segmented(self, on: bool) -> None:
+        """Stokes as segments (the modern look) in place of the combo, which stays, hidden; or the combo back."""
+        if self.stokes is None:
+            return
+        if on and self.segments is None:
+            s = self.shell.session
+            self.segments = StokesSegments(self.n["s"], s.state.s, lambda k: s.set_index("s", k))
+            self._segments_act = self.tb.insertWidget(self._stokes_label, self.segments)
+        if self.segments is not None:
+            self.segments.set(self.shell.session.state.s)
+            self._segments_act.setVisible(on)
+        self._stokes_act.setVisible(not on)
+        self._stokes_label.setVisible(not on)
 
     def sync(self, st, changed) -> None:
         """Sliders, labels and combo follow the state, without sending it back."""

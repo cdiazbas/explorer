@@ -7,6 +7,7 @@ local Mac, Qt's own X11, the bridge, ...), as the prototype keeps them (app/view
   panels' state always.
 - At start the last geometry if it still fits one monitor, else the first window's size (ui.docks.first_geometry).
 - The schema has a version: the groups are app/v<SCHEMA>.<kind>/, and those of another version are discarded.
+- The look the window wore (classic or modern), the same for every way of displaying.
 - One INI file per user (config_dir()/layout.ini, never next to the code); EXPLORER_LAYOUT names another one.
 """
 import os
@@ -40,12 +41,21 @@ class LayoutStore:
         st.endGroup()
         return st
 
-    def save(self, window: QtWidgets.QMainWindow, zoomed: bool = False) -> None:
+    LOOK_KEY = f"ui/v{SCHEMA}/look"
+
+    def save(self, window: QtWidgets.QMainWindow, zoomed: bool = False, look: str | None = None) -> None:
         st = self._settings()
         if not (zoomed or window.isMaximized() or window.isFullScreen()):
             st.setValue(self.geometry_key, window.saveGeometry())
         st.setValue(self.state_key, window.saveState())
+        if look is not None:
+            st.setValue(self.LOOK_KEY, look)
         st.sync()
+
+    def look(self) -> str | None:
+        """The look the window wore when it last closed; None if none was kept."""
+        v = self._settings().value(self.LOOK_KEY)
+        return str(v) if v else None
 
     def restore(self, window: QtWidgets.QMainWindow, app) -> bool:
         """The last geometry if it still fits one monitor, else the first window's; the panels' places and sizes.

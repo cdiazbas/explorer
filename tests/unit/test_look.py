@@ -105,7 +105,9 @@ def test_classic(themed, cube):
         assert w.view.hl.pen.color() == CURSOR_PEN.color()
         assert w.colours is None and w.colour_key is None and w.nav.segments is None
         assert len(w._rounders) == 3                                    # image, spectra, lambda-t
-        assert all("colours" not in what for _k, what, _b in w.actions.rows)
+        before = list(w.colours.maps) if w.colours is not None else None
+        w.cycle_colours(1)                                              # C: the modern look's only
+        assert (list(w.colours.maps) if w.colours is not None else None) == before
     finally:
         w.close()
         ds.close()
@@ -143,7 +145,6 @@ def test_modern(themed, cube):
         assert w.colours.maps[3] == "gray" and w.view.img.lut is None
         assert QtGui.QColor(w.spectra.w.backgroundBrush().color()).name() == "#141416"     # the cards
         assert len([i for i in w.spectra.plots[1].items if type(i).__name__ == "InfiniteLine"]) >= 2   # zero line
-        assert any("colours" in what for _k, what, _b in w.actions.rows)
     finally:
         w.close()
         ds.close()
@@ -157,5 +158,74 @@ def test_parts_can_be_left_out(themed, cube, monkeypatch):
     with Dataset.open(cube) as ds:
         w = Shell(ds, look=get_look("modern", {"EXPLORER_LOOK_OFF": "reticle,stokes,colour"}))
         assert w.view.reticle is None and w.nav.segments is None and w.colours is None
-        assert all("colours" not in what for _k, what, _b in w.actions.rows)
         w.close()
+
+
+def fire(w, seq):
+    from PySide6 import QtGui
+
+    ks = QtGui.QKeySequence(seq)
+    hits = [sc for sc in w.findChildren(QtGui.QShortcut) if sc.key() == ks]
+    assert len(hits) == 1, seq
+    hits[0].activated.emit()
+
+
+def classic_state(w):
+    from PySide6 import QtGui
+
+    return dict(lines=w.view.hl.isVisible(), reticle=w.view.reticle is not None and w.view.reticle.isVisible(),
+                segments=w.nav.segments is not None and w.nav.segments.isVisible(), combo=w.nav.stokes.isVisible(),
+                slider=QtGui.QGuiApplication.instance().style().SLIDER, lut=w.view.img.lut, lt_lut=w.lambda_t.img.lut,
+                mark=w.spectra.lines[0].pen.color().name(), curve=w.spectra.curves[0].opts["pen"],
+                zeros=any(z.isVisible() for z in w.spectra._zeros),
+                key=w.colour_key is not None and w.colour_key.isVisible(),
+                card=QtGui.QColor(w.spectra.w.backgroundBrush().color()).name())
+
+
+def test_m_switches_to_modern_and_back_to_exactly_classic(themed, cube):
+    w, ds = make(themed, cube, "classic")
+    try:
+        w.session.set_index("s", 3)
+        assert spin(themed, lambda: w.last.get("lambda_t", (0, 0, -1))[2] == 3)
+        before = classic_state(w)
+        fire(w, "M")
+        themed.processEvents()
+        assert w.look.name == "modern" and w.view.reticle.isVisible() and not w.view.hl.isVisible()
+        assert w.nav.segments.isVisible() and not w.nav.stokes.isVisible() and themed.style().SLIDER is None
+        assert any(z.isVisible() for z in w.spectra._zeros) and w.colour_key.isVisible()
+        fire(w, "C")                                                    # V on its first diverging map
+        assert w.colours.maps[3] == "CET-D4" and w.view.img.lut is not None
+        fire(w, "M")
+        themed.processEvents()
+        assert w.look.name == "classic" and classic_state(w) == before
+        fire(w, "M")
+        themed.processEvents()
+        assert w.colours.maps[3] == "CET-D4" and w.view.img.lut is not None      # the map chosen stays
+    finally:
+        w.close()
+        ds.close()
+
+
+def test_the_help_button_opens_and_closes_the_sheet(themed, cube):
+    w, ds = make(themed, cube, "classic")
+    try:
+        w.nav.help.click()
+        assert w.sheet.isVisible() and "look: classic" in w.sheet.text()
+        w.nav.help.click()
+        assert not w.sheet.isVisible()
+    finally:
+        w.close()
+        ds.close()
+
+
+def test_the_layout_keeps_the_look(qapp, tmp_path):
+    from PySide6 import QtWidgets
+
+    from explorer.ui.layout import LayoutStore
+
+    store = LayoutStore("test", str(tmp_path / "layout.ini"))
+    assert store.look() is None
+    w = QtWidgets.QMainWindow()
+    store.save(w, look="modern")
+    assert LayoutStore("other", store.path).look() == "modern"        # one look for every way of displaying
+    w.close()
