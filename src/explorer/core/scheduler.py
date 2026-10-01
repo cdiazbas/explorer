@@ -119,7 +119,9 @@ class Scheduler:
         if moved:
             self._pending |= moved | (changed & {"cursor"})
             self._request_image(st)
-            self._prefetch(st, moved)
+            # on the loop's next pass, after this frame is painted: started here, the reads ahead slowed the paint
+            # (step in t, real cube, bellatrix: median 17.9-19.3 ms -> 13.8-15.0, the prototype 15.8)
+            self.loop.call_soon(lambda: self._prefetch(st, moved))
         elif changed & {"cursor", "panels"}:
             kinds = set(changed & {"cursor"})
             if "panels" in changed:
@@ -136,6 +138,8 @@ class Scheduler:
             self._track(fut).add_done_callback(lambda f: self.loop.post(lambda: self._image_ready(g, idx, f)))
 
     def _prefetch(self, st: ViewState, moved) -> None:
+        if self._closed:
+            return
         n_ahead = getattr(getattr(self.ds, "probe", None), "read_ahead", 0)
         for axis in moved:
             n = self.session.sizes[axis]

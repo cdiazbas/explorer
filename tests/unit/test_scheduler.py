@@ -189,6 +189,33 @@ def test_stale_cursor_work_is_skipped_before_it_reads():
     cube_.executors.close()
 
 
+def test_the_frames_ahead_are_asked_after_the_frame_is_shown():
+    """A step shows its frame (cached: within the step) and asks for the next ones on the loop's next pass, after the
+    paint: asked within the step, their reads slowed the paint (step in t on the real cube, bellatrix: median
+    17.9-19.3 ms against 13.8-15.0)."""
+    cube_ = SlowCube()
+    cube_.probe.read_ahead = 2
+    order = []
+    cube_.prefetch = lambda idx: order.append(("ahead", tuple(idx)))
+    for t_ in range(4):
+        cube_.images[(t_, 0, 1)] = cf.Future()
+        cube_.images[(t_, 0, 1)].set_result(np.ones((10, 10), np.float32))
+    sess = Session(ManualLoop(), cube_)
+    rec = Recorder()
+    rec.image = lambda idx, img, levels: order.append(("image", tuple(idx)))
+    Scheduler(sess, rec)
+    sess.store.loop.pump()
+    order.clear()
+    sess.set_index("t", 1)
+    loop = sess.store.loop
+    loop.call_soon(lambda: order.append(("pass", None)))   # what the loop does next: the paint, in the window
+    loop.pump()
+    assert order[0] == ("image", (1, 0, 1))
+    assert order.index(("pass", None)) < order.index(("ahead", (2, 0, 1)))
+    assert ("ahead", (3, 0, 1)) in order
+    cube_.executors.close()
+
+
 def test_an_old_image_never_replaces_a_newer_one():
     cube_ = SlowCube()
     sess = Session(ManualLoop(), cube_)
