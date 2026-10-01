@@ -37,10 +37,25 @@ from .overlays import ColourKey
 from .padlock import PanelLock
 from .spectra import AxisDrag, SpectraPanel
 from .status import diagnostics_text, pixel_text
+from .stokesgrid import StokesGrid
 from .toolbar import NavBar
 
 MEMORY_S = 1.0                                          # the caches' budget follows the machine's memory (Dataset)
 STATUS_INSET = 8            # px each side of the status line: half the rounded corners' 16, its text clear of the curve
+
+
+class _Follow(QtCore.QObject):
+    """The 2x2 view over the image panel keeps its size."""
+
+    def __init__(self, panel: QtWidgets.QWidget, grid: QtWidgets.QWidget):
+        super().__init__(grid)
+        self.grid = grid
+        panel.installEventFilter(self)
+
+    def eventFilter(self, obj, e):
+        if e.type() == QtCore.QEvent.Type.Resize:
+            self.grid.setGeometry(obj.rect())
+        return False
 
 
 class _Sink:
@@ -84,6 +99,10 @@ class _Sink:
     def units(self, iscale):
         if self.shell.spectra is not None:
             self.shell.spectra.set_units(iscale)
+
+    def grid_image(self, s, idx, img, levels):
+        if self.shell.grid is not None:
+            self.shell.grid.set_image(s, img, levels)
 
 
 class Shell(QtWidgets.QMainWindow):
@@ -173,6 +192,7 @@ class Shell(QtWidgets.QMainWindow):
         panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel) if p is not None]
         self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
         self.colours = self.colour_key = None           # made the first time the look has colour
+        self.grid = None                                # the 2x2 view (ui.stokesgrid), made the first time it is asked
         self._seams = None
         self._shown_lut = object()
         self.set_look(self.look)
@@ -190,6 +210,8 @@ class Shell(QtWidgets.QMainWindow):
             for sl in self.nav.sliders.values():
                 sl.update()
         self.view.set_reticle(L.has("reticle"))
+        if self.grid is not None:
+            self.grid.set_reticle(L.has("reticle"))
         self.nav.set_stokes_drop(L.has("stokes"))
         acc = style.accent()
         if self.spectra is not None:
@@ -206,6 +228,7 @@ class Shell(QtWidgets.QMainWindow):
             self._paint_colour()
         else:
             self.view.set_lut(self.view.base_lut)
+        self._grid_luts()
         if self.lambda_t is not None:
             lt = self.last.get("lambda_t")
             self.lambda_t.set_lut(self.colours.lut(lt[2]) if L.has("colour") and lt is not None else None)
@@ -217,6 +240,74 @@ class Shell(QtWidgets.QMainWindow):
         for w in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None)):
             if w is not None:
                 w.setBackground(card)
+
+    # ---------------------------------------------------------------- the 2x2 view (ROADMAP E5.11)
+    def set_grid(self, on: bool) -> None:
+        """I Q U V side by side over the image (ui.stokesgrid), or the single view back: the region in view goes
+        with it either way. Key 5, and All in the Stokes control; 1-4, or a Stokes picked there, leave it. Only with
+        more than one Stokes. From the prototype's app/look_glass.py set_grid (600-614)."""
+        ns = self.session.sizes["s"] if self.session.present["s"] else 1
+        on = bool(on) and ns > 1
+        if on == (self.grid is not None and self.grid.isVisible()):
+            return
+        if on:
+            if self.grid is None:
+                ex = self.dataset.executors
+                self.grid = StokesGrid(self.view.widget, ns, self._hover, self._grid_click, light=style.is_light(),
+                                       strips=ex.strips, parts=ex.n_strips)
+                self.grid.set_reticle(self.look.has("reticle"))
+                self._grid_follow = _Follow(self.view.widget, self.grid)
+            self.grid.setGeometry(self.view.widget.rect())
+            self.grid.set_region(self.view.vb.viewRect())
+            st = self.session.state
+            self.grid.set_crosshair(*st.cursor)
+            self.grid.set_locked(st.locked)
+            self._grid_luts()
+            self.grid.show()
+            self.grid.raise_()
+            for w in (self.image_lock, self.colour_key):  # the padlock and the colour key stay on top
+                if w is not None:
+                    w.raise_()
+            self.scheduler.set_grid(True)
+            self.view.set_paused(True)                  # under the 2x2 view: nothing of it is seen
+        else:
+            self.view.vb.setRange(self.grid.region(), padding=0)
+            self.grid.hide()
+            self.scheduler.set_grid(False)
+            self.view.set_paused(False)
+        self.nav.set_all(on)
+
+    def toggle_grid(self) -> None:
+        self.set_grid(not (self.grid is not None and self.grid.isVisible()))
+
+    def pick_stokes(self, s: int) -> None:
+        """One Stokes in the image (keys 1-4, the Stokes control): the 2x2 view, if on, gives way."""
+        self.set_grid(False)
+        self.session.set_index("s", s)
+
+    def _grid_luts(self) -> None:
+        if self.grid is None:
+            return
+        colour = self.colours is not None and self.look.has("colour")
+        for s in range(len(self.grid.views)):
+            self.grid.set_lut(s, self.colours.image_lut(s) if colour else None)
+
+    def _grid_click(self, s: int, ev) -> None:
+        """A click on panel s: the cursor locked there and that Stokes the session's, so lambda-t shows it; right
+        click: released; double click: the whole image."""
+        if ev.button() == QtCore.Qt.MouseButton.RightButton:
+            self.session.lock(False)
+            return
+        p = self.grid.panel_point(s, ev)
+        if ev.button() != QtCore.Qt.MouseButton.LeftButton or p is None:
+            return
+        if ev.double():
+            self.grid.show_all()
+            return
+        self.session.lock(False)
+        self.session.hover(math.floor(p[0]), math.floor(p[1]))
+        self.session.set_index("s", s)
+        self.session.lock(True)
 
     def toggle_look(self) -> None:
         """M: classic and modern in turn."""
@@ -479,7 +570,9 @@ class Shell(QtWidgets.QMainWindow):
         if s.present["s"] and s.sizes["s"] > 1:
             n = s.sizes["s"]
             rows.append((f"1–{n}", "Stokes " + " ".join(STOKES[:n]),
-                         tuple((str(k + 1), lambda k=k: s.set_index("s", k)) for k in range(n))))
+                         tuple((str(k + 1), lambda k=k: self.pick_stokes(k)) for k in range(n))))
+            rows.append((str(n + 1), " ".join(STOKES[:n]) + " side by side, zoom linked; again: one Stokes",
+                         ((str(n + 1), self.toggle_grid),)))
         if s.present["t"] and s.sizes["t"] > 1:
             rows.append(("Space", "play, pause t", ((K.Key_Space, lambda: self.nav.play.toggle()),)))
         rows.append(("L", "lock, release the cursor", ((K.Key_L, lambda: s.lock(not s.state.locked)),)))
@@ -511,6 +604,9 @@ class Shell(QtWidgets.QMainWindow):
                                                      "double click: automatic again")]
         if self.lambda_t is not None:
             rows.append(("click on λ–t", "pick t and λ"))
+        ns = self.session.sizes["s"] if self.session.present["s"] else 1
+        if ns > 1:
+            rows.append(("click on a panel of the side-by-side view", "lock the cursor there; λ–t shows its Stokes"))
         rows.append(("padlock, top right of the image and of the spectra",
                      "fixed ⇄ automatic scale; right click: fit it to what is shown"))
         return rows
@@ -535,8 +631,12 @@ class Shell(QtWidgets.QMainWindow):
         self.nav.sync(st, changed)
         if "cursor" in changed:
             self.view.set_crosshair(*st.cursor)
+            if self.grid is not None:
+                self.grid.set_crosshair(*st.cursor)
         if "locked" in changed:
             self.view.set_locked(st.locked)
+            if self.grid is not None:
+                self.grid.set_locked(st.locked)
         if "l" in changed and self.spectra is not None:
             self.spectra.set_lambda(st.l)
         if changed & {"t", "l"} and self.lambda_t is not None:

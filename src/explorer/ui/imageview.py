@@ -63,6 +63,7 @@ class ImageView:
         self._pending.timeout.connect(self.render)     # a burst of range changes renders once
         self.vb.sigRangeChanged.connect(lambda *a: self._pending.start())
         self.last_render: dict = {}
+        self.paused = False                             # covered (the 2x2 view over it): keeps images, draws none
 
     # ---------------------------------------------------------------- input
     def _moved(self, pos) -> None:
@@ -119,8 +120,15 @@ class ImageView:
             ny, nx = self._full.shape
             self.vb.setRange(QtCore.QRectF(0, 0, nx, ny), padding=0)
 
+    def set_paused(self, on: bool) -> None:
+        """Covered by another view (the 2x2 one): new images are kept, not drawn; drawn once, uncovered. Drawn while
+        covered, each step in the 2x2 view cost a fifth render nobody saw."""
+        self.paused = bool(on)
+        if not self.paused:
+            self.render()
+
     def render(self) -> None:
-        if self._full is None:
+        if self._full is None or self.paused:
             return
         img = self._full
         ny, nx = img.shape
@@ -131,7 +139,11 @@ class ImageView:
             return
         vp = self.widget.viewport()
         dpr = vp.devicePixelRatioF()
-        f = max(1, int(min((x1 - x0) / max(1.0, vp.width() * dpr), (y1 - y0) / max(1.0, vp.height() * dpr))))
+        # data pixels per screen pixel, from the view's range (the aspect is locked: the same in x and y). The
+        # region clipped to the image undercounts it wherever the view is wider or taller than the image: a
+        # 400x360 image in an 80x215 panel was rendered whole (factor 1), 4.5 times the pixels shown. The
+        # prototype's backend_pgr.py:52-53 used the clipped region too.
+        f = max(1, int(min((vx1 - vx0) / max(1.0, vp.width() * dpr), (vy1 - vy0) / max(1.0, vp.height() * dpr))))
         h, w = (y1 - y0) // f, (x1 - x0) // f
         out = np.empty((h, w), np.uint8)
         reduce_u8(img, y0, x0, f, self._lim[0], self._lim[1], out, self.strips, self.parts)

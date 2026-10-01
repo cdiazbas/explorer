@@ -36,6 +36,9 @@ class Recorder:
     def cleared(self, pixel):
         self.calls.append(("cleared", pixel))
 
+    def grid_image(self, s, idx, img, levels):
+        self.calls.append(("grid", s, idx, img, levels))
+
     def y_range(self, k, r):
         pass
 
@@ -134,6 +137,38 @@ def test_padding_clears_once_reads_nothing_and_the_next_valid_pixel_fills_both(s
     sess.store.loop.pump()
     settle(sched)
     assert rec.kinds() == ["image", "spectra", "lambda_t"]
+
+
+def test_the_grid_reads_every_stokes_at_this_t_and_lambda(setup):
+    """The 2x2 view (I Q U V side by side): on, every Stokes's frame at this t and lambda, each with its own levels
+    (Q U V symmetric about 0); a step in t brings the four of the new t; a change of Stokes alone reads nothing for
+    it (the same frames); off, nothing more."""
+    sess, sched, rec, data = setup
+    rec.calls.clear()
+    sched.set_grid(True)
+    settle(sched)
+    st = sess.state
+    got = {c[1]: c for c in rec.calls if c[0] == "grid"}
+    assert sorted(got) == [0, 1, 2, 3]
+    for s, (_, _, idx, img, lev) in got.items():
+        assert idx == sess.index(state=st.__class__(**{**st.__dict__, "s": s}))
+        assert np.array_equal(img, data[st.t, s, st.l], equal_nan=True)
+        assert (lev[0] < 0 < lev[1] and abs(lev[0] + lev[1]) < 1e-6 * abs(lev[1])) if s else lev[0] >= 0
+    rec.calls.clear()
+    sess.step("t", 1)
+    settle(sched)
+    got = {c[1]: c for c in rec.calls if c[0] == "grid"}
+    assert sorted(got) == [0, 1, 2, 3] and all(np.array_equal(c[3], data[sess.state.t, s, sess.state.l],
+                                                              equal_nan=True) for s, c in got.items())
+    rec.calls.clear()
+    sess.set_index("s", 2)
+    settle(sched)
+    assert not [c for c in rec.calls if c[0] == "grid"]
+    sched.set_grid(False)
+    rec.calls.clear()
+    sess.step("l", 1)
+    settle(sched)
+    assert not [c for c in rec.calls if c[0] == "grid"]
 
 
 # ---------------------------------------------------------------- order, with reads the test releases

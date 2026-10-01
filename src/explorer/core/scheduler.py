@@ -54,6 +54,8 @@ class Sink(Protocol):
 
     def units(self, iscale: float | None) -> None: ...                                 # I's power of ten, for titles
 
+    def grid_image(self, s: int, idx: tuple, img: np.ndarray, levels: tuple[float, float]) -> None: ...  # 2x2 view
+
 
 class Scheduler:
     def __init__(self, session: Session, sink: Sink):
@@ -68,6 +70,8 @@ class Scheduler:
         self.yrange = YRange(self.loop, r.ns, self._cont(), sink.y_range, sink.units,
                              self._start_quv, quv_ok=r.s is not None)
         self._sampled = False
+        self.grid = False                               # the 2x2 view: every Stokes's frame at this t and lambda
+        self._grid_gen = 0
         self._closed = False
         self._pending: set[str] = set()                 # cursor work waiting for the latest image
         self._cleared = False
@@ -119,6 +123,8 @@ class Scheduler:
         if moved:
             self._pending |= moved | (changed & {"cursor"})
             self._request_image(st)
+            if self.grid and moved & {"t", "l"}:        # a change of Stokes alone: the same frames
+                self._request_grid(st)
             # on the loop's next pass, after this frame is painted: started here, the reads ahead slowed the paint
             # (step in t, real cube, bellatrix: median 17.9-19.3 ms -> 13.8-15.0, the prototype 15.8)
             self.loop.call_soon(lambda: self._prefetch(st, moved))
@@ -143,9 +149,46 @@ class Scheduler:
         n_ahead = getattr(getattr(self.ds, "probe", None), "read_ahead", 0)
         for axis in moved:
             n = self.session.sizes[axis]
+            # the 2x2 view shows every Stokes: their next frames along t or lambda too
+            stokes = range(self.session.sizes["s"]) if self.grid and axis != "s" else (st.s,)
             for d in range(1, n_ahead + 1):
-                ahead = dataclasses.replace(st, **{axis: (getattr(st, axis) + d) % n})
-                self.ds.prefetch(self.session.index(state=ahead))
+                for s in stokes:
+                    ahead = dataclasses.replace(st, **{axis: (getattr(st, axis) + d) % n})
+                    if axis != "s":
+                        ahead = dataclasses.replace(ahead, s=s)
+                    self.ds.prefetch(self.session.index(state=ahead))
+
+    # ---------------------------------------------------------------- the 2x2 view
+    def set_grid(self, on: bool) -> None:
+        """The 2x2 view (I Q U V side by side, ROADMAP E5.11) on or off: on, every Stokes's frame at this t and
+        lambda goes to sink.grid_image as it comes, now and at every change of t or lambda, with its own levels (Q U
+        V symmetric about 0), and the next frames of all of them are read ahead. From the prototype's
+        app/look_glass.py StokesGrid.refresh (278-313)."""
+        self.grid = bool(on)
+        self._grid_gen += 1
+        if self.grid:
+            self._request_grid(self.session.state)
+
+    def _request_grid(self, st: ViewState) -> None:
+        self._grid_gen += 1
+        g = self._grid_gen
+        for s in range(self.session.sizes["s"]):
+            idx = self.session.index(state=dataclasses.replace(st, s=s))
+            fut = self.ds.image(idx)
+            if fut.done():
+                self._grid_ready(g, s, idx, fut)
+            else:
+                self._track(fut).add_done_callback(
+                    lambda f, s=s, idx=idx: self.loop.post(lambda: self._grid_ready(g, s, idx, f)))
+
+    def _grid_ready(self, g: int, s: int, idx: tuple, fut: Future) -> None:
+        if self._closed or fut.cancelled() or not self.grid or g != self._grid_gen:   # off, or a newer t or lambda
+            return
+        if fut.exception() is not None:
+            log.warning("image %s not read: %r", idx, fut.exception())
+            return
+        img = fut.result()
+        self.sink.grid_image(s, idx, img, self.levels.image(idx, s > 0, img))
 
     def _image_ready(self, g: int, idx: tuple, fut: Future) -> None:
         if self._closed or fut.cancelled():            # closing: nothing more to show nor to read ahead

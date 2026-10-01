@@ -12,6 +12,7 @@ from . import icons
 
 SLIDER_W = (86, 209)                                    # px, 0.95 of the prototype's: the sliders give way first
 FPS = (1, 120, 20)                                      # the rate box: minimum, maximum, default
+ALL = "All"                                             # every Stokes side by side (the 2x2 view, ui.stokesgrid)
 
 
 class StokesSegments(QtWidgets.QWidget):
@@ -40,17 +41,19 @@ class StokesSegments(QtWidgets.QWidget):
         lay.setSpacing(0)
         self.group = QtWidgets.QButtonGroup(self)
         self.group.setExclusive(True)
-        for k in range(ns):
+        for k in range(ns + 1):                         # and All: every Stokes side by side
             b = QtWidgets.QToolButton()
-            b.setText(STOKES[k])
+            b.setText(STOKES[k] if k < ns else ALL)
             b.setCheckable(True)
-            b.setToolTip(f"Stokes {STOKES[k]} in the image (key {k + 1})")
+            b.setToolTip(f"Stokes {STOKES[k]} in the image (key {k + 1})" if k < ns else
+                         f"{' '.join(STOKES[:ns])} side by side, zoom linked (key {ns + 1})")
             self.group.addButton(b, k)
             lay.addWidget(b)
         self.group.button(current).setChecked(True)
         self.group.idClicked.connect(pick)
 
     def set(self, s: int) -> None:
+        """s: a Stokes, or ns for All."""
         if self.group.checkedId() != s:
             self.group.button(s).setChecked(True)
 
@@ -82,9 +85,10 @@ class StokesDrop(QtWidgets.QToolButton):
         self.panel.move(self.mapToGlobal(QtCore.QPoint(0, self.height())))
         self.panel.show()
 
-    def set(self, s: int) -> None:
-        self.setText(f"Stokes {STOKES[s]} ▾")
-        self.segments.set(s)
+    def set(self, s: int, all_: bool = False) -> None:
+        """s: the Stokes shown; all_: every Stokes side by side (All)."""
+        self.setText(f"Stokes {ALL if all_ else STOKES[s]} ▾")
+        self.segments.set(len(self.segments.group.buttons()) - 1 if all_ else s)
 
 
 class JumpSlider(QtWidgets.QSlider):
@@ -140,12 +144,13 @@ class NavBar:
             tb.addWidget(lab)
             self.sliders[axis], self.labels[axis] = sl, lab
         self.stokes = self.drop = self._drop_act = None
+        self.all = False                                # every Stokes side by side (the 2x2 view)
         if s.present["s"] and self.n["s"] > 1:
             self._stokes_label = tb.addWidget(QtWidgets.QLabel(" Stokes "))
             self.stokes = QtWidgets.QComboBox()
-            self.stokes.addItems(list(STOKES[:self.n["s"]]))
+            self.stokes.addItems(list(STOKES[:self.n["s"]]) + [ALL])
             self.stokes.setCurrentIndex(st.s)
-            self.stokes.currentIndexChanged.connect(lambda v: s.set_index("s", v))
+            self.stokes.currentIndexChanged.connect(self._picked)
             self.stokes.setToolTip("Stokes shown in the image: keys " + ", ".join(
                 f"{k + 1} {STOKES[k]}" for k in range(self.n["s"])))
             self._stokes_act = tb.addWidget(self.stokes)
@@ -215,10 +220,10 @@ class NavBar:
             return
         if on and self.drop is None:
             s = self.shell.session
-            self.drop = StokesDrop(self.n["s"], s.state.s, lambda k: s.set_index("s", k))
+            self.drop = StokesDrop(self.n["s"], s.state.s, self._picked)
             self._drop_act = self.tb.insertWidget(self._stokes_label, self.drop)
         if self.drop is not None:
-            self.drop.set(self.shell.session.state.s)
+            self.drop.set(self.shell.session.state.s, self.all)
             self.drop.panel.hide()
             self._drop_act.setVisible(on)
         self._stokes_act.setVisible(not on)
@@ -235,12 +240,30 @@ class NavBar:
                     sl.setValue(v)
                     sl.blockSignals(False)
                 self.labels[axis].setText(self.text(axis, v))
-        if "s" in changed and self.stokes is not None and self.stokes.currentIndex() != st.s:
-            self.stokes.blockSignals(True)
-            self.stokes.setCurrentIndex(st.s)
-            self.stokes.blockSignals(False)
-        if "s" in changed and self.drop is not None:
-            self.drop.set(st.s)
+        if "s" in changed and not self.all:             # All stays while a panel's click changes the Stokes
+            self._show_stokes(st.s)
+
+    def _picked(self, k: int) -> None:
+        """A Stokes, or All (k = ns), from the combo or the drop-down."""
+        if k == self.n["s"]:
+            self.shell.set_grid(True)
+        else:
+            self.shell.pick_stokes(k)
+
+    def set_all(self, on: bool) -> None:
+        """The controls say All while the 2x2 view is on, the Stokes shown otherwise."""
+        self.all = bool(on)
+        self._show_stokes(self.shell.session.state.s)
+
+    def _show_stokes(self, s: int) -> None:
+        if self.stokes is not None:
+            k = self.n["s"] if self.all else s
+            if self.stokes.currentIndex() != k:
+                self.stokes.blockSignals(True)
+                self.stokes.setCurrentIndex(k)
+                self.stokes.blockSignals(False)
+        if self.drop is not None:
+            self.drop.set(s, self.all)
 
     def fit(self, width: int) -> None:
         """Sliders between SLIDER_W so the whole toolbar fits `width`: at a fixed 220 px it needed 1210 px, and below
