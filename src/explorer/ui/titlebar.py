@@ -242,9 +242,10 @@ class Hairline(QtWidgets.QWidget):
 
 # ---------------------------------------------------------------- resizing from every edge, as on macOS
 class Outline:
-    """The size a window is being dragged to, as four thin windows round it (ToolTip: override-redirect, never
-    focused, on top; no pointer grab, unlike a popup). Four strips and not one window with a shape: a window resized
-    is sent whole (the bridge marks all of it dirty), its shape or not."""
+    """The size a window is being dragged to, drawn by Qt as four thin windows round it (ToolTip: override-redirect,
+    never focused, on top; no pointer grab, unlike a popup): where there is no X server to draw it (the window's
+    ops give no outline). Over X11 the server draws it (platform.xoutline): there these four strips cost XQuartz 57 ms
+    a step, and queued."""
     T = 2                                               # px
 
     def __init__(self, owner: QtWidgets.QWidget):
@@ -276,12 +277,16 @@ class Outline:
         for b in self.bars:
             b.hide()
 
+    def close(self) -> None:
+        self.hide()
+
 
 class EdgeResizer(QtCore.QObject):
     """Without the window manager's frame there are no resize borders: a 7-px band inside every edge and 16-px corner
     zones (the corner radius) resize the window, with the matching pointer. The window manager does it when it can
-    (startSystemResize: GNOME, KDE); XQuartz's cannot, so then this resizes it: an outline (Outline) follows the
-    pointer, at most every 25 ms, and the window takes that size once, where the pointer is released. Resized at
+    (startSystemResize: GNOME, KDE); XQuartz's cannot, so then this resizes it: an outline follows the pointer (the
+    X server's, platform.xoutline, at the pace the server keeps; else Qt's, Outline, every 25 ms at most), and the
+    window takes that size once, where the pointer is released. Resized at
     every step, over X11 the whole window was redrawn and sent each time, and it flickered: through an emulated ssh
     link (bench/xlink.py, 8 ms each way, 20 MB/s, the bridge) a 1-s drag of 200 px sent 17.7 MB while dragging, the
     link full, 24.9 MB in all; with the outline 0.7-0.9 MB, 3.3-3.5 MB in all. EXPLORER_RESIZE=live resizes at every
@@ -306,7 +311,13 @@ class EdgeResizer(QtCore.QObject):
         self._pending = None
         self._timer = QtCore.QTimer(self, singleShot=True, interval=25)
         self._timer.timeout.connect(self._apply)
-        self.outline = Outline(window) if os.environ.get(RESIZE_ENV) != "live" else None
+        self.live = os.environ.get(RESIZE_ENV) == "live"
+        self.outline = None                             # the X server's (ready from here) or Qt's, made at a press
+        if not self.live:
+            self.outline = getattr(ops, "outline", lambda c: None)(
+                window.palette().color(QtGui.QPalette.ColorRole.Highlight))
+            if self.outline is not None:
+                window.destroyed.connect(self.outline.close)
 
     def edges_at(self, p):
         w, h, x, y = self.w.width(), self.w.height(), p.x(), p.y()
@@ -356,6 +367,8 @@ class EdgeResizer(QtCore.QObject):
                 return False
             if not self.m.begin_resize(edges):
                 self._drag = (edges, QtCore.QPoint(gpos), self.w.geometry())
+                if not self.live and self.outline is None:
+                    self.outline = Outline(self.w)      # no X server to draw it: Qt's
             return True
         if kind == E.MouseButtonRelease and self._drag:
             self._pending = self._rect(gpos)            # where it is released: the moves before may not all have come

@@ -41,6 +41,13 @@ class BridgeWindowOps(WindowOps):
     def minimize(self) -> None:
         self.w.showMinimized()                          # the bridge asks the manager (WindowStateChange)
 
+    def outline(self, colour):
+        """Drawn by the X server, on a connection of its own (platform.xoutline): a Qt window would be sent whole,
+        pixels and all, at every step."""
+        from ..display import XOutlineOps
+
+        return XOutlineOps(colour)
+
     def set_shape(self, region) -> None:
         """Offscreen keeps no masks: the region is published where the bridge reads it for the X SHAPE
         (windows.SHAPE_ATTR). None or empty: rectangular."""

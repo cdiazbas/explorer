@@ -43,6 +43,24 @@ class LinkInfo:
     fps_cap: int | None
 
 
+class XOutlineOps:
+    """platform.xoutline.XOutline as the title bar's edges use it: show(QRect), close()."""
+
+    def __init__(self, colour):
+        from .xoutline import XOutline
+
+        self.x = XOutline((colour.red() << 16) | (colour.green() << 8) | colour.blue())
+
+    def show(self, r) -> None:
+        self.x.show(r.x(), r.y(), r.width(), r.height())
+
+    def hide(self) -> None:
+        self.x.hide()
+
+    def close(self) -> None:
+        self.x.close()
+
+
 class WindowOps:
     """What a view may ask of its window: here, of a window Qt shows itself (cocoa, xcb, offscreen); the bridge's
     windows have their own (xbridge.BridgeWindowOps). The moving, shaping, zoom and cursor calls are the prototype's
@@ -72,6 +90,15 @@ class WindowOps:
     def begin_resize(self, edges) -> bool:
         h = self.w.windowHandle()
         return bool(h and h.startSystemResize(edges))
+
+    def outline(self, colour):
+        """The outline for a resize by the edges, drawn by the X server (platform.xoutline) where the window is on
+        X11 (Qt's xcb); None elsewhere (the caller draws its own). colour: a QColor."""
+        from PySide6 import QtWidgets
+
+        if QtWidgets.QApplication.instance().platformName() != "xcb":
+            return None
+        return XOutlineOps(colour)
 
     def set_shape(self, region) -> None:
         """The window's outline as a mask (Qt makes it an X SHAPE on xcb); None or empty: rectangular. Offscreen has
