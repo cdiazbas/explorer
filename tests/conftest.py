@@ -1,11 +1,13 @@
-"""Every test runs with its own cache directory and without a log file, so that nothing a test logs or writes
-(a budget warning, a doctor report) reaches the user's ~/.cache/explorer."""
+"""Every test runs with its own cache and config directories and without a log file, so that nothing a test logs
+or writes (a budget warning, a doctor report, a window's layout) reaches the user's ~/.cache or ~/.config."""
 import pytest
 
 
 @pytest.fixture(autouse=True)
 def _isolated_cache(monkeypatch, tmp_path_factory):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path_factory.mktemp("cache")))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("config")))
+    monkeypatch.delenv("EXPLORER_LAYOUT", raising=False)
     from explorer.obs import log
 
     log.setup(to_file=False)                            # console only, until a test asks for more

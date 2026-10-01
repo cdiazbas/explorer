@@ -31,7 +31,8 @@ def themed_app(disp, theme: str = "auto"):
     return app, style.apply_theme(app, "dark" if disp.plan.bridge and theme == "auto" else theme)
 
 
-def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", quit_after: float | None = None) -> int:
+def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", reset_layout=False,
+        quit_after: float | None = None) -> int:
     """Open path and run the event loop until the window closes; returns the exit code. quit_after: seconds after the
     first image, then quit (measurements, as the prototype's --quit-after)."""
     t0 = time.perf_counter()
@@ -64,11 +65,17 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", quit
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
         shell.breakdown = (before, phases, shown, plan.remote)
-        from . import docks, titlebar
+        from . import titlebar
 
-        ops = disp.ops(shell)                           # before show: our title bar makes the window frameless
+        ops = shell.window_ops = disp.ops(shell)        # before show: our title bar makes the window frameless
         shell.title_bar = titlebar.chrome(app, shell, ops, disp.ops, bridge=plan.bridge)
-        shell.setGeometry(docks.first_geometry(app))
+        from .layout import LayoutStore
+
+        shell.layout = LayoutStore(plan.kind)
+        if reset_layout:
+            shell.layout.forget()
+        if shell.layout.restore(shell, app):            # the last session's panels, their sizes with them
+            shell._sized = True
         disp.attach(app, shell, ops)
         from . import termkeys
 

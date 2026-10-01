@@ -7,6 +7,7 @@ adopt(shell) mixes the names into the Shell's own class, so the viewer the tests
 Only reads and the same actions as the prototype's API; nothing here changes how explorer behaves. Where the
 mapping is not one to one, the comment says what is compared.
 """
+import os
 from types import SimpleNamespace
 
 import numpy as np
@@ -151,8 +152,6 @@ class ProtoViewer:
     def __getattr__(self, name):
         if name in _SLIT or name.startswith("_slit"):
             raise NotInExplorer(name, "slit")
-        if name in ("restore", "forget_layout"):
-            raise NotInExplorer(name, "persist")
         raise AttributeError(name)
 
     @property
@@ -178,6 +177,17 @@ class ProtoViewer:
             bar.m.unzoomed = value
         elif value is not None:
             raise NotInExplorer("_crispex_unzoomed", "title")
+
+    # the saved layout (ui.layout.LayoutStore): the prototype's names for it
+    GEOMETRY_KEY = "app/{kind}/geometry"
+    kind = property(lambda self: self.layout.kind)
+
+    def restore(self, app):
+        if self.layout.restore(self, app):
+            self._sized = True
+
+    def forget_layout(self):
+        self.layout.forget()
 
     @property
     def _crispex_panel_edges(self):
@@ -364,6 +374,7 @@ def adopt(shell):
     of those names may already be the Shell's: they would change how it works."""
     names = {n for c in (ProtoViewer,) for n in vars(c) if not n.startswith("__")}
     names |= {"be", "stats", "fix", "slit_dock", "slit_btn", "_pf_roles", "_pf_names", "_pf_slit_ui"}
+    names -= {"restore"}                                # QMainWindow has none; QWidget's restoreGeometry is not it
     clash = sorted(n for n in names if hasattr(type(shell), n) or n in vars(shell))
     if clash:
         raise RuntimeError(f"the prototype's names already on the Shell: {clash}")
@@ -379,6 +390,22 @@ def monitor_rect(app, point=None):
     return explorer_monitor_rect(app, point)
 
 
+class _ViewerModule(SimpleNamespace):
+    """viewer.SETTINGS is the file the tests keep the layout in: explorer's layout goes there (EXPLORER_LAYOUT)."""
+
+    @property
+    def SETTINGS(self):
+        from explorer.ui.layout import layout_path
+
+        return layout_path()
+
+    @SETTINGS.setter
+    def SETTINGS(self, path):
+        from explorer.ui.layout import ENV
+
+        os.environ[ENV] = str(path)
+
+
 def viewer_module():
     """A stand-in for the prototype's app/viewer.py: the constants and helpers smoke.py reads from it."""
     from explorer.data.stats import nice_range
@@ -389,5 +416,4 @@ def viewer_module():
             raise NotInExplorer(f"Viewer.{name}", "slit" if "SLIT" in name else name)
 
     Viewer = _ViewerMeta("Viewer", (), {"FILL": docks.FILL})
-    return SimpleNamespace(Viewer=Viewer, monitor_rect=monitor_rect, nice_range=nice_range, SETTINGS=None,
-                           np=np)
+    return _ViewerModule(Viewer=Viewer, monitor_rect=monitor_rect, nice_range=nice_range, np=np)

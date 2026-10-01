@@ -33,6 +33,8 @@ def _parser() -> argparse.ArgumentParser:
                     help="over ssh -Y: Qt's own X11 (native) or the bridge; auto decides")
     ap.add_argument("--theme", choices=("auto", "dark", "light", "native"), default="auto",
                     help="dark or light everywhere; native: the system's (macOS); auto: native on a Mac, else dark")
+    ap.add_argument("--reset-layout", action="store_true",
+                    help="start with the first window's size and panels (the saved layout of this display is dropped)")
     ap.add_argument("--quit-after", type=float, metavar="S", help="quit S seconds after the first image (measurements)")
     return ap
 
@@ -58,4 +60,5 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     from .ui.app import run
 
-    return run(a.cube, sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11, theme=a.theme, quit_after=a.quit_after)
+    return run(a.cube, sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11, theme=a.theme,
+               reset_layout=a.reset_layout, quit_after=a.quit_after)

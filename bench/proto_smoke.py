@@ -13,7 +13,7 @@ has no counterpart for, and every check of a feature explorer has not yet (NOT_Y
 included.
 
 The prototype is found at $EXPLORER_PROTOTYPE, else ../prototype next to this repository. Nothing is written into
-it: no bytecode, and smoke.py's own settings file is never used (explorer does not save a layout yet).
+it (no bytecode), and the layout goes to smoke.py's own scratch settings file (EXPLORER_LAYOUT), never the user's.
 """
 import importlib.abc
 import os
@@ -74,11 +74,13 @@ def startup_module():
     def make_viewer(app, s, cube, sp, probe, guard, kind=None):
         from explorer._name import APP_NAME
         from explorer.ui import docks, titlebar
+        from explorer.ui.layout import LayoutStore
         from explorer.ui.shell import Shell
 
         w = Shell(cube, title=f"{os.path.basename(str(cube.path))} — {APP_NAME}")
-        w.ops = s.disp.ops(w)                           # as ui.app.run: the chrome before show
+        w.ops = w.window_ops = s.disp.ops(w)            # as ui.app.run: the chrome before show
         w.title_bar = titlebar.chrome(app, w, w.ops, s.disp.ops, bridge=s.plan.bridge)
+        w.layout = LayoutStore(s.plan.kind)
         w.setGeometry(docks.first_geometry(app))
         return adopt(w)
 
@@ -86,15 +88,17 @@ def startup_module():
         if size is not None:                            # the prototype's show: a size given, no restore(), so its
             v.resize(*size)                             # docks keep Qt's own sizes; explorer's first-show sizing
             v._sized = True                             # (the fresh start's) is skipped the same way
+        else:
+            v.restore(app)                              # the saved layout, as ui.app.run
         s.disp.attach(app, v, v.ops)
 
     return SimpleNamespace(prepare=prepare, make_app=make_app, open_cube=open_cube, make_viewer=make_viewer, show=show,
                            _OFFSCREEN_NOISE=xdisplay.OFFSCREEN_NOISE, _quiet_offscreen=xdisplay._quiet_offscreen)
 
 
-# checks of what explorer has not yet, by a word of their name: NOT YET whatever they gave (a SKIP there would hide
-# the gap)
-NOT_YET_CHECKS = (("slit", "slit (E7)"), ("persist:", "layout persistence (E5)"))
+# checks of what explorer has not yet, by a word of their name: NOT YET whatever they gave, SKIP included (a SKIP
+# there would hide the gap)
+NOT_YET_CHECKS = (("slit", "slit (E7)"),)
 
 
 def table(path, rc):
@@ -102,16 +106,22 @@ def table(path, rc):
     import json
 
     r = json.load(open(path))
+    first_persist = None
     for c in r["checks"]:
-        # a check of the slit or of the saved layout means nothing before explorer has them, even when it passes
-        # (with no slit, "the wheel still zooms in slit mode" holds for nothing); the rest, NOT YET when it failed
-        # on a name explorer has no counterpart for
+        # a check of the slit means nothing before explorer has one, even when it passes (with no slit, "the wheel
+        # still zooms in slit mode" holds for nothing); the rest, NOT YET when it failed on a name explorer has no
+        # counterpart for
         feature = next((what for key, what in NOT_YET_CHECKS if key in c["check"].lower()), None)
-        skipped_by_both = c["check"].startswith("window: minimise") and r["mode"] == "xcb"   # the prototype's too
-        if feature is not None and not (c["status"] == "SKIP" and skipped_by_both):
+        if feature is not None:
             c["status"], c["value"] = "NOT YET", f"not in explorer yet: {feature}; {c['value']}"
         elif c["status"] == "FAIL" and "not in explorer yet" in c["value"]:
             c["status"] = "NOT YET"
+        elif (c["status"] == "FAIL" and c["check"].startswith("persist:") and c["value"].startswith("KeyError: 'v'")
+              and first_persist == "NOT YET"):
+            # these reuse the window the first persist check reopens; it stopped at the slit it draws first
+            c["status"], c["value"] = "NOT YET", f"needs 'persist: close, reopen' (NOT YET: slit (E7)); {c['value']}"
+        if c["check"].startswith("persist: close, reopen"):
+            first_persist = c["status"]
     w = min(70, max(len(c["check"]) for c in r["checks"]))
     print(f"\nexplorer under the prototype's smoke.py  mode={r['mode']}  platform={r['platform']}  cube={r['cube']}"
           f"  sp={r['sp']}  {r['seconds']} s")

@@ -123,6 +123,8 @@ class Shell(QtWidgets.QMainWindow):
             self.spec_lock.toggled.connect(lambda on: self.scheduler.set_y_fixed(on))
             self.spec_lock.refit.connect(self.fit_spectra)
         self._closing = False
+        self.layout = None                              # ui.layout.LayoutStore, set by whoever shows the window
+        self.window_ops = None                          # its WindowOps (zoom state for the layout)
         for d, panel in ((self.spec_dock, "spectra"), (self.lt_dock, "lambda_t")):
             d.visibilityChanged.connect(lambda on, panel=panel: self._panel_shown(panel, on))
         self.status = QtWidgets.QLabel()
@@ -479,6 +481,9 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- closing
     def closeEvent(self, ev) -> None:
+        if self.layout is not None and not self._closing:   # before the docks say hidden
+            ops = self.window_ops
+            self.layout.save(self, zoomed=ops is not None and ops.unzoomed is not None)
         self._closing = True                            # the docks then say hidden: nothing to read any more
         self._play.stop()
         self._mem.stop()
