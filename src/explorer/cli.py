@@ -43,7 +43,34 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
+REEXEC_ENV = ENV_PREFIX + "REEXEC"
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # src/explorer/cli.py: the tree
+
+
+def clean_library_path(environ, platform: str, root: str = ROOT) -> dict | None:
+    """The environment to start again in, before Qt loads, or None to go on. On Linux another environment's
+    LD_LIBRARY_PATH (conda's, from .bashrc) loads its own Qt and PySide6 fails (Qt_6_PRIVATE_API, bellatrix
+    2026-09-28): without it, or with the tree's .qtlibs/only alone (libxcb-cursor, what scripts/run.sh sets). Once
+    only (EXPLORER_REEXEC). From the prototype's test.py:19-28."""
+    if not platform.startswith("linux") or environ.get(REEXEC_ENV):
+        return None
+    qt = os.path.join(root, ".qtlibs", "only")
+    want = qt if os.path.isdir(qt) else ""
+    if environ.get("LD_LIBRARY_PATH", "") == want:
+        return None
+    env = dict(environ)
+    env[REEXEC_ENV] = "1"
+    env.pop("LD_LIBRARY_PATH", None)
+    if want:
+        env["LD_LIBRARY_PATH"] = want
+    return env
+
+
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:                                    # the command itself, not a call from a test
+        env = clean_library_path(os.environ, sys.platform)
+        if env is not None:
+            os.execve(sys.executable, [sys.executable] + sys.argv, env)
     argv = sys.argv[1:] if argv is None else list(argv)
     from . import obs  # standard library only: cheap
 
