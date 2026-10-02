@@ -27,11 +27,12 @@ SHAPE = (3, 4, 5, 96, 80)
 
 
 class App:
-    def __init__(self, cube, size="800x600"):
+    def __init__(self, cube, size="800x600", *extra):
         env = dict(os.environ, DISPLAY=XDISP)
         env.pop("QT_QPA_PLATFORM", None)
         env.pop("EXPLORER_X11", None)
-        self.p = subprocess.Popen([sys.executable, os.path.join(HERE, "bridge_app.py"), str(cube), "--size", size],
+        self.p = subprocess.Popen([sys.executable, os.path.join(HERE, "bridge_app.py"), str(cube), "--size", size,
+                                   *extra],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env, text=True)
         self.hello = self._read(60)
         assert self.hello.get("ready"), self.hello
@@ -446,3 +447,23 @@ def test_glass_panels_ask_the_manager_for_no_frame(x, app):
             assert x.get_atom_name(kind) == "_NET_WM_WINDOW_TYPE_NORMAL", w["title"]
     finally:
         app("look classic")
+
+
+def test_panels_floating_before_their_window_are_normal_and_transient_for_it(x, cube):
+    """A saved glass layout floats the panels before the main window is shown, so their X windows came first, with
+    no owner: utility windows (quartz-wm's 16-px strip, the panels placed by the manager at 0,16) and not kept above
+    the window. They are normal, and transient for the window once it is there."""
+    from Xlib import Xatom
+
+    a = App(cube, "800x600", "--float-first")
+    try:
+        st = a("state")
+        mw = next(w for w in st["windows"] if w["title"].startswith("bridge test"))
+        for w in (w for w in st["windows"] if w["title"] in ("Spectrum", "λ–t")):
+            win = x.create_resource_object("window", w["xid"])
+            kind = win.get_full_property(x.intern_atom("_NET_WM_WINDOW_TYPE"), Xatom.ATOM).value[0]
+            assert x.get_atom_name(kind) == "_NET_WM_WINDOW_TYPE_NORMAL", w["title"]
+            owner = wait(lambda win=win: win.get_full_property(Xatom.WM_TRANSIENT_FOR, Xatom.WINDOW))
+            assert owner is not None and owner.value[0] == mw["xid"], w["title"]
+    finally:
+        a.close()

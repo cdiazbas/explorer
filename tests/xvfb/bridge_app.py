@@ -19,6 +19,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cube")
     ap.add_argument("--size", default="800x600")
+    ap.add_argument("--float-first", action="store_true",
+                    help="the panels floating before the window is shown, as a saved glass layout leaves them")
     a = ap.parse_args()
     from explorer.data.dataset import Dataset
     from explorer.platform.display import for_plan
@@ -36,6 +38,10 @@ def main():
     w = Shell(ds, title="bridge test λ", t0=t0)
     W, H = (int(v) for v in a.size.split("x"))
     w.resize(W, H)
+    if a.float_first:
+        for d in (w.spec_dock, w.lt_dock):
+            d.setFloating(True)
+            d.show()
     ops = disp.attach(app, w)
     bridge = disp.bridge
     extra: dict = {}

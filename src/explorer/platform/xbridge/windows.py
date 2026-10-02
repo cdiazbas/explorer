@@ -169,13 +169,20 @@ class Windows:
         # and crept down 16 px at each round trip. The prototype's xbridge.py:660-690 (audit F23c)
         wm_panel = os.environ.get(TITLEBAR_ENV) == "wm" and isinstance(w, QtWidgets.QDockWidget)
         kind = ("_NET_WM_WINDOW_TYPE_DIALOG" if wt in (Qt.WindowType.Dialog, Qt.WindowType.Sheet)
-                else "_NET_WM_WINDOW_TYPE_UTILITY" if wt == Qt.WindowType.Tool and (rec.owner is None or wm_panel)
+                else "_NET_WM_WINDOW_TYPE_UTILITY" if wm_panel
                 else "_NET_WM_WINDOW_TYPE_NORMAL")
         c.change_property(rec.xid, A["_NET_WM_WINDOW_TYPE"], X.ATOM_ATOM, 32, [A[kind]])
         if w.windowFlags() & Qt.WindowType.FramelessWindowHint and not wm_panel:
             c.change_property(rec.xid, A["_MOTIF_WM_HINTS"], A["_MOTIF_WM_HINTS"], 32, [2, 0, 0, 0, 0])
         if rec.owner is not None:
             c.change_property(rec.xid, X.ATOM_WM_TRANSIENT_FOR, X.ATOM_WINDOW, 32, [rec.owner.xid])
+        # windows of this one made before it (a saved glass layout floats the panels before the main window is shown):
+        # transient for it now, so the manager keeps them above it
+        for r in self.by_widget.values():
+            pw = r.w.parentWidget()
+            if r.owner is None and not r.popup and pw is not None and pw.window() is w:
+                r.owner = rec
+                c.change_property(r.xid, X.ATOM_WM_TRANSIENT_FOR, X.ATOM_WINDOW, 32, [rec.xid])
 
     def set_title(self, rec: XWin) -> None:
         title = rec.w.windowTitle() or APP_NAME
