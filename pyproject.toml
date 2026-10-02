@@ -67,6 +67,7 @@ environments = [
 line-length = 120
 target-version = "py312"
 src = ["src", "tests"]
+extend-exclude = ["bench/results"]                     # measurements and the scripts that made them, not the code
 
 [tool.ruff.lint]
 # explicit, so a new ruff version does not change what fails: errors and real traps, not the code's style
