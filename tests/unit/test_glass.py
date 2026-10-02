@@ -85,7 +85,9 @@ def test_the_readout_is_the_title_while_locked(qapp, shell):
     assert spin(qapp, lambda: w.windowTitle() == "c_im.fits")
 
 
-def test_i_hides_and_shows_the_panels_and_2x2_agrees_with_key_5(qapp, shell):
+def test_i_hides_and_shows_the_panels_and_all_agrees_with_key_5(qapp, shell):
+    from PySide6 import QtWidgets
+
     w = shell
     wear(qapp, w, "glass")
     g = w.glass
@@ -94,10 +96,15 @@ def test_i_hides_and_shows_the_panels_and_2x2_agrees_with_key_5(qapp, shell):
     assert all(d.isHidden() for d in g.docks())
     w.toggle_panels()
     assert not any(d.isHidden() for d in g.docks())
-    g.grid_btn.click()
-    assert w.grid is not None and w.grid.isVisible()
+    # one name and one control for the four Stokes: All in the Stokes control, as outside glass (no 2x2 button)
+    texts = [b.text() for b in g.bar.findChildren(QtWidgets.QAbstractButton)]
+    assert not [t for t in texts if "2" in t and "×" in t], f"the bar's buttons: {texts}"
+    w.nav.drop.segments.group.button(w.session.sizes["s"]).click()
+    seen = dict(grid=w.grid is not None and w.grid.isVisible(), drop=w.nav.drop.text())
+    assert seen == dict(grid=True, drop="Stokes All ▾"), seen
     w.toggle_grid()                                      # key 5
-    assert not w.grid.isVisible() and not g.grid_btn.isChecked()
+    seen = dict(grid=w.grid.isVisible(), drop=w.nav.drop.text())
+    assert not seen["grid"] and seen["drop"] != "Stokes All ▾", seen
 
 
 def test_the_bar_hides_when_idle_and_comes_back(qapp, shell, monkeypatch):
@@ -223,7 +230,7 @@ def test_the_bar_buttons_are_flat_whatever_the_style_and_given_back(qapp, shell)
     buttons = [nav.play, nav.panels, nav.reset, nav.help, nav.drop]
     before = [b.styleSheet() for b in buttons]
     wear(qapp, w, "glass")
-    for b in buttons + [w.glass.grid_btn]:
+    for b in buttons:
         assert "border: none" in b.styleSheet() and "background: transparent" in b.styleSheet()
     assert nav.drop.segments.styleSheet().count("QToolButton {") == 1     # the segments keep their own
     wear(qapp, w, "modern")

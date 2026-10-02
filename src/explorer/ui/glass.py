@@ -425,7 +425,6 @@ class GlassChrome:
         self.over_image = False
         self.bar: Bar                               # made by apply()
         self.autohide: AutoHide | None = None
-        self.grid_btn: QtWidgets.QToolButton | None = None
         self.skins: list[PanelSkin] = []
         self._watches: list[_Watch] = []
         self._was: dict = {}
@@ -521,20 +520,10 @@ class GlassChrome:
             rows[row].addWidget(nav.labels[axis])
         for b in (nav.panels, nav.reset, nav.help):
             rows[0].addWidget(b)
-        if nav.stokes is not None:                  # I Q U V side by side (look_glass.py:685-687; key 5 here)
-            self.grid_btn = b = QtWidgets.QToolButton()
-            b.setText("2×2")
-            b.setCheckable(True)
-            b.setAutoRaise(True)
-            b.setToolTip("I, Q, U and V side by side (5)")
-            b.setChecked(nav.all)
-            b.toggled.connect(self.w.set_grid)
-            rows[1].addWidget(b)
-            self._made.append(b)
-        else:
-            self.grid_btn = None
+        # I Q U V side by side: All in the Stokes control and key 5, as in the other looks; the prototype's own 2x2
+        # button (look_glass.py:685-687) would be a second name and a second control for it
         rows[1].addWidget(nav.fps)
-        self._flatten([nav.play, nav.panels, nav.reset, nav.help, nav.drop, self.grid_btn])
+        self._flatten([nav.play, nav.panels, nav.reset, nav.help, nav.drop])
         for x in [nav.play, nav.fps, nav.panels, nav.reset, nav.help, *nav.sliders.values(), *nav.labels.values()]:
             x.show()
         if nav.drop is not None:
@@ -716,13 +705,9 @@ class GlassChrome:
         w.setWindowTitle(text if (self.over_image or w.session.state.locked) and text else self._was["title"])
 
     def grid_changed(self, on: bool) -> None:
-        """The 2x2 view shown or gone: the bar over it (look_glass.py:887), its button in step with key 5."""
+        """The four Stokes shown or gone: the bar over them (look_glass.py:887)."""
         if on:
             self.bar.raise_()
-        if self.grid_btn is not None and self.grid_btn.isChecked() != on:
-            self.grid_btn.blockSignals(True)
-            self.grid_btn.setChecked(on)
-            self.grid_btn.blockSignals(False)
 
     # ---------------------------------------------------------------- out
     def _start_afresh(self) -> None:
