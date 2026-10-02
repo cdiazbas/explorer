@@ -176,3 +176,39 @@ def test_what_is_on_takes_the_accent_with_white_text_readable(qapp, shell):
     assert f"background: {sel.name()};" in w.nav.drop.segments.styleSheet()
     wear(qapp, w, "modern")
     assert (style.selected().name(), w.nav.drop.segments.styleSheet()) == before
+
+
+def test_started_in_glass_classic_comes_as_at_a_fresh_start(qapp, cube):
+    """The last session closed in glass, so this one starts in it: out of it, classic as a fresh classic start (the
+    prototype starts every look from its own layout), not the window as it was before its first show (640x480,
+    the image 62 px wide beside 560-px panels)."""
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    from explorer.data.dataset import Dataset
+    from explorer.look import get_look
+    from explorer.ui import docks, style
+    from explorer.ui.shell import Shell
+
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    style.apply_theme(qapp, "dark")
+    first = docks.first_geometry(qapp)
+    seen = {}
+    try:
+        for look in ("classic", "glass"):
+            ds = Dataset.open(cube)
+            w = Shell(ds, title="c_im.fits", look=get_look(look))
+            w.setGeometry(first if look == "classic" else QtCore.QRect(60, 50, 700, 600))
+            w.show()
+            assert spin(qapp, lambda w=w: "lambda_t" in w.last)
+            if look == "glass":
+                assert spin(qapp, lambda w=w: all(d.isFloating() for d in w.glass.docks()))
+                wear(qapp, w, "classic")
+            spin(qapp, lambda: False, timeout=0.5)
+            seen[look] = (w.geometry(), [d.geometry() for d in (w.spec_dock, w.lt_dock)], w.view.widget.size())
+            w.close()
+            ds.close()
+    finally:
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+    assert seen["glass"] == seen["classic"], seen
+

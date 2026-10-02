@@ -376,6 +376,9 @@ class GlassChrome:
     def apply(self) -> None:
         w, nav, view = self.w, self.w.nav, self.w.view
         self.on = True
+        # worn before the window was first shown (the last session closed in glass): there is no "before" to give
+        # back, only a window not yet sized; out of glass, the other looks start then as at a fresh start
+        self._fresh = not w.isVisible()
         self._was = dict(state=w.saveState(), geometry=w.geometry(), title=w.windowTitle(),
                          statusbar=w.statusBar().isVisibleTo(w), floating={d: d.isFloating() for d in self.docks()},
                          margins=w.centralWidget().layout().contentsMargins(),
@@ -638,6 +641,25 @@ class GlassChrome:
             self.grid_btn.blockSignals(False)
 
     # ---------------------------------------------------------------- out
+    def _start_afresh(self) -> None:
+        """The other looks' own saved layout, as the prototype starts each look from its own; without one, the first
+        start's window and panels."""
+        from . import docks
+
+        w = self.w
+        app = _app()
+        store = w.layout.for_look("classic") if w.layout is not None else None
+        if store is not None and store.restore(w, app):
+            return
+        if store is None:                           # (restore() sets the first geometry itself)
+            w.setGeometry(docks.first_geometry(app))
+        w.restoreState(w._initial_state)
+        for d in self.docks():
+            if d.isHidden():
+                d.show()
+        w.reset_sizes()
+        QtCore.QTimer.singleShot(0, w.reset_sizes)  # again once the layout has settled, as reset_panels
+
     def _restore_panels(self) -> None:
         w = self.w
         if self.on:                                 # in glass again
@@ -686,9 +708,12 @@ class GlassChrome:
         # the window's size before the panels': restored into glass's narrowed window, Qt shared that width out and
         # kept the shares (spectra 414x245 where 520x343 had been). Once more when the window manager has applied
         # the size, which it may do later
-        w.setGeometry(self._was["geometry"])
-        self._restore_panels()
-        QtCore.QTimer.singleShot(0, self._restore_panels)
+        if self._fresh:
+            self._start_afresh()
+        else:
+            w.setGeometry(self._was["geometry"])
+            self._restore_panels()
+            QtCore.QTimer.singleShot(0, self._restore_panels)
         w.centralWidget().layout().setContentsMargins(self._was["margins"])
         if self._was["ci"] is not None:
             view.widget.ci.setContentsMargins(*self._was["ci"])
