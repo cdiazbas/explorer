@@ -640,8 +640,8 @@ class GlassChrome:
     # ---------------------------------------------------------------- out
     def _restore_panels(self) -> None:
         w = self.w
-        if self.on or w.geometry().size() != self._was["geometry"].size():
-            return                                  # in glass again, or resized since: left as it is
+        if self.on:                                 # in glass again
+            return
         lay = QtWidgets.QMainWindow.layout(w)
         if lay is not None:
             lay.activate()
