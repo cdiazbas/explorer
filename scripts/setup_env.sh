@@ -8,7 +8,9 @@
 #   scripts/setup_env.sh --link       # also the `explorer` command on the PATH, from any folder: a link
 #                                     # ~/.local/bin/explorer (or $XDG_BIN_HOME/explorer) to scripts/run.sh,
 #                                     # which picks this machine's environment, so a home shared by macOS
-#                                     # and Linux serves both
+#                                     # and Linux serves both. If that folder is not on the PATH, it asks
+#                                     # to add it to the shell's startup file (~/.bashrc, ~/.zshrc)
+#   scripts/setup_env.sh --link --update-shell   # add it without asking (a marked block, added once)
 #
 # One directory on shared storage serves Linux and Macs: each builds its own .venv-<OS>-<arch>.
 # Tools, as in the prototype's setup_env.sh: uv (on PATH, or its per-platform copy in
@@ -25,12 +27,13 @@ qtlibs="$root/.qtlibs"
 cd "$root"
 unset LD_LIBRARY_PATH                               # another env's Qt on this path breaks PySide6
 
-venv="$root/.venv-$plat" dev=0 force=0 link=0
+venv="$root/.venv-$plat" dev=0 force=0 link=0 update_shell=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dev) dev=1 ;;
     --force) force=1 ;;
     --link) link=1 ;;
+    --update-shell) update_shell=1 ;;
     --venv) venv="$2"; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -108,5 +111,32 @@ if [ "$link" = 1 ]; then                            # the command on the PATH: a
   mkdir -p "$bin"
   ln -sfn "$here/run.sh" "$cmd"
   echo "[setup_env] $cmd -> $here/run.sh"
-  case ":$PATH:" in *":$bin:"*) ;; *) echo "[setup_env] $bin is not on your PATH: add it to use 'explorer'" >&2 ;; esac
+  case ":$PATH:" in
+    *":$bin:"*) ;;
+    *)
+      # not on the PATH: many shells' startup files add ~/.local/bin, many do not (bellatrix's did not). The line
+      # goes into the startup file of the user's shell, in a marked block, once, and only when asked
+      case "$(basename "${SHELL:-bash}")" in zsh) rc="$HOME/.zshrc" ;; *) rc="$HOME/.bashrc" ;; esac
+      mark="# >>> explorer: ~/.local/bin on the PATH >>>"
+      if [ -f "$rc" ] && grep -qF "$mark" "$rc"; then
+        echo "[setup_env] $rc already puts $bin on the PATH: open a new terminal to use 'explorer'"
+      else
+        if [ "$update_shell" = 0 ] && [ -t 0 ]; then
+          printf "[setup_env] %s is not on your PATH. Add it in %s? [y/N] " "$bin" "$rc"
+          read -r ans || ans=""
+          case "$ans" in y|Y|yes|YES) update_shell=1 ;; esac
+        fi
+        if [ "$update_shell" = 1 ]; then
+          {
+            printf '\n%s\n' "$mark"
+            printf 'case ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH" ;; esac\n' "$bin" "$bin"
+            printf '%s\n' "# <<< explorer <<<"
+          } >> "$rc"
+          echo "[setup_env] added $bin to the PATH in $rc (the block between the explorer marks): open a new terminal"
+        else
+          echo "[setup_env] $bin is not on your PATH: run again with --link --update-shell, or add it yourself" >&2
+        fi
+      fi
+      ;;
+  esac
 fi
