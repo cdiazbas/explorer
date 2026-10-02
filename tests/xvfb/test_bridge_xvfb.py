@@ -123,6 +123,19 @@ def same_as_qt(x, app, xid, which=""):
     return int(((got != qt) & seen).sum()), got.shape
 
 
+def looked(x, app, step):
+    """What the test saw at a step that failed: explorer's state, where X has the pointer and the focus, and the
+    bridge's counts (a failure in CI cannot be watched again)."""
+    root = x.screen().root
+    p = root.query_pointer()
+    st = app("state")
+    seen = dict(step=step, cursor=st["cursor"], locked=st["locked"], popup=st["popup"], active=st["active"],
+                pointer=(p.root_x, p.root_y), pointer_on=p.child, focus=x.get_input_focus().focus.id,
+                windows=[(w["title"], w["xid"], w["geometry"], w["popup"]) for w in st["windows"]],
+                bridge=st["summary"])
+    return "\n".join(f"  {k}: {v}" for k, v in seen.items())     # text: pytest shortens a dict's repr
+
+
 def main_window(app):
     return next(w for w in app("state")["windows"] if w["title"] == "bridge test λ")
 
@@ -180,24 +193,25 @@ def test_the_pointer_moves_the_cursor_and_a_click_locks_it(x, app):
     gx, gy, gw, gh = mw["geometry"]
     c0 = app("state")["cursor"]
     fake(x, None, xy=(gx + gw // 2 - 40, gy + gh // 2 - 30))
-    assert wait(lambda: app("state")["cursor"] != c0)
+    assert wait(lambda: app("state")["cursor"] != c0), looked(x, app, f"first move: the cursor still {c0}")
     c1 = app("state")["cursor"]
     fake(x, None, xy=(gx + gw // 2 + 30, gy + gh // 2 + 20))
-    assert wait(lambda: app("state")["cursor"] != c1)
+    assert wait(lambda: app("state")["cursor"] != c1), looked(x, app, f"second move: the cursor still {c1}")
     fake(x, 4, 1)                                       # ButtonPress, left
     fake(x, 5, 1)
-    assert wait(lambda: app("state")["locked"])
+    assert wait(lambda: app("state")["locked"]), looked(x, app, "a left click: not locked")
     fake(x, 4, 3)                                       # right: release the cursor
     fake(x, 5, 3)
-    assert wait(lambda: not app("state")["locked"])
+    assert wait(lambda: not app("state")["locked"]), looked(x, app, "a right click: still locked")
     # a right click opens no menu, as in the prototype (app/viewer.py:1018-1028)
-    assert not wait(lambda: app("state")["popup"], timeout=0.5)
+    assert not wait(lambda: app("state")["popup"], timeout=0.5), looked(x, app, "a right click opened a menu")
     # a menu holds the pointer, and Escape, typed while the X focus is on the main window, closes it
     app("popup")
-    assert app("state")["popup"]
+    assert app("state")["popup"], looked(x, app, "the menu did not open")
     fake(x, 2, keycode(x, "Escape"))
     fake(x, 3, keycode(x, "Escape"))
-    assert wait(lambda: not app("state")["popup"] and not any(w["popup"] for w in app("state")["windows"]))
+    assert wait(lambda: not app("state")["popup"] and not any(w["popup"] for w in app("state")["windows"])), \
+        looked(x, app, "Escape: the menu still open")
 
 
 def test_a_panel_is_transient_for_its_window_and_takes_its_shape(x, app):
