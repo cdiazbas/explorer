@@ -39,6 +39,12 @@ def main():
     W, H = (int(v) for v in a.size.split("x"))
     w.resize(W, H)
     if a.float_first:
+        # as app.py: the chrome puts its dock titles on (always through the bridge), then the saved layout floats
+        # the panels, all before the window is shown. Without a title of its own a floating panel asks the manager
+        # for its decorations
+        from explorer.ui import titlebar
+
+        titlebar.dock_titles(w)
         for d in (w.spec_dock, w.lt_dock):
             d.setFloating(True)
             d.show()
