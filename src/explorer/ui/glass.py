@@ -311,6 +311,15 @@ class PanelSkin(QtCore.QObject):
         dock.topLevelChanged.connect(self._floated)
         self.shape()
 
+    def titles_changed(self) -> None:
+        """Someone put another title on the panel (the chrome's, after the look): that one is the panel's own, to
+        give back on remove(); the glass title goes on again."""
+        t = self.d.titleBarWidget()
+        if isinstance(t, PanelTitle):
+            return
+        self._title = t
+        self.d.setTitleBarWidget(PanelTitle(self.d))
+
     def _floated(self, _floating) -> None:
         self.shape()
 
@@ -466,6 +475,11 @@ class GlassChrome:
             key._place = lambda view_: key.move(MARGIN, MARGIN)
             key._place(view.widget)
         self.readout()
+
+    def titles_changed(self) -> None:
+        """The chrome put its dock titles on after glass (app.chrome): glass's own over them again."""
+        for s in self.skins:
+            s.titles_changed()
 
     def docks(self) -> list:
         return [d for d in (self.w.spec_dock, self.w.lt_dock) if d is not None]

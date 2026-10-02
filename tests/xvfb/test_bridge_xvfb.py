@@ -420,3 +420,20 @@ def test_the_link_probe_measures_the_display():
     r = linkprobe.measure(mb=1, display=XDISP)
     assert r["MBps"] > 0 and r["rtt_ms"] >= 0
     assert 2 <= linkprobe.suggest_fps(r["MBps"], 1.3 * 772 * 803) <= 30
+
+
+def test_glass_panels_ask_the_manager_for_no_frame(x, app):
+    """In glass the panels float with a title of their own: a window manager's frame above it was a second title
+    (quartz-wm's grey bar, seen by the user through XQuartz). Each floating panel's X window asks for none."""
+    motif = x.intern_atom("_MOTIF_WM_HINTS")
+    try:
+        app("look glass")
+        titles = {"Spectrum", "λ–t"}
+        wins = wait(lambda: [w for w in app("state")["windows"] if w["title"] in titles and not w["popup"]]
+                    if len({w["title"] for w in app("state")["windows"]} & titles) == 2 else None)
+        assert wins
+        for w in wins:
+            hints = x.create_resource_object("window", w["xid"]).get_full_property(motif, motif)
+            assert hints is not None and hints.value[0] & 2 and hints.value[2] == 0, (w["title"], hints)
+    finally:
+        app("look classic")

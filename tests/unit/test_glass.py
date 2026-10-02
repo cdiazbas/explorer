@@ -228,3 +228,35 @@ def test_the_bar_buttons_are_flat_whatever_the_style_and_given_back(qapp, shell)
     assert nav.drop.segments.styleSheet().count("QToolButton {") == 1     # the segments keep their own
     wear(qapp, w, "modern")
     assert [b.styleSheet() for b in buttons] == before
+
+
+def test_started_in_glass_its_panel_titles_survive_the_chrome(qapp, cube, monkeypatch):
+    """The window wears its look when it is made, and the chrome (app.py) puts the dock titles on after: on Linux and
+    through the bridge they replaced glass's titles, a grey bar under the manager's (seen by the user). The
+    prototype puts the titles on first (startup.py:145), then the look. Out of glass, the chrome's titles."""
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.data.dataset import Dataset
+    from explorer.look import get_look
+    from explorer.ui import app as appmod
+    from explorer.ui import style, titlebar
+    from explorer.ui.glass import PanelTitle
+    from explorer.ui.shell import Shell
+
+    monkeypatch.setenv(titlebar.ENV, "wm")             # the bridge with the manager's frames: dock titles, no bar
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    style.apply_theme(qapp, "dark")
+    ds = Dataset.open(cube)
+    w = Shell(ds, title="c_im.fits", look=get_look("glass"))
+    try:
+        appmod.chrome(qapp, w, None, lambda d: None, bridge=True)
+        assert all(isinstance(d.titleBarWidget(), PanelTitle) for d in w.glass.docks())
+        w.show()
+        assert spin(qapp, lambda: "lambda_t" in w.last)
+        wear(qapp, w, "classic")
+        assert all(type(d.titleBarWidget()) is titlebar.DockTitle for d in (w.spec_dock, w.lt_dock))
+    finally:
+        w.close()
+        ds.close()
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)

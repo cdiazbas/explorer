@@ -31,6 +31,18 @@ def themed_app(disp, theme: str = "auto"):
     return app, style.apply_theme(app, "dark" if disp.plan.bridge and theme == "auto" else theme)
 
 
+def chrome(app, shell, ops, ops_for, bridge: bool):
+    """titlebar.chrome on a window that already wears its look: the dock titles it puts on are the panels' own, and
+    the glass look's are put back over them (the prototype puts the titles on first, startup.py:145, then the
+    look)."""
+    from . import titlebar
+
+    bar = titlebar.chrome(app, shell, ops, ops_for, bridge=bridge)
+    if shell.glass is not None:
+        shell.glass.titles_changed()
+    return bar
+
+
 def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look=None, reset_layout=False,
         quit_after: float | None = None) -> int:
     """Open path and run the event loop until the window closes; returns the exit code. quit_after: seconds after the
@@ -73,10 +85,8 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
         shell.breakdown = (before, phases, shown, plan.remote)
-        from . import titlebar
-
         ops = shell.window_ops = disp.ops(shell)        # before show: our title bar makes the window frameless
-        shell.title_bar = titlebar.chrome(app, shell, ops, disp.ops, bridge=plan.bridge)
+        shell.title_bar = chrome(app, shell, ops, disp.ops, bridge=plan.bridge)
         shell.layout = store
         if store.for_look(look).restore(shell, app):    # the last session's panels (the glass look's own), sizes too
             shell._sized = True
