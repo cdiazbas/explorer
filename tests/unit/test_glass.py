@@ -212,3 +212,19 @@ def test_started_in_glass_classic_comes_as_at_a_fresh_start(qapp, cube):
         qapp.setPalette(pal)
     assert seen["glass"] == seen["classic"], seen
 
+
+
+def test_the_bar_buttons_are_flat_whatever_the_style_and_given_back(qapp, shell):
+    """Out of a toolbar a Mac's native style drew every button of the bar in a grey box (seen by the user): in glass
+    they carry a sheet of their own, flat; out of it, the sheet they had."""
+    w = shell
+    wear(qapp, w, "modern")
+    nav = w.nav
+    buttons = [nav.play, nav.panels, nav.reset, nav.help, nav.drop]
+    before = [b.styleSheet() for b in buttons]
+    wear(qapp, w, "glass")
+    for b in buttons + [w.glass.grid_btn]:
+        assert "border: none" in b.styleSheet() and "background: transparent" in b.styleSheet()
+    assert nav.drop.segments.styleSheet().count("QToolButton {") == 1     # the segments keep their own
+    wear(qapp, w, "modern")
+    assert [b.styleSheet() for b in buttons] == before

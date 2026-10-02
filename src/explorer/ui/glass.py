@@ -422,6 +422,7 @@ class GlassChrome:
         self._was: dict = {}
         self._hidden: list = []
         self._tinted = self._sheet = None
+        self._sheets: dict = {}
 
     # ---------------------------------------------------------------- in
     def apply(self) -> None:
@@ -519,6 +520,7 @@ class GlassChrome:
         else:
             self.grid_btn = None
         rows[1].addWidget(nav.fps)
+        self._flatten([nav.play, nav.panels, nav.reset, nav.help, nav.drop, self.grid_btn])
         for x in [nav.play, nav.fps, nav.panels, nav.reset, nav.help, *nav.sliders.values(), *nav.labels.values()]:
             x.show()
         if nav.drop is not None:
@@ -555,6 +557,23 @@ class GlassChrome:
                     delattr(st, a)
         if self._sheet is not None and self.w.nav.drop is not None:
             self.w.nav.drop.segments.setStyleSheet(self._sheet)
+
+    def _flatten(self, buttons) -> None:
+        """The bar's buttons flat on the glass: out of a toolbar a Mac's native style drew each in a grey box. A sheet
+        of their own (the Stokes segments, a child of the drop-down, keep theirs); the one they had comes back."""
+        ink = INK[_mode()]
+        H = QtGui.QColor.NameFormat.HexArgb
+        hover, down = QtGui.QColor(ink), QtGui.QColor(ink)
+        hover.setAlphaF(0.10)
+        down.setAlphaF(0.18)
+        sheet = (f"QToolButton {{ border: none; border-radius: 6px; padding: 3px 7px; background: transparent;"
+                 f" color: {ink.name()}; }}"
+                 f"QToolButton:hover {{ background: {hover.name(H)}; }}"
+                 f"QToolButton:pressed {{ background: {down.name(H)}; }}"
+                 f"QToolButton:checked {{ background: {for_white_text(accent()).name()}; color: white; }}")
+        self._sheets = {b: b.styleSheet() for b in buttons if b is not None}
+        for b in self._sheets:
+            b.setStyleSheet(sheet)
 
     def place_bar(self) -> None:
         view = self.w.view.widget
@@ -741,6 +760,9 @@ class GlassChrome:
                 row.takeAt(0)
         for x in self._made:
             x.deleteLater()
+        for btn, css in self._sheets.items():
+            if btn not in self._made:
+                btn.setStyleSheet(css)
         tb = nav.tb
         for a, visible in self._actions:
             tb.addAction(a)
