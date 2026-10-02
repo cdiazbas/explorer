@@ -1,9 +1,11 @@
 """The glass look (ROADMAP E5.12), offscreen: the controls in a glass bar over the image, the panels floating beside
 the window as smoked glass with their own titles, the status line hidden, the readout in the title, the markers in
 the accent, the image to the window's edges; I hides and shows the panels, the bar's 2x2 button and key 5 agree, the
-bar hides when idle and comes back on a move; out of it, everything as it was."""
+bar hides when idle and comes back on a move; the bar's glass is the image under it, blurred, and takes the new
+image once it rests; the window is as wide as the image; out of it, everything as it was."""
 import time
 
+import numpy as np
 import pytest
 
 from explorer.testing import synth
@@ -123,6 +125,75 @@ def test_the_bar_hides_when_idle_and_comes_back(qapp, shell, monkeypatch):
                            QtCore.Qt.MouseButton.NoButton, QtCore.Qt.KeyboardModifier.NoModifier)
     QtWidgets.QApplication.sendEvent(vp, ev)
     assert bar.isVisible()
+
+
+def grey(pm):
+    """A pixmap's pixels in grey levels, as floats."""
+    from PySide6 import QtGui
+
+    img = pm.toImage().convertToFormat(QtGui.QImage.Format.Format_Grayscale8)
+    a = np.frombuffer(img.constBits(), np.uint8).reshape(img.height(), img.bytesPerLine())[:, :img.width()]
+    return a.astype(float)
+
+
+def under(w, bar):
+    """What the image view shows under the bar (its viewport, so not the bar), blurred as the glass blurs it."""
+    from PySide6 import QtCore
+
+    vp = w.view.widget.viewport()
+    r = QtCore.QRect(vp.mapFrom(w.view.widget, bar.pos()), bar.size())
+    S, A = QtCore.Qt.TransformationMode.SmoothTransformation, QtCore.Qt.AspectRatioMode.IgnoreAspectRatio
+    return grey(vp.grab(r).scaled(max(1, r.width() // 8), max(1, r.height() // 8), A, S).scaled(r.size(), A, S))
+
+
+def test_the_bar_is_the_image_under_it_and_follows_it_once_it_rests(qapp, shell, monkeypatch):
+    """QWidget.render(view) paints the window's background only, the image living in the viewport: the first glass
+    was a flat grey patch (grey 45, deviation 0 against 52.7 for the image). The scene is rendered instead, and drawn
+    again once the image has rested REST_MS (the prototype's F78, app/look_glass.py:102-111 and 127-135)."""
+    from explorer.ui import glass
+
+    monkeypatch.setattr(glass, "HIDE_MS", 60000)         # shown all along: a hidden bar paints nothing
+    w = shell
+    wear(qapp, w, "glass")
+    g = w.glass
+    bar = g.bar
+    assert spin(qapp, lambda: all(d.isFloating() for d in g.docks()))
+    assert spin(qapp, lambda: bar._backdrop is not None and not g.changing), dict(changing=g.changing)
+    first = bar._backdrop
+    a0 = grey(first)
+    seen = dict(std=round(float(a0.std()), 2), off=round(float(np.abs(a0 - under(w, bar)).mean()), 2))
+    assert seen["std"] > 5 and seen["off"] < 1, seen       # measured: std 33, off 0.0
+    t = (w.scheduler.img_idx[0] + 3) % SHAPE[0]
+    w.session.set_index("t", t)
+    assert spin(qapp, lambda: w.scheduler.img_idx[0] == t and not g.changing and bar._backdrop is not None
+                and bar._backdrop is not first, timeout=3), dict(t=w.scheduler.img_idx, changing=g.changing,
+                                                                  same=bar._backdrop is first)
+    a1 = grey(bar._backdrop)
+    seen = dict(moved=round(float(np.abs(a1 - a0).mean()), 2), off=round(float(np.abs(a1 - under(w, bar)).mean()), 2))
+    assert seen["moved"] > 1 and seen["off"] < 1, seen     # measured: moved 4.5, off 0.0
+
+
+def test_the_window_is_as_wide_as_the_image(qapp, shell):
+    """At the image's height, the window as wide as the image: before, a 1100-px window held a 762-px image between
+    black bands. Here the screen (800 x 800 offscreen) leaves no room for the panels beside it, so the window is
+    narrowed to the least width and lowered to keep the image's shape (the prototype's F86,
+    app/look_glass.py:511-531)."""
+    from PySide6 import QtCore
+
+    w = shell
+    wear(qapp, w, "glass")
+    assert spin(qapp, lambda: all(d.isFloating() for d in w.glass.docks()))
+
+    def seen():
+        view = w.view.widget
+        img = view.mapFromScene(w.view.img.sceneBoundingRect()).boundingRect()
+        return dict(view=view.size(), image=img.size(), window=w.geometry())
+
+    def fits():
+        s = seen()
+        return abs(s["image"].width() - s["view"].width()) <= 2 and abs(s["image"].height() - s["view"].height()) <= 2
+    assert spin(qapp, fits, timeout=3), dict(seen(), screen=qapp.primaryScreen().availableGeometry(),
+                                              was=QtCore.QSize(1000, 700))
 
 
 def test_out_of_glass_everything_as_it_was(qapp, shell):

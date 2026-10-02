@@ -46,8 +46,8 @@ def setup(qapp):
     w.deleteLater()
 
 
-def notice(seq, x=0, y=0, w=560, h=341):
-    return SimpleNamespace(seq=seq, x=x, y=y, width=w, height=h, sent=False)
+def notice(seq, x=0, y=0, w=560, h=341, sent=False):
+    return SimpleNamespace(seq=seq, x=x, y=y, width=w, height=h, sent=sent)
 
 
 def reply_at(x, y):
@@ -71,3 +71,27 @@ def test_an_answer_older_than_qts_last_request_is_dropped(setup):
     ws.configure(rec, x=561, y=373)                    # glass places it, before X answers where it was
     c.replies[-1].done(reply_at(644, 378), None)
     assert applied == []
+
+
+# The manager's notices are synthetic (ICCCM 4.1.5: root coordinates). Asking X where each one is cost a round trip
+# that blocked the interface, 2.4 ms per notice on XQuartz, 21 % of a 60-Hz panel drag; taking every one set Qt back
+# to where a late notice said (a panel 250 px behind its X window). The prototype's F27, app/xbridge.py:1202-1210.
+
+def test_a_synthetic_notice_of_the_last_request_is_taken_without_asking_x(setup):
+    ws, c, rec, applied = setup
+    ws.configure(rec, x=600, y=300, width=560, height=341)
+    ws.configure(rec, x=640, y=320, width=560, height=341)
+    ws.configured(rec, notice(c.seq, 640, 320, sent=True), lambda *a: applied.append(a))
+    seen = dict(applied=applied, asked_x=len(c.replies))
+    want = dict(applied=[(rec, 640, 320, 560, 341)], asked_x=0)
+    assert seen == want, seen
+
+
+def test_a_synthetic_notice_of_an_older_request_is_an_echo_and_dropped(setup):
+    ws, c, rec, applied = setup
+    ws.configure(rec, x=600, y=300, width=560, height=341)
+    ws.configure(rec, x=640, y=320, width=560, height=341)
+    echoes = ws.stats["echoes"]
+    ws.configured(rec, notice(c.seq, 600, 300, sent=True), lambda *a: applied.append(a))   # late, of the first
+    seen = dict(applied=applied, asked_x=len(c.replies), echoes=ws.stats["echoes"] - echoes)
+    assert seen == dict(applied=[], asked_x=0, echoes=1), seen

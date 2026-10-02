@@ -88,6 +88,17 @@ def test_the_mouse_moves_the_cursor_and_the_crosshair(shell):
     assert spin(qapp, lambda: "spectra" in w.last and w.last["spectra"][1] == (22, 15))
 
 
+def test_the_docks_are_not_animated(shell):
+    """A panel dragged over the window opens its gap at once: animated, every frame laid out and repainted the whole
+    window, 27-31 MB through the bridge in a 1.4-s drag against 4.8 without (the prototype's F25,
+    app/viewer.py:990-994)."""
+    from PySide6 import QtWidgets
+
+    w, _qapp = shell
+    animated = bool(w.dockOptions() & QtWidgets.QMainWindow.DockOption.AnimatedDocks)
+    assert not w.isAnimated() and not animated, dict(isAnimated=w.isAnimated(), options=w.dockOptions())
+
+
 def test_stokes_keys_without_t(qapp, tmp_path):
     from explorer.data.dataset import Dataset
     from explorer.ui.shell import Shell

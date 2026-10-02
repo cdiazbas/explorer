@@ -18,6 +18,13 @@ SSH = {"SSH_CONNECTION": "1.2.3.4 5 6.7.8.9 22"}
     ({"QT_QPA_PLATFORM": "offscreen", "DISPLAY": "localhost:10.0", **SSH}, "linux", "auto",
      ("ok", "offscreen", False, False)),                                          # tests over ssh: kept
     ({"QT_QPA_PLATFORM": "xcb", "DISPLAY": "localhost:10.0", **SSH}, "linux", "auto", ("ok", "xcb", True, False)),
+    # sshd with X11UseLocalhost no gives DISPLAY=host:10.0: as remote as localhost:10.0 (the prototype's F1, whose
+    # main() took only localhost: and left such a link without the bridge nor the remote settings; startup.py:63)
+    ({"DISPLAY": "bellatrix.uio.no:10.0", **SSH}, "linux", "auto", ("ok", "offscreen", True, True)),
+    ({"DISPLAY": "bellatrix.uio.no:10.0", **SSH}, "linux", "native", ("ok", "xcb", True, False)),
+    ({"QT_QPA_PLATFORM": "xcb", "DISPLAY": "bellatrix.uio.no:10.0", **SSH}, "linux", "auto",
+     ("ok", "xcb", True, False)),
+    ({"DISPLAY": "grove.uio.no:11.0"}, "linux", "auto", ("ok", "xcb", False, False)),       # not over ssh: local
     # macOS
     ({}, "darwin", "auto", ("ok", "cocoa", False, False)),
     ({**SSH}, "darwin", "auto", ("stop", None, False, False)),

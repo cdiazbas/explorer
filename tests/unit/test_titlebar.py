@@ -2,8 +2,9 @@
 shape; the zoom light and a double click on the bar fill the monitor and come back; a drag on the bar moves the
 window, no higher than the top of its monitor, as a macOS window stays below the menu bar, while the sides and the
 bottom may leave it; the edges resize it, down to its minimum, with the pointer naming the edge, and a button in the
-band keeps its clicks; every dock gets its close and float buttons; where the bar is not wanted nothing is
-installed."""
+band keeps its clicks; our pointer leaves anyone else's on the stack; a floating panel gets the same edges, with a
+thin top band so its title still moves it; every dock gets its close and float buttons; where the bar is not wanted
+nothing is installed."""
 import sys
 
 import pytest
@@ -146,6 +147,114 @@ def test_the_edges_resize_down_to_the_minimum_and_name_the_edge(qapp, win):
     rz.mouse(E.MouseButtonRelease, corner, gc - QtCore.QPoint(5000, 5000), B.NoButton)
     qapp.processEvents()
     assert (w.width(), w.height()) == (rz.MIN_W, rz.MIN_H)
+
+
+def test_our_pointer_leaves_a_foreign_one_on_the_stack(qapp, win):
+    """The edges' pointer is an override cursor; taking it off removes ours only. The prototype emptied the whole
+    stack, a wait cursor pushed by a load included (its F14, app/titlebar.py:54-61)."""
+    from PySide6 import QtCore, QtWidgets
+
+    _w, _bar, ops = win
+    C = QtCore.Qt.CursorShape
+    A = QtWidgets.QApplication
+    A.setOverrideCursor(C.WaitCursor)                   # someone else's
+    try:
+        seen = []
+        for shape in (C.SizeHorCursor, C.SizeVerCursor, C.SizeFDiagCursor, None):
+            ops.set_cursor(shape)
+            top = A.overrideCursor()
+            seen.append(top.shape() if top is not None else None)
+        want = [C.SizeHorCursor, C.SizeVerCursor, C.SizeFDiagCursor, C.WaitCursor]
+        assert seen == want, dict(seen=seen, want=want)
+    finally:
+        while A.overrideCursor() is not None:
+            A.restoreOverrideCursor()
+
+
+@pytest.fixture
+def panels(qapp, monkeypatch):
+    """A window with our chrome as app.chrome puts it on Linux, one of its panels floating beside it."""
+    from PySide6 import QtCore, QtWidgets
+
+    from explorer.platform.display import Display
+    from explorer.platform.plan import DisplayPlan
+    from explorer.ui import titlebar
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv(titlebar.ENV, raising=False)
+    disp = Display(DisplayPlan("offscreen"))
+    w = QtWidgets.QMainWindow()
+    w.setCentralWidget(QtWidgets.QLabel("image"))
+    for name in ("spectrum", "lambda_t"):
+        d = QtWidgets.QDockWidget(name, w)
+        d.setObjectName(name)
+        d.setWidget(QtWidgets.QLabel(name))
+        w.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, d)
+    ops = disp.ops(w)
+    bar = titlebar.chrome(qapp, w, ops, disp.ops)
+    assert bar is not None, "our chrome is wanted on Linux"
+    w.setGeometry(100, 80, 900, 600)
+    disp.attach(qapp, w, ops)
+    d = w.findChild(QtWidgets.QDockWidget, "spectrum")
+    d.setFloating(True)
+    d.setGeometry(1050, 100, 400, 300)
+    d.show()
+    qapp.processEvents()
+    yield w, bar, d
+    while QtWidgets.QApplication.overrideCursor() is not None:
+        QtWidgets.QApplication.restoreOverrideCursor()
+    d.setFloating(False)
+    w.close()
+
+
+def test_a_floating_panel_resizes_by_the_main_windows_edges(qapp, panels):
+    """Qt resizes a floating panel by its 1-px frame only: on Linux the pointer had to be on the exact pixel. With
+    our chrome each panel's QWindow gets the main window's EdgeResizer, a 7-px band (the prototype's F23d,
+    app/titlebar.py:473-499, installed by app/viewer.py:2573-2576)."""
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    _w, _bar, d = panels
+    E = QtCore.QEvent.Type
+    B = QtCore.Qt.MouseButton
+    h = d.windowHandle()
+    assert h is not None, "a floating panel has its own QWindow"
+
+    def send(kind, p, gp, button=B.NoButton, buttons=B.NoButton):
+        ev = QtGui.QMouseEvent(kind, QtCore.QPointF(p), QtCore.QPointF(gp), button, buttons,
+                               QtCore.Qt.KeyboardModifier.NoModifier)
+        QtWidgets.QApplication.sendEvent(h, ev)
+        qapp.processEvents()
+
+    g0 = d.geometry()
+    p = QtCore.QPoint(d.width() - 4, d.height() // 2)        # 4 px in from the right edge, past Qt's 1-px frame
+    gp = d.mapToGlobal(p)
+    send(E.MouseMove, p, gp)
+    top = QtWidgets.QApplication.overrideCursor()
+    seen = top.shape() if top is not None else None
+    assert seen == QtCore.Qt.CursorShape.SizeHorCursor, dict(seen=seen, at=p, panel=g0)
+    send(E.MouseButtonPress, p, gp, B.LeftButton, B.LeftButton)
+    send(E.MouseMove, p, gp + QtCore.QPoint(60, 0), B.NoButton, B.LeftButton)
+    send(E.MouseButtonRelease, p, gp + QtCore.QPoint(60, 0), B.LeftButton)
+    seen = d.geometry()
+    want = QtCore.QRect(g0.x(), g0.y(), g0.width() + 60, g0.height())
+    assert seen == want, dict(seen=seen, want=want)
+
+
+def test_a_floating_panels_top_band_is_thin_so_its_title_moves_it(qapp, panels):
+    """A panel's title is about 17 px: the main window's 7-px top band took its upper half, and a grab 6 px down
+    resized where it should move. 3 px on a panel, what macOS keeps inside the top edge; 7 on the main window (the
+    prototype's F23i, app/titlebar.py:478-481)."""
+    from PySide6 import QtCore
+
+    w, bar, d = panels
+    T = QtCore.Qt.Edge.TopEdge
+    rz = next((pe.resizer for pe in getattr(w, "_panel_edges", []) if pe.d is d), None)
+    assert rz is not None, dict(panel_edges=getattr(w, "_panel_edges", None))
+    x = d.width() // 2                                      # the title's middle, clear of its buttons
+    seen = dict(panel_y5=rz.edges_at(QtCore.QPoint(x, 5)), panel_y1=rz.edges_at(QtCore.QPoint(x, 1)),
+                main_y5=bar.resizer.edges_at(QtCore.QPoint(w.width() // 2, 5)))
+    want = dict(panel_y5=QtCore.Qt.Edge(0), panel_y1=T, main_y5=T)
+    assert seen == want, dict(seen=seen, want=want, top_band=rz.top_band)
 
 
 def test_a_resize_shows_an_outline_and_resizes_once_on_release(qapp, win):

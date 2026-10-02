@@ -66,3 +66,33 @@ def test_one_wide_screen_is_taken_as_monitors_side_by_side(qapp, monkeypatch):
     assert screens.monitor_rect(app, QtCore.QPoint(100, 100)) == QtCore.QRect(0, 0, 1920, 1080)
     assert screens.monitor_rect(app, QtCore.QPoint(2500, 100)) == QtCore.QRect(1920, 0, 1920, 1080)
     assert QtGui.QGuiApplication.instance() is qapp
+
+
+def test_a_wide_screen_is_split_only_over_x11(monkeypatch):
+    """The split guesses the monitors XQuartz reports as one screen; on a local Mac Qt gives one screen per monitor
+    already, and a 32:9 monitor (5120 x 1440) there is one monitor, not two halves (the prototype's F13,
+    app/viewer.py:2489-2491)."""
+    class Scr:
+        def availableGeometry(self):
+            return QtCore.QRect(0, 0, 5120, 1440)
+
+        def devicePixelRatio(self):
+            return 1.0
+
+    class App(_App):
+        def screenAt(self, p):
+            return Scr()
+
+        def primaryScreen(self):
+            return Scr()
+
+        def screens(self):
+            return [Scr()]
+
+    monkeypatch.delenv(screens.INSETS_ENV, raising=False)
+    monkeypatch.setattr(screens, "_x_facts", lambda: {"heads": [], "xquartz": False})
+    at = QtCore.QPoint(3000, 100)
+    seen = {p: screens.monitor_rect(App(p), at) for p in ("cocoa", "offscreen", "xcb")}
+    want = {"cocoa": QtCore.QRect(0, 0, 5120, 1440), "offscreen": QtCore.QRect(2560, 0, 2560, 1440),
+            "xcb": QtCore.QRect(2560, 0, 2560, 1440)}
+    assert seen == want, dict(seen=seen, want=want)

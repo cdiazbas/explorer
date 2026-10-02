@@ -1,7 +1,8 @@
 """The looks (ROADMAP E5.5), offscreen: which parts each has; the colour tables (grey exact, padding at level 0,
 one map per Stokes, cycling); classic: the sliders in the cursor's red, the crosshair in its locked colour, rounded
 panels, no colour keys; modern: the reticle instead of two lines, the Stokes drop-down in step with the state and
-no wider than the classic combo, C recolouring image, lambda-t and key, the zero lines and the cards."""
+no wider than the classic combo, C recolouring image, lambda-t and key, the zero lines and the cards; the spectra's
+corners back on top after its stack swaps page; the key's power of ten on the top row with the unit."""
 import sys
 import time
 
@@ -256,3 +257,66 @@ def test_the_modern_stokes_is_no_wider_than_the_classic(themed, cube):
             ds.close()
     assert widths["modern"][0] <= widths["classic"][0], widths
     assert widths["modern"][1] >= widths["classic"][1], widths
+
+
+def test_the_spectra_corners_come_back_on_top_after_the_stack_swaps_page(themed, cube):
+    """While the panel is resized its stack shows a snapshot, then the plots again, with no resize of its own: the
+    page shown again came up over the four corners and the reset left the spectra's card square (the prototype's
+    F53, app/look.py:511-515)."""
+    from PySide6 import QtWidgets
+
+    from explorer.ui.cards import RADIUS
+
+    w, ds = make(themed, cube, "classic")
+    try:
+        fr = w.spectra.freezer
+        stack = fr.stack
+        rounder = next((r for r in w._rounders if r.parent() is stack), None)
+        assert rounder is not None, dict(rounded=[type(r.parent()).__name__ for r in w._rounders])
+
+        def seen():
+            kids = [x for x in stack.children() if isinstance(x, QtWidgets.QWidget)]   # bottom to top
+            page = kids.index(stack.currentWidget())
+            return {c.which: (c.pos().x(), c.pos().y(), kids.index(c) > page) for c in rounder.corners}
+        W, H = stack.width() - RADIUS, stack.height() - RADIUS
+        want = {"tl": (0, 0, True), "tr": (W, 0, True), "bl": (0, H, True), "br": (W, H, True)}
+        stack.setCurrentWidget(fr.snap)                    # the resize's snapshot, then the plots again
+        themed.processEvents()
+        fr.timer.timeout.emit()
+        assert stack.currentWidget() is fr.panel, dict(current=stack.currentWidget())
+        assert spin(themed, lambda: seen() == want, timeout=1.0), dict(seen=seen(), want=want)
+    finally:
+        w.close()
+        ds.close()
+
+
+@pytest.mark.parametrize("name, lim, unit, want", [
+    ("I", (0.0, 4.2e-9), "W m⁻² Hz⁻¹ sr⁻¹", ["I   [10⁻⁹ W m⁻² Hz⁻¹ sr⁻¹]", "0", "4.2"]),
+    ("V", (-4.2e-9, 4.2e-9), "W m⁻² Hz⁻¹ sr⁻¹", ["V   [10⁻⁹ W m⁻² Hz⁻¹ sr⁻¹]", "−4.2", "0", "+4.2"]),
+    ("V", (-4.2e-9, 4.2e-9), "", ["V   ×10⁻⁹", "−4.2", "0", "+4.2"]),           # no BUNIT
+    ("I", (0.0, 42000.0), "DN", ["I   [10⁴ DN]", "0", "4.2"]),
+    ("I", (0.0, 4200.0), "DN", ["I   [DN]", "0", "4200"]),                         # up to 10³ written out
+])
+def test_the_keys_power_of_ten_goes_with_the_unit(themed, monkeypatch, name, lim, unit, want):
+    """Written after the last number only ("−4.2  0  +4.2 ×10⁻⁹") it read as that number's; on the top row with the
+    unit, as the spectra's axis titles write it, the numbers carry none (the prototype's F60, app/look.py:286-294)."""
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.ui.overlays import ColourKey
+
+    texts = []
+
+    class Writing(QtGui.QPainter):                      # keeps the text the key draws, in order
+        def drawText(self, *a):
+            texts.append(next(x for x in a if isinstance(x, str)))
+            return super().drawText(*a)
+
+    host = QtWidgets.QWidget()
+    host.resize(400, 300)
+    key = ColourKey(host, unit=unit)
+    key.set(name, lim, None)
+    with monkeypatch.context() as m:
+        m.setattr(QtGui, "QPainter", Writing)
+        key.render(QtGui.QPixmap(key.size()))
+    host.deleteLater()
+    assert texts == want, dict(seen=texts, want=want)
