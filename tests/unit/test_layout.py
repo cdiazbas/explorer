@@ -149,3 +149,18 @@ def test_the_shell_keeps_its_layout_on_close(qapp, cube, store):
     ds.close()
     st = QtCore.QSettings(store.path, QtCore.QSettings.Format.IniFormat)
     assert st.contains(store.geometry_key) and st.contains(store.state_key)
+
+
+def test_the_glass_look_keeps_a_layout_of_its_own(qapp, store):
+    """Its panels float and its toolbar is hidden: kept apart, the other looks never get them."""
+    g = store.for_look("glass")
+    assert g.kind == store.kind + "-glass" and g.path == store.path
+    assert g.for_look("modern").kind == store.kind and store.for_look("classic") is store
+    a = window(qapp)
+    a.setGeometry(60, 50, 600, 480)
+    g.save(a, look="glass")
+    a.close()
+    b = window(qapp)
+    assert not store.restore(b, qapp)                   # nothing saved for the others
+    assert g.restore(b, qapp) and (b.width(), b.height()) == (600, 480)
+    b.close()

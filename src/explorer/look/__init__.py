@@ -12,11 +12,14 @@
   - cards: the plots on dark grey cards instead of black;
 The spectra's grid is quiet in both looks (alpha 0.07): at 0.2 its lines read as a mesh over the curves.
   - stokes: I Q U V as a segmented control, in a drop-down as narrow as the classic combo.
+- glass: the modern look's parts but its cards, and its own (ui.glass): the image to the window's edges, the
+  controls in a glass bar over it that hides itself, the panels floating beside it as smoked glass, the readout in
+  the window's title, the markers in green. The prototype's app/look_glass.py.
 """
 import os
 from dataclasses import dataclass
 
-LOOKS = ("classic", "modern")
+LOOKS = ("classic", "modern", "glass")
 PARTS = ("colour", "cmap", "reticle", "marks", "cards", "stokes")
 ENV_OFF = "EXPLORER_LOOK_OFF"
 
@@ -39,4 +42,6 @@ def get_look(name: str = "classic", env=None) -> Look:
     parts = set(PARTS) - off
     if "colour" not in parts:                           # C steps through the colour tables: nothing without them
         parts.discard("cmap")
-    return Look("modern", frozenset(parts))
+    if name == "glass":                                 # its panels float as smoked glass, not on modern's cards
+        parts = (parts - {"cards"}) | {"glass"}
+    return Look(name, frozenset(parts))

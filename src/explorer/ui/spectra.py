@@ -164,12 +164,12 @@ class SpectraPanel:
             else:
                 p.setLabel("left", f"{name}/I<sub>c</sub> [%]")
 
-    def set_marks(self, colour, light: bool) -> None:
-        """The modern look's marks: the lambda markers in colour, quieter curves and grid, and a dashed zero line on
-        Q U V, where zero is at a glance."""
+    def set_marks(self, colour, light: bool, width: float = 1.2) -> None:
+        """The modern look's marks: the lambda markers in colour (width px; the glass look's 2), quieter curves and
+        grid, and a dashed zero line on Q U V, where zero is at a glance."""
         from PySide6 import QtGui
 
-        mark = pg.mkPen(colour, width=1.2)
+        mark = pg.mkPen(colour, width=width)
         for ln in self.lines:
             ln.setPen(mark)
         ink = QtGui.QColor(30, 30, 34) if light else QtGui.QColor(235, 235, 240)

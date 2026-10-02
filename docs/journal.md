@@ -1884,3 +1884,32 @@ serie, hasta 20–30.
   1.24.
 - No hay evidencia de que explorer sea más lento. Resolver un 2 % pediría muchas más rondas con la
   carga quieta.
+
+### 2026-10-02: el aspecto glass (ROADMAP E5.12)
+
+**Pedido por el usuario:** portar el aspecto "glass" del prototipo. Decidido con él: se entra y se
+sale con M, como en un ciclo de tres; solo los paneles flotantes.
+- **Origen:** `app/look_glass.py` entero, leído por partes y citado en `ui/glass.py`.
+- **Forma:** `GlassChrome` lo aplica sobre las partes del aspecto moderno (menos sus tarjetas) y
+  `remove()` devuelve todo lo que tomó: las acciones de la barra en su orden, los anchos de los
+  sliders, los títulos de panel, los márgenes, el estado de los paneles, la geometría, el título y
+  el acento. Un test entra en glass y vuelve a classic y compara todo eso.
+- **Disposición:** glass guarda la suya (`LayoutStore.for_look`), como el `kind + "-glass"` del
+  prototipo (`look_glass.py:630`).
+
+**Encontrado al compararlo con el prototipo**, con un test que falla antes:
+- la barra quedaba debajo de la vista 2×2 (el prototipo la sube encima, `look_glass.py:887`);
+- la 2×2 creada ya en glass tenía la retícula blanca;
+- lo seleccionado (segmentos de Stokes, botones activos, filas de menú) seguía en azul. El
+  prototipo lo pasa al acento oscurecido hasta que el texto blanco se lee a 4.5:1
+  (`look_glass.py:87-96`, `929-940`).
+
+**No portado:** la columna de tarjetas (decisión del usuario) y la rendija, que llega con E7.
+
+**La suite, más lenta mientras se escribía** (109–150 s frente a ~40 s): no se reproduce. Medida
+de nuevo: 47.4 s, con carga del Mac de 22–29. Ningún test de glass entre los más lentos.
+
+**Un test golden falla, ajeno a glass:** la huella del código del prototipo ya no es la registrada
+en `tests/golden/data/synth_small/reference.npz` (exportada el 2026-09-29). `app/viewer.py`,
+`app/look.py` y `app/look_glass.py` del prototipo cambiaron el 2026-10-01 entre las 18:10 y las
+19:39. Sin reexportar: pendiente de saber de dónde vienen esos cambios.

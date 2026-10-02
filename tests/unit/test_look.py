@@ -187,7 +187,7 @@ def classic_state(w):
                 card=QtGui.QColor(w.spectra.w.backgroundBrush().color()).name())
 
 
-def test_m_switches_to_modern_and_back_to_exactly_classic(themed, cube):
+def test_m_goes_round_modern_and_glass_back_to_exactly_classic(themed, cube):
     w, ds = make(themed, cube, "classic")
     try:
         w.session.set_index("s", 3)
@@ -202,7 +202,10 @@ def test_m_switches_to_modern_and_back_to_exactly_classic(themed, cube):
         assert w.colours.maps[3] == "CET-D4" and w.view.img.lut is not None
         fire(w, "M")
         themed.processEvents()
-        assert w.look.name == "classic" and classic_state(w) == before
+        assert w.look.name == "glass" and w.glass is not None and not w.nav.tb.isVisible()
+        fire(w, "M")
+        themed.processEvents()
+        assert w.look.name == "classic" and w.glass is None and classic_state(w) == before
         fire(w, "M")
         themed.processEvents()
         assert w.colours.maps[3] == "CET-D4" and w.view.img.lut is not None      # the map chosen stays

@@ -78,7 +78,7 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look
         ops = shell.window_ops = disp.ops(shell)        # before show: our title bar makes the window frameless
         shell.title_bar = titlebar.chrome(app, shell, ops, disp.ops, bridge=plan.bridge)
         shell.layout = store
-        if shell.layout.restore(shell, app):            # the last session's panels, their sizes with them
+        if store.for_look(look).restore(shell, app):    # the last session's panels (the glass look's own), sizes too
             shell._sized = True
         disp.attach(app, shell, ops)
         from . import termkeys

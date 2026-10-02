@@ -27,6 +27,7 @@ def layout_path() -> str:
 
 class LayoutStore:
     def __init__(self, kind: str, path: str | None = None):
+        self.base = kind
         self.kind = f"v{SCHEMA}.{kind}"
         self.path = path or layout_path()
         self.geometry_key = f"app/{self.kind}/geometry"
@@ -42,6 +43,15 @@ class LayoutStore:
         return st
 
     LOOK_KEY = f"ui/v{SCHEMA}/look"
+
+    def for_look(self, look: str | None) -> "LayoutStore":
+        """The glass look keeps a layout of its own (its panels float beside the window, its toolbar is hidden):
+        the same file, its own group (the prototype's v.kind + "-glass", app/look_glass.py:618)."""
+        if look == "glass" and not self.base.endswith("-glass"):
+            return LayoutStore(self.base + "-glass", self.path)
+        if look != "glass" and self.base.endswith("-glass"):
+            return LayoutStore(self.base[:-len("-glass")], self.path)
+        return self
 
     def save(self, window: QtWidgets.QMainWindow, zoomed: bool = False, look: str | None = None) -> None:
         st = self._settings()

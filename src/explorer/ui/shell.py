@@ -17,16 +17,16 @@ import time
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import APP_NAME
 from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
 from ..data.axes import STOKES, unit_text
-from ..look import get_look
+from ..look import LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
-from . import docks, style
+from . import docks, glass, style
 from .actions import ActionRegistry, KeySheet, mod_key
 from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
 from .gestures import Gestures
@@ -67,6 +67,8 @@ class _Sink:
     def image(self, idx, img, levels):
         self.shell.last["image"] = (idx, levels)
         self.shell.view.set_image(img, levels)
+        if self.shell.glass is not None:
+            self.shell.glass.image_changed()
         self.shell._paint_colour()
         self.shell.update_status()
         self.shell.first_image()
@@ -193,6 +195,7 @@ class Shell(QtWidgets.QMainWindow):
         self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
         self.colours = self.colour_key = None           # made the first time the look has colour
         self.grid = None                                # the 2x2 view (ui.stokesgrid), made the first time it is asked
+        self.glass = None                               # the glass look's chrome (ui.glass), while worn
         self._seams = None
         self._shown_lut = object()
         self.set_look(self.look)
@@ -201,21 +204,26 @@ class Shell(QtWidgets.QMainWindow):
     def set_look(self, look) -> None:
         """Wear look (look.Look): every part put on or taken off, so the window can switch while it runs (M). The
         colour maps chosen with C stay for the next time the colour part is on."""
+        if self.glass is not None and not look.has("glass"):   # out of glass first: it gives back what it took
+            self.glass.remove()
+            self.glass = None
         self.look, L = look, look
         light = style.is_light()
         app = QtWidgets.QApplication.instance()
         st = app.style()
+        acc = glass.accent() if L.has("glass") else style.accent()
         if hasattr(st, "SLIDER"):                       # the sliders in the colour of the markers they move
-            st.SLIDER = None if L.has("marks") else CURSOR_PEN.color()
+            st.SLIDER = acc if L.has("glass") else None if L.has("marks") else CURSOR_PEN.color()
             for sl in self.nav.sliders.values():
                 sl.update()
         self.view.set_reticle(L.has("reticle"))
         if self.grid is not None:
             self.grid.set_reticle(L.has("reticle"))
         self.nav.set_stokes_drop(L.has("stokes"))
-        acc = style.accent()
+        self._reticle_colours()
         if self.spectra is not None:
-            self.spectra.set_marks(acc, light) if L.has("marks") else self.spectra.clear_marks()
+            width = 2.0 if L.has("glass") else 1.2      # the glass look's markers: 2 px, as its lambda-t's
+            self.spectra.set_marks(acc, light, width) if L.has("marks") else self.spectra.clear_marks()
         if self.lambda_t is not None:
             self.lambda_t.set_marks(acc) if L.has("marks") else self.lambda_t.clear_marks()
         if L.has("colour") and self.colours is None:
@@ -240,6 +248,16 @@ class Shell(QtWidgets.QMainWindow):
         for w in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None)):
             if w is not None:
                 w.setBackground(card)
+        if L.has("glass") and self.glass is None:       # its own parts last, over the modern look's (ui.glass)
+            self.glass = glass.GlassChrome(self)
+            self.glass.apply()
+
+    def _reticle_colours(self) -> None:
+        """The reticles white, in the glass look its accent; the 2x2 view's too, whenever it is made."""
+        c = glass.accent() if self.look.has("glass") else QtGui.QColor(255, 255, 255, 235)
+        for v in [self.view] + (self.grid.views if self.grid is not None else []):
+            if v.reticle is not None:
+                v.reticle.set_colour(c)
 
     # ---------------------------------------------------------------- the 2x2 view (ROADMAP E5.11)
     def set_grid(self, on: bool) -> None:
@@ -256,6 +274,7 @@ class Shell(QtWidgets.QMainWindow):
                 self.grid = StokesGrid(self.view.widget, ns, self._hover, self._grid_click, light=style.is_light(),
                                        strips=ex.strips, parts=ex.n_strips)
                 self.grid.set_reticle(self.look.has("reticle"))
+                self._reticle_colours()
                 self._grid_follow = _Follow(self.view.widget, self.grid)
             self.grid.setGeometry(self.view.widget.rect())
             self.grid.set_region(self.view.vb.viewRect())
@@ -276,6 +295,8 @@ class Shell(QtWidgets.QMainWindow):
             self.scheduler.set_grid(False)
             self.view.set_paused(False)
         self.nav.set_all(on)
+        if self.glass is not None:
+            self.glass.grid_changed(on)
 
     def toggle_grid(self) -> None:
         self.set_grid(not (self.grid is not None and self.grid.isVisible()))
@@ -310,9 +331,17 @@ class Shell(QtWidgets.QMainWindow):
         self.session.lock(True)
 
     def toggle_look(self) -> None:
-        """M: classic and modern in turn."""
-        self.set_look(get_look("classic" if self.look.name == "modern" else "modern"))
+        """M: classic, modern and glass in turn."""
+        nxt = LOOKS[(LOOKS.index(self.look.name) + 1) % len(LOOKS)]
+        self.set_look(get_look(nxt))
         self.statusBar().showMessage(f"{self.look.name} look (M switches)", 3000)
+
+    def toggle_panels(self) -> None:
+        """I: every panel hidden, or shown again (the glass look's; its panels float beside the window)."""
+        if self.glass is None:
+            self.statusBar().showMessage("I: the glass look's (M)", 3000)
+            return
+        self.glass.toggle_panels()
 
     def _paint_colour(self) -> None:
         """The image's colour table and the key, for the Stokes shown (the modern look's colour part)."""
@@ -351,7 +380,8 @@ class Shell(QtWidgets.QMainWindow):
 
     def resizeEvent(self, ev) -> None:
         super().resizeEvent(ev)
-        self.nav.fit(self.width())
+        if self.glass is None or not self.glass.on:     # the glass bar lays its sliders out itself
+            self.nav.fit(self.width())
 
     def showEvent(self, ev) -> None:
         super().showEvent(ev)
@@ -364,7 +394,11 @@ class Shell(QtWidgets.QMainWindow):
 
     def reset_panels(self) -> None:
         """Every panel docked where it started and shown, and the whole image in view again (the prototype's
-        reset_panels: one button brings everything back)."""
+        reset_panels: one button brings everything back). In the glass look its panels float, placed again."""
+        if self.glass is not None:
+            self.glass.reset()
+            self.statusBar().showMessage("panels and zoom back to the start", 4000)
+            return
         for d in (self.spec_dock, self.lt_dock):
             d.setFloating(False)
         self.restoreState(self._initial_state)
@@ -581,7 +615,8 @@ class Shell(QtWidgets.QMainWindow):
                      ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
                       (("Shift+F", self.spectra_to_sample),))]
         # always bound: the terminal's keys are read once, and the look can change while the window runs
-        rows += [("M", "look: classic \u21c4 modern", ((K.Key_M, self.toggle_look),)),
+        rows += [("M", "look: classic \u2192 modern \u2192 glass", ((K.Key_M, self.toggle_look),)),
+                 ("I", "panels: hide all, show again (glass look)", ((K.Key_I, self.toggle_panels),)),
                  ("C  \u21e7C", "colours: next, previous map for the Stokes shown (modern look)",
                   (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1))))]
         rows += [("Esc", "release the cursor (first closes this sheet)", ((K.Key_Escape, self._escape),)),
@@ -661,11 +696,15 @@ class Shell(QtWidgets.QMainWindow):
         iscale = self.spectra.iscale if self.spectra is not None else None
         self.status.setText(pixel_text(self.dataset.axes, ns, y, x, st.t, st.l, st.s, v, ic, iscale, st.locked,
                                        present))
+        if self.glass is not None:
+            self.glass.readout()
 
     def set_diagnostics(self, on: bool) -> None:
         """F12: the cube, the storage probe, memory and the image cache, at the right of the status bar."""
         self.diagnostics = bool(on)
         self.sys_status.setVisible(self.diagnostics)
+        if self.glass is not None:                      # the glass look's status line: only with the diagnostics
+            self.statusBar().setVisible(self.diagnostics)
         if self.diagnostics:
             self.sys_status.setText(diagnostics_text(self.dataset))
 
@@ -709,7 +748,8 @@ class Shell(QtWidgets.QMainWindow):
     def closeEvent(self, ev) -> None:
         if self.layout is not None and not self._closing:   # before the docks say hidden
             ops = self.window_ops
-            self.layout.save(self, zoomed=ops is not None and ops.unzoomed is not None, look=self.look.name)
+            store = self.layout.for_look(self.look.name)  # the glass look's own layout
+            store.save(self, zoomed=ops is not None and ops.unzoomed is not None, look=self.look.name)
         self._closing = True                            # the docks then say hidden: nothing to read any more
         self._play.stop()
         self._mem.stop()

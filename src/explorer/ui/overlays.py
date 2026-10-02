@@ -126,6 +126,7 @@ class Reticle(pg.GraphicsObject):
         self.setFlag(self.GraphicsItemFlag.ItemIgnoresTransformations)
         self.setZValue(1000)
         self.locked = False
+        self.colour = QtGui.QColor(255, 255, 255, 235)  # the glass look's: its accent
 
     def boundingRect(self):
         a = self.ARM + 3
@@ -137,7 +138,7 @@ class Reticle(pg.GraphicsObject):
         L = QtCore.QLineF
         arms = [L(-a, 0, -g, 0), L(g, 0, a, 0), L(0, -a, 0, -g), L(0, g, 0, a)]
         for pen in (QtGui.QPen(QtGui.QColor(0, 0, 0, 160), 3.6),
-                    QtGui.QPen(LOCKED if self.locked else QtGui.QColor(255, 255, 255, 235), 1.6)):
+                    QtGui.QPen(LOCKED if self.locked else self.colour, 1.6)):
             pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
             p.setPen(pen)
             p.drawLines(arms)
@@ -148,3 +149,7 @@ class Reticle(pg.GraphicsObject):
         if on != self.locked:
             self.locked = on
             self.update()
+
+    def set_colour(self, c) -> None:
+        self.colour = QtGui.QColor(c)
+        self.update()
