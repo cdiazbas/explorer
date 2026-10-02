@@ -39,7 +39,7 @@ class ColourKey(QtWidgets.QWidget):
         self.unit = unit
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.resize(self.W, self.H)
-        self.state = None
+        self.state: tuple | None = None
         self.lut = None
         self.note = None
         self._note_t = QtCore.QTimer(self, singleShot=True, interval=self.NOTE_MS)

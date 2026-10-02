@@ -87,7 +87,7 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look
         shell.breakdown = (before, phases, shown, plan.remote)
         ops = shell.window_ops = disp.ops(shell)        # before show: our title bar makes the window frameless
         shell.title_bar = chrome(app, shell, ops, disp.ops, bridge=plan.bridge)
-        shell.layout = store
+        shell.layout_store = store
         if store.for_look(look).restore(shell, app):    # the last session's panels (the glass look's own), sizes too
             shell._sized = True
         disp.attach(app, shell, ops)

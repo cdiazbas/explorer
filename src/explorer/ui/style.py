@@ -248,9 +248,9 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
             if sheet and not arg.styleSheet():         # never over a sheet the application set
                 arg.setStyleSheet(sheet)
             # set here, not through pixelMetric: Qt asks for metrics ~230 times per cursor move (dock layouts)
-            if isinstance(arg, QtWidgets.QToolBar) and arg.layout() is not None:
-                arg.layout().setSpacing(6)             # between toolbar items (Fusion: 3)
-            if name == "QTipLabel":
+            if isinstance(arg, QtWidgets.QToolBar) and (lay := arg.layout()) is not None:
+                lay.setSpacing(6)                      # between toolbar items (Fusion: 3)
+            if name == "QTipLabel" and isinstance(arg, QtWidgets.QLabel):
                 arg.setMargin(5)                       # room round the tool tip's text
             if isinstance(arg, QtWidgets.QComboBox) and not arg.view().styleSheet():
                 arg.view().setStyleSheet(self.POPUP)
@@ -701,7 +701,7 @@ def separators(window: QtWidgets.QMainWindow):
     if not isinstance(app_style, MacDarkStyle):
         return None
     cls = _MainWindowLightStyle if app_style.THEME == "light" else _MainWindowStyle
-    window._explorer_separator_style = st = cls()     # setStyle does not keep it alive
+    window._explorer_separator_style = st = cls()  # type: ignore[attr-defined]  # setStyle does not keep it
     window.setStyle(st)
     return st
 
@@ -765,15 +765,17 @@ def accent() -> QtGui.QColor:
     """The accent our own drawings use: the style's (dark or light); under a Mac's native style the system's, which
     its controls take whatever is set, so the window keeps one accent."""
     app = QtWidgets.QApplication.instance()
-    if app is not None and app.style().name() == "macos":
+    if not isinstance(app, QtWidgets.QApplication):
+        return QtGui.QColor(ACCENT)
+    if app.style().name() == "macos":
         role = getattr(QtGui.QPalette.ColorRole, "Accent", QtGui.QPalette.ColorRole.Highlight)
         return QtGui.QColor(app.palette().color(role))
-    acc = getattr(app.style(), "ACC", None) if app is not None else None
+    acc = getattr(app.style(), "ACC", None)
     return QtGui.QColor(acc) if acc is not None else QtGui.QColor(ACCENT)
 
 
 def selected() -> QtGui.QColor:
     """The fill of anything on, with white text on it: the accent darkened as macOS does for selected content."""
     app = QtWidgets.QApplication.instance()
-    sel = getattr(app.style(), "SEL", None) if app is not None else None
+    sel = getattr(app.style(), "SEL", None) if isinstance(app, QtWidgets.QApplication) else None
     return QtGui.QColor(sel) if sel is not None else accent().darker(123)

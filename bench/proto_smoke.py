@@ -80,7 +80,7 @@ def startup_module():
         w = Shell(cube, title=f"{os.path.basename(str(cube.path))} — {APP_NAME}")
         w.ops = w.window_ops = s.disp.ops(w)            # as ui.app.run: the chrome before show
         w.title_bar = titlebar.chrome(app, w, w.ops, s.disp.ops, bridge=s.plan.bridge)
-        w.layout = LayoutStore(s.plan.kind)
+        w.layout_store = LayoutStore(s.plan.kind)
         w.setGeometry(docks.first_geometry(app))
         return adopt(w)
 

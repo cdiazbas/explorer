@@ -178,8 +178,9 @@ class Scheduler:
             if fut.done():
                 self._grid_ready(g, s, idx, fut)
             else:
-                self._track(fut).add_done_callback(
-                    lambda f, s=s, idx=idx: self.loop.post(lambda: self._grid_ready(g, s, idx, f)))
+                def done(f: Future, s: int = s, idx: tuple = idx) -> None:
+                    self.loop.post(lambda: self._grid_ready(g, s, idx, f))
+                self._track(fut).add_done_callback(done)
 
     def _grid_ready(self, g: int, s: int, idx: tuple, fut: Future) -> None:
         if self._closed or fut.cancelled() or not self.grid or g != self._grid_gen:   # off, or a newer t or lambda

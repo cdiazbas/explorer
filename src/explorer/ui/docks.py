@@ -34,7 +34,7 @@ def dock(window: QtWidgets.QMainWindow, title: str, widget: QtWidgets.QWidget, n
     d.setWidget(gutter(widget))
     d.setFeatures(F.DockWidgetMovable | F.DockWidgetFloatable | F.DockWidgetClosable)
     window.addDockWidget(area, d)
-    d._home = DockHome(d)
+    d._home = DockHome(d)  # type: ignore[attr-defined]  # kept alive with its panel (a Qt class: no slot)
     return d
 
 

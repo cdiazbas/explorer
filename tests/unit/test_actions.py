@@ -79,7 +79,7 @@ def test_question_mark_shows_and_hides_the_sheet_over_the_image(qapp, shell):
     assert sheet.isVisible() and shell.centralWidget().geometry().intersects(sheet.geometry())
     fire(shell, "Shift+?")
     assert not sheet.isVisible()
-    for _k, w, _b in shell.actions.rows:
+    for _k, w, _b in shell.action_registry.rows:
         assert w in sheet.text()                       # what the keys do, as the table says
     assert "pick λ" in sheet.text() and "y axis" in sheet.text()
 
@@ -113,7 +113,7 @@ def test_a_mac_shows_the_command_key(qapp, cube, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     with Dataset.open(cube) as ds:
         w = Shell(ds)
-        shown = [k for k, _w, _b in w.actions.rows]
+        shown = [k for k, _w, _b in w.action_registry.rows]
         assert "⌘W" in shown and "⌘Q" in shown and not any(k.startswith("Ctrl+") for k in shown)
         w.close()
 

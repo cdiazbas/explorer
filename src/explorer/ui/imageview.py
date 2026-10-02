@@ -10,12 +10,16 @@ detail, down to full resolution; range changes in a burst render once (a 0-ms ti
 The mouse over the image gives (y, x) in data pixels to on_hover; the crosshair is drawn where the core's cursor is.
 """
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore
 
 from ..data.kernels import reduce_u8
+
+if TYPE_CHECKING:
+    from .overlays import Reticle
 
 pg.setConfigOptions(imageAxisOrder="row-major", antialias=False, useNumba=False)
 # pyqtgraph's numba image conversion cost a fixed ~22 ms per call even on a 186x14 image (22.4 -> 0.17 ms with it
@@ -47,7 +51,7 @@ class ImageView:
         self.hl, self.vl = pg.InfiniteLine(angle=0, pen=CURSOR_PEN), pg.InfiniteLine(angle=90, pen=CURSOR_PEN)
         self.vb.addItem(self.hl)
         self.vb.addItem(self.vl)
-        self.reticle = None
+        self.reticle: Reticle | None = None
         self._locked = False
         self.base_lut = self.img.lut                    # the look's grey: pyqtgraph's own, or the light theme's
         if reticle:

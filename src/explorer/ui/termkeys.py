@@ -5,7 +5,7 @@ application in front, and nothing on the remote side can bring XQuartz there (Ap
 journal 2026-09-30). The terminal forwards its keys over ssh to explorer's standard input, so they are read there
 too. When standard input is a terminal and explorer runs in its foreground, the terminal goes to cbreak mode (key by
 key, no echo; Ctrl+C and output as usual; restored at exit) and each key runs the action the window binds to it
-(Shell.actions). Once the window has the keyboard the terminal gets nothing, so no key acts twice.
+(Shell.action_registry). Once the window has the keyboard the terminal gets nothing, so no key acts twice.
 
     decode(seq)            a key's bytes (xterm sequences, which Terminal.app, iTerm2, GNOME Terminal, Konsole and
                            Windows Terminal send) to Qt's key combination, or None
@@ -37,7 +37,7 @@ CONTROL = {0x09: K.Key_Tab, 0x0A: K.Key_Return, 0x0D: K.Key_Return, 0x08: K.Key_
            ESC: K.Key_Escape}
 
 
-def _mods(param: str) -> M:
+def _mods(param: str) -> QtCore.Qt.KeyboardModifier:
     """xterm's modifier parameter: 1 + Shift 1, Alt 2, Ctrl 4, Meta 8."""
     try:
         bits = int(param) - 1
@@ -50,7 +50,7 @@ def _mods(param: str) -> M:
     return m
 
 
-def _char(c: str) -> tuple[K, M] | None:
+def _char(c: str) -> tuple[QtCore.Qt.Key, QtCore.Qt.KeyboardModifier] | None:
     code = ord(c)
     if code in CONTROL:
         return CONTROL[code], M.NoModifier
@@ -65,7 +65,7 @@ def _char(c: str) -> tuple[K, M] | None:
         return None
 
 
-def decode(seq: bytes) -> tuple[K, M] | None:
+def decode(seq: bytes) -> tuple[QtCore.Qt.Key, QtCore.Qt.KeyboardModifier] | None:
     """One key's bytes (as KeyStream cuts them) to (key, modifiers); None for what explorer has no key for."""
     s = seq.decode("utf-8", errors="replace")
     if not s:
@@ -208,10 +208,10 @@ def combined(key, mods) -> int:
 def actions_of(shell) -> dict:
     """(key, modifiers) as one int -> the action, from the window's own table (ui.actions)."""
     out = {}
-    for seq, fn in shell.actions.binds():
+    for seq, fn in shell.action_registry.binds():
         ks = QtGui.QKeySequence(seq)
         if ks.count() == 1:
-            out[ks[0].toCombined()] = fn
+            out[ks[0].toCombined()] = fn             # type: ignore[index]  # PySide6 indexes, its stubs do not
     return out
 
 
@@ -239,5 +239,7 @@ def attach(shell, fd: int | None = None, require_foreground: bool = True) -> Ter
         except OSError:
             return None
     tk = TerminalKeys(fd, actions_of(shell), parent=shell)
-    QtCore.QCoreApplication.instance().aboutToQuit.connect(tk.close)
+    app = QtCore.QCoreApplication.instance()
+    if app is not None:
+        app.aboutToQuit.connect(tk.close)
     return tk

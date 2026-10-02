@@ -206,5 +206,5 @@ def test_one_stokes_no_side_by_side_view(qapp, tmp_path):
         w = Shell(ds)
         w.set_grid(True)
         assert w.grid is None and w.nav.stokes is None
-        assert not [r for r in w.actions.rows if "side by side" in r[1]]
+        assert not [r for r in w.action_registry.rows if "side by side" in r[1]]
         w.close()

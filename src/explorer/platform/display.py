@@ -96,7 +96,8 @@ class WindowOps:
         X11 (Qt's xcb); None elsewhere (the caller draws its own). colour: a QColor."""
         from PySide6 import QtWidgets
 
-        if QtWidgets.QApplication.instance().platformName() != "xcb":
+        app = QtWidgets.QApplication.instance()
+        if not isinstance(app, QtWidgets.QApplication) or app.platformName() != "xcb":
             return None
         return XOutlineOps(colour)
 

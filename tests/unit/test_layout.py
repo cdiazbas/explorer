@@ -141,7 +141,7 @@ def test_the_shell_keeps_its_layout_on_close(qapp, cube, store):
 
     ds = Dataset.open(cube)
     w = Shell(ds)
-    w.layout = store
+    w.layout_store = store
     w.setGeometry(70, 60, 1000, 700)
     w.show()
     qapp.processEvents()

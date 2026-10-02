@@ -717,7 +717,7 @@ class GlassChrome:
 
         w = self.w
         app = _app()
-        store = w.layout.for_look("classic") if w.layout is not None else None
+        store = w.layout_store.for_look("classic") if w.layout_store is not None else None
         if store is not None and store.restore(w, app):
             return
         if store is None:                           # (restore() sets the first geometry itself)

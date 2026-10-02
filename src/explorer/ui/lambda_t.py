@@ -39,7 +39,8 @@ class TuningAxis(SignedAxis):
         a, b = sorted((self._to_lambda(lo), self._to_lambda(hi)))
         fm = QtGui.QFontMetrics(self.style.get("tickFont") or QtGui.QFont())
         room = fm.horizontalAdvance("−0.00") + 10  # px a label needs along the axis
-        out, placed = [], []
+        out: list = []
+        placed: list = []
         for sp, vs in super().tickValues(a, b, size):
             pos = []
             for u in vs:

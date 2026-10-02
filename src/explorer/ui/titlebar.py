@@ -39,6 +39,8 @@ class TitleBar(QtWidgets.QWidget):
     to zoom. Geometry and colours of macOS 26 (Tahoe), a titlebar-only window; XQuartz shows 1 X pixel per point, so
     points are pixels."""
     H = 32                                             # Tahoe titled window (Sequoia: 28)
+    corners: "Corners"                                 # set by install(): the rounded shape and the edges
+    resizer: "EdgeResizer"
     D, PITCH, INSET = 14, 23, 9                        # light diameter, centre to centre, left edge (inset: estimate)
     FILL = ("#ED6A5F", "#F6BE50", "#61C555")           # close, minimise, zoom
     RIM = ("#E24B41", "#E1A73E", "#2DAC2F")
@@ -306,7 +308,7 @@ class EdgeResizer(QtCore.QObject):
         if min_size is not None:
             self.MIN_W, self.MIN_H = min_size
         self.top_band = self.BAND
-        self._drag = None
+        self._drag: tuple | None = None
         self._cursor = None
         self._pending = None
         self._timer = QtCore.QTimer(self, singleShot=True, interval=25)
@@ -379,6 +381,7 @@ class EdgeResizer(QtCore.QObject):
         return False
 
     def _rect(self, gpos) -> QtCore.QRect:
+        assert self._drag is not None                   # called while a drag is on
         edges, g0, geom = self._drag
         d = gpos - g0
         r = QtCore.QRect(geom)
@@ -523,10 +526,10 @@ def install(window, ops) -> TitleBar:
     bar = TitleBar(window, ops)
     window.setMenuWidget(bar)
     bar.corners = Corners(window, ops)
-    bar.resizer = EdgeResizer(window, ops)
+    bar.resizer = resizer = EdgeResizer(window, ops)
     if ops.qwindow_events:
         window.winId()                                   # creates the QWindow, whose mouse events the edges watch
-        window.windowHandle().installEventFilter(bar.resizer)
+        window.windowHandle().installEventFilter(resizer)
     return bar
 
 

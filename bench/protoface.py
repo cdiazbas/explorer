@@ -184,14 +184,14 @@ class ProtoViewer:
 
     # the saved layout (ui.layout.LayoutStore): the prototype's names for it
     GEOMETRY_KEY = "app/{kind}/geometry"
-    kind = property(lambda self: self.layout.kind)
+    kind = property(lambda self: self.layout_store.kind)
 
     def restore(self, app):
-        if self.layout.restore(self, app):
+        if self.layout_store.restore(self, app):
             self._sized = True
 
     def forget_layout(self):
-        self.layout.forget()
+        self.layout_store.forget()
 
     @property
     def _crispex_panel_edges(self):

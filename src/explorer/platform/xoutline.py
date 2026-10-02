@@ -18,6 +18,7 @@ Connected once and kept: a connection per drag cost its set-up at every press (0
 """
 import os
 import threading
+from typing import Any
 
 from ..obs.log import get_logger
 
@@ -41,7 +42,7 @@ class XServer:
         self.X, self.shape = X, shape
         self.d = display.Display(display_name)
         self.colour = colour
-        self.win = None
+        self.win: Any = None                            # an Xlib window, once made
         self.mapped = False
 
     def ready(self) -> None:
@@ -82,7 +83,7 @@ class XOutline:
 
     def __init__(self, colour: int, display_name: str | None = None, server=None):
         self.steps = 0                                  # sizes the server was given
-        self._want = None
+        self._want: tuple[int, int, int, int] | None = None
         self._new = False
         self._stop = False
         self._cv = threading.Condition()

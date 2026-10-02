@@ -14,6 +14,7 @@ image again. The keys, from the prototype's _key_table, in one table (ui.actions
 import math
 import sys
 import time
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pyqtgraph as pg
@@ -39,6 +40,12 @@ from .spectra import AxisDrag, SpectraPanel
 from .status import diagnostics_text, pixel_text
 from .stokesgrid import StokesGrid
 from .toolbar import NavBar
+
+if TYPE_CHECKING:
+    from ..platform.display import WindowOps
+    from .layout import LayoutStore
+    from .termkeys import TerminalKeys
+    from .titlebar import TitleBar
 
 MEMORY_S = 1.0                                          # the caches' budget follows the machine's memory (Dataset)
 STATUS_INSET = 8            # px each side of the status line: half the rounded corners' 16, its text clear of the curve
@@ -142,6 +149,7 @@ class Shell(QtWidgets.QMainWindow):
         self.nav.play.toggled.connect(self.set_playing)
         self.nav.fps.valueChanged.connect(lambda v: self._play.setInterval(int(1000 / v)))
         self._play.setInterval(int(1000 / self.nav.fps.value()))
+        self.scheduler: Scheduler                       # made below, once the panels are; the padlocks ask it
         # the padlocks, both open at start (the prototype's): closed = fixed, right click = fit to what is shown
         self.image_lock = PanelLock(self.view.widget, "Image contrast: closed = fixed, open = automatic per image. "
                                     "Click to switch; right click fixes it to this image", light=light)
@@ -155,8 +163,12 @@ class Shell(QtWidgets.QMainWindow):
             self.spec_lock.toggled.connect(lambda on: self.scheduler.set_y_fixed(on))
             self.spec_lock.refit.connect(self.fit_spectra)
         self._closing = False
-        self.layout = None                              # ui.layout.LayoutStore, set by whoever shows the window
-        self.window_ops = None                          # its WindowOps (zoom state for the layout)
+        # set by whoever shows the window (ui.app): the saved layout (not `layout`: that is QWidget.layout(), which it
+        # hid), its WindowOps (zoom state for the layout), our title bar, the keys read from the terminal
+        self.layout_store: LayoutStore | None = None
+        self.window_ops: WindowOps | None = None
+        self.title_bar: TitleBar | None = None
+        self.terminal_keys: TerminalKeys | None = None
         for d, panel in ((self.spec_dock, "spectra"), (self.lt_dock, "lambda_t")):
             d.visibilityChanged.connect(lambda on, panel=panel: self._panel_shown(panel, on))
         self.status = QtWidgets.QLabel()
@@ -193,10 +205,11 @@ class Shell(QtWidgets.QMainWindow):
         style.separators(self)                          # 8 px to grab between the docked panels, with the theme
         panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel) if p is not None]
         self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
-        self.colours = self.colour_key = None           # made the first time the look has colour
-        self.grid = None                                # the 2x2 view (ui.stokesgrid), made the first time it is asked
-        self.glass = None                               # the glass look's chrome (ui.glass), while worn
-        self._seams = None
+        self.colours: ColormapRegistry | None = None    # made the first time the look has colour
+        self.colour_key: ColourKey | None = None
+        self.grid: StokesGrid | None = None             # the 2x2 view (ui.stokesgrid), made the first time it is asked
+        self.glass: glass.GlassChrome | None = None     # the glass look's chrome (ui.glass), while worn
+        self._seams: MacSeams | None = None
         self._shown_lut = object()
         self.set_look(self.look)
 
@@ -209,8 +222,7 @@ class Shell(QtWidgets.QMainWindow):
             self.glass = None
         self.look, L = look, look
         light = style.is_light()
-        app = QtWidgets.QApplication.instance()
-        st = app.style()
+        st = QtWidgets.QApplication.style()
         acc = glass.accent() if L.has("glass") else style.accent()
         if hasattr(st, "SLIDER"):                       # the sliders in the colour of the markers they move
             st.SLIDER = acc if L.has("glass") else None if L.has("marks") else CURSOR_PEN.color()
@@ -239,15 +251,16 @@ class Shell(QtWidgets.QMainWindow):
         self._grid_luts()
         if self.lambda_t is not None:
             lt = self.last.get("lambda_t")
-            self.lambda_t.set_lut(self.colours.lut(lt[2]) if L.has("colour") and lt is not None else None)
+            cols = self.colours if L.has("colour") else None
+            self.lambda_t.set_lut(cols.lut(lt[2]) if cols is not None and lt is not None else None)
         if st.name() == "macos" and self._seams is None:   # the native style's light lines under the panel titles
             self._seams = MacSeams()                    # and on the separators: in the window's colour, in both looks
             for w in (self, self.spec_dock, self.lt_dock):
                 w.setStyle(self._seams)
         card = (CARD_LIGHT if light else CARD) if L.has("cards") else pg.getConfigOption("background")
-        for w in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None)):
-            if w is not None:
-                w.setBackground(card)
+        for pw in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None)):
+            if pw is not None:
+                pw.setBackground(card)
         if L.has("glass") and self.glass is None:       # its own parts last, over the modern look's (ui.glass)
             self.glass = glass.GlassChrome(self)
             self.glass.apply()
@@ -289,7 +302,7 @@ class Shell(QtWidgets.QMainWindow):
                     w.raise_()
             self.scheduler.set_grid(True)
             self.view.set_paused(True)                  # under the 2x2 view: nothing of it is seen
-        else:
+        elif self.grid is not None:                     # shown: on == visible returned above
             self.view.vb.setRange(self.grid.region(), padding=0)
             self.grid.hide()
             self.scheduler.set_grid(False)
@@ -309,13 +322,15 @@ class Shell(QtWidgets.QMainWindow):
     def _grid_luts(self) -> None:
         if self.grid is None:
             return
-        colour = self.colours is not None and self.look.has("colour")
+        cols = self.colours if self.look.has("colour") else None
         for s in range(len(self.grid.views)):
-            self.grid.set_lut(s, self.colours.image_lut(s) if colour else None)
+            self.grid.set_lut(s, cols.image_lut(s) if cols is not None else None)
 
     def _grid_click(self, s: int, ev) -> None:
         """A click on panel s: the cursor locked there and that Stokes the session's, so lambda-t shows it; right
         click: released; double click: the whole image."""
+        if self.grid is None:
+            return
         if ev.button() == QtCore.Qt.MouseButton.RightButton:
             self.session.lock(False)
             return
@@ -455,6 +470,8 @@ class Shell(QtWidgets.QMainWindow):
 
     def _spectrum_pick(self, pos, now: bool = True) -> None:
         """lambda nearest to x on whichever spectrum plot is under pos."""
+        if self.spectra is None:
+            return
         for p in self.spectra.plots:
             if p.vb.sceneBoundingRect().contains(pos):
                 xv = p.vb.mapSceneToView(pos).x()
@@ -463,6 +480,8 @@ class Shell(QtWidgets.QMainWindow):
 
     def _lt_pick(self, pos, now: bool = True) -> None:
         """(t, lambda) of the cell under pos on lambda-t."""
+        if self.lambda_t is None:
+            return
         vb = self.lambda_t.w.getPlotItem().vb
         if not vb.sceneBoundingRect().contains(pos):
             return
@@ -530,6 +549,8 @@ class Shell(QtWidgets.QMainWindow):
                 print(f"[{APP_NAME}] link probe skipped: {res.get('error')}", file=sys.stderr)
                 return
             cw = self.centralWidget()
+            if cw is None:
+                return
             fps = linkprobe.suggest_fps(res["MBps"], link.bytes_per_px * cw.width() * cw.height(), hi=link.fps_cap)
             if self.nav.fps.value() == default:
                 self.nav.fps.setValue(fps)
@@ -647,9 +668,9 @@ class Shell(QtWidgets.QMainWindow):
         return rows
 
     def _keys(self) -> None:
-        self.actions = ActionRegistry(self.key_table(), self.mouse_table())
-        self.actions.install(self)
-        self.sheet = KeySheet(self, self.actions.sheet_html(self.palette()))
+        self.action_registry = ActionRegistry(self.key_table(), self.mouse_table())     # not `actions`: QWidget's
+        self.action_registry.install(self)
+        self.sheet = KeySheet(self, self.action_registry.sheet_html(self.palette()))
 
     def toggle_sheet(self) -> None:
         self.sheet.toggle()
@@ -746,9 +767,9 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- closing
     def closeEvent(self, ev) -> None:
-        if self.layout is not None and not self._closing:   # before the docks say hidden
+        if self.layout_store is not None and not self._closing:   # before the docks say hidden
             ops = self.window_ops
-            store = self.layout.for_look(self.look.name)  # the glass look's own layout
+            store = self.layout_store.for_look(self.look.name)  # the glass look's own layout
             store.save(self, zoomed=ops is not None and ops.unzoomed is not None, look=self.look.name)
         self._closing = True                            # the docks then say hidden: nothing to read any more
         self._play.stop()

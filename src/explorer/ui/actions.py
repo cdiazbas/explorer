@@ -78,20 +78,25 @@ class KeySheet(QtWidgets.QLabel):
     def set_shown(self, on: bool) -> None:
         cw = self.window_.centralWidget()
         if on:
-            cw.installEventFilter(self)                 # it follows the image panel while shown
+            if cw is not None:
+                cw.installEventFilter(self)             # it follows the image panel while shown
             self.adjustSize()
             self._place()
             self.raise_()
             self.show()
         else:
-            cw.removeEventFilter(self)
+            if cw is not None:
+                cw.removeEventFilter(self)
             self.hide()
 
     def toggle(self) -> None:
         self.set_shown(not self.isVisible())
 
     def _place(self) -> None:
-        g = self.window_.centralWidget().geometry()     # in the window's coordinates, as this child's
+        cw = self.window_.centralWidget()
+        if cw is None:
+            return
+        g = cw.geometry()                               # in the window's coordinates, as this child's
         self.move(max(g.left(), g.center().x() - self.width() // 2), max(g.top(), g.center().y() - self.height() // 2))
 
     def eventFilter(self, obj, e):

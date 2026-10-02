@@ -112,7 +112,9 @@ class SpectraPanel:
         self.x_range = (float(self.xl.min()) - pad, float(self.xl.max()) + pad)
         self.iscale: float | None = None
         self.w = pg.GraphicsLayoutWidget()
-        self.plots, self.curves, self.lines = [], [], []
+        self.plots: list = []
+        self.curves: list = []
+        self.lines: list = []
         ncol = 2 if ns == 4 else 1
         for k in range(ns):
             axis_items = {"bottom": SignedAxis("bottom", plus=self.physical), "left": SignedAxis("left")}
@@ -241,7 +243,7 @@ class AxisDrag(QtCore.QObject):
     def __init__(self, panel: "SpectraPanel", set_range, auto):
         super().__init__(panel.w)
         self.panel, self.set_range, self.auto = panel, set_range, auto
-        self.drag = None                                # (k, button, press y px, range at the press)
+        self.drag: tuple | None = None                  # (k, button, press y px, range at the press)
         vp = panel.w.viewport()
         vp.setMouseTracking(True)
         vp.installEventFilter(self)

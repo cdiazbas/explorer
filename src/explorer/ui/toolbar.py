@@ -143,7 +143,9 @@ class NavBar:
             tb.addWidget(sl)
             tb.addWidget(lab)
             self.sliders[axis], self.labels[axis] = sl, lab
-        self.stokes = self.drop = self._drop_act = None
+        self.stokes: QtWidgets.QComboBox | None = None
+        self.drop: StokesDrop | None = None
+        self._drop_act: QtGui.QAction | None = None
         self.all = False                                # every Stokes side by side (the 2x2 view)
         if s.present["s"] and self.n["s"] > 1:
             self._stokes_label = tb.addWidget(QtWidgets.QLabel(" Stokes "))
@@ -222,7 +224,7 @@ class NavBar:
             s = self.shell.session
             self.drop = StokesDrop(self.n["s"], s.state.s, self._picked)
             self._drop_act = self.tb.insertWidget(self._stokes_label, self.drop)
-        if self.drop is not None:
+        if self.drop is not None and self._drop_act is not None:     # made together
             self.drop.set(self.shell.session.state.s, self.all)
             self.drop.panel.hide()
             self._drop_act.setVisible(on)

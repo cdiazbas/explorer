@@ -142,6 +142,9 @@ class _Recorder:
         self.s.image, self.s.image_idx, self.s.image_levels = img, tuple(idx), levels
         self._count("image")
 
+    def grid_image(self, s, idx, img, levels):
+        self._count("grid_image")                      # the 2x2 view: only counted here
+
     def spectra(self, spec, pixel, t):
         self.s.spectra, self.s.spectra_at = spec, (tuple(pixel), t)
         self._count("spectra")
