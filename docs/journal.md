@@ -1929,3 +1929,24 @@ en `tests/golden/data/synth_small/reference.npz` (exportada el 2026-09-29). `app
   `look_glass.py:56-61`, con sus medidas frente a amarillo, verde y blanco). Portado. El acento de
   sistema de este Mac también es naranja (`AppleAccentColor` 1). Los controles nativos de un Mac
   local lo toman igualmente.
+
+**Por X11 hacia el Mac (bellatrix → XQuartz), visto por el usuario: título doble en los paneles de
+glass y lambda-t bajando sola 2–3 s.** En el Mac local no pasaba. Un registro de cada movimiento
+de la ventana y los paneles, con quién lo pide (pila de Qt o aviso de X), lo explicó en minutos:
+- **El tipo de ventana.** El puente reescrito declaraba *utility* toda ventana Qt::Tool. quartz-wm
+  pone a una *utility* su tira de título de 16 px aunque pida sin decoración: el título doble.
+  Cada posición confirmada llegaba 16 px más abajo y el puente se la daba a Qt: lambda-t en 353,
+  369, 379, 395, 411, 427. El prototipo lo había medido y resuelto (`xbridge.py:660-690`,
+  auditoría F23c), y no se portó; una prueba de X exigía *utility*. Corregido en `7c68696`.
+- **Respuestas viejas.** Sin deriva, los paneles aún saltaban 1.2 s: el puente preguntaba a X
+  dónde estaba una ventana enmarcada sin esperar, y aplicaba la respuesta aunque Qt hubiera pedido
+  otra posición después. Ahora se descarta (`ccbaed8`).
+- **Paneles antes que su ventana.** Al arrancar en glass con su disposición guardada, los paneles
+  flotan antes de que exista la ventana X principal: nacían sin dueño (`ab34950`).
+- **Títulos pisados.** Al arrancar en glass en Linux, el marco de app.py ponía los títulos de panel
+  después del aspecto; el prototipo los pone antes (`startup.py:145`). `9137abf`.
+
+**Por qué se escapó:** las pruebas de X corren en un Xvfb sin gestor de ventanas, y los tres
+fallos del puente solo existen con uno; ninguna prueba arrancaba en glass con disposición
+guardada; y un hallazgo medido del prototipo no pasó al puente reescrito. Las tareas E5.15 y
+E6.4–E6.7 del roadmap son para eso.
