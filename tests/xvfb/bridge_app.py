@@ -134,6 +134,31 @@ def main():
             extra["panel"] = p
             settle()
             out(dict(ok=True))
+        elif cmd == "grow":                             # the panel larger: W H
+            p = extra["panel"]
+            gw, gh = (int(v) for v in arg.split())
+            p.resize(gw, gh)
+            settle()
+            out(dict(ok=True, geometry=p.geometry().getRect()))
+        elif cmd == "float":                            # both panels floating, side by side, not over the window
+            for k, d in enumerate((w.spec_dock, w.lt_dock)):
+                d.setFloating(True)
+                d.show()
+                d.setGeometry(w.x() + w.width() + 20 + k * 320, w.y() + 40, 300, 260)
+                extra[d.objectName()] = d
+            settle()
+            out(dict(ok=True, docks={d.objectName(): d.geometry().getRect() for d in (w.spec_dock, w.lt_dock)}))
+        elif cmd == "override":                         # an application-wide cursor of Qt's: wait, or none
+            if arg == "wait":
+                QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
+            else:
+                QtWidgets.QApplication.restoreOverrideCursor()
+            settle()
+            out(dict(ok=True))
+        elif cmd == "unmask":
+            extra["panel"].clearMask()
+            settle()
+            out(dict(ok=True))
         elif cmd == "mask":
             p = extra["panel"]
             p.setMask(QtGui.QRegion(0, 0, 240, 180, QtGui.QRegion.RegionType.Ellipse))
