@@ -1,0 +1,68 @@
+# Every push: what must never be in the repository (the whole history), and explorer installed and run as a user
+# would on each kind of machine it is for (pyproject.toml [tool.uv] environments): Linux x86_64 and macOS arm64.
+# The Intel Mac is the third (roadmap X.10).
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  hygiene:
+    # tracked audit files, personal paths, mentions of AI assistants or co-author trailers anywhere in the history
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 scripts/hygiene.py
+
+  any-machine:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0                   # the version comes from git
+      - uses: astral-sh/setup-uv@v6
+      - name: system libraries Qt needs, and an X server for the bridge (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 libdbus-1-3 \
+            libxcb-cursor0 xvfb
+      - name: install as a user would
+        run: scripts/setup_env.sh --dev
+      - name: the explorer command on the PATH, from a new shell and another folder
+        run: |
+          SHELL=/bin/bash scripts/setup_env.sh --dev --link --update-shell
+          cd "$RUNNER_TEMP"
+          bash -ic 'explorer --version'
+      - name: doctor, and the demo without a window
+        run: |
+          cd "$RUNNER_TEMP"
+          env -u DISPLAY QT_QPA_PLATFORM=offscreen "$GITHUB_WORKSPACE/scripts/run.sh" doctor
+          env -u DISPLAY QT_QPA_PLATFORM=offscreen "$GITHUB_WORKSPACE/scripts/run.sh" demo --no-window --moves 20
+      - name: lint and layer contracts
+        run: |
+          bin=$(echo .venv-*/bin)
+          "$bin/ruff" check src tests scripts bench tools
+          "$bin/lint-imports"
+      - name: types (not clean yet, roadmap E0.14)
+        continue-on-error: true
+        run: $(echo .venv-*/bin)/mypy
+      - name: unit and golden tests
+        run: env -u DISPLAY QT_QPA_PLATFORM=offscreen $(echo .venv-*/bin)/python -m pytest -q tests/unit tests/golden
+      - name: the X11 bridge against a real X server (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &
+          sleep 2
+          EXPLORER_TEST_XDISPLAY=:99 $(echo .venv-*/bin)/python -m pytest -q tests/xvfb
