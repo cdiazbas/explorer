@@ -66,7 +66,9 @@ def leave_mac_bars(app, rect: QtCore.QRect) -> QtCore.QRect:
         if abs(rect.width() - w) <= 2 and h - t - 2 <= rect.height() <= h + 2:
             top = t if rect.height() > h - t + 2 else 0    # XQuartz has already left the menu bar out
             return rect.adjusted(l, top, -r, -b)
-    if not ins and app.platformName() == "xcb" and _x_facts()["xquartz"]:
+    # xcb, or the bridge (Qt on offscreen, the X server at DISPLAY): ssh -Y to a Mac goes through the bridge, and with
+    # xcb alone the window went under the Dock there (the prototype's app/viewer.py:2452-2461, its F44)
+    if not ins and _x_facts()["xquartz"]:
         return rect.adjusted(0, 0, 0, -DOCK_GUESS)
     return rect
 

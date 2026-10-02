@@ -29,6 +29,18 @@ def test_the_dock_is_left_out_over_x11_to_a_mac(monkeypatch):
     assert screens.leave_mac_bars(_App("cocoa"), full) == full     # a local Mac keeps its own
 
 
+def test_without_insets_the_dock_is_guessed_through_the_bridge_too(monkeypatch):
+    """ssh -Y to a Mac goes through the bridge, whose Qt platform is offscreen: the Dock was guessed only for xcb, and
+    the first window, the zoom and glass's fit went under it (the prototype's F44, app/viewer.py:2452-2461)."""
+    monkeypatch.delenv(screens.INSETS_ENV, raising=False)
+    xq = QtCore.QRect(0, 0, 1352, 848)
+    monkeypatch.setattr(screens, "_x_facts", lambda: {"heads": [], "xquartz": True})
+    for platform in ("xcb", "offscreen"):
+        assert screens.leave_mac_bars(_App(platform), xq) == QtCore.QRect(0, 0, 1352, 848 - screens.DOCK_GUESS)
+    monkeypatch.setattr(screens, "_x_facts", lambda: {"heads": [], "xquartz": False})
+    assert screens.leave_mac_bars(_App("offscreen"), xq) == xq        # another X server, or no display at all
+
+
 def test_one_wide_screen_is_taken_as_monitors_side_by_side(qapp, monkeypatch):
     from PySide6 import QtGui
 
