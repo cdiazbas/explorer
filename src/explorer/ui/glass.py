@@ -208,8 +208,59 @@ class AutoHide(QtCore.QObject):
             w.hide()
 
 
+class _Glyph(QtCore.QObject):
+    """A title button drawn in the glass's ink, whatever the platform's style: a local Mac's native style drew the
+    standard dock icons as grey squares on the smoked glass. A small x (close) or two offset squares (float), faint
+    until the pointer is on it, then brighter on a soft disc. From look_glass.py CloseButton (203-222)."""
+
+    def __init__(self, button: QtWidgets.QToolButton, kind: str):
+        super().__init__(button)
+        self.b, self.kind = button, kind
+        button.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover)
+        button.installEventFilter(self)
+
+    def eventFilter(self, obj, e):
+        if e.type() != QtCore.QEvent.Type.Paint:
+            return False
+        b = self.b
+        p = QtGui.QPainter(b)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        ink = QtGui.QColor(INK[_mode()])
+        hover = b.underMouse()
+        if hover:
+            bg = QtGui.QColor(ink)
+            bg.setAlphaF(0.12)
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.setBrush(bg)
+            p.drawEllipse(QtCore.QRectF(b.rect()).adjusted(1, 1, -1, -1))
+        ink.setAlphaF(0.9 if hover else 0.45)
+        pen = QtGui.QPen(ink, 1.4)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        c = QtCore.QPointF(b.width() / 2, b.height() / 2)
+        d = min(b.width(), b.height()) * 0.2
+        P = QtCore.QPointF
+        if self.kind == "close":
+            p.drawLine(c + P(-d, -d), c + P(d, d))
+            p.drawLine(c + P(-d, d), c + P(d, -d))
+        else:                                       # float / dock: a square, another behind it up and to the right
+            a, o = 1.7 * d, 0.7 * d
+            x, y = c.x() - (a + o) / 2, c.y() - (a - o) / 2
+            p.drawRect(QtCore.QRectF(x, y, a, a))
+            p.drawPolyline(QtGui.QPolygonF([P(x + o, y), P(x + o, y - o), P(x + o + a, y - o), P(x + o + a, y - o + a),
+                                            P(x + a, y - o + a)]))
+        p.end()
+        return True
+
+
 class PanelTitle(titlebar.DockTitle):
-    """The panel's title on the panel's own glass: its name and a faint line below. From look_glass.py:386-398."""
+    """The panel's title on the panel's own glass: its name and a faint line below, its buttons in the glass's ink
+    (_Glyph). From look_glass.py:386-398."""
+
+    def __init__(self, dock):
+        super().__init__(dock)
+        self._glyphs = [_Glyph(b, k) for b, k in zip(self.buttons, ("close", "float"), strict=True)]
 
     def paintEvent(self, e):
         mode = _mode()
