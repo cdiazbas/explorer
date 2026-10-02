@@ -55,6 +55,12 @@ AXIS = {"dark": (QtGui.QColor(255, 255, 255, 60), QtGui.QColor(160, 160, 160)),
 GRAIN = 0.03
 
 
+def _app() -> QtWidgets.QApplication:
+    app = QtWidgets.QApplication.instance()
+    assert isinstance(app, QtWidgets.QApplication)
+    return app
+
+
 def _mode() -> str:
     return "light" if style.is_light() else "dark"
 
@@ -118,7 +124,9 @@ class Bar(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget, view: QtWidgets.QGraphicsView, changing):
         super().__init__(parent)
         self.view, self.changing = view, changing   # changing(): the image is moving; the backdrop is kept
-        self._backdrop = self._composed_pm = self._composed_of = None
+        self._backdrop: QtGui.QPixmap | None = None
+        self._composed_pm = QtGui.QPixmap()
+        self._composed_of: QtGui.QPixmap | None = None
 
     def invalidate(self) -> None:
         self._backdrop = None
@@ -127,8 +135,8 @@ class Bar(QtWidgets.QWidget):
     def _blurred(self) -> QtGui.QPixmap:
         if self._backdrop is not None and self.changing() and self._backdrop.size() == self.size():
             return self._backdrop
-        self._backdrop = scene_blur(self.view, self, self.rect())
-        return self._backdrop
+        self._backdrop = b = scene_blur(self.view, self, self.rect())
+        return b
 
     def _composed(self) -> QtGui.QPixmap:
         b = self._blurred()
@@ -166,11 +174,11 @@ class AutoHide(QtCore.QObject):
         self.window, self.widgets = window, widgets
         self.timer = QtCore.QTimer(self, singleShot=True, interval=HIDE_MS)
         self.timer.timeout.connect(self.idle)
-        QtWidgets.QApplication.instance().installEventFilter(self)
+        _app().installEventFilter(self)
         self.timer.start()
 
     def stop(self) -> None:
-        QtWidgets.QApplication.instance().removeEventFilter(self)
+        _app().removeEventFilter(self)
         self.timer.stop()
 
     def eventFilter(self, obj, e):
@@ -352,7 +360,9 @@ class GlassChrome:
         self.on = False
         self.changing = False
         self.over_image = False
-        self.bar = self.autohide = None
+        self.bar: Bar                               # made by apply()
+        self.autohide: AutoHide | None = None
+        self.grid_btn: QtWidgets.QToolButton | None = None
         self.skins: list[PanelSkin] = []
         self._watches: list[_Watch] = []
         self._was: dict = {}
@@ -413,12 +423,12 @@ class GlassChrome:
         lay = QtWidgets.QVBoxLayout(self.bar)
         lay.setContentsMargins(12, 4, 12, 4)
         lay.setSpacing(1)
-        rows = [QtWidgets.QHBoxLayout(), QtWidgets.QHBoxLayout()]
+        self._rows = rows = [QtWidgets.QHBoxLayout(), QtWidgets.QHBoxLayout()]
         for r in rows:
             r.setSpacing(8)
             lay.addLayout(r)
         ink = INK[_mode()]
-        self._made = []
+        self._made: list[QtWidgets.QWidget] = []
         for row, axis, name in ((0, "t", "t"), (1, "l", "λ")):
             s = nav.sliders.get(axis)
             if s is None:
@@ -440,15 +450,15 @@ class GlassChrome:
         for b in (nav.panels, nav.reset, nav.help):
             rows[0].addWidget(b)
         if nav.stokes is not None:                  # I Q U V side by side (look_glass.py:685-687; key 5 here)
-            self.grid_btn = QtWidgets.QToolButton()
-            self.grid_btn.setText("2×2")
-            self.grid_btn.setCheckable(True)
-            self.grid_btn.setAutoRaise(True)
-            self.grid_btn.setToolTip("I, Q, U and V side by side (5)")
-            self.grid_btn.setChecked(nav.all)
-            self.grid_btn.toggled.connect(self.w.set_grid)
-            rows[1].addWidget(self.grid_btn)
-            self._made.append(self.grid_btn)
+            self.grid_btn = b = QtWidgets.QToolButton()
+            b.setText("2×2")
+            b.setCheckable(True)
+            b.setAutoRaise(True)
+            b.setToolTip("I, Q, U and V side by side (5)")
+            b.setChecked(nav.all)
+            b.toggled.connect(self.w.set_grid)
+            rows[1].addWidget(b)
+            self._made.append(b)
         else:
             self.grid_btn = None
         rows[1].addWidget(nav.fps)
@@ -466,12 +476,13 @@ class GlassChrome:
         """What is on in the accent (look_glass.py:929-940): our style's fills, toggles, menu rows and focus (its
         attributes, on the instance: remove() lets the class's show again), and the Stokes segments' sheet, which
         holds the colour it was made with. Not under a Mac's native style, whose controls take the system's."""
-        st = QtWidgets.QApplication.instance().style()
+        st = _app().style()
         old = style.selected().name()
         sel = for_white_text(mark)
         self._tinted = st if all(hasattr(st, a) for a in self.TINT) else None
         if self._tinted is not None:
-            st.ACC, st.SEL, st.SEL_HOVER, st.SEL_DOWN = mark, sel, sel.lighter(110), sel.darker(115)
+            for a, c in zip(self.TINT, (mark, sel, sel.lighter(110), sel.darker(115)), strict=True):
+                setattr(st, a, c)
         drop = self.w.nav.drop
         self._sheet = None
         if drop is not None:
@@ -550,7 +561,9 @@ class GlassChrome:
         shown = [d for d in self.docks() if not d.isHidden()]
         for d in shown:                             # floating first: docked, they hold the window wider than the image
             d.setFloating(True)
-        QtWidgets.QMainWindow.layout(w).activate()
+        lay = QtWidgets.QMainWindow.layout(w)
+        if lay is not None:
+            lay.activate()
         scr = monitor_rect(QtWidgets.QApplication.instance(), w.frameGeometry().center())
         fg = self.fit_window(scr, GAP + FLOAT_W if shown else 0)
         QtCore.QTimer.singleShot(0, w.view.show_all)
@@ -635,8 +648,7 @@ class GlassChrome:
         view.vb.sigRangeChanged.disconnect(self._view_moved)
         nav.play.toggled.disconnect(self._play_toggled)
         # the controls back in the toolbar, in their order
-        lay = self.bar.layout()
-        for row in [lay.itemAt(i).layout() for i in range(lay.count())]:
+        for row in self._rows:
             while row.count():
                 row.takeAt(0)
         for x in self._made:
