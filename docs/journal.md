@@ -1913,3 +1913,19 @@ de nuevo: 47.4 s, con carga del Mac de 22–29. Ningún test de glass entre los 
 en `tests/golden/data/synth_small/reference.npz` (exportada el 2026-09-29). `app/viewer.py`,
 `app/look.py` y `app/look_glass.py` del prototipo cambiaron el 2026-10-01 entre las 18:10 y las
 19:39. Sin reexportar: pendiente de saber de dónde vienen esos cambios.
+
+**Visto por el usuario, el mismo día:**
+- **De glass a classic, los paneles volvían con otro tamaño.** Reproducido fuera de pantalla: el
+  espectro pasaba de 520x343 a 414x245 y la imagen de 662 a 768 px de ancho, con la ventana igual.
+  `remove()` restauraba el estado de los paneles antes que el tamaño de la ventana, y Qt los
+  repartía en la ventana estrecha de glass (480 px). Ahora va primero el tamaño y luego el estado,
+  y otra vez cuando el gestor de ventanas haya aplicado el tamaño. El test de ida y vuelta compara
+  ya los paneles y la imagen; fallaba antes.
+- **El prototipo no cambia de aspecto mientras corre:** se elige al arrancar (`--look`,
+  `app/viewer.py:2631`; su Ctrl+M es minimizar). No hace ningún "reset" al cambiar: cada aspecto
+  empieza de cero con su disposición guardada. explorer lo cambia en caliente con M, y por eso tiene
+  que devolver lo que tomó.
+- **El acento es naranja:** el prototipo lo cambió el 2026-10-02 a las 09:32 (Apple orange,
+  `look_glass.py:56-61`, con sus medidas frente a amarillo, verde y blanco). Portado. El acento de
+  sistema de este Mac también es naranja (`AppleAccentColor` 1). Los controles nativos de un Mac
+  local lo toman igualmente.

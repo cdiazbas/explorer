@@ -125,6 +125,7 @@ def test_out_of_glass_everything_as_it_was(qapp, shell):
         return [a for a in tb.actions() if a.isVisible()]   # widget is made anew when its action comes back)
     before = dict(actions=shown(), geometry=w.geometry(),
                   titles=[d.titleBarWidget() for d in (w.spec_dock, w.lt_dock)],
+                  panels=[d.geometry() for d in (w.spec_dock, w.lt_dock)], image=w.view.widget.size(),
                   margins=w.centralWidget().layout().contentsMargins(), title=w.windowTitle(),
                   widths={a: (s.minimumWidth(), s.maximumWidth()) for a, s in w.nav.sliders.items()})
     wear(qapp, w, "glass")
@@ -141,6 +142,9 @@ def test_out_of_glass_everything_as_it_was(qapp, shell):
     assert [d.titleBarWidget() for d in (w.spec_dock, w.lt_dock)] == before["titles"]
     assert w.centralWidget().layout().contentsMargins() == before["margins"]
     assert w.windowTitle() == before["title"] and w.geometry() == before["geometry"]
+    # the panels as they were, not laid out again in glass's narrow window (414x245 where 520x343 had been)
+    assert spin(qapp, lambda: [d.geometry() for d in (w.spec_dock, w.lt_dock)] == before["panels"])
+    assert w.view.widget.size() == before["image"]
     assert w.colour_key.pos().y() > w.view.widget.height() // 2            # back at its own corner
 
 

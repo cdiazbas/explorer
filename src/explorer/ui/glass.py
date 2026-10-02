@@ -12,8 +12,8 @@ prototype's app/look_glass.py, its floating panels (its default; the column of c
 - Glass: what the image shows under the bar, blurred, under a veil and a grey grain; all grey, since the X11 bridge
   sends a grey tile at 1 B/px and a tinted one at 4. While the image changes the bar keeps its backdrop; it is
   redrawn once the image has been still for REST_MS, and when the view moves.
-- The markers in one accent, green (ACCENT): white is lost on bright granulation, red and blue are a diverging map's
-  own colours. The rest is the modern look's parts but its cards.
+- The markers and what is on in one accent, Apple's orange (ACCENT): white is lost on bright granulation, green
+  nearly vanished against a colour map's red for deuteranopes. The rest is the modern look's parts but its cards.
 
 Every change is undone by remove(), so M can go in and out of it while the window runs.
 
@@ -39,8 +39,11 @@ RADIUS_PANEL = 12
 VEIL = {"dark": QtGui.QColor(30, 30, 32, 200), "light": QtGui.QColor(246, 246, 246, 190)}
 HAIRLINE = {"dark": QtGui.QColor(255, 255, 255, 26), "light": QtGui.QColor(0, 0, 0, 18)}
 INK = {"dark": QtGui.QColor(235, 235, 240), "light": QtGui.QColor(30, 30, 34)}
-# Apple's system green; EXPLORER_GLASS_ACCENT=#rrggbb tries another (the prototype's CRISPEX_GLASS_ACCENT)
-ACCENT = {"dark": QtGui.QColor(48, 209, 88), "light": QtGui.QColor(30, 150, 60)}
+# what is pointed at or selected: Apple's system orange (light: its accessible variant). From look_glass.py:56-61,
+# where it was measured against the alternatives: on a grey image 2.23:1 at worst (yellow 1.41, green 2.02, white
+# 1.31); from the colour maps C steps through dE76 33-38, 17-33 for deuteranopes (green 5-18); dE 44 from the locked
+# yellow. EXPLORER_GLASS_ACCENT=#rrggbb tries another (the prototype's CRISPEX_GLASS_ACCENT)
+ACCENT = {"dark": QtGui.QColor(255, 146, 48), "light": QtGui.QColor(197, 83, 0)}
 ACCENT_ENV = "EXPLORER_GLASS_ACCENT"
 MIN_VIEW_W = 480                                   # px: the image's least width when the window is fitted to it
 # a floating panel, opaque on every path (XQuartz has no alpha to blend with): smoked glass, lighter at the top; pure
@@ -635,6 +638,18 @@ class GlassChrome:
             self.grid_btn.blockSignals(False)
 
     # ---------------------------------------------------------------- out
+    def _restore_panels(self) -> None:
+        w = self.w
+        if self.on or w.geometry().size() != self._was["geometry"].size():
+            return                                  # in glass again, or resized since: left as it is
+        lay = QtWidgets.QMainWindow.layout(w)
+        if lay is not None:
+            lay.activate()
+        w.restoreState(self._was["state"])
+        for d in self.docks():
+            if d.isHidden():
+                d.show()
+
     def remove(self) -> None:
         w, nav, view = self.w, self.w.nav, self.w.view
         self.on = False
@@ -668,11 +683,12 @@ class GlassChrome:
         self.skins = []
         for d, floating in self._was["floating"].items():
             d.setFloating(floating)
-        w.restoreState(self._was["state"])
-        for d in self.docks():
-            if d.isHidden():
-                d.show()
+        # the window's size before the panels': restored into glass's narrowed window, Qt shared that width out and
+        # kept the shares (spectra 414x245 where 520x343 had been). Once more when the window manager has applied
+        # the size, which it may do later
         w.setGeometry(self._was["geometry"])
+        self._restore_panels()
+        QtCore.QTimer.singleShot(0, self._restore_panels)
         w.centralWidget().layout().setContentsMargins(self._was["margins"])
         if self._was["ci"] is not None:
             view.widget.ci.setContentsMargins(*self._was["ci"])

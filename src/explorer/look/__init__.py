@@ -14,7 +14,7 @@ The spectra's grid is quiet in both looks (alpha 0.07): at 0.2 its lines read as
   - stokes: I Q U V as a segmented control, in a drop-down as narrow as the classic combo.
 - glass: the modern look's parts but its cards, and its own (ui.glass): the image to the window's edges, the
   controls in a glass bar over it that hides itself, the panels floating beside it as smoked glass, the readout in
-  the window's title, the markers in green. The prototype's app/look_glass.py.
+  the window's title, the markers in orange. The prototype's app/look_glass.py.
 """
 import os
 from dataclasses import dataclass
