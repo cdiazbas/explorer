@@ -33,6 +33,15 @@ if [ "$(cksum < "$root/uv.lock")" != "$(cat "$venv/.lock.cksum" 2>/dev/null)" ];
 fi
 unset LD_LIBRARY_PATH
 [ "$(uname -s)" = Linux ] && [ -d "$root/.qtlibs/only" ] && export LD_LIBRARY_PATH="$root/.qtlibs/only"
-export PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}"   # the code next to this script, whichever tree installed the env
+# the code next to this script, whichever tree installed the env; the inherited PYTHONPATH without empty entries: an
+# empty one is the current folder, and a file there named as a module (types.py) replaced the standard one. A line
+# like PYTHONPATH="${PYTHONPATH}:dir" in a shell's startup file leaves one when PYTHONPATH was empty
+inherited="" rest="${PYTHONPATH:-}"
+while [ -n "$rest" ]; do                            # no arrays: macOS's bash 3.2 under set -u rejects an empty one
+  p="${rest%%:*}"
+  case "$rest" in *:*) rest="${rest#*:}" ;; *) rest="" ;; esac
+  [ -z "$p" ] || inherited="${inherited:+$inherited:}$p"
+done
+export PYTHONPATH="$root/src${inherited:+:$inherited}"
 export NUMBA_NUM_THREADS="${NUMBA_NUM_THREADS:-64}"
 exec "$venv/bin/explorer" "$@"
