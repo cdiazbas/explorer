@@ -24,6 +24,10 @@ jobs:
       matrix:
         os: [ubuntu-22.04, ubuntu-24.04, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # a failure says enough to be looked into without running it again: why each test failed or was skipped,
+      # the locals at each frame, the slowest
+      PYTEST_REPORT: -ra -l --tb=long --durations=15
     defaults:
       run:
         shell: bash
@@ -32,6 +36,12 @@ jobs:
         with:
           fetch-depth: 0                   # the version comes from git
       - uses: astral-sh/setup-uv@v6
+      - name: the machine (for whoever reads a failure)
+        run: |
+          uname -a
+          if [ "$(uname -s)" = Darwin ]; then sw_vers; sysctl -n hw.ncpu hw.memsize; else cat /etc/os-release; nproc; free -m; fi
+          python3 --version; uv --version
+          env | grep -E '^(QT_|DISPLAY|XDG_|WAYLAND)' || true
       - name: system libraries Qt needs, and an X server for the bridge (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -59,10 +69,27 @@ jobs:
         continue-on-error: true
         run: $(echo .venv-*/bin)/mypy
       - name: unit and golden tests
-        run: env -u DISPLAY QT_QPA_PLATFORM=offscreen $(echo .venv-*/bin)/python -m pytest -q tests/unit tests/golden
+        run: |
+          env -u DISPLAY QT_QPA_PLATFORM=offscreen $(echo .venv-*/bin)/python -m pytest -q tests/unit tests/golden \
+            $PYTEST_REPORT --junitxml="$RUNNER_TEMP/reports/unit.xml"
       - name: the X11 bridge against a real X server (Linux)
         if: runner.os == 'Linux'
         run: |
           Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &
           sleep 2
-          EXPLORER_TEST_XDISPLAY=:99 $(echo .venv-*/bin)/python -m pytest -q tests/xvfb
+          EXPLORER_TEST_XDISPLAY=:99 $(echo .venv-*/bin)/python -m pytest -q tests/xvfb \
+            $PYTEST_REPORT --junitxml="$RUNNER_TEMP/reports/xvfb.xml"
+      - name: on failure, what was installed and what explorer logged
+        if: failure()
+        run: |
+          uv pip list --python "$(echo .venv-*/bin)/python" || true
+          for f in "${XDG_CACHE_HOME:-$HOME/.cache}"/explorer/logs/*; do [ -f "$f" ] && { echo "== $f"; tail -n 200 "$f"; }; done
+      - name: on failure, keep the logs and the test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-${{ matrix.os }}
+          path: |
+            ~/.cache/explorer/logs/
+            ${{ runner.temp }}/reports/
+          if-no-files-found: ignore
