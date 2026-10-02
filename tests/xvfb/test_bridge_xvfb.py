@@ -208,8 +208,10 @@ def test_a_panel_is_transient_for_its_window_and_takes_its_shape(x, app):
     pw = next(w for w in app("state")["windows"] if w["title"] == "panel λ–t")
     win = x.create_resource_object("window", pw["xid"])
     assert win.get_full_property(Xatom.WM_TRANSIENT_FOR, Xatom.WINDOW).value[0] == mw["xid"]
+    # a normal window, not a utility one: quartz-wm puts its own 16-px title strip on a utility window even without
+    # decorations, and keeps a transient window of any type above its owner (the prototype's xbridge.py:676-690)
     kind = win.get_full_property(x.intern_atom("_NET_WM_WINDOW_TYPE"), Xatom.ATOM).value[0]
-    assert x.get_atom_name(kind) == "_NET_WM_WINDOW_TYPE_UTILITY"
+    assert x.get_atom_name(kind) == "_NET_WM_WINDOW_TYPE_NORMAL"
     assert app("idle")["idle"]
     bad, _ = same_as_qt(x, app, pw["xid"], "panel")
     assert bad == 0
@@ -424,7 +426,11 @@ def test_the_link_probe_measures_the_display():
 
 def test_glass_panels_ask_the_manager_for_no_frame(x, app):
     """In glass the panels float with a title of their own: a window manager's frame above it was a second title
-    (quartz-wm's grey bar, seen by the user through XQuartz). Each floating panel's X window asks for none."""
+    (quartz-wm's grey bar, seen by the user through XQuartz), and its 16 px moved the panel down at every round
+    trip. Each floating panel's X window asks for none, and is a normal window: quartz-wm frames a utility window
+    whatever it asks."""
+    from Xlib import Xatom
+
     motif = x.intern_atom("_MOTIF_WM_HINTS")
     try:
         app("look glass")
@@ -435,5 +441,8 @@ def test_glass_panels_ask_the_manager_for_no_frame(x, app):
         for w in wins:
             hints = x.create_resource_object("window", w["xid"]).get_full_property(motif, motif)
             assert hints is not None and hints.value[0] & 2 and hints.value[2] == 0, (w["title"], hints)
+            kind = x.create_resource_object("window", w["xid"]).get_full_property(
+                x.intern_atom("_NET_WM_WINDOW_TYPE"), Xatom.ATOM).value[0]
+            assert x.get_atom_name(kind) == "_NET_WM_WINDOW_TYPE_NORMAL", w["title"]
     finally:
         app("look classic")
