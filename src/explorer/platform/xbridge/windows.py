@@ -256,8 +256,11 @@ class Windows:
         elif e.sent or rec.popup or not rec.reparented:
             apply(rec, e.x, e.y, e.width, e.height)
         else:                                           # inside the manager's frame: ask where that is, not waiting
+            # an answer that comes after Qt asked for another geometry is where the window was: taken, it set Qt
+            # back and Qt asked again (through XQuartz the glass panels jumped about for 1.2 s)
+            asked = rec.cfg_seq
             self.c.translate_coordinates(rec.xid, self.scr.root).then(
-                lambda r, err, w=e.width, h=e.height: err is None and apply(
+                lambda r, err, w=e.width, h=e.height: err is None and rec.cfg_seq == asked and apply(
                     rec, *struct.unpack_from("<hh", r, 12), w, h, True))
 
     # ---- state
