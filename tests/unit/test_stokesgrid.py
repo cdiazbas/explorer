@@ -58,6 +58,18 @@ def shown(grid, data, st):
                for k, v in enumerate(grid.views))
 
 
+def seen(grid):
+    """What each panel shows and last rendered: for the message of an assertion that fails."""
+    out = []
+    for v in grid.views:
+        vp, r = v.widget.viewport(), v.last_render or {}
+        (x0, x1), (y0, y1) = v.vb.viewRange()
+        out.append(dict(viewport=(vp.width(), vp.height()), dpr=vp.devicePixelRatioF(),
+                        range=(round(y0, 1), round(y1, 1), round(x0, 1), round(x1, 1)),
+                        region=r.get("region"), shape=r.get("shape"), factor=r.get("factor")))
+    return out
+
+
 def click(view, y, x, button=None, double=False):
     """A click at data pixel (y, x) on an ImageView's scene, as pyqtgraph hands it to sigMouseClicked."""
     from PySide6 import QtCore
@@ -108,15 +120,23 @@ def test_zoom_linked_and_each_panel_renders_what_it_shows(qapp, shell):
             if not r or r["shape"][0] > 2 * vp.height() * dpr or r["shape"][1] > 2 * vp.width() * dpr:
                 return False
         return True
-    assert spin(qapp, screen_sized)
-    assert all(v.last_render["factor"] > 1 for v in g.views)                  # whole: reduced
+    assert spin(qapp, screen_sized), seen(g)
+    assert all(v.last_render["factor"] > 1 for v in g.views), seen(g)         # whole: reduced
 
     def small():
+        """The same small region in all four: centres within half a data pixel; the edges within one, as panels whose
+        heights differ by a pixel (an odd total) may show a pixel more. pyqtgraph's own link lined the views up by
+        where they are on the screen: on Linux the bottom row showed y 56-184 and the top row 136-264."""
         r = [v.last_render.get("region") for v in g.views]
-        return len(set(r)) == 1 and r[0][1] - r[0][0] < SHAPE[3] and r[0][3] - r[0][2] < SHAPE[4]
+        c = [((y0 + y1) / 2, (x0 + x1) / 2) for (y0, y1), (x0, x1) in
+             (reversed(v.vb.viewRange()) for v in g.views)]
+        return (all(x is not None for x in r)
+                and all(abs(a - b) <= 1 for q in r for a, b in zip(q, r[0], strict=True))
+                and all(abs(a - b) <= 0.5 for q in c for a, b in zip(q, c[0], strict=True))
+                and r[0][1] - r[0][0] < SHAPE[3] and r[0][3] - r[0][2] < SHAPE[4])
     g.views[2].vb.setRange(QtCore.QRectF(100, 100, 40, 40), padding=0)       # a zoom in one panel
-    assert spin(qapp, small)                                                  # the same small region in all four
-    assert all(v.last_render["factor"] == 1 for v in g.views)                 # at full resolution there
+    assert spin(qapp, small), seen(g)                                         # the same small region in all four
+    assert all(v.last_render["factor"] == 1 for v in g.views), seen(g)        # at full resolution there
 
 
 def test_no_panel_zooms_out_past_the_whole_image(qapp, shell):

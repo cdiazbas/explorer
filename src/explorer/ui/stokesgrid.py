@@ -1,12 +1,12 @@
 """The 2x2 view (ROADMAP E5.11): I, Q, U and V side by side over the image panel, at this t and lambda.
 
-Four ImageViews, one per Stokes, their views linked: a zoom or a pan in one moves all four. Each renders what it
-shows only, at the resolution it is shown (ImageView.render: the visible region reduced to the screen's pixels), with
-its own levels (Q U V symmetric about 0) and its Stokes's colour table. The cursor's crosshair is drawn in all four;
-the mouse over any of them moves the cursor, a click locks it there and makes that panel's Stokes the session's (so
-lambda-t shows it), a right click releases it, a double click shows the whole image. The core reads the frames
-(Scheduler.set_grid). From the prototype's app/look_glass.py StokesGrid (221-315) and set_grid (600-614), on
-explorer's ImageView (crop and reduce_u8, where the prototype strided down).
+Four ImageViews, one per Stokes, their views linked: a zoom or a pan in one moves all four (_follow). Each renders
+what it shows only, at the resolution it is shown (ImageView.render: the visible region reduced to the screen's
+pixels), with its own levels (Q U V symmetric about 0) and its Stokes's colour table. The cursor's crosshair is
+drawn in all four; the mouse over any of them moves the cursor, a click locks it there and makes that panel's Stokes
+the session's (so lambda-t shows it), a right click releases it, a double click shows the whole image. The core
+reads the frames (Scheduler.set_grid). From the prototype's app/look_glass.py StokesGrid (221-315) and set_grid
+(600-614), on explorer's ImageView (crop and reduce_u8, where the prototype strided down).
 
     grid = StokesGrid(parent, ns, on_hover, on_click, light=..., strips=..., parts=...)
     grid.set_image(s, img, levels); grid.set_crosshair(y, x); grid.set_locked(on); grid.set_lut(s, table)
@@ -35,6 +35,7 @@ class StokesGrid(QtWidgets.QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(SPACING)
         self.views: list[ImageView] = []
+        self._following = False
         ink = QtGui.QColor(30, 30, 34) if light else QtGui.QColor(235, 235, 240)
         cols = 1 if ns == 1 else 2
         for k in range(ns):
@@ -42,9 +43,7 @@ class StokesGrid(QtWidgets.QWidget):
             v._first = False                            # the region comes from the single view, not the whole image
             v.vb.setMenuEnabled(False)
             v.widget.viewport().setCursor(QtCore.Qt.CursorShape.CrossCursor)
-            if self.views:
-                v.vb.setXLink(self.views[0].vb)
-                v.vb.setYLink(self.views[0].vb)
+            v.vb.sigRangeChanged.connect(lambda *_a, v=v: self._follow(v))
             label = pg.TextItem(STOKES[k], color=ink, anchor=(0, 0))
             label.setParentItem(v.vb)
             label.setPos(8, 6)
@@ -52,6 +51,21 @@ class StokesGrid(QtWidgets.QWidget):
             lay.addWidget(v.widget, k // cols, k % cols)
             self.views.append(v)
         self.hide()
+
+    def _follow(self, src: ImageView) -> None:
+        """A zoom or pan in one panel: the same region in the others. Not pyqtgraph's setXLink/setYLink, which lines
+        linked views up by where they are on the screen (ViewBox.linkedViewChanged, for plots sharing an axis): on
+        Linux the bottom row showed y 56-184 while the top row showed 136-264."""
+        if self._following:
+            return
+        self._following = True
+        try:
+            r = src.vb.viewRect()
+            for v in self.views:
+                if v is not src:
+                    v.vb.setRange(r, padding=0)
+        finally:
+            self._following = False
 
     def panel_point(self, s: int, ev):
         """(y, x) in data pixels of a click on panel s, or None when it is outside the image's view box."""
