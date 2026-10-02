@@ -65,8 +65,7 @@ jobs:
           bin=$(echo .venv-*/bin)
           "$bin/ruff" check src tests scripts bench tools
           "$bin/lint-imports"
-      - name: types (not clean yet, roadmap E0.14)
-        continue-on-error: true
+      - name: types
         run: $(echo .venv-*/bin)/mypy
       - name: unit and golden tests
         run: |
