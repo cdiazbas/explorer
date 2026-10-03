@@ -1,6 +1,7 @@
 """The per-pixel files that belong to an image cube: <stem>_sp.fits, _sp.icube, _sp.fcube, best first. The same
 format as the image cube comes first: an LP image cube holds counts, its FITS sibling physical values, so a FITS
-per-pixel file next to an LP image cube would put the spectra and the image in different units."""
+per-pixel file next to an LP image cube would put the spectra and the image in different units. A tag between _im
+and the extension (SSTRED's .aligned6173, a cube aligned to another line's grid) is kept: <stem>_sp.<tag>.<ext>."""
 import os
 import re
 
@@ -11,7 +12,8 @@ def companions(im_path) -> list[str]:
     """Existing per-pixel files for <stem>_im.(fits|icube|fcube): looked up next to the file itself and next to
     the path given (which may be a link from another directory), as the prototype's find_sp does."""
     real_dir, name = os.path.split(os.path.realpath(im_path))
-    stem = re.sub(r"_im\.(fits|icube|fcube)$", "", name)
+    m = re.match(r"(.*)_im((?:\.[^.]+)*?)\.(fits|icube|fcube)$", name)
+    stem, tag = (m.group(1), m.group(2)) if m else (name, "")
     ext = os.path.splitext(name)[1]
     # an LP image cube: its own kind first, then the other LP kind, the FITS one last
     order = (sorted(ORDER, key=lambda suffix: (not suffix.endswith(ext), suffix == "_sp.fits"))
@@ -20,7 +22,7 @@ def companions(im_path) -> list[str]:
     out: list[str] = []
     for d in dirs:
         for suffix in order:
-            p = os.path.join(d, stem + suffix)
+            p = os.path.join(d, stem + suffix.replace("_sp", "_sp" + tag, 1))
             if p not in out and os.path.exists(p):
                 out.append(p)
     return out

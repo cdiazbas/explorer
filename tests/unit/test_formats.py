@@ -113,3 +113,12 @@ def test_an_lp_cube_with_nothing_to_split_it_has_one_unknown_axis(tmp_path):
     frames = np.zeros((7, 6, 5), np.float32)
     lay = formats.open_layout(_lp_frames(tmp_path / "Bstr.6173_x.fcube", frames))
     assert lay.shape == (7, 6, 5) and roles(lay.axes, lay.shape).how == "unknown"
+
+
+def test_companions_of_a_cube_with_a_tag_after_im(tmp_path):
+    # <stem>_im.<tag>.icube (a cube aligned to another line's grid, as SSTRED names it) has <stem>_sp.<tag>.icube
+    im = tmp_path / "c_im.aligned6173.icube"
+    im.write_bytes(b"")
+    (tmp_path / "c_sp.aligned6173.icube").write_bytes(b"")
+    (tmp_path / "c_sp.icube").write_bytes(b"")                    # the unaligned one is not its companion
+    assert [p.rsplit("/", 1)[1] for p in formats.companions(im)] == ["c_sp.aligned6173.icube"]
