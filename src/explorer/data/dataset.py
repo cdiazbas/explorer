@@ -14,6 +14,7 @@ Which thread does what (explorer.data.executors):
 Latest-wins (Executors.submit_latest) is for the caller to use: the Dataset serves every request it gets.
 """
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 
 import numpy as np
 
@@ -23,7 +24,7 @@ from . import formats
 from .cache import FrameCache
 from .executors import Executors
 from .io import FrameReader
-from .pixel import PixelReader, open_pixel
+from .pixel import PixelReader, SpFits, calibrate_frames, open_pixel
 from .policy import Budgets, MemoryGuard, StorageProbe, plan_budgets
 from .rowbands import RowBands
 from .slits import read_slit_bands, read_slit_slab, slit_pixels
@@ -66,6 +67,7 @@ class Dataset:
             self.cache = FrameCache(self.frames, self.budgets.images)
             self.pixel: PixelReader | None = None
             self.calibration = None
+            self.frame_calibration: dict | None = None  # integer LP frames fitted to a FITS per-pixel file
             if not no_sp:
                 self._open_pixel(sp)
             # without a per-pixel file, series come a row at a time on network storage (rowbands.py)
@@ -90,6 +92,25 @@ class Dataset:
         if self.pixel is not None:
             self.calibration = getattr(self.pixel, "calibration", None)
             log.info("per-pixel file %s (%s)", self.pixel.layout.path, self.pixel.kind)
+        lay = self.layout
+        if isinstance(self.pixel, SpFits) and lay.kind == "lp" and lay.dtype.kind in "iu" and not lay.scaled:
+            self._calibrate_frames()
+
+    def _calibrate_frames(self) -> None:
+        """Integer LP frames in counts beside a FITS per-pixel file in physical units (no IDL save file says what
+        the counts are): the frames take the file's units, so the image and the spectra agree. Before any frame
+        is read into the cache: every read converts through the frames' layout."""
+        assert self.pixel is not None
+        try:
+            cal = calibrate_frames(self.frames, self.pixel)
+        except (ValueError, OSError) as e:
+            log.warning("%s: frames in counts, %s in physical units: not calibrated: %s", self.path,
+                        self.pixel.layout.path, e)
+            return
+        self.layout = replace(self.layout, scale=cal["scale"], zero=cal["zero"], blank=cal["blank"])
+        self.frames.layout = self.layout
+        self.frame_calibration = cal
+        log.info("frames calibrated against %s: %s", self.pixel.layout.path, cal)
 
     # ---------------------------------------------------------------- memory
     def _plan(self) -> Budgets:

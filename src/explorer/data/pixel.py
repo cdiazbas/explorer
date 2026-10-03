@@ -191,6 +191,42 @@ class SpLP(PixelReader):
         return out
 
 
+def calibrate_frames(frames: FrameReader, sp: PixelReader, pixels=None) -> dict:
+    """physical = scale * counts + zero for integer LP frames read beside a per-pixel file in physical units (a FITS
+    one given by hand, with no IDL save file to say it), fitted on Stokes I's lambda-t at one pixel as
+    SpLP.calibrate fits the other way round; and blank, the one count found where the per-pixel file has NaN
+    (SSTRED's padding, its nan_rplcmnt), looked for at that pixel and at the image's corners; None when there is
+    none or those counts differ. Raises if no pixel has at least 4 samples with data."""
+    if len(frames.shape) != 5:
+        raise ValueError("calibration needs an image cube with (t, s, lambda) leading axes")
+    ny, nx = frames.ny, frames.nx
+    tries = pixels or [(ny // 2, nx // 2)] + [(int(ny * fy), int(nx * fx)) for fy in (0.25, 0.5, 0.75)
+                                             for fx in (0.25, 0.5, 0.75) if (fy, fx) != (0.5, 0.5)]
+    padded: set[float] = set()
+
+    def look(y, x):
+        counts = np.asarray(frames.series(y, x, (0, 0, 0), [0, 2]), np.float64).ravel()
+        phys = np.asarray(sp.block(y, x)[0], np.float64).ravel()
+        padded.update(np.unique(counts[np.isnan(phys)]).tolist())
+        return counts, phys
+
+    fit = None
+    for y, x in tries:
+        counts, phys = look(y, x)
+        ok = np.isfinite(phys)
+        if ok.sum() > 3:
+            scale, zero = np.polyfit(counts[ok], phys[ok], 1)
+            resid = phys[ok] - (scale * counts[ok] + zero)
+            fit = dict(scale=float(scale), zero=float(zero), max_resid=float(np.abs(resid).max()), pixel=(y, x))
+            break
+    if fit is None:
+        raise ValueError(f"{frames.layout.path}: no pixel with data to calibrate against {sp.layout.path}")
+    for y, x in ((0, 0), (ny - 1, nx - 1)):
+        look(y, x)
+    fit["blank"] = int(padded.pop()) if len(padded) == 1 else None
+    return fit
+
+
 def lp_pixel_layout(sp_path, ny: int, nx: int) -> Layout:
     """Layout of an LP per-pixel file for an image cube of ny x nx pixels (its header alone does not say)."""
     from .formats import lp_header

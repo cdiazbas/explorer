@@ -97,3 +97,29 @@ def test_closing_with_reads_ahead_in_flight_raises_nothing(dataset, capfd):
             ds.prefetch((t, 0, lam))
     ds.close()
     assert "CancelledError" not in capfd.readouterr().err
+
+
+def test_integer_lp_frames_beside_a_fits_per_pixel_file_take_its_units(tmp_path):
+    # an LP image cube without its idlsave, and a FITS per-pixel file given by hand (--sp): the frames were in counts
+    # and the spectra in physical units, 1e11 apart. The frames are calibrated against the FITS file: its scale, and
+    # the count SSTRED puts where the FITS has NaN (the padding)
+    from astropy.io import fits
+
+    from explorer.data.dataset import Dataset
+
+    shape = (2, 4, 3, 16, 12)
+    d = synth.write_dataset(tmp_path, "c", shape=shape, icube=False)
+    im = fits.getdata(d["im"]).astype(np.float64)
+    counts = np.round(np.nan_to_num(im * synth.ICUBE_SCALE, nan=-1240)).astype("<i2")
+    lp = tmp_path / "lp=0-1_im.icube"                                 # its scans in the name: (t, s, lambda)
+    head = (f"stokes=[I,Q,U,V], ns=4 :  datatype=2 (integer), dims=3, nx={shape[4]}, ny={shape[3]}, "
+            f"nt={shape[0] * shape[1] * shape[2]}, endian=l")
+    lp.write_bytes(head.encode().ljust(512, b"\0") + counts.tobytes())
+    with Dataset.open(lp, sp=d["sp"]) as ds:
+        assert ds.pixel is not None and ds.pixel.kind == "sp.fits"
+        for idx in [(0, 0, 1), (1, 3, 2)]:
+            got, want = ds.image(idx).result(), im[idx]
+            assert (np.isnan(got) == np.isnan(want)).all()
+            # two counts: half a count of rounding, and the fit's error on 6 samples (2 t x 3 lambda), as SpLP's
+            assert np.nanmax(np.abs(got - want)) <= 2.0 / synth.ICUBE_SCALE
+        assert ds.frame_calibration["blank"] == -1240
