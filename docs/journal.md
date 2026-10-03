@@ -2332,3 +2332,22 @@ down»), `macos-13` se retiró en diciembre de 2025. Para x86_64 queda `macos-15
 macOS 15, la última imagen Intel de Actions, que se retira en otoño de 2027. Añadido a la matriz, con la
 fecha junto a la etiqueta. Después de esa fecha el Mac Intel no se probará en ninguna parte. La primera
 ejecución llegará con la próxima subida.
+
+### 2026-10-03 (16): un solo arranque para el visor y su self-test; `setup_env --link` (ROADMAP E0.15, X.4)
+
+**E0.15.** `bench/explorer_selftest.py` construía su propia ventana: sin barra de título, con la clase base
+del display (nunca el puente) y sin bordes en los paneles. Medía una ventana que nadie ve; es el F4 del
+prototipo, que desde entonces comparte `app/startup.py`. Ahora `ui.app.start()` hace todo lo que `run()`
+hacía antes del bucle de eventos, y lo devuelve (`Started`: aplicación, `Shell`, cubo, display, tema
+aplicado, instantes). `run()` es `start()` más el bucle. El self-test usa `start(saved_layout=False)`: la
+disposición guardada del usuario no se lee, ni se escribe al cerrar, ni se borra. Su
+`open_to_first_frame_s` sigue contando desde que existe la aplicación, como el del prototipo. En el Xvfb
+privado de bellatrix, con `--x11 bridge`, el self-test informa `bridge: true` y la sonda del enlace X
+corre, como en el arranque real.
+
+**X.4.** `setup_env.sh --link` instalaba y pasaba el doctor antes de enlazar. Ahora, si el entorno está al
+día (el criterio de `run.sh`: el `cksum` de `uv.lock` es el guardado al construirlo) y es del modo pedido
+(un entorno `--dev` sirve también sin `--dev`), solo enlaza. La prueba usa un entorno falso y un `PATH`
+sin uv ni conda: si el atajo no se toma, el script se detiene enseguida en vez de instalar. La ejecución
+real en bellatrix recreó `~/.local/bin/explorer` con el mismo destino (`scripts/run.sh`); `.bashrc` no se
+tocó.
