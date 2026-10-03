@@ -22,7 +22,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04, macos-latest]
+        # macos-15-intel: the Intel Mac (the third environment of [tool.uv]), GitHub's last x86_64 image, retired
+        # in autumn 2027 (GitHub changelog 2025-09-19); after that the Intel Mac is tested nowhere
+        os: [ubuntu-22.04, ubuntu-24.04, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
     env:
       # a failure says enough to be looked into without running it again: why each test failed or was skipped,
