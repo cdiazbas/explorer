@@ -17,15 +17,13 @@ def detect(path) -> str:
 
 
 def open_layout(path) -> Layout:
-    """Layout of an image cube. An LP image cube needs its per-pixel file to split its frames: see
-    formats.lp_pair_layouts; here it is looked up next to the cube."""
+    """Layout of an image cube. An LP image cube is split into (t, s, lambda) by its per-pixel file, looked up next
+    to it (formats.lp_pair_layouts); without one, by the scans in its name (formats.lp_single_layout)."""
     kind = detect(path)
     if kind == "fits":
         return fits_layout(path)
     from .companions import companions
-    from .lp import lp_pair_layouts
+    from .lp import lp_pair_layouts, lp_single_layout
 
     sp = next((p for p in companions(path) if detect(p) == "lp"), None)
-    if sp is None:
-        raise ValueError(f"{path}: an LP image cube needs its per-pixel file (_sp.icube/.fcube) next to it")
-    return lp_pair_layouts(path, sp)[0]
+    return lp_pair_layouts(path, sp)[0] if sp is not None else lp_single_layout(path)

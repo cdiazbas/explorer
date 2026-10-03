@@ -69,7 +69,11 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look
     from .shell import Shell
 
     q = time.perf_counter()
-    ds = Dataset.open(path, sp=sp, no_sp=no_sp, axes=axes)
+    try:
+        ds = Dataset.open(path, sp=sp, no_sp=no_sp, axes=axes)
+    except (ValueError, OSError) as e:                  # a file it cannot read as a cube: say so, no traceback
+        print(f"[{APP_NAME}] cannot open {path}: {e}", file=sys.stderr)
+        return 1
     phases["cube"] = time.perf_counter() - q
     try:
         q = time.perf_counter()

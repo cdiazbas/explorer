@@ -4,7 +4,8 @@
     _sp.icube / _sp.fcube   the same values per pixel [nl, nt, npix * ns], pixel-major, Stokes fastest
 
 An image cube's header does not say how its frames split into (t, s, lambda): that comes from its per-pixel
-file (nl = its nx, nt = its ny), so the two are read as a pair.
+file (nl = its nx, nt = its ny), so the two are read as a pair. Without one (field and velocity maps, products,
+clipped cubes), the scans in the file name say it (lp_single_layout).
 """
 import re
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ import numpy as np
 from .layout import Layout
 
 HEADER_BYTES = 512
+_SCANS = re.compile(r"=(\d+)-(\d+)(?=[._]|$)")      # "=0-85": the scans in a cube, as SSTRED names it
 _DATATYPE = {"1": "u1", "2": "i2", "3": "i4", "4": "f4"}
 
 
@@ -59,3 +61,31 @@ def lp_pair_layouts(im_path, sp_path) -> tuple[Layout, Layout]:
     per_pixel = Layout(path=str(sp_path), kind="lp", offset=HEADER_BYTES, shape=(ny, nx, ns, nt, nl), dtype=sp.dtype,
                        axes=("HPLT", "HPLN", "STOKES", "UTC", "WAVE"))
     return image, per_pixel
+
+
+def scans_in_name(path) -> int | None:
+    """How many scans the file name says the cube holds: the sum of its "=a-b" ranges (a cube joined from two
+    series has two), or None without any."""
+    import os
+
+    ranges = _SCANS.findall(os.path.basename(str(path)))
+    return sum(int(b) - int(a) + 1 for a, b in ranges) if ranges else None
+
+
+def lp_single_layout(path) -> Layout:
+    """An LP cube without a per-pixel file: frames [nx, ny, n] in CRISPEX's order, frame = (t * ns + s) * nl + l.
+    With n equal to the scans in the name: one frame per scan, (t, y, x) (maps of B or v, Doppler products). With
+    a multiple of scans x ns: (t, s, lambda, y, x), ns from the header (a clipped image cube: its frames equal
+    the first scans of the whole cube's, checked on real data). Without scans in the name, or with a number they
+    do not divide, one leading axis that nothing names: roles() calls it unknown, and --axes says what it is."""
+    h = lp_header(path)
+    n, scans, ns = h.nt, scans_in_name(path), max(1, h.ns)
+    shape: tuple[int, ...]
+    axes: tuple[str, ...]
+    if scans and n == scans:
+        shape, axes = (n, h.ny, h.nx), ("UTC", "HPLT", "HPLN")
+    elif scans and n % (scans * ns) == 0:
+        shape, axes = (scans, ns, n // (scans * ns), h.ny, h.nx), ("UTC", "STOKES", "WAVE", "HPLT", "HPLN")
+    else:
+        shape, axes = (n, h.ny, h.nx), ("FRAME", "HPLT", "HPLN")
+    return Layout(path=str(path), kind="lp", offset=HEADER_BYTES, shape=shape, dtype=h.dtype, axes=axes)

@@ -7,7 +7,7 @@ from .companions import companions
 from .detect import detect, open_layout
 from .fits import fits_layout
 from .layout import Layout
-from .lp import LPHeader, lp_header, lp_pair_layouts
+from .lp import LPHeader, lp_header, lp_pair_layouts, lp_single_layout, scans_in_name
 
 __all__ = ["Layout", "detect", "open_layout", "fits_layout", "LPHeader", "lp_header", "lp_pair_layouts",
-           "companions"]
+           "lp_single_layout", "scans_in_name", "companions"]
