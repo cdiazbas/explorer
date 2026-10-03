@@ -98,10 +98,14 @@ def lp_single_layout(path) -> Layout:
 
 def lp_sidecar(path) -> str | None:
     """The IDL save file beside an LP image cube: <stem>_im_times+wvl.idlsave for <stem>_im[.tag].icube or .fcube
-    (an aligned cube's tag is not in its name), in the same directory; None when there is none."""
-    m = _IMAGE_CUBE.match(os.path.basename(str(path)))
-    p = os.path.join(os.path.dirname(str(path)), m.group(1) + SIDECAR) if m else None
-    return p if p is not None and os.path.isfile(p) else None
+    (an aligned cube's tag is not in its name), next to the path given, else next to the file it links to (a cube
+    linked alone, under another name, into another directory, as companions() does); None when there is none."""
+    for p in dict.fromkeys((os.path.abspath(str(path)), os.path.realpath(str(path)))):
+        m = _IMAGE_CUBE.match(os.path.basename(p))
+        side = os.path.join(os.path.dirname(p), m.group(1) + SIDECAR) if m else None
+        if side is not None and os.path.isfile(side):
+            return side
+    return None
 
 
 def lp_values(layout: Layout, sidecar) -> Layout:

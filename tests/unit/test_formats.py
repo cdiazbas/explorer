@@ -171,3 +171,22 @@ def test_an_idlsave_that_cannot_be_read_leaves_the_counts(tmp_path):
     (tmp_path / "c_im_times+wvl.idlsave").write_bytes(b"SR\0\4" + b"\0" * 3)
     lay = formats.open_layout(im)
     assert not lay.scaled and lay.blank is None
+
+
+def test_an_lp_cube_linked_alone_finds_the_idlsave_beside_the_file_it_points_to(tmp_path):
+    # as data/lp/ links: the cube linked under another name into another folder, its idlsave not linked
+    (tmp_path / "real").mkdir()
+    (tmp_path / "links").mkdir()
+    im, _ = _lp_pair(tmp_path / "real", np.ones((2, 1, 3, 4, 5), np.int16))
+    synth.write_idlsave(tmp_path / "real" / "c_im_times+wvl.idlsave", {"fac": np.float32(1e11)})
+    link = tmp_path / "links" / "generic_im.icube"
+    link.symlink_to(im)
+    assert formats.lp_sidecar(link) == str(tmp_path / "real" / "c_im_times+wvl.idlsave")
+    assert formats.open_layout(link).scale == pytest.approx(1e-11)
+
+
+def test_an_integer_lp_cube_without_its_idlsave_says_its_values_are_counts(tmp_path, caplog):
+    im, _ = _lp_pair(tmp_path, np.ones((2, 1, 3, 4, 5), np.int16))
+    with caplog.at_level("WARNING"):
+        formats.open_layout(im)
+    assert any("counts" in r.getMessage() and "times+wvl.idlsave" in r.getMessage() for r in caplog.records)

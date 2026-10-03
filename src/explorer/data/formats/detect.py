@@ -33,6 +33,9 @@ def open_layout(path) -> Layout:
     layout = lp_pair_layouts(path, sp)[0] if sp is not None else lp_single_layout(path)
     side = lp_sidecar(path)
     if side is None:
+        if layout.dtype.kind in "iu":                   # nothing says what the counts are: shown as they are
+            log.warning("%s: values in counts, padding as data: no <stem>_im_times+wvl.idlsave beside it or the "
+                        "file it links to", path)
         return layout
     try:
         return lp_values(layout, side)
