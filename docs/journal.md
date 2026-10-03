@@ -2292,3 +2292,34 @@ un fallo: lo vacío venía de la sonda de entonces, que esperaba en un bucle ani
 En la captura de la λ-t, el eje de tiempos rotula 08:17, 08:17, 08:16: en HH:MM, con una cadencia de 20 s,
 dos marcas seguidas dicen lo mismo. El prototipo hace igual (`app/viewer.py:1103-1104`). Queda como E5.20,
 para decidir.
+
+### 2026-10-03 (14): el pool de numba al arrancar por `run.sh` (ROADMAP E0.16)
+
+`run.sh` exportaba `NUMBA_NUM_THREADS=64`, un valor del primer commit de entorno (09-28). Es anterior a la
+medida de las lecturas dispersas con 128 hilos (E1.12, 09-30). `data/_numba.py` sube el pool a 128, pero
+solo si la variable no está fijada, así que todo lo que arrancaba por `run.sh` se quedaba en 64.
+`gather.py:34` y `executors.py:65` limitan los hilos al pool.
+
+**Medida** (bellatrix, sin fijar a nodo porque la pregunta es de número de hilos, bajo el cerrojo): λ-t
+en frío desde las frames del 6173 (sin `_sp`), con `NUMBA_NUM_THREADS=64` o sin fijar, en procesos
+separados y rondas alternas. Cuatro lecturas por proceso, en filas a 64 de distancia (las de `rowbands`
+no se solapan).
+
+| ronda | 64 hilos | 128 hilos |
+|---|---|---|
+| 1 | 0.46 s | 0.23 s |
+| 2 | 0.56 s | 0.36 s |
+| 3 | 0.39 s | 0.40 s |
+| total | mediana 0.57 s (16 lecturas) | 0.34 s (12 lecturas) |
+
+La carga subió de 5 a 22 durante la medida (otros usuarios), y en la cuarta ronda el proceso de 128 no
+devolvió nada. Concuerda con la medida de E1.12 (0.56 frente a 0.42). Datos en
+`bench/results/e016_threads_2026-10-03/`.
+
+Dos errores de mi sonda, corregidos antes de esta tabla:
+- importaba numba antes que explorer, así que `_numba.py` no subía el pool y la variante «128» tenía 32;
+- leía filas a 7 de distancia y, desde la tercera lectura, venían de la memoria de `rowbands`.
+
+**Arreglo:** `run.sh` deja la variable al usuario. El doctor importaba numba antes de que explorer
+dimensionara el pool e informaba los núcleos (32), no el pool del visor; ahora lo importa por la capa de
+datos. `run.sh doctor` en bellatrix: `threading layer omp, 128 threads`.
