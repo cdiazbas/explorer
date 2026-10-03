@@ -2030,3 +2030,13 @@ lector. `check.sh`: ruff, capas y tipos bien; 477 pruebas bien, las 2 de E0.13 f
 
 **Queda.** Los `aligned6173` abren sin su `_sp.aligned6173` (E1.18).
 
+### 2026-10-03 (4): cubos alineados con su fichero por píxel (ROADMAP E1.18)
+
+SSTRED nombra un cubo alineado a la malla de otra línea `<stem>_im.aligned6173.icube`, y su fichero por píxel
+`<stem>_sp.aligned6173.icube`; `companions()` buscaba `<stem>_sp.icube` y estos cubos abrían sin él
+(desde E1.17, repartidos por los escaneos del nombre). Ahora la etiqueta entre `_im` y la extensión se
+conserva. En bellatrix: el 6563 alineado (`icube`) se empareja con su `_sp`, calibración escala 1.0 y
+residuo 2e-12 (las mismas cuentas); el 8542 de Stokes alineado (`fcube`, 110 GB, dos series unidas) con el
+suyo, y `_im` = `_sp` en dos píxeles para los cuatro Stokes: el orden (s, t, λ) se cumple también en un
+`fcube` de flotantes. `tests/real` 33 pasan; `check.sh` 478 pasan, las 2 de E0.13 como antes.
+

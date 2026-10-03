@@ -62,14 +62,14 @@ name = "icube_aligned_6563"
 path = "../data/lp/aligned_6563=0-59_im.aligned6173.icube"
 opens = true
 shape = [60, 1, 15, 2044, 2051]
-# opens split by the scans in its name; its _sp.aligned6173 is not found yet (ROADMAP E1.18)
+# with its _sp.aligned6173: the tag after _im is kept for the per-pixel file
 
 [[cube]]
 name = "fcube_aligned_stokes_8542"
 path = "../data/lp/aligned_stokes_8542=0-54_=0-28_im.aligned6173.fcube"
 opens = true
 shape = [84, 4, 20, 2028, 2031]
-# two series joined (55 + 29 scans); its _sp.aligned6173 is not found yet (ROADMAP E1.18)
+# two series joined (55 + 29 scans), four Stokes in float, with its _sp.aligned6173
 
 [[cube]]
 name = "icube_clipped_8542"
