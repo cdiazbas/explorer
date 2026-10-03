@@ -2278,3 +2278,17 @@ movimientos, era falsa: el registro no muestra ninguna llamada de `Shell`.
 
 Sin explicar: por qué quartz-wm recoloca una ventana pedida en (200, 150), y de dónde sale (240, 790).
 E6.14 queda abierta con esto. Scripts y datos en `bench/results/e65_xquartz_2026-10-03/` (Mac).
+
+### 2026-10-03 (13): espectros y λ-t en cocoa (ROADMAP E5.17, E5.20)
+
+E5.17 decía que en una sonda en cocoa los espectros y la λ-t salían vacíos. Lo comprobé con el arranque
+real (`ui.app.run`), en ventanas del Mac, cubo sintético (3, 4, 5, 96, 80), en classic y en glass: el
+cursor se lleva a (40, 30) a los 4 s y se mira a los 6 s. En los dos looks, `Shell.last` tiene los
+espectros (4 × 5, todos finitos, en ese píxel) y la λ-t (3 × 5). Las capturas de los paneles tienen entre
+191 y 401 colores, y vistas muestran los cuatro Stokes con sus ejes físicos y la λ-t con su cursor. No es
+un fallo: lo vacío venía de la sonda de entonces, que esperaba en un bucle anidado. Capturas en
+`bench/results/e517_cocoa_2026-10-03/` (en el Mac).
+
+En la captura de la λ-t, el eje de tiempos rotula 08:17, 08:17, 08:16: en HH:MM, con una cadencia de 20 s,
+dos marcas seguidas dicen lo mismo. El prototipo hace igual (`app/viewer.py:1103-1104`). Queda como E5.20,
+para decidir.
