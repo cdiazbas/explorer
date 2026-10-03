@@ -42,6 +42,55 @@ done
 pyhome="$(dirname "$venv")/.python-$plat"
 [ "$force" = 1 ] && rm -rf "$venv"
 
+link_command() {                                    # the command on the PATH: a link to run.sh, never a copy
+  bin="${XDG_BIN_HOME:-$HOME/.local/bin}"
+  cmd="$bin/explorer"
+  if [ -e "$cmd" ] && [ ! -L "$cmd" ]; then
+    echo "[setup_env] $cmd exists and is not a link: left alone" >&2
+    return 1
+  fi
+  mkdir -p "$bin"
+  ln -sfn "$here/run.sh" "$cmd"
+  echo "[setup_env] $cmd -> $here/run.sh"
+  case ":$PATH:" in
+    *":$bin:"*) ;;
+    *)
+      # not on the PATH: many shells' startup files add ~/.local/bin, many do not (bellatrix's did not). The line
+      # goes into the startup file of the user's shell, in a marked block, once, and only when asked
+      case "$(basename "${SHELL:-bash}")" in zsh) rc="$HOME/.zshrc" ;; *) rc="$HOME/.bashrc" ;; esac
+      mark="# >>> explorer: ~/.local/bin on the PATH >>>"
+      if [ -f "$rc" ] && grep -qF "$mark" "$rc"; then
+        echo "[setup_env] $rc already puts $bin on the PATH: open a new terminal to use 'explorer'"
+      else
+        if [ "$update_shell" = 0 ] && [ -t 0 ]; then
+          printf "[setup_env] %s is not on your PATH. Add it in %s? [y/N] " "$bin" "$rc"
+          read -r ans || ans=""
+          case "$ans" in y|Y|yes|YES) update_shell=1 ;; esac
+        fi
+        if [ "$update_shell" = 1 ]; then
+          {
+            printf '\n%s\n' "$mark"
+            printf 'case ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH" ;; esac\n' "$bin" "$bin"
+            printf '%s\n' "# <<< explorer <<<"
+          } >> "$rc"
+          echo "[setup_env] added $bin to the PATH in $rc (the block between the explorer marks): open a new terminal"
+        else
+          echo "[setup_env] $bin is not on your PATH: run again with --link --update-shell, or add it yourself" >&2
+        fi
+      fi
+      ;;
+  esac
+}
+
+# --link on an environment already up to date (uv.lock unchanged since it was built, as run.sh checks, and of the
+# mode asked: a --dev one serves without --dev too): nothing to install or check again, only the link
+if [ "$link" = 1 ] && [ "$force" = 0 ] && [ -x "$venv/bin/python" ] && "$venv/bin/python" -c "" 2>/dev/null \
+   && [ "$(cksum < uv.lock)" = "$(cat "$venv/.lock.cksum" 2>/dev/null)" ] && { [ "$dev" = 0 ] || [ -f "$venv/.dev" ]; }; then
+  echo "== $venv is up to date (uv.lock unchanged since it was built): only the link"
+  link_command
+  exit
+fi
+
 works() { [ -n "$1" ] && [ -x "$1" ] && "$1" --version >/dev/null 2>&1; }
 conda_cmd() {  # a real mamba/conda executable: in scripts they are not the shell functions of .bashrc
   local c
@@ -101,42 +150,4 @@ echo "== checking (explorer doctor, headless)"
 env -u DISPLAY QT_QPA_PLATFORM=offscreen "$venv/bin/explorer" doctor
 echo "== done: $venv. Run with  scripts/run.sh <cube_im.fits>"
 
-if [ "$link" = 1 ]; then                            # the command on the PATH: a link to run.sh, never a copy
-  bin="${XDG_BIN_HOME:-$HOME/.local/bin}"
-  cmd="$bin/explorer"
-  if [ -e "$cmd" ] && [ ! -L "$cmd" ]; then
-    echo "[setup_env] $cmd exists and is not a link: left alone" >&2
-    exit 1
-  fi
-  mkdir -p "$bin"
-  ln -sfn "$here/run.sh" "$cmd"
-  echo "[setup_env] $cmd -> $here/run.sh"
-  case ":$PATH:" in
-    *":$bin:"*) ;;
-    *)
-      # not on the PATH: many shells' startup files add ~/.local/bin, many do not (bellatrix's did not). The line
-      # goes into the startup file of the user's shell, in a marked block, once, and only when asked
-      case "$(basename "${SHELL:-bash}")" in zsh) rc="$HOME/.zshrc" ;; *) rc="$HOME/.bashrc" ;; esac
-      mark="# >>> explorer: ~/.local/bin on the PATH >>>"
-      if [ -f "$rc" ] && grep -qF "$mark" "$rc"; then
-        echo "[setup_env] $rc already puts $bin on the PATH: open a new terminal to use 'explorer'"
-      else
-        if [ "$update_shell" = 0 ] && [ -t 0 ]; then
-          printf "[setup_env] %s is not on your PATH. Add it in %s? [y/N] " "$bin" "$rc"
-          read -r ans || ans=""
-          case "$ans" in y|Y|yes|YES) update_shell=1 ;; esac
-        fi
-        if [ "$update_shell" = 1 ]; then
-          {
-            printf '\n%s\n' "$mark"
-            printf 'case ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH" ;; esac\n' "$bin" "$bin"
-            printf '%s\n' "# <<< explorer <<<"
-          } >> "$rc"
-          echo "[setup_env] added $bin to the PATH in $rc (the block between the explorer marks): open a new terminal"
-        else
-          echo "[setup_env] $bin is not on your PATH: run again with --link --update-shell, or add it yourself" >&2
-        fi
-      fi
-      ;;
-  esac
-fi
+if [ "$link" = 1 ]; then link_command; fi
