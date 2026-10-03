@@ -2087,3 +2087,37 @@ directamente. 33 pasan. `check.sh` en bellatrix: 489 pasan, las 2 de E0.13 como 
 
 Sin usar todavía: `xcent0`, `ycent0` (el centro del campo en segundos de arco) y `mu`. Sin la escala del
 píxel no dan las esquinas del campo.
+
+### 2026-10-03 (6): el último de dos movimientos rápidos se perdía (ROADMAP E6.13)
+
+`test_the_pointer_moves_the_cursor_and_a_click_locks_it` volvió a fallar en la integración continua, esta
+vez con lo que la prueba dice desde `d8e2307`. El segundo movimiento: el cursor sigue en [54, 66]. X tiene
+el puntero en (430, 320), en la ventana principal (justo el destino), sin bloqueo ni menú. El puente cuenta
+`mouse: 2`. Un Enter solo mueve el cursor de Qt con `setPos` y no suma a esa cuenta, así que los dos
+movimientos llegaron a la ventana Qt.
+
+**Hipótesis descartada: la disposición.** El segundo punto, 70 px a la derecha del centro, podía caer
+fuera de la imagen (80 px de ancho). Medido en bellatrix, offscreen, con la ventana de `bridge_app` (mismo
+cubo, 800×600) entre 0.05 s y 4 s tras mostrarla: el primer punto da el píxel (54.8, 66.1), el mismo [54, 66]
+del CI, y el segundo (45.2, 79.4), dentro del ViewBox, en la última columna. Estable.
+
+**Causa.** `GraphicsScene.mouseMoveEvent` de pyqtgraph 0.14 descarta todo movimiento que llega a menos de
+1/`mouseRateLimit` s del anterior (100/s por defecto: 10 ms) y no lo entrega después. En la prueba, entre
+los dos movimientos solo hay dos ida y vuelta de `state` por la tubería: en un runner rápido, menos de
+10 ms. Los `setPos` del puente que podrían repetir la posición se filtran a propósito (sus movimientos
+sintéticos no son entrada). Así que nada vuelve a llevar la cruz al último píxel. Con un ratón real pasa
+lo mismo: el último movimiento antes de pararse puede caer en esos 10 ms. El prototipo engancha la imagen
+a la misma señal (`prototype/viewer/backend_pg.py:44`).
+
+**Prueba.** Dos `MouseMove` seguidos al viewport, offscreen, sin X: con el límite por defecto el cursor se
+queda en el primer píxel; con `mouseRateLimit=0` pasa. La prueba falla antes del arreglo y pasa con él.
+
+**Arreglo.** La imagen toma sus movimientos de los eventos de su viewport (`imageview._Moves`), no de
+`sigMouseMoved`; la escena conserva su límite para lo demás (espectros, λ-t). Coste medido en bellatrix,
+offscreen, 2000 movimientos a píxeles distintos: 142 µs por movimiento con hover, 42 µs sin él. Esos
+~100 µs del hover antes se pagaban como mucho 100 veces por segundo; a 120 Hz son ~1.2 % de un núcleo.
+
+`tests/xvfb` con un Xvfb privado como el del CI (el binario del proyecto en bellatrix, 1920×1080): 19 pasan
+y 2 se saltan (piden gestor de ventanas); la prueba del puntero 10 de 10. En bellatrix ya pasaba antes:
+esto solo muestra que nada se rompe. La prueba del defecto es la unitaria. `check.sh`: 490 pasan, las 2 de
+E0.13 como antes.
