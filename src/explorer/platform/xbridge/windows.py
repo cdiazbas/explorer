@@ -203,7 +203,8 @@ class Windows:
             flags |= 32
         vals = [flags, g.x(), g.y(), g.width(), g.height(), mn.width(), mn.height(), min(mx.width(), 32767),
                 min(mx.height(), 32767), 0, 0, 0, 0, 0, 0, 0, 0, STATIC_GRAVITY]
-        self.c.change_property(rec.xid, X.ATOM_WM_NORMAL_HINTS, X.ATOM_WM_NORMAL_HINTS, 32, vals)
+        # of type WM_SIZE_HINTS (ICCCM 4.1.2.3): a manager asks for that type, and of another one it reads nothing
+        self.c.change_property(rec.xid, X.ATOM_WM_NORMAL_HINTS, X.ATOM_WM_SIZE_HINTS, 32, vals)
 
     def destroy(self, w) -> XWin | None:
         rec = self.by_widget.pop(w, None)

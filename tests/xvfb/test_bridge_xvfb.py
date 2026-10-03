@@ -502,3 +502,21 @@ def test_the_wheel_gives_the_stokes_and_fps_boxes_the_focus(x, app):
         assert app("state")["summary"]["input"]["wheel"] >= 2
         fake(x, None, xy=(main_window(app)["geometry"][0] + 200, main_window(app)["geometry"][1] + 300))
         app("idle")
+
+
+def test_a_window_manager_reads_the_size_hints_with_static_gravity(x, app):
+    """WM_NORMAL_HINTS is of type WM_SIZE_HINTS (ICCCM 4.1.2.3), and a window manager asks for that type: written
+    with the type WM_NORMAL_HINTS, the hints were there but no manager read them, so the static gravity that keeps a
+    framed window from creeping down on XQuartz (audit F23c) did nothing (ROADMAP E6.5, found by bench/xprops.py)."""
+    from Xlib import X, Xatom
+
+    if not any(w["title"] == "panel λ–t" for w in app("state")["windows"]):
+        app("panel")                                    # a tool window of the main one
+    for title in ("bridge test λ", "panel λ–t"):
+        rec = next(w for w in app("state")["windows"] if w["title"] == title)
+        win = x.create_resource_object("window", rec["xid"])
+        raw = win.get_full_property(Xatom.WM_NORMAL_HINTS, X.AnyPropertyType)
+        assert raw is not None and raw.property_type == Xatom.WM_SIZE_HINTS, \
+            f"{title}: WM_NORMAL_HINTS of type {x.get_atom_name(raw.property_type) if raw else None}"
+        hints = win.get_wm_normal_hints()
+        assert hints is not None and hints.flags & 512 and hints.win_gravity == X.StaticGravity, title
