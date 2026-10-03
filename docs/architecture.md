@@ -40,6 +40,6 @@ src/explorer/
 - **El puente X11 se reescribió, no se trajo partido en módulos** (plan §3.5,
   [ADR 0009](decisions/0009-puente-x11-reescrito.md)): cliente X11 propio y entrada en Qt solo
   por API pública. Directorio `platform/xbridge/` (el plan decía `x11bridge/`). El del
-  prototipo, traído tal cual, queda en el historial (merge `c71e176`, quitado en `7f0f452`).
+  prototipo, traído tal cual, queda en el historial (merge `736099e`, quitado en `594d371`).
 - **`obs/` es un paquete propio en la raíz del código,** no `core/telemetry.py`: lo usa también
   `data`, que no puede depender de `core` (se añadió a plan §3.8 antes de congelarlo).

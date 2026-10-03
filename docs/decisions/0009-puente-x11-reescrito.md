@@ -143,7 +143,7 @@ hasta que el servidor tiene los de Qt. Xcb nativo con `QT_XCB_NO_MITSHM=1`: con 
 misma máquina, Qt usaba memoria compartida y se saltaba el enlace, cosa que por `ssh` no puede
 pasar (sin la variable, se quedaba colgado en la primera imagen). Mediana de las rondas y, entre
 paréntesis, la razón pareada B / A y en cuántas rondas B es más rápido. A es el puente del
-prototipo traído tal cual; B, este, con las correcciones de `e38dea3` (las dos posteriores tocan solo la entrada, que esta
+prototipo traído tal cual; B, este, con las correcciones de `03bcbb1` (las dos posteriores tocan solo la entrada, que esta
 medida no ejercita).
 
 | Medida | A | B | xcb nativo |
@@ -185,19 +185,19 @@ diferencia cuenta si sale en las dos rondas y no en dos ejecuciones del mismo mo
 
 | Síntoma | Causa | Commit |
 |---|---|---|
-| Redimensionar desde una esquina | B no aplicaba las esquinas redondeadas: `offscreen` no guarda máscaras y la barra de título deja la región en un atributo | `e38dea3` |
-| La cruz en otro píxel tras arrastrar | `offscreen` contesta cada `QCursor.setPos` con un movimiento sintético que xcb nunca manda | `e38dea3` |
-| Un panel dejaba de recibir el ratón | un doble clic que acopla el panel dejaba su `grabMouse()`: el soltar iba a una ventana ya desmapeada | `e38dea3` |
-| La lista de un combo seguía abierta al irse el foco X | con un popup abierto, B no avisaba a Qt | `e38dea3`, `a0a6228` (Linux) |
-| Excepción al subir un panel por encima del borde | `WM_NORMAL_HINTS` con x, y negativas empaquetadas sin signo | `e38dea3` |
-| La barra de título seguía resaltada al restaurar | la ventana se va de debajo del puntero quieto y `setPos` al mismo punto no hace nada | `72a9874` |
+| Redimensionar desde una esquina | B no aplicaba las esquinas redondeadas: `offscreen` no guarda máscaras y la barra de título deja la región en un atributo | `03bcbb1` |
+| La cruz en otro píxel tras arrastrar | `offscreen` contesta cada `QCursor.setPos` con un movimiento sintético que xcb nunca manda | `03bcbb1` |
+| Un panel dejaba de recibir el ratón | un doble clic que acopla el panel dejaba su `grabMouse()`: el soltar iba a una ventana ya desmapeada | `03bcbb1` |
+| La lista de un combo seguía abierta al irse el foco X | con un popup abierto, B no avisaba a Qt | `03bcbb1`, `89a7ee6` (Linux) |
+| Excepción al subir un panel por encima del borde | `WM_NORMAL_HINTS` con x, y negativas empaquetadas sin signo | `03bcbb1` |
+| La barra de título seguía resaltada al restaurar | la ventana se va de debajo del puntero quieto y `setPos` al mismo punto no hace nada | `116a384` |
 
 ## Decisión
 
 B. Hecho el 2026-09-30:
 - `auto` elige el puente por `ssh`; `--x11 bridge` es B; el nombre `bridge2` desaparece
-  (`7f0f452`, `7022d38`);
-- A se quita; queda en el historial (merge `c71e176`) y revertir `7f0f452` lo devuelve.
+  (`594d371`, `785521b`);
+- A se quita; queda en el historial (merge `736099e`) y revertir `594d371` lo devuelve.
 
 Pendiente:
 - la comprobación del usuario por `ssh -Y` en XQuartz, que la suite (Xvfb sin gestor) no cubre;

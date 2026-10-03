@@ -20,19 +20,19 @@ cada sesión; no crece.
   sigue. Un `push` con la maestra caducada dejó un aviso de doble factor colgado, y después el
   usuario no pudo conectar durante un rato.
 - **E0.4 hecha:** `obs/` (registro por capa, tramos con presupuestos, trazas); cada tramo cuesta
-  0.7 µs (Mac) y 1.4 µs (bellatrix). Las pruebas ya no escriben en la caché real (`9062dcc`, `b57cbd2`).
+  0.7 µs (Mac) y 1.4 µs (bellatrix). Las pruebas ya no escriben en la caché real (`7213ec4`, `f387607`).
 - **E0.5 hecha:** `scripts/check.sh` (higiene, `ruff`, capas, `mypy`, pruebas) y ganchos de git
-  (`scripts/install_hooks.sh`; en un clon nuevo hay que ejecutarlo). `2444f50`.
+  (`scripts/install_hooks.sh`; en un clon nuevo hay que ejecutarlo). `4be0909`.
 - **E0.8 hecha:** línea base del prototipo en bellatrix y en el Mac ([journal.md](journal.md)).
-  **Regla:** explorer no puede ser más lento que ella, y la meta es mejorarla (`a528015`).
+  **Regla:** explorer no puede ser más lento que ella, y la meta es mejorarla (`8bf7de4`).
 - **Lanzar medidas largas en bellatrix:** `ssh host 'nohup bash -c "cd … && orden" > log 2>&1 < /dev/null &'`.
   Con `cd … && nohup orden > log &`, la subshell conserva la salida de la sesión y el `ssh` no
   vuelve hasta que termina la medida (2026-09-29).
 - **E0.6 hecha:** sintético v2 (`_im` con WCS-TAB, `_sp.fits`, `_sp.icube`), leído por el prototipo
-  con su propio código. La línea base del Mac se repitió con el v2 (`eb532b3`).
+  con su propio código. La línea base del Mac se repitió con el v2 (`9a341fb`).
 - **Regla (memoria del usuario):** nada del prototipo de memoria; se lee su código y se cita.
 - **E0.7 hecha:** referencias del prototipo (caso sintético versionado; caso real del 6173 en
-  bellatrix, en `tests/golden/real/`), exportador y comparador (`acea67c`).
+  bellatrix, en `tests/golden/real/`), exportador y comparador (`b93c4a3`).
 - **Regla (memoria del usuario):** comentarios del código neutros, sin "el usuario dijo" ni
   historias con fecha; la historia, a la documentación.
 - **Siguiente:** E1 (`explorer.data`), comparándose con esas referencias desde el primer día.
