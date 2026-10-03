@@ -1950,3 +1950,61 @@ de la ventana y los paneles, con quién lo pide (pila de Qt o aviso de X), lo ex
 fallos del puente solo existen con uno; ninguna prueba arrancaba en glass con disposición
 guardada; y un hallazgo medido del prototipo no pasó al puente reescrito. Las tareas E5.15 y
 E6.4–E6.7 del roadmap son para eso.
+
+### 2026-10-03: cubos de La Palma reales (ROADMAP E1.15–E1.20)
+
+**Qué se probó.** Solo lectura en bellatrix, sin copiar cubos: los cubos LP (`icube`/`fcube`) de los datos
+reducidos compartidos, cabeceras con `formats.open_layout` y datos con `Dataset`, frente a los FITS de las
+mismas observaciones. Qué ficheros, con sus rutas y fechas: `docs/data.local.md` (no se versiona).
+
+**Lo que funciona.**
+- Los `_im.icube` con su `_sp.icube` al lado abren, con la forma que dice la cabecera (6173, 7699, 8542 y
+  6563).
+- Imagen a mitad de serie, `icube` frente a FITS: `FITS = 1.0e-11 × icube`, correlación 0.999999–1.000000,
+  residuo p99 4.95e-12 (medio paso de la cuantización), en un 6563 y en un 6173 (`stokesI` frente al FITS de
+  Stokes).
+- Bloque λ–t de un píxel, `_im.icube` frente a `_sp.icube`: diferencia máxima 4.6e-13 (6173, calibración
+  escala 1.0) y 0 (6563): el orden de los fotogramas y de los píxeles es correcto con ns = 1.
+
+**Lo que fallaba y se arregló (E1.15).** Un 6563 tiene `_sp.fits` y `_sp.icube` junto a su `_im.icube`; el
+`_im.icube` tomaba el FITS y el bloque λ–t salía en unidades físicas (máximo 3.42e-8) frente a una imagen en
+cuentas (3.42e3). `companions()` pone ahora el compañero del formato del cubo primero. Prueba nueva que
+fallaba antes; en el cubo real, `_sp.icube` con calibración 1.0 y diferencia 0. `check.sh` en bellatrix:
+lint, capas y tipos bien; 437 pruebas bien y las 2 de E0.13 (referencias caducadas) fallan como antes.
+
+**Lo que queda (E1.16–E1.20).**
+- Sin ejes físicos en los LP: el `…_times+wvl.idlsave` no se lee, y scipy no está en el entorno.
+- Los mapas de campo (`.fcube`, (x, y, t)) no abren: se exige un `_sp`.
+- Los nombres `aligned6173` y `clipped` no encuentran su compañero.
+- El orden de Stokes en un `_sp.icube` con ns > 1, sin datos reales en ese momento (resuelto en E1.19).
+- Datos y campo a la vez: segundo cubo, E8.
+
+### 2026-10-03 (2): un cubo real de cada tipo (ROADMAP E1.19, E1.21)
+
+**Barrido.** Solo cabeceras de los cubos LP de los datos reducidos de 2023, 2024 y 2025 (el detalle, en
+`docs/data.local.md`). Los `icube` de Stokes con ns > 1 solo aparecen en 2023 (6173 y 5380 con IQUV, en
+FITS y en `icube`; un 8542 `aligned6173.fcube` con IQUV); en 2024 y 2025 el 6173 y el 8542 van a `icube`
+como `stokesI`. Tipos encontrados: cubos de imágenes FITS e `icube`/`fcube` con su `_sp`; nombres
+`aligned6173`, `clipped`, `cmapcorr`; mapas sueltos (`Blos`, `Bhor`, `Bazi`, `Binc`, `Bstr`, `Vlos`, en
+`fcube` y en `icube`, con `_` o con `.` tras el nombre, algunas cabeceras sin `stokes=`); productos de
+inversión (`meinv` con su `_sp`, tres parámetros en el lugar de λ) y `doppl`/`corew` (`_im.fcube`).
+
+**E1.19, Stokes en `_sp.icube` con ns = 4** (un 6173 de 17 t, IQUV, 27 λ):
+- imagen por Stokes frente al FITS: `FITS ≈ 1.0e-11 × icube`, correlación 1.000000 (I) y
+  0.99997–0.99999 (Q, U, V: pocas decenas de cuentas, pesa la cuantización);
+- `_im.icube` frente a `_sp.icube`, dos píxeles, cada Stokes: ≤ 9e-13;
+- `_sp.icube` frente a `_sp.fits`: cada Stokes se parece más al mismo del FITS que a cualquier otro
+  (0.9993–1.0). El orden es (s, t, λ), el que usa `SpLP`, no el (t, s, λ) de `bench_icube.py`.
+
+**E1.21, `tests/real/`.** Quince casos, uno por tipo, enlazados con nombres genéricos en `data/lp/` (que
+conservan lo que explorer lee del nombre: `_im`/`_sp`, `.aligned6173`, `clipped=`, `Blos_`/`Blos.`). Por
+caso: abre con su forma, una imagen con datos, `_im` = `_sp` en dos píxeles y por Stokes, LP = su FITS por
+la escala entera, y `scripts/run.sh cubo --quit-after 1` sin pantalla (sale con 0 solo si mostró una
+imagen). En bellatrix: 17 pasan y 16 fallos esperados (mapas sueltos y productos sin `_sp`, E1.17;
+`aligned` y `clipped`, E1.18), en 45 s. Los esperados fallan por la razón dicha (falta el `_sp`), pero el
+visor la da como traza de Python, no como mensaje.
+
+**Datos privados.** Las rutas, nombres de ficheros y fechas de las observaciones de StorNext no van en el
+repositorio: `docs/data.local.md` (ignorado por git, y por tanto tampoco lo envía `sync.py`) tiene la tabla
+de enlaces y el barrido completo.
+
