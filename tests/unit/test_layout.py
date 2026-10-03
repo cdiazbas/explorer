@@ -164,3 +164,33 @@ def test_the_glass_look_keeps_a_layout_of_its_own(qapp, store):
     assert not store.restore(b, qapp)                   # nothing saved for the others
     assert g.restore(b, qapp) and (b.width(), b.height()) == (600, 480)
     b.close()
+
+
+def test_a_restored_layout_leaves_the_toolbar_as_the_look_wants_it(qapp, store):
+    """A saved state holds the toolbar's visibility: one saved by glass (toolbar hidden) left the other looks without
+    it, and one with the toolbar shown left an empty 20-px bar over the glass look's image. After a restore the
+    toolbar is shown, and hidden in glass, as the prototype does (viewer.py:2413-2415, look_glass.py:618-622;
+    F81, F82; ROADMAP E5.18)."""
+    from types import SimpleNamespace
+
+    def with_toolbar(look):
+        w = window(qapp)
+        tb = w.addToolBar("Navigation")
+        tb.setObjectName("nav")
+        w.look = SimpleNamespace(name=look)
+        w.show()
+        return w, tb
+
+    # the window's look may still be the other one: leaving glass restores the classic layout before the switch ends
+    for saved_shown, look, wearing in ((False, "classic", "classic"), (True, "glass", "glass"),
+                                       (False, "classic", "glass")):
+        lay = store.for_look(look)
+        a, tb = with_toolbar(look)
+        tb.setVisible(saved_shown)
+        lay.save(a, look=look)
+        a.close()
+        b, tb = with_toolbar(wearing)
+        tb.setVisible(saved_shown)
+        lay.restore(b, qapp)
+        assert tb.isVisible() == (look != "glass"), (look, wearing)
+        b.close()

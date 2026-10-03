@@ -86,6 +86,13 @@ class LayoutStore:
         for d in window.findChildren(QtWidgets.QDockWidget):     # places and sizes, never absences
             if d.isHidden():
                 d.show()
+        # the toolbar as the look this layout is for wants it, not as the state says: hidden in glass (its controls
+        # are on the glass bar), shown in the others (the prototype's viewer.py:2413-2415, look_glass.py:618-622).
+        # Decided by the layout, not by the window's look: leaving glass restores the classic layout while the window
+        # still wears glass
+        glass = self.base.endswith("-glass")
+        for tb in window.findChildren(QtWidgets.QToolBar):
+            tb.setVisible(not glass)
         return restored
 
     def forget(self) -> None:
