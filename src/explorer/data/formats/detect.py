@@ -1,7 +1,10 @@
 """Which format a file is, from its first bytes rather than its name."""
+from ...obs import get_logger
 from .fits import fits_layout
 from .layout import Layout
 from .lp import HEADER_BYTES
+
+log = get_logger("data")
 
 
 def detect(path) -> str:
@@ -18,12 +21,21 @@ def detect(path) -> str:
 
 def open_layout(path) -> Layout:
     """Layout of an image cube. An LP image cube is split into (t, s, lambda) by its per-pixel file, looked up next
-    to it (formats.lp_pair_layouts); without one, by the scans in its name (formats.lp_single_layout)."""
+    to it (formats.lp_pair_layouts); without one, by the scans in its name (formats.lp_single_layout). Its values are
+    scaled and its padding is NaN by the IDL save file beside it (formats.lp_values); without one they are counts."""
     kind = detect(path)
     if kind == "fits":
         return fits_layout(path)
     from .companions import companions
-    from .lp import lp_pair_layouts, lp_single_layout
+    from .lp import lp_pair_layouts, lp_sidecar, lp_single_layout, lp_values
 
     sp = next((p for p in companions(path) if detect(p) == "lp"), None)
-    return lp_pair_layouts(path, sp)[0] if sp is not None else lp_single_layout(path)
+    layout = lp_pair_layouts(path, sp)[0] if sp is not None else lp_single_layout(path)
+    side = lp_sidecar(path)
+    if side is None:
+        return layout
+    try:
+        return lp_values(layout, side)
+    except (OSError, ValueError) as e:                  # the cube still opens, in counts
+        log.warning("%s not read, values of %s left as stored: %s", side, path, e)
+        return layout

@@ -224,3 +224,56 @@ def write_dataset(directory, name="synth_stokes", shape=DEFAULT_SHAPE, seed=0, s
     if not sp and "sp" in paths:
         os.remove(paths.pop("sp"))
     return paths
+
+
+def write_idlsave(path, variables: dict, structures=()) -> str:
+    """A minimal IDL SAVE file as SSTRED's _times+wvl.idlsave: a timestamp record (to be skipped), one VARIABLE
+    record per entry, then the end marker. Values: str, numpy scalars and arrays of int16, int32, float32, float64
+    or str. structures: names written as structure variables, whose bytes a reader cannot decode (they hold zeros).
+    It follows the reader's view of the format: that view was checked against scipy.io.readsav on SSTRED's real
+    files (docs/journal.md)."""
+    import struct
+
+    def pad(b):
+        return b + b"\0" * (-len(b) % 4)
+
+    def string(s):
+        b = s.encode("latin-1")
+        return struct.pack(">ii", len(b), len(b)) + pad(b) if b else struct.pack(">i", 0)
+
+    def data(a):
+        if a.dtype.kind in "UO":
+            return b"".join(string(str(s)) for s in a.ravel())
+        if a.dtype.itemsize == 2:                       # 16 bits in the low half of a 4-byte word
+            w = np.zeros((a.size, 2), ">i2")
+            w[:, 1] = a.ravel()
+            return w.tobytes()
+        return pad(a.astype(">" + a.dtype.str[1:]).tobytes())
+
+    def record(kind, body, start):
+        nxt = start + 16 + len(body)
+        return struct.pack(">iIIi", kind, nxt & 0xFFFFFFFF, nxt >> 32, 0) + body
+
+    codes = {"i2": 2, "i4": 3, "f4": 4, "f8": 5}
+    out = bytearray(b"SR\0\4")
+    out += record(10, b"\0" * 24, len(out))
+    items = [(k, np.asarray(v)) for k, v in variables.items()] + [(k, None) for k in structures]
+    for name, a in items:
+        b = name.upper().encode()
+        body = struct.pack(">i", len(b)) + pad(b)
+        if a is None:
+            body += struct.pack(">ii", 8, 52) + b"\0" * 64
+        else:
+            code = 7 if a.dtype.kind in "UO" else codes[a.dtype.str[1:]]
+            if a.ndim:
+                dims = list(a.shape[::-1]) + [0] * (8 - a.ndim)
+                body += struct.pack(">ii", code, 4) + struct.pack(">iiiii", 8, 0, a.nbytes, a.size, a.ndim)
+                body += b"\0" * 8 + struct.pack(">9i", 8, *dims)
+            else:
+                body += struct.pack(">ii", code, 0)
+            body += struct.pack(">i", 7) + data(a.reshape(-1) if a.ndim else a.reshape(1))
+        out += record(2, body, len(out))
+    out += record(6, b"", len(out))
+    with open(path, "wb") as f:
+        f.write(out)
+    return str(path)

@@ -6,9 +6,14 @@
 An image cube's header does not say how its frames split into (t, s, lambda): that comes from its per-pixel
 file (nl = its nx, nt = its ny), so the two are read as a pair. Without one (field and velocity maps, products,
 clipped cubes), the scans in the file name say it (lp_single_layout).
+
+Values are counts in the integer cubes. What they mean is in the IDL save file SSTRED writes beside the cube,
+<stem>_im_times+wvl.idlsave (lp_sidecar): the scale (fac) and the value that stands for no data (nan_rplcmnt),
+read by lp_values; its wavelengths and times by axes.from_lp.
 """
+import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -17,6 +22,8 @@ from .layout import Layout
 HEADER_BYTES = 512
 _SCANS = re.compile(r"=(\d+)-(\d+)(?=[._]|$)")      # "=0-85": the scans in a cube, as SSTRED names it
 _DATATYPE = {"1": "u1", "2": "i2", "3": "i4", "4": "f4"}
+_IMAGE_CUBE = re.compile(r"(.*)_im(?:\.[^.]+)*?\.[if]cube$")       # <stem>_im[.tag].icube: tag as in "aligned6173"
+SIDECAR = "_im_times+wvl.idlsave"
 
 
 @dataclass(frozen=True)
@@ -66,8 +73,6 @@ def lp_pair_layouts(im_path, sp_path) -> tuple[Layout, Layout]:
 def scans_in_name(path) -> int | None:
     """How many scans the file name says the cube holds: the sum of its "=a-b" ranges (a cube joined from two
     series has two), or None without any."""
-    import os
-
     ranges = _SCANS.findall(os.path.basename(str(path)))
     return sum(int(b) - int(a) + 1 for a, b in ranges) if ranges else None
 
@@ -89,3 +94,29 @@ def lp_single_layout(path) -> Layout:
     else:
         shape, axes = (n, h.ny, h.nx), ("FRAME", "HPLT", "HPLN")
     return Layout(path=str(path), kind="lp", offset=HEADER_BYTES, shape=shape, dtype=h.dtype, axes=axes)
+
+
+def lp_sidecar(path) -> str | None:
+    """The IDL save file beside an LP image cube: <stem>_im_times+wvl.idlsave for <stem>_im[.tag].icube or .fcube
+    (an aligned cube's tag is not in its name), in the same directory; None when there is none."""
+    m = _IMAGE_CUBE.match(os.path.basename(str(path)))
+    p = os.path.join(os.path.dirname(str(path)), m.group(1) + SIDECAR) if m else None
+    return p if p is not None and os.path.isfile(p) else None
+
+
+def lp_values(layout: Layout, sidecar) -> Layout:
+    """The layout with what the values mean, from the IDL save file beside the cube: physical = raw / fac (1e11 or
+    1e9 in SSTRED's integer cubes, 1 in its float ones), and raw == nan_rplcmnt is no data, as FITS BLANK. Measured
+    on real cubes with FITS siblings: the same values, and nan_rplcmnt at exactly the pixels the FITS cube has NaN
+    (the padding); no value below it. A variable that is not there leaves its part unchanged. ValueError or
+    OSError when the file cannot be read."""
+    from .idlsave import read
+
+    v = read(sidecar, names={"fac", "nan_rplcmnt"})
+    fac, blank = v.get("fac"), v.get("nan_rplcmnt")
+    kw: dict = {}
+    if isinstance(fac, np.number) and np.isfinite(fac) and fac != 0:
+        kw["scale"] = 1.0 / float(fac)
+    if isinstance(blank, np.number) and (layout.dtype.kind == "f" or float(blank).is_integer()):
+        kw["blank"] = blank.item()
+    return replace(layout, **kw)

@@ -193,7 +193,7 @@ class FrameReader:
         if lay.scaled:
             out = out * np.float32(lay.scale) + np.float32(lay.zero)
         if lay.blank is not None:
-            out[raw == lay.blank] = np.nan
+            out[raw == raw.dtype.type(lay.blank)] = np.nan  # a float blank compared at the file's precision
         return out
 
     def close(self) -> None:

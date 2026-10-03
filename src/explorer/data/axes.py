@@ -13,6 +13,8 @@ follows the reference reader sunalign/sst.py:
 - the continuum tuning is the one SSTRED used for the Stokes cross-talk correction (PRPARA of the
   STOKES-CROSSTALK-CORRECTION step, "TUNING_SELECTION").
 
+An LP cube has no header: its lambda and times come from the IDL save file SSTRED writes beside it (from_lp).
+
 Not applied: the per-pixel wavelength distortion in WCSDVARR (CWDIS3 = 'Lookup'), up to 0.12 Å in the Fe I 6173
 cube (~6 km/s); velocities are those of the tabulated lambda. Axes.distortion says when a header has one.
 """
@@ -117,6 +119,7 @@ class Axes:
         self.cont = None            # continuum tuning index
         self.t_sec = None           # (nt,) seconds since DATEREF, scan means
         self.dateref = None         # numpy datetime64 of DATEREF
+        self.time_of_day = False    # t_sec counts from midnight UT of a day the file does not give (LP cubes)
         self.corners = None         # (nt, 2, 2, 2) [t, j, i, (x", y")] field corners
         self.corner_px: tuple | None = None  # ((x0, x1), (y0, y1)) 0-based pixel indices of the corners
         self.bunit = None
@@ -146,7 +149,10 @@ class Axes:
         return self.dateref + np.timedelta64(int(round(self.t_sec[t] * 1e3)), "ms")
 
     def utc_str(self, t, seconds=True):
-        u = self.utc(t)
+        if self.time_of_day and self.t_sec is not None:     # the time of day alone: formatted on any day
+            u = np.datetime64(0, "ms") + np.timedelta64(int(round(self.t_sec[t] * 1e3)), "ms")
+        else:
+            u = self.utc(t)
         return None if u is None else str(u)[11:19 if seconds else 16]
 
     def arcsec(self, y, x, t):
@@ -241,7 +247,11 @@ def _read(h, ax: Axes) -> None:
                     nx, ny = hd.get("NAXIS1", 2), hd.get("NAXIS2", 2)
                     ax.corner_px = (idx("HPLN-INDEX", (0, nx - 1)), idx("HPLT-INDEX", (0, ny - 1)))
                     ax.source.append("field corners (WCS-TAB HPLN/HPLT)")
-    # no continuum from the reduction: an isolated end tuning is the continuum (as in 6173)
+    _isolated_continuum(ax)
+
+
+def _isolated_continuum(ax: Axes) -> None:
+    """No continuum from the reduction: an isolated end tuning is the continuum (as in 6173)."""
     if ax.cont is None and ax.lam_nm is not None and ax.lam_nm.size > 3:
         d = np.diff(ax.lam_nm)
         med = float(np.median(np.abs(d)))
@@ -251,6 +261,53 @@ def _read(h, ax: Axes) -> None:
         elif med > 0 and abs(d[0]) > 4 * med:
             ax.cont = 0
             ax.source.append("continuum: isolated blue tuning")
+
+
+def from_lp(path, r: Roles) -> Axes:
+    """The axes of an LP cube from the IDL save file beside it (formats.lp_sidecar): lambda per tuning (nm), and
+    each scan's time as the mean over its tunings, as from_fits takes it. The times are seconds since midnight UT
+    of a day the file does not give, so they are shown as times of day (Axes.time_of_day). Measured on real cubes
+    against their FITS siblings: lambda identical, times within 1e-10 s. The line is the one laboratory line of
+    LINES inside the tuned range. Never raises: without the file, or with values that do not match the cube's axes,
+    what it cannot give stays unknown, and Axes.source says why."""
+    from .formats import idlsave, lp_sidecar
+
+    ax = Axes()
+    side = lp_sidecar(path)
+    if side is None:
+        ax.source.append("no IDL save file beside the cube")
+        return ax
+    try:
+        v = idlsave.read(side, names={"lambda", "time", "times"})
+    except (OSError, ValueError) as e:
+        ax.source.append(f"IDL save file not read: {e}")
+        log.warning("axes of %s: %s", path, ax.source[-1])
+        return ax
+
+    def mismatch(what):
+        ax.source.append(f"IDL save {what} does not match the cube (nt={r.nt}, nl={r.nl}): not used")
+        log.warning("axes of %s: %s", path, ax.source[-1])
+
+    lam = v.get("lambda")
+    if isinstance(lam, np.ndarray) and lam.dtype.kind == "f" and r.l is not None and lam.shape == (r.nl,):
+        ax.lam_nm = lam.astype(float)
+        ax.source.append("lambda per tuning (IDL save lambda)")
+    elif lam is not None:
+        mismatch(f"lambda {getattr(lam, 'shape', '')}")
+    # the (scan, tuning) seconds are "time" in some files and "times" in others, the other holding 'HH:MM:SS' text
+    t = next((a for a in (v.get("time"), v.get("times")) if isinstance(a, np.ndarray) and a.dtype.kind == "f"), None)
+    if t is not None and r.t is not None and t.shape[0] == r.nt:
+        ax.t_sec, ax.time_of_day = t.reshape(r.nt, -1).mean(axis=1).astype(float), True
+        ax.source.append("time per scan (IDL save, seconds of the day UT, mean over tunings)")
+    elif t is not None:
+        mismatch(f"time {t.shape}")
+    if ax.lam_nm is not None:
+        inside = {line for line in LINES.values() if ax.lam_nm.min() <= line[1] <= ax.lam_nm.max()}
+        if len(inside) == 1:
+            ax.line, ax.lam0_nm = inside.pop()
+            ax.source.append(f"line {ax.line}: the one laboratory line inside the tuned range")
+    _isolated_continuum(ax)
+    return ax
 
 
 # ---------------------------------------------------------------- units of the spectra

@@ -4,6 +4,7 @@ import pytest
 from astropy.io import fits
 
 from explorer.data import formats
+from explorer.data.io import FrameReader
 from explorer.testing import synth
 
 SHAPE = (2, 4, 3, 16, 12)
@@ -122,3 +123,51 @@ def test_companions_of_a_cube_with_a_tag_after_im(tmp_path):
     (tmp_path / "c_sp.aligned6173.icube").write_bytes(b"")
     (tmp_path / "c_sp.icube").write_bytes(b"")                    # the unaligned one is not its companion
     assert [p.rsplit("/", 1)[1] for p in formats.companions(im)] == ["c_sp.aligned6173.icube"]
+
+
+def _lp_pair(tmp_path, counts, ns=1):
+    """An LP image cube <stem>_im.icube and its per-pixel file from counts (t, s, lambda, y, x) int16."""
+    nt, _, nl, ny, nx = counts.shape
+    head = f"stokes=[I], ns={ns} :  datatype=2 (integer), dims=3, nx={{}}, ny={{}}, nt={{}}, endian=l"
+    im, sp = tmp_path / "c_im.icube", tmp_path / "c_sp.icube"
+    frames = counts.astype("<i2").tobytes()
+    im.write_bytes(head.format(nx, ny, nt * ns * nl).encode().ljust(512, b"\0") + frames)
+    per_pixel = counts.transpose(3, 4, 1, 0, 2)                         # (y, x, s, t, lambda)
+    sp.write_bytes(head.format(nl, nt, ny * nx * ns).encode().ljust(512, b"\0") + per_pixel.astype("<i2").tobytes())
+    return im, sp
+
+
+def test_an_lp_cube_takes_its_scaling_and_padding_from_the_idlsave_beside_it(tmp_path):
+    counts = np.arange(2 * 1 * 3 * 4 * 5, dtype=np.int16).reshape(2, 1, 3, 4, 5) + 100
+    counts[..., 0] = -1240                                              # padding, as SSTRED's nan_rplcmnt
+    im, _ = _lp_pair(tmp_path, counts)
+    assert formats.lp_sidecar(im) is None
+    assert not formats.open_layout(im).scaled                           # without the file: counts
+    synth.write_idlsave(tmp_path / "c_im_times+wvl.idlsave", {"fac": np.float32(1e11), "nan_rplcmnt": np.int16(-1240)})
+    assert formats.lp_sidecar(im) == str(tmp_path / "c_im_times+wvl.idlsave")
+    lay = formats.open_layout(im)
+    assert lay.scale == pytest.approx(1e-11) and lay.blank == -1240
+    with FrameReader(lay) as fr:
+        f = fr.read((1, 0, 2))
+    assert np.isnan(f[:, 0]).all()
+    np.testing.assert_allclose(f[:, 1:], counts[1, 0, 2, :, 1:] * 1e-11, rtol=1e-6)
+
+
+def test_an_aligned_lp_cube_and_a_float_padding_value(tmp_path):
+    frames = np.full((2, 4, 5), 3e-9, np.float32)
+    frames[:, :, 0] = np.float32(-1.7691475e-08)                        # an fcube's padding: its minimum, a float
+    cube = _lp_frames(tmp_path / "c=0-1_im.aligned6173.fcube", frames)
+    synth.write_idlsave(tmp_path / "c=0-1_im_times+wvl.idlsave", {"fac": np.float32(1.0),
+                                                                    "nan_rplcmnt": np.float32(-1.7691475e-08)})
+    lay = formats.open_layout(cube)                                     # the tag is not in the idlsave's name
+    assert not lay.scaled and lay.blank is not None
+    with FrameReader(lay) as fr:
+        f = fr.read((1,))
+    assert np.isnan(f[:, 0]).all() and (f[:, 1:] == np.float32(3e-9)).all()
+
+
+def test_an_idlsave_that_cannot_be_read_leaves_the_counts(tmp_path):
+    im, _ = _lp_pair(tmp_path, np.ones((2, 1, 3, 4, 5), np.int16))
+    (tmp_path / "c_im_times+wvl.idlsave").write_bytes(b"SR\0\4" + b"\0" * 3)
+    lay = formats.open_layout(im)
+    assert not lay.scaled and lay.blank is None

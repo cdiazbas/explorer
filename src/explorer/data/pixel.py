@@ -11,6 +11,7 @@ the cursor come with it.
 import os
 import threading
 from collections import OrderedDict
+from dataclasses import replace
 
 import numpy as np
 
@@ -142,12 +143,14 @@ class SpFits(PixelReader):
 
 
 class SpLP(PixelReader):
-    """_sp.icube / _sp.fcube. Integer counts become physical values after calibrate(); until then scale 1, zero 0."""
+    """_sp.icube / _sp.fcube. Integer counts become physical values after calibrate(); until then the layout's scale
+    (that of the IDL save file beside the cube, else 1). Its blank value is NaN."""
 
     kind = "sp.icube"
 
     def __init__(self, layout: Layout, shape_stl=None, **kw):
         super().__init__(layout, **kw)
+        self.scale = np.float32(layout.scale)
         if shape_stl is not None and (self.ns, self.nt, self.nl) != tuple(shape_stl):
             raise ValueError(f"{layout.path}: (s, t, l) = {(self.ns, self.nt, self.nl)} does not match the image "
                              f"cube {tuple(shape_stl)}")
@@ -181,7 +184,11 @@ class SpLP(PixelReader):
         raise ValueError(f"{self.layout.path}: no pixel with data to calibrate against the image cube")
 
     def strip_read(self, y, x0, k):
-        return self._read(y, x0, k).astype(np.float32) * self.scale + self.zero
+        raw = self._read(y, x0, k)
+        out = raw.astype(np.float32) * self.scale + self.zero
+        if self.layout.blank is not None:
+            out[raw == raw.dtype.type(self.layout.blank)] = np.nan
+        return out
 
 
 def lp_pixel_layout(sp_path, ny: int, nx: int) -> Layout:
@@ -208,7 +215,10 @@ def open_pixel(im_path, frames: FrameReader, strip: int = 16, max_bytes: int = 6
     for p in [sp_path] if sp_path else companions(im_path):
         if detect(p) == "fits":
             return SpFits(p, stl, strip=strip, max_bytes=max_bytes)
-        r = SpLP(lp_pixel_layout(p, frames.ny, frames.nx), stl, strip=strip, max_bytes=max_bytes)
+        lay = lp_pixel_layout(p, frames.ny, frames.nx)
+        if frames.layout.kind == "lp":                  # one IDL save file says what both files' values mean
+            lay = replace(lay, scale=frames.layout.scale, blank=frames.layout.blank)
+        r = SpLP(lay, stl, strip=strip, max_bytes=max_bytes)
         if r.layout.dtype.kind in "iu":
             r.calibrate(frames)
         return r

@@ -103,3 +103,53 @@ def test_units_of_the_spectra():
     np.testing.assert_array_equal(axes.plot_units(padded, 2, 1e-9)[1], spec[1])          # Q U V as read
     assert axes.unit_text("W m^-2 Hz^-1 sr^-1") == "W m⁻² Hz⁻¹ sr⁻¹"
     assert (axes.fmt_signed(1.25), axes.fmt_signed(-1.25), axes.fmt_signed(-0.01)) == ("+1.2", "−1.2", "0.0")
+
+
+def _lp_cube_with_save(tmp_path, nt=2, nl=3, **save):
+    """An LP image cube (t, 1, lambda, 4, 5) of float frames and, when save is given, its idlsave."""
+    head = f"stokes=[I], ns=1 :  datatype=4 (float), dims=3, nx=5, ny=4, nt={nt * nl}, endian=l"
+    im = tmp_path / f"c=0-{nt - 1}_im.fcube"
+    im.write_bytes(head.encode().ljust(512, b"\0") + np.ones((nt * nl, 4, 5), "<f4").tobytes())
+    if save:
+        synth.write_idlsave(tmp_path / f"c=0-{nt - 1}_im_times+wvl.idlsave", save)
+    return im
+
+
+def test_lp_axes_from_the_idlsave_beside_the_cube(tmp_path):
+    from explorer.data import formats
+
+    tod = 58751.188 + np.array([[0.0, 0.5, 1.0], [20.0, 20.5, 21.0]])  # (scan, tuning) seconds of the day, UT
+    im = _lp_cube_with_save(tmp_path, **{"lambda": np.array([617.30, 617.33, 617.36]), "time": tod,
+                                                       "times": np.array(["16:19:11", "16:19:31"])})
+    lay = formats.open_layout(im)
+    ax = axes.from_lp(im, axes.roles(lay.axes, lay.shape))
+    np.testing.assert_allclose(ax.lam_nm, [617.30, 617.33, 617.36])
+    np.testing.assert_allclose(ax.t_sec, tod.mean(axis=1))              # the mean over tunings, as from_fits
+    assert ax.line == "Fe I 617.3" and ax.lam0_nm == 617.3341           # the one line inside the tuned range
+    assert ax.dlam_A(1) == pytest.approx((617.33 - 617.3341) * 10)
+    assert ax.dateref is None and ax.utc_str(0) == "16:19:11" and ax.utc_str(1, seconds=False) == "16:19"
+
+
+def test_lp_axes_whatever_the_name_of_the_seconds(tmp_path):
+    # SSTRED names the (scan, tuning) seconds "time" in some files and "times" in others: the float one is taken
+    from explorer.data import formats
+
+    im = _lp_cube_with_save(tmp_path, **{"lambda": np.array([656.2, 656.3, 656.4]),
+                                         "time": np.array(["09:19:23", "09:19:43"]),
+                                         "times": 33563.0 + np.zeros((2, 3))})
+    lay = formats.open_layout(im)
+    ax = axes.from_lp(im, axes.roles(lay.axes, lay.shape))
+    assert ax.utc_str(1) == "09:19:23" and ax.line == "Hα"
+
+
+def test_lp_axes_that_do_not_match_the_cube_stay_unknown(tmp_path):
+    from explorer.data import formats
+
+    im = _lp_cube_with_save(tmp_path, **{"lambda": np.array([617.3, 617.4]), "time": np.zeros((5, 3))})
+    lay = formats.open_layout(im)
+    ax = axes.from_lp(im, axes.roles(lay.axes, lay.shape))
+    assert ax.lam_nm is None and ax.t_sec is None and ax.utc_str(0) is None
+    assert any("does not match" in s for s in ax.source)
+    (tmp_path / "bare").mkdir()
+    bare = _lp_cube_with_save(tmp_path / "bare")                        # no file: nothing, and no error
+    assert axes.from_lp(bare, axes.roles(lay.axes, lay.shape)).lam_nm is None

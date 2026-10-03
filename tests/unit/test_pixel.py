@@ -83,3 +83,24 @@ def test_an_lp_image_cube_takes_its_lp_companion_first(dataset, tmp_path):
         b, frames = r.block(8, 6), np.stack([fr.series(8, 6, (0, s, 0), [0, 2]) for s in range(SHAPE[1])])
         assert np.nanmax(np.abs(b - frames)) <= 2.0                  # the same units as the image: counts
         r.close()
+
+
+def test_an_lp_pair_with_its_idlsave_is_in_physical_units_with_nan_padding(dataset, tmp_path):
+    im = fits.getdata(dataset["im"])
+    counts = np.round(np.nan_to_num(im.astype(np.float64) * synth.ICUBE_SCALE, nan=-1240)).astype("<i2")
+    lp_im, lp_sp = tmp_path / "c_im.icube", tmp_path / "c_sp.icube"
+    nt, ns, nl, ny, nx = SHAPE
+    head = "stokes=[I,Q,U,V], ns=4 :  datatype=2 (integer), dims=3, nx={}, ny={}, nt={}, endian=l"
+    lp_im.write_bytes(head.format(nx, ny, nt * ns * nl).encode().ljust(512, b"\0") + counts.tobytes())
+    lp_sp.write_bytes(head.format(nl, nt, ny * nx * ns).encode().ljust(512, b"\0")
+                      + counts.transpose(3, 4, 1, 0, 2).tobytes())
+    synth.write_idlsave(tmp_path / "c_im_times+wvl.idlsave", {"fac": np.float32(synth.ICUBE_SCALE),
+                                                                "nan_rplcmnt": np.int16(-1240)})
+    with FrameReader(formats.open_layout(lp_im)) as fr:
+        r = open_pixel(lp_im, fr)
+        for y, x in [(8, 6), (0, 0)]:                                   # (0, 0) is padding
+            want = im[:, :, :, y, x].transpose(1, 0, 2)
+            b = r.block(y, x)
+            assert (np.isnan(b) == np.isnan(want)).all()
+            assert np.nanmax(np.abs(b - want), initial=0) <= 2.0 / synth.ICUBE_SCALE
+        r.close()

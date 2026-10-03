@@ -14,7 +14,7 @@ class Layout:
     axes: tuple[str, ...]           # a name per axis, numpy order (e.g. UTC, STOKES, WAVE, HPLT, HPLN)
     scale: float = 1.0              # physical = raw * scale + zero (FITS BSCALE, BZERO)
     zero: float = 0.0
-    blank: int | None = None        # integer raw value that means "no data" (FITS BLANK)
+    blank: int | float | None = None    # raw value that means "no data" (FITS BLANK, LP nan_rplcmnt)
 
     @property
     def nbytes(self) -> int:

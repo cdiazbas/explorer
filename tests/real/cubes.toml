@@ -6,7 +6,9 @@
 # The link names keep the patterns explorer reads from a name: <stem>_im / <stem>_sp, .aligned6173, clipped=,
 # Blos_ and Blos. for the field maps.
 # opens = true: shape is the cube's (t, s, lambda, y, x); fits = the same observation as FITS, which the frames
-# must equal up to the integer scaling; fits_s = which Stokes of the FITS a single-Stokes cube is.
+# must equal (up to the integer scaling when no IDL save file says it); fits_s = which Stokes of the FITS a
+# single-Stokes cube is; line = the line its IDL save file's wavelengths give (<stem>_im_times+wvl.idlsave, also
+# linked), with a time per scan.
 # opens = false: the kind explorer cannot open yet; todo = the roadmap task, run as an expected failure (strict),
 # so the day it opens the test says so. LP cubes without a per-pixel file split by the scans in their name
 # (=a-b): the links keep it.
@@ -28,6 +30,7 @@ name = "icube_stokes_6173"
 path = "../data/lp/stokes_6173_im.icube"
 opens = true
 shape = [17, 4, 27, 2028, 2031]
+line = "Fe I 617.3"
 fits = "../data/lp/stokes_6173_im.fits"
 
 [[cube]]
@@ -35,6 +38,7 @@ name = "icube_6563_beside_sp_fits"
 path = "../data/lp/halpha_6563_im.icube"
 opens = true
 shape = [49, 1, 15, 2044, 2052]
+line = "Hα"
 fits = "../data/lp/halpha_6563_im.fits"
 
 [[cube]]
@@ -50,6 +54,7 @@ name = "icube_cmapcorr_5576"
 path = "../data/lp/cmapcorr_5576_cmapcorr_im.icube"
 opens = true
 shape = [17, 1, 33, 2025, 2031]
+line = "Fe I 557.6"
 
 [[cube]]
 name = "icube_inversion_6173"
@@ -62,6 +67,7 @@ name = "icube_aligned_6563"
 path = "../data/lp/aligned_6563=0-59_im.aligned6173.icube"
 opens = true
 shape = [60, 1, 15, 2044, 2051]
+line = "Hα"
 # with its _sp.aligned6173: the tag after _im is kept for the per-pixel file
 
 [[cube]]
@@ -69,6 +75,7 @@ name = "fcube_aligned_stokes_8542"
 path = "../data/lp/aligned_stokes_8542=0-54_=0-28_im.aligned6173.fcube"
 opens = true
 shape = [84, 4, 20, 2028, 2031]
+line = "Ca II 854.2"
 # two series joined (55 + 29 scans), four Stokes in float, with its _sp.aligned6173
 
 [[cube]]

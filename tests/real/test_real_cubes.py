@@ -1,7 +1,8 @@
 """Every kind of real cube in tests/real/cubes.toml: it opens with its shape, an image has data, the per-pixel file
-equals the image cube at two pixels, an LP cube equals its FITS sibling up to the integer scaling (each Stokes in
-its own place), and the viewer starts on it without a screen. Only where the data/lp/ links resolve (bellatrix);
--m real_cubes runs just these."""
+equals the image cube at two pixels, an LP cube with its IDL save file has its line and a time per scan, an LP
+cube equals its FITS sibling (each Stokes in its own place; in the same units, with NaN at the same pixels and the
+same wavelengths and times, when its IDL save file is there), and the viewer starts on it without a screen. Only
+where the data/lp/ links resolve (bellatrix); -m real_cubes runs just these."""
 import os
 import subprocess
 import tomllib
@@ -48,16 +49,20 @@ def test_opens_and_reads(case):
         img = ds.image(_idx(r, r.nt // 2, 0, r.nl // 2)).result()
         good = img[np.isfinite(img) & (img != 0)]
         assert good.size > 0.25 * img.size and np.ptp(good) > 0, "an image with data"
+        if "line" in case:
+            assert ds.axes.line == case["line"] and ds.axes.t_sec is not None and len(ds.axes.t_sec) == r.nt
+            assert ds.axes.utc_str(0) is not None and ds.axes.dlam_A(0) is not None
         if ds.pixel is None:
             return
         cal = ds.calibration or {}
         for y, x in ((ds.ny // 2 + 37, ds.nx // 2 - 53), (ds.ny // 3, 2 * ds.nx // 3)):
             block = ds.pixel_block(y, x).result()                          # (s, t, lambda)
             for s in range(r.ns):
+                # the calibration brings the per-pixel file to the frames' units: compared as they come
                 series = np.asarray(ds.read_series(y, x, _idx(r, 0, s, 0), [r.t, r.l]), np.float64)
-                series = series * cal.get("scale", 1.0) + cal.get("zero", 0.0)
                 tol = 2.0 * abs(cal.get("scale", 0.0)) + 1e-6 * np.nanmax(np.abs(block[s]))
-                assert np.nanmax(np.abs(series - block[s])) <= tol, f"_im and _sp differ at ({y}, {x}) s={s}"
+                assert (np.isnan(series) == np.isnan(block[s])).all(), f"padding differs at ({y}, {x}) s={s}"
+                assert np.nanmax(np.abs(series - block[s]), initial=0) <= tol, f"_im and _sp differ at ({y}, {x}) s={s}"
 
 
 @pytest.mark.parametrize("case", [p for p in _params() if "fits" in p.values[0]])
@@ -75,7 +80,15 @@ def test_lp_equals_its_fits_sibling(case):
             k = np.polyfit(b[m][::61], a[m][::61], 1)[0]
             assert np.corrcoef(a[m], b[m])[0, 1] > 0.9999, f"Stokes {s}: not the FITS one"
             scales.append(k)
+            if lp.layout.scaled:                                        # the IDL save file's fac: physical units
+                assert (np.isnan(a) == np.isnan(b)).all(), f"Stokes {s}: padding not where the FITS has NaN"
+                assert np.nanmax(np.abs(a - b)) <= 1.0 * lp.layout.scale, f"Stokes {s}: more than a count apart"
         assert np.ptp(scales) <= 0.01 * abs(np.mean(scales)), f"one integer scaling for all Stokes: {scales}"
+        if lp.axes.lam_nm is not None:
+            np.testing.assert_array_equal(lp.axes.lam_nm, f.axes.lam_nm)
+            day = (f.axes.dateref - f.axes.dateref.astype("datetime64[D]")) / np.timedelta64(1, "s")
+            np.testing.assert_allclose(lp.axes.t_sec, f.axes.t_sec + day, rtol=0, atol=1e-6)
+            assert [lp.axes.utc_str(i) for i in range(r.nt)] == [f.axes.utc_str(i) for i in range(r.nt)]
 
 
 @pytest.mark.parametrize("case", _params())
