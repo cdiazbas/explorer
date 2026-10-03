@@ -198,9 +198,9 @@ def lp_pixel_layout(sp_path, ny: int, nx: int) -> Layout:
 
 def open_pixel(im_path, frames: FrameReader, strip: int = 16, max_bytes: int = 64 << 20,
                sp_path=None) -> PixelReader | None:
-    """The per-pixel reader for an image cube: the file given, or the best companion next to it (_sp.fits, then
-    _sp.icube, then _sp.fcube), checked against the cube's (s, t, lambda); None if there is none. Integer LP files
-    are calibrated against the cube (frames) before they are returned."""
+    """The per-pixel reader for an image cube: the file given, or the best companion next to it (formats.companions:
+    the image cube's own format first), checked against the cube's (s, t, lambda); None if there is none. Integer LP
+    files are calibrated against the cube (frames) before they are returned."""
     from .formats import companions, detect
 
     lead = frames.shape[:-2]

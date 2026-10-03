@@ -64,3 +64,22 @@ def test_calibration_skips_padding_and_fails_without_data(dataset):
         with pytest.raises(ValueError):
             r.calibrate(fr, pixels=[(0, 0), (15, 0)])
         r.close()
+
+
+def test_an_lp_image_cube_takes_its_lp_companion_first(dataset, tmp_path):
+    # as a real H-alpha cube: <stem>_im.icube with both <stem>_sp.fits and <stem>_sp.icube next to it. The FITS one
+    # holds physical values and the icube frames hold counts (x1e11), so pairing them put the image and the
+    # spectra 1e11 apart, uncalibrated; the LP companion is calibrated against the frames (counts on both sides)
+    im = fits.getdata(dataset["im"])
+    counts = np.round(np.nan_to_num(im.astype(np.float64) * synth.ICUBE_SCALE)).astype("<i2")
+    lp_im = tmp_path / "c_im.icube"
+    head = f"stokes=[I,Q,U,V], ns=4 :  datatype=2 (integer), dims=3, nx={SHAPE[4]}, ny={SHAPE[3]}, " \
+           f"nt={SHAPE[0] * SHAPE[1] * SHAPE[2]}, endian=l"
+    lp_im.write_bytes(head.encode().ljust(512, b"\0") + counts.tobytes())
+    assert [p.rsplit("/", 1)[1] for p in formats.companions(lp_im)] == ["c_sp.icube", "c_sp.fits"]
+    with FrameReader(formats.open_layout(lp_im)) as fr:
+        r = open_pixel(lp_im, fr)
+        assert r.kind == "sp.icube"
+        b, frames = r.block(8, 6), np.stack([fr.series(8, 6, (0, s, 0), [0, 2]) for s in range(SHAPE[1])])
+        assert np.nanmax(np.abs(b - frames)) <= 2.0                  # the same units as the image: counts
+        r.close()
