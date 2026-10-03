@@ -8,7 +8,7 @@
 # Over ssh -Y, a first word chooses how the window reaches the screen, to compare them on the same cube:
 #   scripts/demo.sh native ...         Qt's own X11 (--x11 native; over ssh the default is the X11 bridge)
 #   scripts/demo.sh prototype ...      the prototype's demo.sh (its test cube; --nosp becomes its --no-sp)
-# The test cube is chosen by storage, not by OS: CRISP 6173 Stokes (2025-07-11) when the project's data/ link
+# The test cube is chosen by storage, not by OS: CRISP 6173 Stokes when the project's data/ link
 # resolves (bellatrix, a Mac on StorNext); otherwise the synthetic cube, written once to ~/.cache/explorer/demo/
 # (a Mac on its local disk: no big cubes there).
 here="$(cd "$(dirname "$0")" && pwd)"

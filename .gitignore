@@ -33,3 +33,5 @@ src/explorer/_version.py
 scripts/sync.local.json
 tests/golden/real/
 .import_linter_cache/
+# detalle privado de los datos (rutas y nombres de StorNext): nunca en el repositorio
+*.local.md

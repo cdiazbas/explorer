@@ -7,8 +7,10 @@
 
 Fails (exit 1) on:
 - audit files in the repository (AUDIT*.md): they are local remediation checklists, never versioned;
-- personal absolute paths in tracked text: a Mac home directory, a Linux home directory, or any StorNext
-  path except the shared, read-only reduced data (the one allowed prefix below);
+- personal absolute paths in tracked text: a Mac home directory, a Linux home directory, any StorNext path;
+- what the shared observations are, in tracked text or a commit message: their folders and their file names
+  (instrument line, date and time). The data are private: the repository names them only through the generic
+  links of data/; which file each link is lives in docs/data.local.md, which git ignores;
 - mentions of AI assistants, or co-author trailers, in commit messages; mentions of AI assistants in any diff.
 
 The words it looks for are composed from pieces, never written whole, so that this file and its tests do not
@@ -30,7 +32,11 @@ _PATHS = [
     ("Linux home path", re.compile("/" + "home" + r"/[A-Za-z0-9._-]+/")),
     ("StorNext path", re.compile("/mn/" + r"stornext/[^\s'\"`)\]]*")),
 ]
-ALLOWED_PATHS = ("/path/to/the/shared/read-only/data",)   # shared reduced data; code refuses to write there
+_OBSERVATIONS = [
+    ("observation folder", re.compile("lap" + "alma|cubes" + "_nb", re.I)),
+    ("observation file name", re.compile(r"(?<![A-Za-z])(nb|wb|B(los|hor|azi|inc|str)|Vlos|meinv|doppl|corew)[._]"
+                                         r"\d{4}_\d{4}-\d{2}-\d{2}")),
+]
 TAGS = ("ADD", "DEV", "FIX", "PERF", "TEST", "BUILD", "DOC", "STYLE")      # docs/decisions/0005-commits.md
 _SUBJECT = re.compile(r"^\[(" + "|".join(TAGS) + r")\] [a-z0-9`].{0,70}[^.]$")
 CLOSING = ("ADD", "DEV", "FIX", "PERF")                                     # end with Behaviour: and Tests:
@@ -48,10 +54,9 @@ def scan_text(label: str, text: str):
     """Findings (label:line, kind, excerpt) for personal paths and assistant mentions in one text."""
     out = []
     for n, line in enumerate(text.splitlines(), 1):
-        for kind, rx in _PATHS:
+        for kind, rx in _PATHS + _OBSERVATIONS:
             for m in rx.finditer(line):
-                if not m.group(0).startswith(ALLOWED_PATHS):
-                    out.append((f"{label}:{n}", kind, m.group(0)[:60]))
+                out.append((f"{label}:{n}", kind, m.group(0)[:60]))
         m = _ASSISTANT.search(line)
         if m:
             out.append((f"{label}:{n}", "assistant mention", line.strip()[:60]))
@@ -80,6 +85,9 @@ def check_history():
     for n, line in enumerate(git("log", "--format=%h %B").splitlines(), 1):
         if _ASSISTANT.search(line) or _COAUTHOR.search(line):
             out.append((f"commit messages, line {n}", "assistant or co-author mention", line.strip()[:60]))
+        for kind, rx in _OBSERVATIONS:
+            if rx.search(line):
+                out.append((f"commit messages, line {n}", kind, line.strip()[:60]))
     if _ASSISTANT.search(git("log", "-p", "--format=")):
         for c in git("log", "--format=%h").split():
             if _ASSISTANT.search(git("show", "--format=", c)):
@@ -119,6 +127,9 @@ def check_message(path):
     for n, ln in enumerate(lines, 1):
         if _ASSISTANT.search(ln) or _COAUTHOR.search(ln):
             out.append((f"message line {n}", "assistant or co-author mention", ln.strip()[:60]))
+        for kind, rx in _OBSERVATIONS:
+            if rx.search(ln):
+                out.append((f"message line {n}", kind, ln.strip()[:60]))
     return out
 
 

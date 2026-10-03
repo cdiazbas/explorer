@@ -22,7 +22,8 @@
 
 Host and remote directory come from scripts/sync.local.json (never synced nor versioned: it holds a personal path):
 
-    {"host": "bellatrix.uio.no", "remote_dir": "/path/to/projects/CRISPEX/explorer"}
+    {"host": "bellatrix.uio.no", "remote_dir": "/path/to/projects/CRISPEX/explorer",
+     "forbidden": ["/path/to/the/shared/read-only/data"]}
 
 Standard library only: runs with any python3 >= 3.8.
 """
@@ -37,7 +38,8 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(ROOT, "scripts", "sync.local.json")
 PULL = "bench/results/"
-FORBIDDEN = ["/path/to/the/shared/read-only/data"]       # shared reduced data: read-only, never a target
+# remote directories that must never be a target (the shared, read-only data): "forbidden" in sync.local.json, which
+# is not versioned, as the data's location is private
 EXPORTS = {                                           # uv.lock -> pip requirements, for machines without uv
     "requirements/lock.txt": ["--no-dev"],
     "requirements/lock-dev.txt": [],
@@ -185,7 +187,7 @@ def main():
                  '  {"host": "bellatrix.uio.no", "remote_dir": "/path/to/projects/CRISPEX/explorer"}')
     cfg = json.load(open(CONFIG))
     host, rdir = cfg["host"], cfg["remote_dir"].rstrip("/")
-    if any(rdir.startswith(f) for f in FORBIDDEN):
+    if any(rdir.startswith(f.rstrip("/")) for f in cfg.get("forbidden", [])):
         sys.exit(f"refusing: {rdir} is read-only shared data")
     dest = f"{host}:{rdir}/"
     if subprocess.run(["ssh", "-O", "check", host], capture_output=True).returncode:

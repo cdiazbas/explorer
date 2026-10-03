@@ -17,14 +17,24 @@ COAUTHOR = "Co-" + "Authored-By"
     ("data = '/" + "Users/someone/cube.fits'", "Mac home path"),
     ("cd /" + "home/someone/work/", "Linux home path"),
     ("see /mn/" + "stornext/d20/RoCS/someone/projects", "StorNext path"),
+    ("data in /data/" + "lap" + "alma/somewhere", "observation folder"),
+    ("open nb_" + "6173_2025-01-02T08:00:00_im.fits", "observation file name"),
+    ("the B" + "los.6173_2024-01-02T09:00:00.fcube map", "observation file name"),
     (f"written with {ASSISTANT}", "assistant mention"),
 ])
 def test_finds_what_must_not_be_committed(line, kind):
     assert [f[1] for f in hygiene.scan_text("x", line)] == [kind]
 
 
-def test_allows_the_shared_read_only_data_path():
-    assert hygiene.scan_text("x", "FORBIDDEN = ['/mn/" + "path/to/the/shared/read-only/data']") == []
+def test_generic_data_links_are_allowed():
+    # what the repository may name: the generic links of data/, kinds and lines without date
+    assert hygiene.scan_text("x", 'path = "../data/lp/stokes_6173_im.icube"  # Blos maps, nb_8542 clipped') == []
+
+
+def test_an_observation_in_a_commit_message_is_refused(tmp_path):
+    msg = tmp_path / "msg"
+    msg.write_text("[DOC] notes\n\nas in nb_" + "6563_2024-01-02T09:19:23 next to it\n")
+    assert [f[1] for f in hygiene.check_message(msg)] == ["observation file name"]
 
 
 def test_audit_files_are_refused_by_name():
