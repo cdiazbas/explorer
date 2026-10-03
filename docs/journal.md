@@ -2145,3 +2145,30 @@ como en la de `SpLP`. Un cubo sin escaneos en el nombre y sin `_sp` LP sigue sin
 aunque se le dé un `_sp.fits` (E1.17): eso no cambia.
 
 `tests/real` 33 pasan; `check.sh` en bellatrix 493 pasan, las 2 de E0.13 como antes.
+
+### 2026-10-03 (8): `demo --look`, la cookie del contorno, la rueda por el puente (ROADMAP X.5, E6.9, E6.10)
+
+**X.5.** `explorer demo` abre la misma ventana que `explorer`, pero rechazaba `--look`, `--theme` y
+`--reset-layout`. Ahora las tres opciones se definen una sola vez, junto a `run()`
+(`ui.app.window_options`), y las dos órdenes las toman de ahí. Construir el parser sigue sin importar nada
+pesado (`-X importtime`: ni PySide6, ni numpy, ni astropy).
+
+**E6.9.** python-xlib busca la cookie de un display TCP solo por la dirección del servidor. Solo prueba con
+el nombre del host si la dirección es 127.0.0.1 (`Xlib/support/unix_connect.py`, `new_get_auth`). Con
+`DISPLAY=host:10` (sshd con `X11UseLocalhost no`, como en macOS), sshd guarda la cookie con el nombre del
+host, así que la conexión del contorno de redimensionado no enviaría ninguna. Ahora, cuando python-xlib no
+encuentra cookie, se elige como en el puente (`platform/xlibauth.py` → `choose_cookie`), como hacía el
+prototipo para todas sus conexiones. Verificado en la causa: con un Xauthority que solo tiene la cookie por
+nombre, python-xlib por sí solo devuelve vacío y con el respaldo devuelve la cookie. No lo he probado de
+extremo a extremo: haría falta un servidor X escuchando por TCP, y no lo abrí en la máquina compartida.
+
+**E6.10.** Una prueba X nueva reproduce el fallo: la rueda sobre el combo de Stokes, por el puente, no le da
+el foco. Qt solo da el foco por rueda (`giveFocusAccordingToFocusPolicy`) a los eventos espontáneos, y el
+puente envía los suyos. El puente aplica ahora esa regla antes de entregar la rueda. La hipótesis se
+confirmó con la misma prueba, con la ventana activa en los dos casos:
+- sin la llamada (copia de `src` en el scratch, delante en `PYTHONPATH`), falla;
+- con la llamada, pasa.
+
+Primer intento de la prueba: falló por otra razón. La prueba anterior del módulo abre otra app, que se
+queda con el foco X, y en una ventana inactiva `focusWidget()` es `None`. Ahora la prueba activa su
+ventana antes. `tests/xvfb`: 20 pasan, 2 saltadas (piden gestor de ventanas).
