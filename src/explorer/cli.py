@@ -31,16 +31,9 @@ def _parser() -> argparse.ArgumentParser:
                                    "cubes whose header does not say it")
     ap.add_argument("--x11", choices=("auto", "native", "bridge"), default="auto",
                     help="over ssh -Y: Qt's own X11 (native) or the bridge; auto decides")
-    ap.add_argument("--theme", choices=("auto", "dark", "light", "native"), default="auto",
-                    help="dark or light everywhere; native: the system's (macOS); auto: native on a Mac, else dark")
-    ap.add_argument("--look", choices=("classic", "modern", "glass"), default=None,
-                    help="classic: red cursor and markers; modern: reticle, accent marks, cards, Stokes drop-down, "
-                         "colour maps on C (EXPLORER_LOOK_OFF=part,...: leave parts out); glass: the image to the "
-                         "window's edges, the controls on a bar over it, the panels floating beside it. M switches "
-                         "while it runs; "
-                         "without --look, the one worn at the last close")
-    ap.add_argument("--reset-layout", action="store_true",
-                    help="start with the first window's size and panels (the saved layout of this display is dropped)")
+    from .ui.app import window_options
+
+    window_options(ap)
     ap.add_argument("--quit-after", type=float, metavar="S", help="quit S seconds after the first image (measurements)")
     return ap
 

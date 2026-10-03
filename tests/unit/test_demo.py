@@ -50,3 +50,14 @@ def test_synthetic_cube_is_written_once_with_its_per_pixel_file(headless, monkey
     names = sorted(p.name for p in demo_dir.iterdir())
     v = synth.SYNTH_VERSION
     assert names == [f"synth_stokes_v{v}_im.fits", f"synth_stokes_v{v}_sp.fits"]      # old one gone, no temp left
+
+
+def test_the_demo_takes_a_look_and_a_theme(headless, monkeypatch):
+    from explorer.ui import app
+
+    cube = synth.write_stokes_cube(headless / "c_im.fits", shape=(2, 1, 3, 32, 32))
+    seen = {}
+    monkeypatch.setattr(app, "run", lambda path, **kw: seen.update(kw) or 0)     # the window, not opened here
+    assert demo.main([str(cube), "--look", "glass", "--theme", "light"]) == 0
+    assert seen["look"] == "glass" and seen["theme"] == "light"
+    assert demo.main([str(cube)]) == 0 and seen["look"] is None and seen["theme"] == "auto"   # as `explorer`

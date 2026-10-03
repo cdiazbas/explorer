@@ -118,6 +118,9 @@ def main(argv=None) -> int:
                     help="over ssh -Y: Qt's own X11 (native) or the X11 bridge; auto decides (the bridge over ssh)")
     ap.add_argument("--axes", help="what the leading axes are, slowest first, e.g. t,l or s,l (l is lambda); "
                                    "for cubes whose header does not say it")
+    from .ui.app import window_options
+
+    window_options(ap)
     a = ap.parse_args(argv)
     cube = a.cube or synthetic_cube()
     kind = "synthetic" if a.cube is None else "given"
@@ -129,7 +132,8 @@ def main(argv=None) -> int:
     if not a.no_window:                                 # the viewer first, as the prototype's demo: doctor's checks
         from .ui.app import run  # (numba, Qt in its own process) cost 4.1 s over ssh -Y
 
-        rc = run(cube, sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11)
+        rc = run(cube, sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11, theme=a.theme, look=a.look,
+                 reset_layout=a.reset_layout)
         if rc or a.doctor:                              # the window could not open: say why
             rc = doctor.main([cube]) or rc
         return rc
