@@ -2,7 +2,9 @@
 
     python bench/explorer_selftest.py <cube_im.fits> [--nosp] [--out r.json]
 
-The display is the caller's: QT_QPA_PLATFORM=offscreen, or xcb with DISPLAY and XAUTHORITY of a private Xvfb.
+The display is the caller's: QT_QPA_PLATFORM=offscreen, or xcb with DISPLAY and XAUTHORITY of a private Xvfb (--x11
+bridge: through the X11 bridge). The window comes up through explorer's own start-up (ui.app.start: title bar,
+display attachment, the bridge where it is chosen), the user's saved layout neither read nor written (ROADMAP E0.15).
 - open_to_first_frame_s: from after the application exists to the first image on screen (as the prototype's t0);
 - the cursor phase before the steps, as the prototype's (app/selftest.py:58-103): 30 positions from
   default_rng(1) in [50, n-50), at least 40 px apart, each waiting for lambda-t without a per-pixel file; 30 moves
@@ -29,25 +31,20 @@ def main():
     ap.add_argument("--panel", default="772x803", help="the image panel's size: the prototype's at 1400x900 (its "
                     "panels share the window; explorer's image had it all, twice the pixels to draw per step)")
     ap.add_argument("--theme", default="auto", help="the window's theme, as the prototype's --theme (ui.style)")
+    ap.add_argument("--x11", choices=("auto", "native", "bridge"), default="auto",
+                    help="as explorer's --x11: auto takes the bridge over ssh")
     ap.add_argument("--out")
     a = ap.parse_args()
-    from explorer.data.dataset import Dataset
-    from explorer.platform.display import Display
-    from explorer.platform.plan import choose_display
-    from explorer.ui.shell import Shell
+    from explorer.ui.app import start
 
-    disp = Display(choose_display(os.environ, sys.platform))
-    disp.prepare_env()
-    from explorer.ui.app import themed_app
-
-    app, theme = themed_app(disp, a.theme)
-    t0 = time.perf_counter()
-    ds = Dataset.open(a.cube, no_sp=a.nosp)
-    w = Shell(ds, t0=t0)
+    s = start(a.cube, no_sp=a.nosp, x11=a.x11, theme=a.theme, look="classic", saved_layout=False)
+    if s is None:
+        return 1
+    app, w, ds = s.app, s.shell, s.ds
+    theme = s.theme
     w.resize(1400, 900)                                 # the prototype's self-test size
     if a.panel:
         w.view.widget.setFixedSize(*(int(v) for v in a.panel.split("x")))
-    disp.attach(app, w)
 
     def spin(until, timeout=30.0):
         end = time.perf_counter() + timeout
@@ -62,7 +59,10 @@ def main():
                panel=[w.view.widget.width(), w.view.widget.height()],
                platform=app.platformName(), theme=theme,
                display=os.environ.get("DISPLAY") if app.platformName() == "xcb" else None,
-               probe=ds.probe.describe(), open_to_first_frame_s=round(float(w.first_image_s or np.nan), 2), actions={})
+               probe=ds.probe.describe(), actions={},
+               # from when the application existed, as the prototype's t0 (start() began before it)
+               open_to_first_frame_s=round(float(w.first_image_s or np.nan) - (s.app_ready - s.t0), 2),
+               bridge=bool(s.plan.bridge))
 
     def rec(name, ts):
         ts = np.asarray(ts) * 1e3
@@ -138,7 +138,7 @@ def main():
         os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
         json.dump(res, open(a.out, "w"), indent=1)
     w.close()
-    ds.close()
+    s.close()
     return 0
 
 
