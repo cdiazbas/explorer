@@ -2351,3 +2351,16 @@ día (el criterio de `run.sh`: el `cksum` de `uv.lock` es el guardado al constru
 sin uv ni conda: si el atajo no se toma, el script se detiene enseguida en vez de instalar. La ejecución
 real en bellatrix recreó `~/.local/bin/explorer` con el mismo destino (`scripts/run.sh`); `.bashrc` no se
 tocó.
+
+### 2026-10-03 (17): la barra de herramientas tras restaurar una disposición (ROADMAP E5.18)
+
+Un estado guardado lleva la visibilidad de la barra. Una disposición guardada con la barra oculta dejaba
+sin ella a un look que la usa, y una con la barra visible dejaba una barra vacía de 20 px sobre la imagen
+de glass. El prototipo fuerza la barra tras restaurar: la muestra en `viewer.py:2413-2415` y glass la
+vuelve a ocultar en `look_glass.py:618-622`. Explorer ahora hace lo mismo en `LayoutStore.restore`.
+
+Primer intento, fallido: decidía por el look de la ventana. `test_start_paths` lo pilló enseguida
+(`glass-classic`: la barra oculta en classic y modern). Al salir de glass, `_start_afresh` restaura la
+disposición de classic cuando la ventana todavía lleva glass. Ahora se decide por la disposición que se
+restaura (la de glass es la de `-glass`), y la prueba nueva cubre también ese caso. `check.sh` en
+bellatrix: 504 pasan, las 2 de E0.13 como antes.
