@@ -2040,3 +2040,50 @@ residuo 2e-12 (las mismas cuentas); el 8542 de Stokes alineado (`fcube`, 110 GB,
 suyo, y `_im` = `_sp` en dos píxeles para los cuatro Stokes: el orden (s, t, λ) se cumple también en un
 `fcube` de flotantes. `tests/real` 33 pasan; `check.sh` 478 pasan, las 2 de E0.13 como antes.
 
+
+### 2026-10-03 (5): unidades, relleno y ejes de los cubos LP desde su idlsave (ROADMAP E1.16)
+
+Un cubo LP no tiene cabecera física: SSTRED guarda lo que significan sus valores en
+`<stem>_im_times+wvl.idlsave`, al lado (la etiqueta de un cubo alineado no entra en ese nombre). Se lee
+con un lector propio, `data/formats/idlsave.py`, biblioteca estándar y numpy (scipy no entra en el
+proyecto por un formato).
+
+**El lector frente a `scipy.io.readsav`** (scipy solo en un entorno de pruebas fuera del proyecto, en
+bellatrix): las 120 idlsave de los cubos CRISP de los datos compartidos, todas sin comprimir. Mismos nombres y las
+mismas 824 variables, con forma, tipo y valores idénticos bit a bit (textos comparados como texto); ninguna
+queda sin leer. Tiempo, las 120 con la caché caliente: scipy 3.33 s, el propio 1.57 s. Lo que no decodifica
+(estructuras, punteros, objetos, descriptores de 64 bits) vuelve como `Unread` y el resto del fichero se
+lee; los comprimidos se rechazan (ninguno entre los de SSTRED).
+
+**Qué dice el fichero, medido contra los hermanos FITS** de dos cubos reales (Fe I 6173 con cuatro Stokes,
+Hα), antes de usarlo:
+- `lambda` (nm) es la λ de la WCS-TAB del FITS, idéntica.
+- El tiempo por escaneo, media de los segundos de cada tuning, coincide con el del FITS (DATEREF más
+  t_sec) en menos de 3e-11 s. Son segundos del día UT y el fichero no trae la fecha: se muestran como
+  hora del día (`Axes.time_of_day`). Los segundos en float se llaman `time` en un fichero y `times` en el
+  otro (el otro nombre guarda el texto 'HH:MM:SS' por escaneo): se toman por tipo.
+- Valor físico = cuenta / `fac` (1e11 en ambos; 1e9 en el 5576 de `cmapcorr`; 1 en el `fcube` de 8542,
+  que ya está en unidades físicas).
+- `nan_rplcmnt` (−1240 en el 6173, −1 en el Hα) está exactamente donde el FITS tiene NaN: coincidencia en
+  el 100 % de los píxeles de 24 fotogramas repartidos por cada cubo, un 25–27 % de relleno, y ningún valor
+  por debajo. En los `_sp` es el mínimo. En el `fcube` de 8542 es un float (−1.769e-08), un 25 % de cada
+  fotograma en I y en V, nada por debajo, sin NaN: el mismo relleno.
+
+**Qué cambia.** `formats.lp_values` pone `scale = 1/fac` y `blank = nan_rplcmnt` en el `Layout` (el `blank`
+float se compara con la precisión del fichero). El fichero por píxel LP hereda los dos de su cubo y su
+calibración se ajusta ahora contra valores físicos. `axes.from_lp` da λ, la línea (la única de `LINES`
+dentro del rango sintonizado: Fe I 617.3, Hα, Fe I 557.6, Ca II 854.2 en los cinco cubos con idlsave), el
+continuo con la regla de `from_fits` y el tiempo por escaneo. Lo que no encaja con el cubo (otro nλ u otro
+nt) se descarta con un aviso. Una idlsave ilegible deja el cubo en cuentas, con un aviso, y abre igual.
+
+De paso, E1.20 queda medio resuelta: el icube de Hα con su `_sp.fits` dado a mano coincide ahora, con NaN
+en los mismos píxeles y una diferencia ≤ 5e-12, media cuenta de redondeo. Queda abierta para icubes sin
+idlsave.
+
+`tests/real`: los cinco cubos con idlsave (tres enlaces nuevos en `data/lp/`) tienen su línea y un tiempo
+por escaneo. Los dos con hermano FITS lo igualan en valores (±1 cuenta), NaN, λ y hora UT. La prueba
+`_im` = `_sp` multiplicaba la serie por la calibración porque suponía fotogramas en cuentas; ahora compara
+directamente. 33 pasan. `check.sh` en bellatrix: 489 pasan, las 2 de E0.13 como antes.
+
+Sin usar todavía: `xcent0`, `ycent0` (el centro del campo en segundos de arco) y `mu`. Sin la escala del
+píxel no dan las esquinas del campo.
