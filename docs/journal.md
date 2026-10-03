@@ -2121,3 +2121,27 @@ offscreen, 2000 movimientos a píxeles distintos: 142 µs por movimiento con hov
 y 2 se saltan (piden gestor de ventanas); la prueba del puntero 10 de 10. En bellatrix ya pasaba antes:
 esto solo muestra que nada se rompe. La prueba del defecto es la unitaria. `check.sh`: 490 pasan, las 2 de
 E0.13 como antes.
+
+### 2026-10-03 (7): idlsave a través de un enlace, y frames de enteros junto a un `_sp.fits` (ROADMAP E1.22, E1.20)
+
+**E1.22.** La idlsave se buscaba solo junto a la ruta abierta. Un cubo enlazado solo, con otro nombre y en
+otra carpeta (como en `data/lp/`, o en otro ordenador), abría en cuentas y sin aviso, aunque la idlsave
+estuviera junto al fichero real. Los `_sp` sí se buscaban allí (`companions()`, como el `find_sp` del
+prototipo). Ahora la idlsave se busca primero junto al enlace y después junto al fichero real, con el nombre
+real. Un cubo de enteros sin idlsave lo dice en el log: valores en cuentas y relleno como dato.
+
+**E1.20.** Un icube sin idlsave con un `_sp.fits` dado a mano mostraba la imagen en cuentas y los espectros
+en unidades físicas, y el relleno como dato. Ahora las frames se ajustan al FITS en la λ-t de Stokes I de
+un píxel (`pixel.calibrate_frames`, el ajuste de `SpLP.calibrate` al revés). El relleno es el único valor de
+cuenta que aparece donde el FITS tiene NaN, buscado en ese píxel y en dos esquinas. Medido en el Hα real
+(bellatrix), con la idlsave ocultada por un monkeypatch, sin tocar ficheros:
+- escala 1e-11, cero −5.6e-14, relleno −1: lo que dice la idlsave (`fac` 1e11, `nan_rplcmnt` −1);
+- residuo 5e-12 (media cuenta de redondeo), en el píxel central;
+- tres frames (t, λ) = (0, 0), (24, 7), (48, 14) iguales a las del camino con idlsave en 5.5e-14 (0.006
+  cuentas), con NaN en los mismos píxeles; abrir el cubo, 0.79 s en total.
+
+En la prueba sintética el ajuste usa solo 6 muestras (2 t × 3 λ), así que la tolerancia es de 2 cuentas,
+como en la de `SpLP`. Un cubo sin escaneos en el nombre y sin `_sp` LP sigue sin repartirse en (t, s, λ),
+aunque se le dé un `_sp.fits` (E1.17): eso no cambia.
+
+`tests/real` 33 pasan; `check.sh` en bellatrix 493 pasan, las 2 de E0.13 como antes.
