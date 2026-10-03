@@ -2172,3 +2172,39 @@ confirmó con la misma prueba, con la ventana activa en los dos casos:
 Primer intento de la prueba: falló por otra razón. La prueba anterior del módulo abre otra app, que se
 queda con el foco X, y en una ventana inactiva `focusWidget()` es `None`. Ahora la prueba activa su
 ventana antes. `tests/xvfb`: 20 pasan, 2 saltadas (piden gestor de ventanas).
+
+### 2026-10-03 (9): propiedades X por clase de ventana frente al prototipo (ROADMAP E6.5)
+
+Lo que quedaba de E6.5 (menús, tooltips, ventanas de herramienta y la gravedad de `WM_NORMAL_HINTS`), con
+una sonda nueva, `bench/xprops.py`. La suite de conformidad conduce cada programa sin modificarlo, un paso
+cada vez, en un Xvfb privado. Mientras tanto, un cliente python-xlib independiente lee lo que vería un
+gestor de ventanas en cada ventana que aparece: override-redirect, tipo, Motif, `WM_TRANSIENT_FOR`,
+`WM_NORMAL_HINTS`, `WM_HINTS` y `WM_PROTOCOLS`. Pasos usados: `combo_open`, `tooltip`, `panel_float_api` y
+`dock_title_drag_float`. Medido en bellatrix (3840×1080, cerrojo de medidas, carga 0.44 al empezar);
+resultados en `bench/results/e65_xprops_2026-10-03/`.
+
+**Hallazgo: explorer escribía `WM_NORMAL_HINTS` con el tipo equivocado** (`windows.py`, átomo 40 en vez de
+`WM_SIZE_HINTS`, 41). Los gestores piden el tipo `WM_SIZE_HINTS` y, con otro, no leen nada. Así que la
+gravedad Static que corrige el desplazamiento de 16 px en XQuartz (F23c del prototipo), la marca de
+posición y el tamaño mínimo no tenían efecto. La sonda lo vio como `normal_hints: null`. La prueba X nueva
+falla antes del arreglo (tipo `WM_NORMAL_HINTS`) y pasa después; `tests/xvfb` 21 pasan.
+
+Un falso hallazgo, retirado: el `repr` del objeto de python-xlib mostraba solo 8 de los 18 valores. Parecía
+una escritura truncada, pero `get_full_property` lee en dos trozos y el `repr` enseña solo el segundo.
+`.value` tiene los 18.
+
+**Tras el arreglo:**
+- Iguales en los dos programas: menús y tooltips (override-redirect, sin propiedades), el panel flotante
+  (normal, sin decoración, transient de la ventana principal) y la gravedad Static con `PPosition` y
+  `PSize`.
+- Diferencias que se quedan, a propósito:
+  - `WM_TAKE_FOCUS`, `_NET_WM_PING` y `WM_HINTS` (input): los necesita el foco por el puente, y es lo
+    que pide ICCCM;
+  - el tipo NORMAL explícito en la ventana principal: para EWMH es lo mismo que no declarar tipo;
+  - el tamaño mínimo (`PMinSize`, como declara xcb). El `PMaxSize` 32767 del panel no limita nada.
+- Un tooltip que solo salía en explorer durante `combo_open` era un artefacto de la sonda. Los dos
+  programas comparten el display y el segundo empieza con el puntero donde lo dejó el primero (`--first`).
+  Con explorer primero, no sale en ninguno.
+
+**Falta:** verlo en XQuartz. Ahora el gestor sí aplica estas hints a las ventanas de explorer, y en
+XQuartz eso no lo he podido comprobar desde aquí.
