@@ -56,6 +56,28 @@ def _qt_key(name_or_code) -> int:
     return int(getattr(Qt.Key, name_or_code).value)
 
 
+
+def _wheel_focus(w: QtWidgets.QWidget, local: QtCore.QPoint) -> None:
+    """The focus a wheel gives, as Qt gives it (QApplicationPrivate::giveFocusAccordingToFocusPolicy) to spontaneous
+    wheel events only, so not to the ones sent here: from the widget under the pointer up, the first enabled one
+    with Qt::WheelFocus (QComboBox, QSpinBox), and its focus proxy's, takes it; none past a widget that already
+    has the focus, nor past the window. Through the bridge a turned box took none, where xcb gives it."""
+    wheel = Qt.FocusPolicy.WheelFocus.value
+    f: QtWidgets.QWidget | None = w
+    pos = QtCore.QPoint(local)
+    while f is not None:
+        proxy, nxt = f, f.focusProxy()
+        while nxt is not None:
+            proxy, nxt = nxt, nxt.focusProxy()
+        if f.isEnabled() and f.rect().contains(pos) and f.focusPolicy().value & wheel == wheel \
+                and proxy.focusPolicy().value & wheel == wheel:
+            f.setFocus(Qt.FocusReason.MouseFocusReason)
+            return
+        if f.isWindow() or proxy.hasFocus():
+            return
+        pos += f.pos()
+        f = f.parentWidget()
+
 class QtInput:
     """keymap(): the current keys.Keymap. geometry_hit(x, y): whether a root point is inside a Qt window of ours by
     geometry (then a Leave has to be forced)."""
@@ -241,6 +263,8 @@ class QtInput:
             return
         pos = root.mapFromGlobal(glob.toPoint())
         target: QtWidgets.QWidget | None = root.childAt(pos) or root
+        assert target is not None
+        _wheel_focus(target, target.mapFromGlobal(glob.toPoint()))
         while target is not None:
             local = QtCore.QPointF(target.mapFromGlobal(glob.toPoint()))
             ev = QtGui.QWheelEvent(local, glob, QtCore.QPoint(), delta, self._state_buttons(e.state), mods,

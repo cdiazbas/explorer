@@ -481,3 +481,24 @@ def test_panels_floating_before_their_window_are_normal_and_transient_for_it(x, 
             assert owner is not None and owner.value[0] == mw["xid"], w["title"]
     finally:
         a.close()
+
+
+def test_the_wheel_gives_the_stokes_and_fps_boxes_the_focus(x, app):
+    """Qt gives the focus to a widget with Qt::WheelFocus (QComboBox, QSpinBox) that a wheel turns, but only for a
+    spontaneous wheel event; the bridge sends its wheel events itself (non-spontaneous), so through the bridge the
+    boxes changed without taking the focus, where xcb gives it (conformance steps combo_wheel and spin_wheel,
+    ROADMAP E6.10)."""
+    app("activate")                                     # the window of the module's own app, not the last test's
+    assert wait(lambda: app("state")["active"] == "bridge test λ")
+    for name, kind in (("stokes", "QComboBox"), ("fps", "QSpinBox")):
+        cx, cy = app(f"where {name}")["centre"]
+        assert kind not in app("state")["focus"]          # the focus widget and its parent (a box's line edit)
+        fake(x, None, xy=(cx, cy))
+        fake(x, 4, 5)                                   # a wheel step down, then back up: the value as it was
+        fake(x, 5, 5)
+        fake(x, 4, 4)
+        fake(x, 5, 4)
+        assert wait(lambda k=kind: k in app("state")["focus"]), looked(x, app, f"the wheel over {name}: no focus")
+        assert app("state")["summary"]["input"]["wheel"] >= 2
+        fake(x, None, xy=(main_window(app)["geometry"][0] + 200, main_window(app)["geometry"][1] + 300))
+        app("idle")

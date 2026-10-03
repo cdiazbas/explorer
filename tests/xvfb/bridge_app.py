@@ -83,6 +83,7 @@ def main():
 
     def state():
         st = w.session.state
+        fw = QtWidgets.QApplication.focusWidget()          # with its parent: a spin box's focus is its line edit
         aw = app.activeWindow()
         return dict(t=st.t, l=st.l, s=st.s, cursor=list(st.cursor), locked=st.locked,
                     first_image=w.first_image_s, active=aw.windowTitle() if aw is not None else None,
@@ -91,6 +92,7 @@ def main():
                     windows=[dict(title=r.w.windowTitle(), xid=r.xid, popup=r.popup, geometry=r.w.geometry().getRect(),
                                   iconic=r.iconic) for r in bridge.windows],
                     popup=bool(QtWidgets.QApplication.activePopupWidget()), hits=list(extra.get("hits", [])),
+                    focus=[type(f).__name__ for f in (fw, fw.parentWidget() if fw is not None else None) if f],
                     docks={d.objectName(): d.isVisible() for d in (w.spec_dock, w.lt_dock)},
                     minimized=bool(w.windowState() & QtCore.Qt.WindowState.WindowMinimized),
                     maximized=bool(w.windowState() & QtCore.Qt.WindowState.WindowMaximized),
