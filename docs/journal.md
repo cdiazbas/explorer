@@ -2008,3 +2008,25 @@ visor la da como traza de Python, no como mensaje.
 repositorio: `docs/data.local.md` (ignorado por git, y por tanto tampoco lo envía `sync.py`) tiene la tabla
 de enlaces y el barrido completo.
 
+### 2026-10-03 (3): cubos LP sin fichero por píxel (ROADMAP E1.17)
+
+**Hipótesis.** Un cubo LP sin `_sp` no dice en su cabecera cómo se reparten sus fotogramas, pero su nombre
+sí: SSTRED pone los escaneos (`=a-b`). Si hay tantos fotogramas como escaneos, es un fotograma por escaneo
+(t, y, x); si es un múltiplo, (t, s, λ) en el orden de CRISPEX.
+
+**Medida que la confirma.** Un `clipped=0-85` (2236 fotogramas = 86 × 26) frente al cubo `stokesI` completo
+de la misma serie: los fotogramas (t, λ) leídos como `t * 26 + λ` son idénticos bit a bit en t = 0, 10, 40,
+85; leídos al revés (`λ * 86 + t`) la correlación cae a 0.87. Los mapas (`Blos`, `doppl`) tienen tantos
+fotogramas como escaneos en el nombre.
+
+**Cambio.** `formats.lp_single_layout`, usado por `open_layout` cuando no hay `_sp`. Sin escaneos en el
+nombre (`Blos.6173_….fcube`), un eje sin nombre que `roles()` llama desconocido, como E1.14; `--axes t` lo
+hace tiempo. `ui.app.run` da un mensaje al no poder abrir un fichero, en vez de la traza.
+
+**Verificación.** Tres pruebas nuevas (mapa, reparto por escaneos con dos series unidas, sin escaneos), que
+fallan sin el cambio. `tests/real` en bellatrix: los 15 tipos abren y el visor arranca con todos (33
+pasan). Los enlaces genéricos de `data/lp/` conservan ahora el rango del nombre, que es lo que lee el
+lector. `check.sh`: ruff, capas y tipos bien; 477 pruebas bien, las 2 de E0.13 fallan como antes.
+
+**Queda.** Los `aligned6173` abren sin su `_sp.aligned6173` (E1.18).
+
