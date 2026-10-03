@@ -75,7 +75,8 @@ select = ["E", "W", "F", "I", "B", "UP", "RUF100"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["golden_real: comparison on the shared real cubes (only where tests/golden/real/ has references)"]
+markers = ["golden_real: comparison on the shared real cubes (only where tests/golden/real/ has references)",
+           "real_cubes: one real cube of each kind (tests/real/cubes.toml; only where data/lp/ links resolve)"]
 
 [tool.mypy]
 python_version = "3.12"

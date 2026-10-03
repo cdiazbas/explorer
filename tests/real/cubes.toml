@@ -1,0 +1,105 @@
+# One real cube of each kind found in the shared reduced data (CRISP LP and FITS cubes), linked into the
+# project's data/lp/ under generic names (ln -s, never copied; which file each link is stays out of the repository,
+# in docs/data.local.md): only where those links resolve (bellatrix). tests/real/test_real_cubes.py opens each one,
+# reads it, checks it against what it must equal, and starts the viewer on it without a screen.
+#
+# The link names keep the patterns explorer reads from a name: <stem>_im / <stem>_sp, .aligned6173, clipped=,
+# Blos_ and Blos. for the field maps.
+# opens = true: shape is the cube's (t, s, lambda, y, x); fits = the same observation as FITS, which the frames
+# must equal up to the integer scaling; fits_s = which Stokes of the FITS a single-Stokes cube is.
+# opens = false: the kind explorer cannot open yet; todo = the roadmap task, run as an expected failure (strict),
+# so the day it opens the test says so.
+
+[[cube]]
+name = "fits_stokes_6173"
+path = "../data/lp/stokes_6173_im.fits"
+opens = true
+shape = [17, 4, 27, 2028, 2031]
+
+[[cube]]
+name = "fits_6563"
+path = "../data/lp/halpha_6563_im.fits"
+opens = true
+shape = [49, 1, 15, 2044, 2052]
+
+[[cube]]
+name = "icube_stokes_6173"
+path = "../data/lp/stokes_6173_im.icube"
+opens = true
+shape = [17, 4, 27, 2028, 2031]
+fits = "../data/lp/stokes_6173_im.fits"
+
+[[cube]]
+name = "icube_6563_beside_sp_fits"
+path = "../data/lp/halpha_6563_im.icube"
+opens = true
+shape = [49, 1, 15, 2044, 2052]
+fits = "../data/lp/halpha_6563_im.fits"
+
+[[cube]]
+name = "icube_stokesI_6173"
+path = "../data/lp/stokesI_6173_im.icube"
+opens = true
+shape = [59, 1, 14, 2025, 2032]
+fits = "../data/lp/stokesI_6173_ref_im.fits"
+fits_s = 0
+
+[[cube]]
+name = "icube_cmapcorr_5576"
+path = "../data/lp/cmapcorr_5576_cmapcorr_im.icube"
+opens = true
+shape = [17, 1, 33, 2025, 2031]
+
+[[cube]]
+name = "icube_inversion_6173"
+path = "../data/lp/inversion_6173_im.icube"
+opens = true
+shape = [106, 1, 3, 2025, 2033]
+
+[[cube]]
+name = "icube_aligned_6563"
+path = "../data/lp/aligned_6563_im.aligned6173.icube"
+opens = false
+todo = "E1.18"
+
+[[cube]]
+name = "fcube_aligned_stokes_8542"
+path = "../data/lp/aligned_stokes_8542_im.aligned6173.fcube"
+opens = false
+todo = "E1.18"
+
+[[cube]]
+name = "icube_clipped_8542"
+path = "../data/lp/nb_8542_clipped=0-85.icube"
+opens = false
+todo = "E1.18"
+
+[[cube]]
+name = "fcube_map_blos_6173"
+path = "../data/lp/Blos_6173_map.fcube"
+opens = false
+todo = "E1.17"
+
+[[cube]]
+name = "fcube_map_blos_dotname_6173"
+path = "../data/lp/Blos.6173_map.fcube"
+opens = false
+todo = "E1.17"
+
+[[cube]]
+name = "fcube_map_bstr_empty_stokes_header"
+path = "../data/lp/Bstr.6173_map.fcube"
+opens = false
+todo = "E1.17"
+
+[[cube]]
+name = "icube_map_vlos_6173"
+path = "../data/lp/Vlos.6173_map.icube"
+opens = false
+todo = "E1.17"
+
+[[cube]]
+name = "fcube_product_doppl_6563"
+path = "../data/lp/doppl_6563_im.fcube"
+opens = false
+todo = "E1.17"
