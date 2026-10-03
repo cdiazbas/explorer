@@ -36,11 +36,13 @@ class XServer:
     server has done it (a round trip)."""
 
     def __init__(self, colour: int, display_name: str | None = None):
-        from Xlib import X, display
+        from Xlib import X
         from Xlib.ext import shape
 
+        from . import xlibauth
+
         self.X, self.shape = X, shape
-        self.d = display.Display(display_name)
+        self.d = xlibauth.display(display_name)         # with the bridge's choice of cookie (xlibauth)
         self.colour = colour
         self.win: Any = None                            # an Xlib window, once made
         self.mapped = False
