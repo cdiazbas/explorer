@@ -2233,3 +2233,26 @@ gestor tipo quartz-wm de las pruebas: ahí aparecen las llamadas del propio puen
 **Visto de paso, sin investigar:** con `EXPLORER_TITLEBAR=wm` bajo ese gestor, la ventana principal baja de
 y=94 a y=110 (16 px). El gestor de las pruebas ignora la gravedad a propósito, y el prototipo dice que con
 gravedad estática quartz-wm no desplaza: puede ser solo del gestor de las pruebas.
+
+### 2026-10-03 (11): las size hints en XQuartz (ROADMAP E6.5, E6.14)
+
+Lo que faltaba de E6.5: comprobar en XQuartz el efecto del arreglo del tipo de `WM_NORMAL_HINTS`
+(`ee39ad2`). Medido en el Mac: XQuartz 2.8.6 con quartz-wm, display `:3`, 3067×1513, explorer por el
+puente, cubo sintético (3, 4, 5, 96, 80). La ventana principal y el panel flotante se mueven por la API
+6 veces cada uno (20, 12 px por paso, 0.5 s entre pasos, como un arrastre). Tras cada paso se anotan la
+posición pedida, la de Qt y la de X. Las hints de antes del arreglo se recrearon con un monkeypatch del
+tipo (40), sin tocar el código. Hay dos modos de barra: la propia y `EXPLORER_TITLEBAR=wm`. Resultados y
+script en `bench/results/e65_xquartz_2026-10-03/` (en el Mac). La swap no creció durante la medida.
+
+| hints | ventana principal, pasos 3–6 | panel, barra propia | panel, marco del gestor |
+|---|---|---|---|
+| antes (tipo `WM_NORMAL_HINTS`) | +22 px en y en cada paso | +22 px | +16 px |
+| ahora (`WM_SIZE_HINTS`) | exacta | exacta | exacta |
+
+Antes del arreglo, quartz-wm no leía la gravedad y colocaba la ventana por debajo de lo pedido. Qt toma esa
+posición como la suya, así que en un arrastre, que mueve desde la posición creída, el error se suma en cada
+paso: el mecanismo de F23c del prototipo. Con el arreglo, la ventana cae donde se pide.
+
+Aparte (E6.14, abierta y sin investigar): los dos primeros movimientos de la ventana principal justo después
+de mostrarla caen lejos de lo pedido (x 1147, y 22; después +618 px en y), igual con las dos hints. Desde
+el tercero son exactos.
