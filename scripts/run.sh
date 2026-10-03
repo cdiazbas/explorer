@@ -43,5 +43,6 @@ while [ -n "$rest" ]; do                            # no arrays: macOS's bash 3.
   [ -z "$p" ] || inherited="${inherited:+$inherited:}$p"
 done
 export PYTHONPATH="$root/src${inherited:+:$inherited}"
-export NUMBA_NUM_THREADS="${NUMBA_NUM_THREADS:-64}"
+# NUMBA_NUM_THREADS is left to the user: unset, explorer sizes numba's pool for its scattered reads
+# (src/explorer/data/_numba.py, at least 128 threads)
 exec "$venv/bin/explorer" "$@"

@@ -55,3 +55,21 @@ def test_own_qtlibs_on_library_path_is_not_a_warning(monkeypatch):
     monkeypatch.setenv("LD_LIBRARY_PATH", "/other/env/lib:/some/where/explorer/.qtlibs/only")
     status, info = doctor.c_environment(doctor.Report())
     assert status == doctor.WARN and "/other/env/lib" in info
+
+
+def test_started_by_run_sh_the_numba_pool_is_the_one_the_viewer_sizes(headless):
+    """The scattered reads use one numba thread per request up to the storage probe's 128 on network storage
+    (data/_numba.py: a cold lambda-t 0.42 s with 128 threads against 0.56 s with 64). run.sh exported
+    NUMBA_NUM_THREADS=64, a default older than that measurement, which capped them at 64 for everyone it starts;
+    and doctor imported numba before explorer sized its pool, so it reported the cores' count instead of the
+    viewer's pool (ROADMAP E0.16)."""
+    import subprocess
+
+    from explorer.data._numba import GATHER_MAX
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    env = {k: v for k, v in os.environ.items() if k != "NUMBA_NUM_THREADS"}
+    out = headless / "r.json"
+    subprocess.run([os.path.join(root, "scripts", "run.sh"), "doctor", "--out", str(out)], env=env,
+                   capture_output=True, text=True, timeout=300)
+    assert json.loads(out.read_text())["numba"]["threads"] >= GATHER_MAX

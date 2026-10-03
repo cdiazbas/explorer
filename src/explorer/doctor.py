@@ -130,9 +130,11 @@ def c_files(rep):
 def c_numba(rep):
     """Compile a serial and a parallel kernel. The parallel one tells which threading layer this machine has:
     'workqueue' aborts the process if two threads run parallel regions at once, so explorer runs every parallel
-    kernel on one thread."""
-    import numba
+    kernel on one thread. numba through explorer's data layer, which sizes its pool first (data/_numba.py): the
+    threads reported are the viewer's."""
     import numpy as np
+
+    from .data._numba import numba
 
     t = time.perf_counter()
 
