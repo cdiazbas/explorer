@@ -2256,3 +2256,25 @@ paso: el mecanismo de F23c del prototipo. Con el arreglo, la ventana cae donde s
 Aparte (E6.14, abierta y sin investigar): los dos primeros movimientos de la ventana principal justo después
 de mostrarla caen lejos de lo pedido (x 1147, y 22; después +618 px en y), igual con las dos hints. Desde
 el tercero son exactos.
+
+### 2026-10-03 (12): los primeros movimientos en XQuartz (ROADMAP E6.14)
+
+**Con el arranque real** (`ui.app.run`, puente, XQuartz 2.8.6, registro de geometría activo): seis
+`move()` de la ventana principal a partir de 3 s, separados 0.5 s. Los seis caen exactos en X y en Qt,
+desde el primero. La ventana estaba donde la puso explorer, (1437, 71), y quartz-wm la respetó.
+
+**Con la sonda de (11)** (ventana construida a mano, pedida en (200, 150) antes de mostrarla), el registro
+dice quién movió la ventana:
+- a los 679 ms, quartz-wm la recoloca en (1147, 22) y el puente lo aplica (`windows.py:265`, `configured`);
+- `move(220, 160)` a los 2681 ms; 11 ms después el puente vuelve a aplicar (1147, 22);
+- `move(240, 172)`: el puente aplica (1147, 22) y después (240, 790);
+- `move(260, 184)`: aplica (240, 790) y después (260, 184), por la otra rama (`windows.py:261`); desde ahí,
+  exactos.
+
+Son avisos sintéticos del gestor que llegan después de nuestra petición, con la posición anterior. No
+están entre lo pedido (`rec.asked`) ni son anteriores a la última petición (`cfg_seq`), así que el puente
+los toma por nuevos. Mi hipótesis previa, que el tamaño que fija `Shell` con la primera imagen pisaba los
+movimientos, era falsa: el registro no muestra ninguna llamada de `Shell`.
+
+Sin explicar: por qué quartz-wm recoloca una ventana pedida en (200, 150), y de dónde sale (240, 790).
+E6.14 queda abierta con esto. Scripts y datos en `bench/results/e65_xquartz_2026-10-03/` (Mac).
