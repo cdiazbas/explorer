@@ -117,3 +117,27 @@ def test_explorer_opens_a_cube_and_reports_the_first_image(qapp, cube, capsys):
 
     assert cli.main([str(cube), "--quit-after", "0.05"]) == 0
     assert "first image handed to the screen" in capsys.readouterr().err
+
+
+def test_the_last_of_two_quick_moves_moves_the_cursor(shell):
+    """pyqtgraph's scene drops a move that comes within 1/mouseRateLimit s (10 ms) of the one before, and nothing
+    delivers it later: the crosshair stayed one pixel behind a pointer that stopped right after a quick move (the X
+    bridge test's second move, ROADMAP E6.13). The last move is the one that counts."""
+    from PySide6 import QtCore, QtGui
+    from PySide6.QtWidgets import QApplication
+
+    w, qapp = shell
+    gv = w.view.widget
+    vp = gv.viewport()
+
+    def move(y, x):
+        p = QtCore.QPointF(gv.mapFromScene(w.view.vb.mapViewToScene(QtCore.QPointF(x + 0.5, y + 0.5))))
+        g = QtCore.QPointF(vp.mapToGlobal(p.toPoint()))
+        none = QtCore.Qt.MouseButton.NoButton
+        QApplication.sendEvent(vp, QtGui.QMouseEvent(QtCore.QEvent.Type.MouseMove, p, p, g, none, none,
+                                                     QtCore.Qt.KeyboardModifier.NoModifier))
+
+    move(10, 12)
+    assert spin(qapp, lambda: w.session.state.cursor == (10, 12))
+    move(30, 25)                                        # at once: well within 10 ms of the first
+    assert spin(qapp, lambda: w.session.state.cursor == (30, 25), timeout=1.0), w.session.state.cursor

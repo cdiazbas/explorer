@@ -7,7 +7,8 @@ paints a screen-sized uint8 image, with no levels or colour work on the whole fr
 the Mac; over ssh -Y the drawing 42 -> 4.4-4.9 ms, docs/measured.md). Level 0 is "no data" (NaN padding), the data
 go on 1..255, so the colour table decides how padding looks. Zooming in renders the visible region again with more
 detail, down to full resolution; range changes in a burst render once (a 0-ms timer).
-The mouse over the image gives (y, x) in data pixels to on_hover; the crosshair is drawn where the core's cursor is.
+The mouse over the image gives (y, x) in data pixels to on_hover, at every move the view receives (_Moves); the
+crosshair is drawn where the core's cursor is.
 """
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -27,6 +28,21 @@ pg.setConfigOptions(imageAxisOrder="row-major", antialias=False, useNumba=False)
 
 CURSOR_PEN = pg.mkPen((255, 80, 80), width=1)
 LOCK_PEN = pg.mkPen((255, 190, 60), width=1.5)          # the crosshair while the cursor is locked
+
+
+class _Moves(QtCore.QObject):
+    """Every mouse move over the view's viewport, to ImageView._moved. pyqtgraph's scene drops a move that comes
+    within 1/mouseRateLimit s (10 ms) of the one before and never delivers it later (sigMouseMoved), so a pointer
+    that stops right after a quick move would leave the crosshair on the pixel before."""
+
+    def __init__(self, view: "ImageView"):
+        super().__init__(view.widget)
+        self.view = view
+
+    def eventFilter(self, obj, e) -> bool:
+        if e.type() == QtCore.QEvent.Type.MouseMove:
+            self.view._moved(self.view.widget.mapToScene(e.position().toPoint()))
+        return False
 
 
 class ImageView:
@@ -56,7 +72,8 @@ class ImageView:
         self.base_lut = self.img.lut                    # the look's grey: pyqtgraph's own, or the light theme's
         if reticle:
             self.set_reticle(True)
-        self.widget.scene().sigMouseMoved.connect(self._moved)
+        self._moves = _Moves(self)
+        self.widget.viewport().installEventFilter(self._moves)
         self._full: np.ndarray | None = None
         self._lim = (0.0, 1.0)
         self._first = True
