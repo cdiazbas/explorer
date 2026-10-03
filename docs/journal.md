@@ -2172,3 +2172,28 @@ confirmó con la misma prueba, con la ventana activa en los dos casos:
 Primer intento de la prueba: falló por otra razón. La prueba anterior del módulo abre otra app, que se
 queda con el foco X, y en una ventana inactiva `focusWidget()` es `None`. Ahora la prueba activa su
 ventana antes. `tests/xvfb`: 20 pasan, 2 saltadas (piden gestor de ventanas).
+
+### 2026-10-03: el registro de geometría (ROADMAP E6.7)
+
+**Para qué:** el 2026-10-02 la deriva de los paneles por XQuartz se explicó en minutos con una sonda que
+anotaba cada movimiento y quién lo pedía; sin ella, solo se veía el síntoma. Ahora va dentro de explorer
+(`ui/geomtrace.py`), para que cualquiera pueda mandar un registro desde su máquina:
+
+    EXPLORER_GEOMETRY_TRACE=1 explorer cubo_im.fits   ->  ~/.cache/explorer/logs/geometry-<pid>.log
+
+- **EVT:** el Move o Resize que sufrió la ventana o un panel, con los botones del ratón y el puntero.
+- **CALL:** una llamada de explorer (`setGeometry`, `move`, `resize`, `setFloating`) con los marcos que la
+  pidieron, del más interno al más externo. Un EVT sin CALL delante vino de Qt, del gestor o del puente.
+- **LOOK, SHOW, HIDE:** el aspecto puesto, y un panel o ventana que aparece o se va.
+- Apagado no envuelve nada (una prueba lo comprueba), y `stop()` lo deja todo como estaba.
+- Variable propia: `EXPLORER_TRACE` ya era la traza de tiempos (Perfetto) de `obs/trace.py`; con
+  `EXPLORER_TRACE=geometry` esa traza se escribía en un fichero llamado `geometry` en la carpeta actual.
+
+**Visto funcionar:** fuera de pantalla en el Mac (un arranque en glass: el `setFloating` de
+`glass.py place_panels` y el `setGeometry` de `fit_window`), en Linux, y por el puente en bellatrix con el
+gestor tipo quartz-wm de las pruebas: ahí aparecen las llamadas del propio puente
+(`bridge.py _apply_geometry <- windows.py configured`).
+
+**Visto de paso, sin investigar:** con `EXPLORER_TITLEBAR=wm` bajo ese gestor, la ventana principal baja de
+y=94 a y=110 (16 px). El gestor de las pruebas ignora la gravedad a propósito, y el prototipo dice que con
+gravedad estática quartz-wm no desplaza: puede ser solo del gestor de las pruebas.
