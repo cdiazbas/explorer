@@ -100,6 +100,9 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look
             store.forget()
         if look is None:                                # the one worn at the last close, else classic
             look = store.look() if store.look() in LOOKS else "classic"
+        from . import geomtrace
+
+        tracer = geomtrace.install_from_env()           # EXPLORER_GEOMETRY_TRACE=1: before the window, to see it all
         shell = Shell(ds, title=f"{os.path.basename(str(path))} — {APP_NAME}", t0=t0, look=get_look(look))
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
@@ -122,7 +125,10 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look
         log.info("%s; %s", ds.describe(), disp.stats())
         if quit_after is not None:
             shell.after_first_image(quit_after, app.quit)
-        return app.exec()                           # 1 when the X display went away under the bridge
+        code = app.exec()                           # 1 when the X display went away under the bridge
+        if tracer is not None:
+            tracer.stop()
+        return code
     finally:
         ds.close()
         disp.close()
