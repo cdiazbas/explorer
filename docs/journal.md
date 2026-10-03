@@ -2323,3 +2323,12 @@ Dos errores de mi sonda, corregidos antes de esta tabla:
 **Arreglo:** `run.sh` deja la variable al usuario. El doctor importaba numba antes de que explorer
 dimensionara el pool e informaba los núcleos (32), no el pool del visor; ahora lo importa por la capa de
 datos. `run.sh doctor` en bellatrix: `threading layer omp, 128 threads`.
+
+### 2026-10-03 (15): el Mac Intel en la integración continua (ROADMAP X.10)
+
+El tercer entorno de `[tool.uv]` (Mac Intel: numba 0.62.1, con su numpy y su llvmlite) no se instalaba ni
+se probaba en ninguna parte. Según el changelog de GitHub (2025-09-19, «macOS 13 runner image is closing
+down»), `macos-13` se retiró en diciembre de 2025. Para x86_64 queda `macos-15-intel`: runner estándar,
+macOS 15, la última imagen Intel de Actions, que se retira en otoño de 2027. Añadido a la matriz, con la
+fecha junto a la etiqueta. Después de esa fecha el Mac Intel no se probará en ninguna parte. La primera
+ejecución llegará con la próxima subida.
