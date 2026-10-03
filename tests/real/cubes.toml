@@ -8,7 +8,8 @@
 # opens = true: shape is the cube's (t, s, lambda, y, x); fits = the same observation as FITS, which the frames
 # must equal up to the integer scaling; fits_s = which Stokes of the FITS a single-Stokes cube is.
 # opens = false: the kind explorer cannot open yet; todo = the roadmap task, run as an expected failure (strict),
-# so the day it opens the test says so.
+# so the day it opens the test says so. LP cubes without a per-pixel file split by the scans in their name
+# (=a-b): the links keep it.
 
 [[cube]]
 name = "fits_stokes_6173"
@@ -58,48 +59,51 @@ shape = [106, 1, 3, 2025, 2033]
 
 [[cube]]
 name = "icube_aligned_6563"
-path = "../data/lp/aligned_6563_im.aligned6173.icube"
-opens = false
-todo = "E1.18"
+path = "../data/lp/aligned_6563=0-59_im.aligned6173.icube"
+opens = true
+shape = [60, 1, 15, 2044, 2051]
+# opens split by the scans in its name; its _sp.aligned6173 is not found yet (ROADMAP E1.18)
 
 [[cube]]
 name = "fcube_aligned_stokes_8542"
-path = "../data/lp/aligned_stokes_8542_im.aligned6173.fcube"
-opens = false
-todo = "E1.18"
+path = "../data/lp/aligned_stokes_8542=0-54_=0-28_im.aligned6173.fcube"
+opens = true
+shape = [84, 4, 20, 2028, 2031]
+# two series joined (55 + 29 scans); its _sp.aligned6173 is not found yet (ROADMAP E1.18)
 
 [[cube]]
 name = "icube_clipped_8542"
 path = "../data/lp/nb_8542_clipped=0-85.icube"
-opens = false
-todo = "E1.18"
+opens = true
+shape = [86, 1, 26, 2024, 2032]
 
 [[cube]]
 name = "fcube_map_blos_6173"
-path = "../data/lp/Blos_6173_map.fcube"
-opens = false
-todo = "E1.17"
+path = "../data/lp/Blos_6173_map=0-3.fcube"
+opens = true
+shape = [4, 2044, 2030]
 
 [[cube]]
 name = "fcube_map_blos_dotname_6173"
 path = "../data/lp/Blos.6173_map.fcube"
-opens = false
-todo = "E1.17"
+opens = true
+shape = [17, 2028, 2031]
+# no scans in the name: one unknown axis (--axes t)
 
 [[cube]]
 name = "fcube_map_bstr_empty_stokes_header"
 path = "../data/lp/Bstr.6173_map.fcube"
-opens = false
-todo = "E1.17"
+opens = true
+shape = [7, 2025, 2031]
 
 [[cube]]
 name = "icube_map_vlos_6173"
 path = "../data/lp/Vlos.6173_map.icube"
-opens = false
-todo = "E1.17"
+opens = true
+shape = [17, 2028, 2031]
 
 [[cube]]
 name = "fcube_product_doppl_6563"
-path = "../data/lp/doppl_6563_im.fcube"
-opens = false
-todo = "E1.17"
+path = "../data/lp/doppl_6563=0-105_im.fcube"
+opens = true
+shape = [106, 2025, 2033]

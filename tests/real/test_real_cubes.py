@@ -33,7 +33,7 @@ def _open(case):
 
 
 def _idx(r, t, s, l):  # noqa: E741
-    i = [0] * 3
+    i = [0] * sum(a is not None for a in (r.t, r.s, r.l))    # as many as the cube has: a map has only t
     for a, v in ((r.t, t), (r.s, s), (r.l, l)):
         if a is not None:
             i[a] = v
