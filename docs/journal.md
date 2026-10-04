@@ -2421,3 +2421,26 @@ Medido con una versión encolada de pega, con movimientos cada 10 ms frente a 30
 deja 1 o 2 tamaños por aplicar, la versión encolada 13 o 14, igual con todos los tiempos 5 veces más
 largos. Con movimientos cada 25 ms la separación era pobre (1–2 frente a 3–4), por eso la prueba usa 10
 ms. Pasa 5 de 5 veces aquí, con 8 procesos ocupando la CPU, y 3 de 3 en bellatrix.
+
+### 2026-10-04 (5): el panel de espectro fuera de sitio tras un reset en glass, desde bellatrix
+
+El usuario ve el espectro fuera de su sitio, sin alinear con nada, tras un reset en glass, al lanzar
+explorer en bellatrix (por `ssh -Y`, el puente y XQuartz en su Mac). No lo he reproducido. Probé cinco
+situaciones antes del reset (recién abierto, espectro movido a mano, paneles ocultos con I, ventana
+movida, ventana reducida) en tres entornos: cocoa en el Mac, y el puente en bellatrix con Xvfb sin gestor
+y con el quartz-wm de pega. En todas, la posición que cree Qt y la real en X dejan el espectro a la
+derecha de la ventana por `GAP` y alineado arriba, con la λ-t debajo.
+
+Quedan dos sospechosos que esas pruebas no cubren:
+- el quartz-wm real recolocando el panel después de que explorer lo coloque (el mecanismo de E6.14);
+- el monitor que cree explorer: por el puente, `monitor_rect` no usa los heads de Xinerama, y una
+  pantalla de XQuartz puede ser dos monitores.
+
+Para separarlos, el registro de geometría (E6.7) anota ahora:
+- `SCREENS` al arrancar: las pantallas de Qt y los heads de X;
+- `RESET` en cada reset;
+- `PLACE` con el monitor y el marco de la ventana de los que parte cada colocación.
+
+`scripts/demo.sh` lo guarda por defecto (`EXPLORER_GEOMETRY_TRACE=0` para no hacerlo), y al cerrar dice
+dónde está el fichero. Lanzado por el puente en bellatrix escribió `SCREENS` y `PLACE`, con la ventana
+ajustada a 891 px y el espectro en su borde derecho más `GAP`. Falta el registro del caso real.
