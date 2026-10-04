@@ -13,13 +13,19 @@ Fails (exit 1) on:
   links of data/; which file each link is lives in docs/data.local.md, which git ignores;
 - mentions of AI assistants, or co-author trailers, in commit messages; mentions of AI assistants in any diff.
 
+Binary files (a .npz reference, an image) are read too: their bytes, and each member of a zip (a .npz is one), as
+Latin-1, UTF-16 and UTF-32 at every alignment. numpy writes its strings in UTF-32, which a plain grep never sees: a
+golden reference carried a Mac home path in its metadata that way.
+
 The words it looks for are composed from pieces, never written whole, so that this file and its tests do not
 match themselves in the history. Standard library only.
 """
 import argparse
+import io
 import re
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -63,6 +69,34 @@ def scan_text(label: str, text: str):
     return out
 
 
+BINARY_MAX = 64 << 20                                   # bytes: a larger binary is not read
+
+
+def binary_texts(blob: bytes):
+    """(how, text): a binary's bytes as text in every encoding a string may hide in, each zip member apart."""
+    parts = [("", blob)]
+    if zipfile.is_zipfile(io.BytesIO(blob)):
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            parts += [(f"{m.filename}: ", z.read(m)) for m in z.infolist() if m.file_size <= BINARY_MAX]
+    for where, b in parts:
+        yield f"{where}latin-1", b.decode("latin-1")
+        for k in range(2):
+            yield f"{where}utf-16 +{k}", b[k:].decode("utf-16-le", errors="ignore")
+        for k in range(4):
+            yield f"{where}utf-32 +{k}", b[k:].decode("utf-32-le", errors="ignore")
+
+
+def scan_binary(label: str, blob: bytes):
+    """scan_text over binary_texts, each finding once."""
+    out, seen = [], set()
+    for how, text in binary_texts(blob):
+        for where, kind, excerpt in scan_text(f"{label} ({how})", text):
+            if (kind, excerpt) not in seen:
+                seen.add((kind, excerpt))
+                out.append((where, kind, excerpt))
+    return out
+
+
 def check_files(names):
     out = []
     for name in names:
@@ -74,8 +108,12 @@ def check_files(names):
             continue
         try:
             text = p.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue                                    # binary: not ours to read
+        except UnicodeDecodeError:
+            if p.stat().st_size <= BINARY_MAX:
+                out += scan_binary(name, p.read_bytes())
+            continue
+        except OSError:
+            continue
         out += scan_text(name, text)
     return out
 
@@ -101,6 +139,13 @@ def check_staged():
     added = "\n".join(line[1:] for line in git("diff", "--cached", "--unified=0").splitlines()
                       if line.startswith("+") and not line.startswith("+++"))
     out += scan_text("staged changes", added)
+    for n in names:                                     # binaries: the diff says only that they differ
+        r = subprocess.run(["git", "show", f":{n}"], cwd=ROOT, capture_output=True)
+        if r.returncode == 0 and len(r.stdout) <= BINARY_MAX:
+            try:
+                r.stdout.decode("utf-8")
+            except UnicodeDecodeError:
+                out += scan_binary(n, r.stdout)
     return out, names
 
 

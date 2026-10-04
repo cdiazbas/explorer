@@ -82,3 +82,20 @@ def test_co_author_trailer_is_refused(tmp_path):
     p = tmp_path / "msg"
     p.write_text(f"[DOC] fix a typo\n\n{COAUTHOR}: someone <a@b.c>\n")
     assert [f[1] for f in hygiene.check_message(p)] == ["assistant or co-author mention"]
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+def test_a_path_in_a_numpy_file_is_found(tmp_path, compressed):
+    """numpy writes its strings in UTF-32: a golden reference carried a Mac home path in its metadata, and a grep of
+    the bytes never saw it. A clean file finds nothing."""
+    import json
+
+    import numpy as np
+
+    save = np.savez_compressed if compressed else np.savez
+    meta = json.dumps({"prototype": "/" + "Users/someone/prototype", "case": "x"})
+    save(tmp_path / "ref.npz", meta=np.array(meta), a=np.arange(4.0))
+    found = hygiene.scan_binary("ref.npz", (tmp_path / "ref.npz").read_bytes())
+    assert [k for _w, k, _e in found] == ["Mac home path"], found
+    save(tmp_path / "clean.npz", meta=np.array(json.dumps({"prototype": "../prototype"})), a=np.arange(4.0))
+    assert hygiene.scan_binary("clean.npz", (tmp_path / "clean.npz").read_bytes()) == []
