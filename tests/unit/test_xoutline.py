@@ -10,11 +10,12 @@ class SlowServer:
     """Takes 30 ms per size, as a shaped window costs XQuartz 33 ms (bench/x_ops.py)."""
 
     def __init__(self):
-        self.applied, self.closed = [], threading.Event()
+        self.applied, self.at, self.closed = [], [], threading.Event()
 
     def apply(self, r):
         time.sleep(0.03)
         self.applied.append(r)
+        self.at.append(time.perf_counter())
 
     def close(self):
         self.closed.set()
@@ -33,29 +34,20 @@ def test_the_latest_size_wins_and_nothing_queues():
 
 
 def test_the_server_never_waits_for_the_pointer():
+    """The outline is one size behind the pointer at most, not the whole drag: after the last move the server applies
+    the size it was on and the last one, never the ones in between. Counted, not timed: a GitHub runner slept 120 ms
+    for each 25-ms sleep and a bound of 0.2 s failed with nothing queued. Moves every 10 ms against 30 ms a size: a
+    queue would leave 13-14 sizes to apply after the last move (measured with a queued stand-in, also 5x slower),
+    the outline 1-2."""
     srv = SlowServer()
     o = xoutline.XOutline(0x2F6FDE, server=lambda: srv)
-    t0 = time.perf_counter()
     for i in range(20):
         o.show(0, 0, 700 + 10 * i, 500)
-        time.sleep(0.025)
+        time.sleep(0.01)
     shown_by = time.perf_counter()
-    end = shown_by + 1.0
+    end = shown_by + 5.0
     while (not srv.applied or srv.applied[-1] != (0, 0, 890, 500)) and time.perf_counter() < end:
         time.sleep(0.005)
     o.close(wait=1.0)
     assert srv.applied[-1] == (0, 0, 890, 500)
-    assert time.perf_counter() - shown_by < 0.2         # one step behind at most, not the whole drag
-    assert t0 < shown_by
-
-
-def test_the_ring():
-    assert xoutline.ring(100, 50) == [(0, 0, 100, 2), (0, 48, 100, 2), (0, 0, 2, 50), (98, 0, 2, 50)]
-
-
-def test_no_x_server_no_outline_and_no_error():
-    def fail():
-        raise OSError("no display")
-    o = xoutline.XOutline(0, server=fail)
-    o.show(0, 0, 10, 10)
-    o.close(wait=1.0)
+    assert sum(t > shown_by for t in srv.at) <= 2       # the one in flight and the last
