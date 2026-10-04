@@ -71,7 +71,7 @@ else:
     def pixel_bytes():
         return bridge.transport.stats["bytes"]
 
-from PySide6 import QtCore  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 from Xlib import X, display  # noqa: E402
 from Xlib.ext import xtest  # noqa: E402
 
@@ -79,6 +79,47 @@ obs = display.Display(os.environ["EXPLORER_BENCH_OBSERVE"])
 root = obs.screen().root
 res: dict = dict(program=which)
 done = threading.Event()
+
+
+paints: dict = {}                                       # Qt's Paint events on the top-levels during the drag
+
+
+class _Paints(QtCore.QObject):
+    def eventFilter(self, obj, e):
+        if e.type() == QtCore.QEvent.Type.Paint and isinstance(obj, QtWidgets.QWidget):
+            top = obj.window()
+            name = "main" if top is w else (top.objectName() or type(top).__name__)
+            paints[name] = paints.get(name, 0) + 1
+            who = f"{name}/{type(obj).__name__}{'#' + obj.objectName() if obj.objectName() else ''}"
+            area = e.region().boundingRect()
+            n, px = paints.get(who, (0, 0))
+            paints[who] = (n + 1, px + area.width() * area.height())
+        return False
+
+
+_paints = _Paints()
+app.installEventFilter(_paints)
+
+
+def summary():
+    try:
+        return dict(bridge.summary()) if which != "proto" else {}
+    except Exception:
+        return {}
+
+
+def diff(a, b):
+    """The counters that moved: numbers, and numbers inside dicts (input, windows)."""
+    out = {}
+    for k, v in b.items():
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and isinstance(a.get(k), (int, float)):
+            if v != a[k]:
+                out[k] = round(v - a[k], 3)
+        elif isinstance(v, dict) and isinstance(a.get(k), dict):
+            sub = diff(a[k], v)
+            if sub:
+                out[k] = sub
+    return out
 
 
 def x_at(widget_xid):
@@ -112,6 +153,8 @@ def drag(sp, lt, start, sx, sy, path):
         obs.sync()
         time.sleep(0.1)
         want, seen = [], {}
+        paints.clear()
+        sum0 = summary()
         l0, b0 = link_up(), pixel_bytes()
         t0 = time.perf_counter()
         for i, (px, py) in enumerate(path):
@@ -154,7 +197,8 @@ def drag(sp, lt, start, sx, sy, path):
             spectrum_above_lambda_t=order.index(top(sx)) > order.index(top(xid(lt))),
             spectrum_above_main=order.index(top(sx)) > order.index(top(xid(w))),
             link_up_kB=round((link_up() - l0) / 1e3, 1) if l0 is not None else None,
-            pixel_kB=round((pixel_bytes() - b0) / 1e3, 1))
+            pixel_kB=round((pixel_bytes() - b0) / 1e3, 1), qt_paints=dict(paints),
+            bridge_during=diff(sum0, summary()))
     except Exception as e:
         res["error"] = repr(e)
     done.set()
