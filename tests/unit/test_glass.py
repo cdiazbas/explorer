@@ -49,6 +49,12 @@ def shell(qapp, cube):
     qapp.setPalette(pal)
 
 
+def panels(w):
+    """The spectra and lambda-t: the panels glass floats without a slit (its docks() has the slit's too, hidden until
+    one is drawn)."""
+    return [w.spec_dock, w.lt_dock]
+
+
 def wear(qapp, w, name):
     from explorer.look import get_look
 
@@ -71,7 +77,7 @@ def test_in_glass(qapp, shell):
         assert g.bar.isAncestorOf(x) and x.isVisible()
     assert not w.statusBar().isVisible()
     assert w.centralWidget().layout().contentsMargins().left() == 0
-    assert spin(qapp, lambda: all(d.isFloating() for d in g.docks()))
+    assert spin(qapp, lambda: all(d.isFloating() for d in panels(w)))
     assert all(isinstance(d.titleBarWidget(), PanelTitle) for d in g.docks())
     assert w.colour_key.pos().y() == glass.MARGIN                          # the key at the top: the bar is below
     acc = glass.accent()
@@ -98,11 +104,11 @@ def test_i_hides_and_shows_the_panels_and_all_agrees_with_key_5(qapp, shell):
     w = shell
     wear(qapp, w, "glass")
     g = w.glass
-    assert spin(qapp, lambda: all(d.isFloating() for d in g.docks()))
+    assert spin(qapp, lambda: all(d.isFloating() for d in panels(w)))
     w.toggle_panels()
-    assert all(d.isHidden() for d in g.docks())
+    assert all(d.isHidden() for d in panels(w))
     w.toggle_panels()
-    assert not any(d.isHidden() for d in g.docks())
+    assert not any(d.isHidden() for d in panels(w))
     # one name and one control for the four Stokes: All in the Stokes control, as outside glass (no 2x2 button)
     texts = [b.text() for b in g.bar.findChildren(QtWidgets.QAbstractButton)]
     assert not [t for t in texts if "2" in t and "×" in t], f"the bar's buttons: {texts}"
@@ -162,7 +168,7 @@ def test_the_bar_is_the_image_under_it_and_follows_it_once_it_rests(qapp, shell,
     wear(qapp, w, "glass")
     g = w.glass
     bar = g.bar
-    assert spin(qapp, lambda: all(d.isFloating() for d in g.docks()))
+    assert spin(qapp, lambda: all(d.isFloating() for d in panels(w)))
     assert spin(qapp, lambda: bar._backdrop is not None and not g.changing), dict(changing=g.changing)
     first = bar._backdrop
     a0 = grey(first)
@@ -187,7 +193,7 @@ def test_the_window_is_as_wide_as_the_image(qapp, shell):
 
     w = shell
     wear(qapp, w, "glass")
-    assert spin(qapp, lambda: all(d.isFloating() for d in w.glass.docks()))
+    assert spin(qapp, lambda: all(d.isFloating() for d in panels(w)))
 
     def seen():
         view = w.view.widget
@@ -212,7 +218,7 @@ def test_out_of_glass_everything_as_it_was(qapp, shell):
                   margins=w.centralWidget().layout().contentsMargins(), title=w.windowTitle(),
                   widths={a: (s.minimumWidth(), s.maximumWidth()) for a, s in w.nav.sliders.items()})
     wear(qapp, w, "glass")
-    assert spin(qapp, lambda: all(d.isFloating() for d in w.glass.docks()))
+    assert spin(qapp, lambda: all(d.isFloating() for d in panels(w)))
     w.session.lock(True)
     qapp.processEvents()
     wear(qapp, w, "classic")
@@ -284,7 +290,7 @@ def test_started_in_glass_classic_comes_as_at_a_fresh_start(qapp, cube):
             w.show()
             assert spin(qapp, lambda w=w: "lambda_t" in w.last)
             if look == "glass":
-                assert spin(qapp, lambda w=w: all(d.isFloating() for d in w.glass.docks()))
+                assert spin(qapp, lambda w=w: all(d.isFloating() for d in panels(w)))
                 wear(qapp, w, "classic")
             spin(qapp, lambda: False, timeout=0.5)
             seen[look] = (w.geometry(), [d.geometry() for d in (w.spec_dock, w.lt_dock)], w.view.widget.size())
@@ -449,8 +455,8 @@ def _panel_pixels(qapp, w):
 
     from explorer.ui import glass
 
-    floating = spin(qapp, lambda: all(d.isFloating() for d in w.glass.docks()))
-    print("panels:", [(d.objectName(), d.isFloating(), d.isVisible(), d.geometry().getRect()) for d in w.glass.docks()],
+    floating = spin(qapp, lambda: all(d.isFloating() for d in panels(w)))
+    print("panels:", [(d.objectName(), d.isFloating(), d.isVisible(), d.geometry().getRect()) for d in panels(w)],
           "window visible:", w.isVisible(), "glass on:", w.glass.on)
     assert floating
     d = w.spec_dock

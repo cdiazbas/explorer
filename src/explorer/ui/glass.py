@@ -4,12 +4,14 @@ prototype's app/look_glass.py, its floating panels (its default; the column of c
 - The image has the main window to itself, to its edges; the window as wide as the image at its height. A zoomed
   window (maximised, full screen, or by our title bar's zoom) leaves its zoom: it keeps the monitor's height, left of
   the panels' column; out of glass it is zoomed again.
-- The panels (spectra, lambda-t) float beside the main window as rounded slabs in the image's own colour (near-black;
-  near-white in the light theme), lit from above, with a rim and the accent's light along their top edge, and a title
-  of their own (PanelSkin, PanelTitle). The window's title bar and edge take the same while glass is worn: the three
-  windows read as one set, on the image's black (a smoked grey parted the panels from it). They move, resize, close
-  and dock back as any floating panel; I hides and shows them all, Panels one by one, the reset button places them
-  again.
+- The panels (spectra, lambda-t, and the slit's while there is a slit) float beside the main window as rounded slabs
+  in the image's own colour (near-black; near-white in the light theme), lit from above, with a rim and the accent's
+  light along their top edge, and a title of their own (PanelSkin, PanelTitle). The window's title bar and edge take
+  the same while glass is worn: the windows read as one set, on the image's black (a smoked grey parted the panels
+  from it). They move, resize, close and dock back as any floating panel; I hides and shows them all, Panels one by
+  one, the reset button places them again. Stacked beside the window: 52/48, or 40/30/30 with the slit's
+  (look_glass.py:572); S puts the slit's below lambda-t when the monitor has room there, else the three are stacked
+  again (look_glass.py:604-618).
 - The toolbar's controls float in one compact glass bar at the bottom of the image, two rows. It hides after HIDE_MS
   without a mouse move, wheel or key, and comes back on the next one; it stays while in use (AutoHide).
 - The cursor's readout is the window's title while the pointer is on the image or the cursor is locked; the status
@@ -35,8 +37,10 @@ from . import style, titlebar
 from .status import SEP
 
 FLOAT_W = 560                                      # px: a floating panel's width
-FLOAT_MIN_H = {"spectrum": 380, "lambda_t": 240}   # px: the least height its plots read at
+# px: the least height its plots read at; the slit's two slices have lambda-t's axes, side by side
+FLOAT_MIN_H = {"spectrum": 380, "lambda_t": 240, "slit": 240}
 SLIDER_MIN, SLIDER_LEAST = 140, 48                 # px: a slider in the bar, and the least it gives way to
+ROW_GAP, ROW_GAP_LEAST = 8, 4                      # px between the bar's controls, and in a bar too narrow for it
 HIDE_MS = 2500
 BAR_BOTTOM = 6                                     # px between the bar and the image's bottom edge
 REST_MS = 250                                      # still this long: the glass takes the new image as its backdrop
@@ -528,7 +532,8 @@ class GlassChrome:
         tb.update()
 
     def docks(self) -> list:
-        return [d for d in (self.w.spec_dock, self.w.lt_dock) if d is not None]
+        """The panels glass floats: the slit's too, shown only with a slit (docks.GatedDock; look_glass.py:518-519)."""
+        return [d for d in (self.w.spec_dock, self.w.lt_dock, self.w.slit_dock) if d is not None]
 
     def _bar(self, nav, view) -> None:
         """The toolbar's controls in the bar, two rows (look_glass.py:660-691): every action leaves the toolbar,
@@ -543,7 +548,7 @@ class GlassChrome:
         lay.setSpacing(1)
         self._rows = rows = [QtWidgets.QHBoxLayout(), QtWidgets.QHBoxLayout()]
         for r in rows:
-            r.setSpacing(8)
+            r.setSpacing(ROW_GAP)
             lay.addLayout(r)
         ink = INK[_mode()]
         self._made: list[QtWidgets.QWidget] = []
@@ -565,13 +570,14 @@ class GlassChrome:
                 self._made.append(nl)
             rows[row].addWidget(s, 1)
             rows[row].addWidget(nav.labels[axis])
-        for b in (nav.panels, nav.reset, nav.help):
+        for b in (nav.slit, nav.panels, nav.reset, nav.help):     # the slit's first (look_glass.py:729-731)
             rows[0].addWidget(b)
         # I Q U V side by side: All in the Stokes control and key 5, as in the other looks; the prototype's own 2x2
         # button (look_glass.py:685-687) would be a second name and a second control for it
         rows[1].addWidget(nav.fps)
-        self._flatten([nav.play, nav.panels, nav.reset, nav.help, nav.drop])
-        for x in [nav.play, nav.fps, nav.panels, nav.reset, nav.help, *nav.sliders.values(), *nav.labels.values()]:
+        self._flatten([nav.play, nav.slit, nav.panels, nav.reset, nav.help, nav.drop])
+        for x in [nav.play, nav.fps, nav.slit, nav.panels, nav.reset, nav.help, *nav.sliders.values(),
+                  *nav.labels.values()]:
             x.show()
         if nav.drop is not None:
             nav.drop.show()
@@ -648,19 +654,27 @@ class GlassChrome:
 
     def _fit_sliders(self, room: int) -> None:
         """The sliders give way first, as in the toolbar: in a 480-px window the bar needed 505 px for 448 (its t
-        row: play, the slider at 140, its label, Panels, reset, ?), and Qt squeezed the rest below their size."""
+        row: play, the slider at 140, its label, Panels, reset, ?), and Qt squeezed the rest below their size. Then
+        the gaps between the controls: with the slit's button the t row needed 454 px for 448 with its slider at its
+        least."""
         sl = list(self.w.nav.sliders.values())
         lay = self.bar.layout()
         if lay is None:
             return
         for s in sl:
             s.setMinimumWidth(SLIDER_MIN)
+        for r in self._rows:
+            r.setSpacing(ROW_GAP)
         lay.activate()
         excess = self.bar.minimumSizeHint().width() - room
         if excess > 0:
             for s in sl:
                 s.setMinimumWidth(max(SLIDER_LEAST, SLIDER_MIN - excess))
             lay.activate()
+            if self.bar.minimumSizeHint().width() > room:
+                for r in self._rows:
+                    r.setSpacing(ROW_GAP_LEAST)
+                lay.activate()
 
     def place_bar(self) -> None:
         view = self.w.view.widget
@@ -736,7 +750,8 @@ class GlassChrome:
         return QtCore.QRect(left, top, W + frame_w, H + frame_h)
 
     def place_panels(self) -> None:
-        """The panels stacked beside the fitted window (look_glass.py:518-536)."""
+        """The panels shown stacked beside the fitted window, 52/48 or, with the slit's, 40/30/30 (look_glass.py:
+        559-579)."""
         w = self.w
         if not self.on or not w.isVisible():
             return
@@ -758,7 +773,7 @@ class GlassChrome:
         if not shown:
             return
         x = min(fg.right() + GAP, scr.right() - FLOAT_W)
-        share = {1: [1.0], 2: [0.52, 0.48]}[len(shown)]
+        share = {1: [1.0], 2: [0.52, 0.48], 3: [0.40, 0.30, 0.30]}[len(shown)]
         avail = fg.height() - GAP * (len(shown) - 1)
         y = fg.top()
         for d, f in zip(shown, share, strict=True):
@@ -775,7 +790,8 @@ class GlassChrome:
             y += h + GAP
 
     def toggle_panels(self) -> None:
-        """I: every panel hidden, or those shown before back (look_glass.py:577-589)."""
+        """I: every panel hidden, or those shown before back (look_glass.py:622-632); the slit's never without a slit
+        (docks.GatedDock), as the prototype's default of spectra and lambda-t."""
         shown = [d for d in self.docks() if not d.isHidden()]
         if shown:
             self._hidden = shown
@@ -786,7 +802,8 @@ class GlassChrome:
                 d.show()
 
     def reset(self) -> None:
-        """The reset button: the whole image, and the panels shown and placed again (look_glass.py:591-598)."""
+        """The reset button: the whole image, and the panels shown and placed again; the slit's only with a slit
+        (look_glass.py:634-642)."""
         self.w.reset_view()
         for d in self.docks():
             d.show()

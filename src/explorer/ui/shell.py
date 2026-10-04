@@ -299,11 +299,9 @@ class Shell(QtWidgets.QMainWindow):
         for pw in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None), self.slit_panel.w):
             if pw is not None and self.glass is None:   # worn, glass keeps them clear over its slabs
                 pw.setBackground(card)
-        if L.has("glass") and self.glass is None:       # its own parts last, over the modern look's (ui.glass)
-            self.glass = glass.GlassChrome(self)
+        if L.has("glass") and self.glass is None:       # its own parts last, over the modern look's (ui.glass); the
+            self.glass = glass.GlassChrome(self)        # slit's panel, if shown, among the panels it floats
             self.glass.apply()
-            if not self.slit_dock.isHidden() and not self.slit_dock.isFloating():
-                QtCore.QTimer.singleShot(0, self._slit_float)     # after glass has floated lambda-t
         # the slit in the markers' colour: the cursor's in the classic look (the prototype's _slit_style, 1733)
         self.slit_tool.set_colour(acc if L.has("marks") or L.has("glass") else CURSOR_PEN.color())
         self._place_slit_hint()
@@ -863,9 +861,9 @@ class Shell(QtWidgets.QMainWindow):
 
     def _slit_float(self) -> None:
         """In glass: the slit's panel floating below lambda-t (or the spectra, with lambda-t closed), SLIT_FLOAT_H
-        high, when the screen has room for it there (the prototype's slit_tab_float, app/look_glass.py:604-618);
-        else over lambda-t's place. Docked it would narrow the image. Without room the prototype stacked the three
-        beside the window, 40/30/30: that is glass's place_panels (ROADMAP E7.4)."""
+        high, when the monitor has room for it there; else the three stacked beside the window again, 40/30/30
+        (glass's place_panels). The prototype's slit_tab_float, app/look_glass.py:607-618. Docked it would narrow the
+        image."""
         from ..platform.screens import monitor_rect
 
         d = self.slit_dock
@@ -874,12 +872,14 @@ class Shell(QtWidgets.QMainWindow):
             return
         g = ref.frameGeometry()
         scr = monitor_rect(QtWidgets.QApplication.instance(), g.center())
-        d.setFloating(True)
-        d.show()
         if g.bottom() + glass.GAP + SLIT_FLOAT_H <= scr.bottom():
+            # its place given before it is shown, as place_panels does: its window made where it goes
+            d.setFloating(True)
             d.setGeometry(g.x(), g.bottom() + glass.GAP, glass.FLOAT_W, SLIT_FLOAT_H)
+            d.show()
         else:
-            d.setGeometry(ref.geometry())
+            d.show()                                    # one panel more: place_panels floats it with the others
+            self.glass.place_panels()
         d.raise_()
 
     def _slit_dock_again(self) -> None:
