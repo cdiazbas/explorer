@@ -18,6 +18,7 @@ before they start (the spectrum is 56 reads, the lambda-t ~2600: sent together, 
 lambda-t, Mac 18-23 -> 3-5 ms, StorNext ~165 -> ~40 ms). A result is shown unless a newer one already is
 (executors.ShownGate): showing only the latest request's froze the panels while the mouse moved.
 Results come back from other threads through Loop.post, and the Sink is called on the main thread only.
+The slit panel's reads and slices are SlitReads' (core.slitreads), which sees every notice first.
 The image's levels are computed on the thread that read the frame, before its result is posted, and on the threads
 that read frames ahead (Levels.ahead): the UI thread finds them cached. Never for a read already stale, nor on the
 main thread: a future that completed before its callback was added runs it there, and the levels are then computed
@@ -36,6 +37,7 @@ from ..data.stats import quv_amplitude_ranges, quv_threads, sample_pixels, sampl
 from ..obs import counter, get_logger
 from .levels import Levels, panel_levels
 from .session import Session
+from .slitreads import SlitReads
 from .state import ViewState
 from .yrange import YRange
 
@@ -61,6 +63,11 @@ class Sink(Protocol):
 
     def grid_image(self, s: int, idx: tuple, img: np.ndarray, levels: tuple[float, float]) -> None: ...  # 2x2 view
 
+    def slit_path(self, pix: tuple[np.ndarray, np.ndarray] | None) -> None: ...        # the slit's pixels (iy, ix)
+
+    def slit(self, ts: np.ndarray | None, sl: np.ndarray | None, s: int,                # its slices; None: unchanged
+             ts_levels: tuple[float, float] | None, sl_levels: tuple[float, float] | None) -> None: ...
+
 
 class Scheduler:
     def __init__(self, session: Session, sink: Sink):
@@ -82,6 +89,7 @@ class Scheduler:
         self._cleared = False
         self._futures: set[Future] = set()
         self._flock = threading.Lock()
+        self.slit = SlitReads(session, sink, self._track, self._when_read)
         self._off = session.store.subscribe(self._on_change)
         self._first_units(session.state)
         self._pending.add("cursor")                     # the first image brings the first cursor
@@ -104,6 +112,7 @@ class Scheduler:
     def close(self) -> None:
         """No more work: what is due later (the y-range sample) or still on its way is dropped."""
         self._closed = True
+        self.slit.close()
         self._off()
 
     # ---------------------------------------------------------------- bookkeeping for tests and idle checks
@@ -137,6 +146,7 @@ class Scheduler:
 
     # ---------------------------------------------------------------- changes of state
     def _on_change(self, st: ViewState, changed: frozenset) -> None:
+        self.slit.on_change(st, changed)
         moved = changed & {"t", "s", "l"}
         if moved:
             self._pending |= moved | (changed & {"cursor"})

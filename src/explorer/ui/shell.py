@@ -10,7 +10,8 @@ image again. The keys, from the prototype's _key_table, in one table (ui.actions
 - 1..ns: that Stokes, whenever the cube has Stokes (the prototype registered them only when it also had t);
 - L: lock or release the cursor; Esc: release it (while a slit is drawn: drop it);
 - S: the slit mode on and off, ⌫ or Delete: the slit removed (ui.slit; a click in the mode adds a point to the slit
-  instead of locking the cursor);
+  instead of locking the cursor). The slit panel (ui.slitpanel) is a tab beside lambda-t from the first S on, in front
+  while a slit is drawn and when one is finished, gone with the slit;
 - Ctrl+W close, Ctrl+M minimise, Ctrl+Q quit (Qt reads Ctrl as Cmd on a Mac, where Cmd+Q is the application menu's).
 """
 import math
@@ -39,6 +40,7 @@ from .loop import QtLoop
 from .overlays import ColourKey
 from .padlock import PanelLock
 from .slit import SlitHint, SlitTool
+from .slitpanel import SlitPanel
 from .spectra import AxisDrag, SpectraPanel
 from .status import diagnostics_text, pixel_text
 from .stokesgrid import StokesGrid
@@ -53,6 +55,7 @@ if TYPE_CHECKING:
 MEMORY_S = 1.0                                          # the caches' budget follows the machine's memory (Dataset)
 STATUS_INSET = 8            # px each side of the status line: half the rounded corners' 16, its text clear of the curve
 GRID_LABEL = 30             # px from the top: the slit's hint below the 2x2 view's Stokes label (stokesgrid, at 6)
+SLIT_FLOAT_H = 320          # px: the slit panel floating below lambda-t in glass (the prototype's look_glass.py:615)
 
 
 class _Follow(QtCore.QObject):
@@ -117,6 +120,15 @@ class _Sink:
         if self.shell.grid is not None:
             self.shell.grid.set_image(s, img, levels)
 
+    def slit_path(self, pix):
+        self.shell.slit_panel.set_path(pix)
+
+    def slit(self, ts, sl, s, ts_levels, sl_levels):
+        self.shell.last["slit"] = s
+        self.shell.slit_panel.show(ts, sl, ts_levels, sl_levels)
+        if self.shell.colours is not None and self.shell.look.has("colour"):
+            self.shell.slit_panel.set_lut(self.shell.colours.lut(s))
+
 
 class Shell(QtWidgets.QMainWindow):
     def __init__(self, dataset, title: str | None = None, t0: float | None = None, look=None):
@@ -148,6 +160,14 @@ class Shell(QtWidgets.QMainWindow):
         self.lt_panel = self.lambda_t.widget if self.lambda_t is not None else QtWidgets.QWidget()
         self.spec_dock = docks.dock(self, "Spectrum", self.spec_panel, "spectrum")
         self.lt_dock = docks.dock(self, "λ–t", self.lt_panel, "lambda_t")
+        # the slit's slices: lambda-t's tab, there from the first S on and only with a slit or one being drawn
+        # (_slit_tab; the prototype's 1046-1052)
+        self.slit_panel = SlitPanel(r.nt, r.nl, dataset.axes)
+        self.slit_dock = docks.dock(self, "Slit", self.slit_panel.widget, "slit", cls=docks.GatedDock)
+        self.slit_dock.hide()
+        assert isinstance(self.slit_dock, docks.GatedDock)
+        self.slit_dock.allowed = lambda: self.session.state.path is not None or self.slit_tool.mode
+        self.slit_dock.toggleViewAction().setEnabled(False)
         self.setAnimated(False)
         self.nav = NavBar(self)
         # playback: t forward at the toolbar's rate, round the end (the prototype's _toggle_play, _play_step)
@@ -178,7 +198,9 @@ class Shell(QtWidgets.QMainWindow):
         self.window_ops: WindowOps | None = None
         self.title_bar: TitleBar | None = None
         self.terminal_keys: TerminalKeys | None = None
-        for d, panel in ((self.spec_dock, "spectra"), (self.lt_dock, "lambda_t")):
+        # a tab behind is moved off screen, not hidden: isVisible() says True for both (Qt 6.11, offscreen), and
+        # visibilityChanged follows the tab in front (the prototype's 1049-1052)
+        for d, panel in ((self.spec_dock, "spectra"), (self.lt_dock, "lambda_t"), (self.slit_dock, "slit")):
             d.visibilityChanged.connect(lambda on, panel=panel: self._panel_shown(panel, on))
         self.status = QtWidgets.QLabel()
         self.status.setTextFormat(QtCore.Qt.TextFormat.PlainText)
@@ -205,6 +227,8 @@ class Shell(QtWidgets.QMainWindow):
             self.lambda_t.set_markers(st.t, st.l)
         else:
             self.lt_dock.hide()
+        self.slit_panel.set_markers(st.t, st.l)
+        self.slit_panel.set_cursor(*st.cursor)
         self._mem = QtCore.QTimer(self)
         self._mem.setInterval(int(MEMORY_S * 1000))
         self._mem.timeout.connect(self._memory)
@@ -213,7 +237,7 @@ class Shell(QtWidgets.QMainWindow):
         self._sized = False
         self._ratio_followed = False
         style.separators(self)                          # 8 px to grab between the docked panels, with the theme
-        panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel) if p is not None]
+        panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel, self.slit_panel.w) if p is not None]
         self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
         self.colours: ColormapRegistry | None = None    # made the first time the look has colour
         self.colour_key: ColourKey | None = None
@@ -230,6 +254,8 @@ class Shell(QtWidgets.QMainWindow):
         if self.glass is not None and not look.has("glass"):   # out of glass first: it gives back what it took
             self.glass.remove()
             self.glass = None
+            self._slit_dock_again()
+            QtCore.QTimer.singleShot(0, self._slit_dock_again)    # after glass restores the panels once more
         self.look, L = look, look
         light = style.is_light()
         st = QtWidgets.QApplication.style()
@@ -247,6 +273,7 @@ class Shell(QtWidgets.QMainWindow):
             self.spectra.set_marks(acc, light) if L.has("marks") else self.spectra.clear_marks()
         if self.lambda_t is not None:
             self.lambda_t.set_marks(acc) if L.has("marks") else self.lambda_t.clear_marks()
+        self.slit_panel.set_marks(acc) if L.has("marks") else self.slit_panel.clear_marks()
         if L.has("colour") and self.colours is None:
             self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light)
             self.colour_key = ColourKey(self.view.widget, unit_text(getattr(self.dataset.axes, "bunit", None) or ""))
@@ -262,17 +289,21 @@ class Shell(QtWidgets.QMainWindow):
             lt = self.last.get("lambda_t")
             cols = self.colours if L.has("colour") else None
             self.lambda_t.set_lut(cols.lut(lt[2]) if cols is not None and lt is not None else None)
+        cols = self.colours if L.has("colour") else None
+        self.slit_panel.set_lut(cols.lut(self.last.get("slit", self.session.state.s)) if cols is not None else None)
         if st.name() == "macos" and self._seams is None:   # the native style's light lines under the panel titles
             self._seams = MacSeams()                    # and on the separators: in the window's colour, in both looks
-            for w in (self, self.spec_dock, self.lt_dock):
+            for w in (self, self.spec_dock, self.lt_dock, self.slit_dock):
                 w.setStyle(self._seams)
         card = (CARD_LIGHT if light else CARD) if L.has("cards") else pg.getConfigOption("background")
-        for pw in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None)):
+        for pw in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None), self.slit_panel.w):
             if pw is not None and self.glass is None:   # worn, glass keeps them clear over its slabs
                 pw.setBackground(card)
         if L.has("glass") and self.glass is None:       # its own parts last, over the modern look's (ui.glass)
             self.glass = glass.GlassChrome(self)
             self.glass.apply()
+            if not self.slit_dock.isHidden() and not self.slit_dock.isFloating():
+                QtCore.QTimer.singleShot(0, self._slit_float)     # after glass has floated lambda-t
         # the slit in the markers' colour: the cursor's in the classic look (the prototype's _slit_style, 1733)
         self.slit_tool.set_colour(acc if L.has("marks") or L.has("glass") else CURSOR_PEN.color())
         self._place_slit_hint()
@@ -284,7 +315,7 @@ class Shell(QtWidgets.QMainWindow):
         its panels where they are and the image's region kept."""
         app = QtWidgets.QApplication.instance()
         if self._seams is not None:                     # off a Mac's native style: its seams go with it
-            for w in (self, self.spec_dock, self.lt_dock):
+            for w in (self, self.spec_dock, self.lt_dock, self.slit_dock):
                 w.setStyle(None)  # type: ignore[arg-type]  # None: the application's style again
             self._seams = None
         self.theme = style.apply_theme(app, theme)
@@ -301,6 +332,7 @@ class Shell(QtWidgets.QMainWindow):
             self.spectra.set_light(light)
         if self.lambda_t is not None:
             self.lambda_t.set_light(light)
+        self.slit_panel.set_light(light)
         if self.colours is not None:
             self.colours.set_light(light)
         self.nav.restyle()
@@ -441,6 +473,7 @@ class Shell(QtWidgets.QMainWindow):
         self._grid_luts()                               # the 2x2 view's panel of that Stokes too
         if self.lambda_t is not None:
             self.lambda_t.set_lut(self.colours.lut(s))
+        self.slit_panel.set_lut(self.colours.lut(s))
         if self.colour_key is not None:
             self.colour_key.flash(name)
 
@@ -474,12 +507,14 @@ class Shell(QtWidgets.QMainWindow):
             self.glass.reset()
             self.statusBar().showMessage("panels and zoom back to the start", 4000)
             return
-        for d in (self.spec_dock, self.lt_dock):
+        for d in (self.spec_dock, self.lt_dock, self.slit_dock):
             d.setFloating(False)
         self.restoreState(self._initial_state)
         for d in (self.spec_dock, self.lt_dock):
             if d.isHidden():
                 d.show()
+        if self.session.state.path is not None:         # the slit's tab only with a slit (the prototype's 2536)
+            self._slit_tab(True)
         self.reset_sizes()
         QtCore.QTimer.singleShot(0, self.reset_sizes)     # again once the layout has settled
         self.reset_view()
@@ -504,6 +539,10 @@ class Shell(QtWidgets.QMainWindow):
             vp.setCursor(C.SizeAllCursor)
             picks[vp] = self._lt_pick
             self.lambda_t.w.scene().sigMouseClicked.connect(self._panel_click)
+        vp = self.slit_panel.w.viewport()               # picks two things, as lambda-t (the prototype's 1975)
+        vp.setCursor(C.SizeAllCursor)
+        picks[vp] = self._slit_pick
+        self.slit_panel.w.scene().sigMouseClicked.connect(self._panel_click)
         # no context menus: a right click releases the cursor, nothing else. pyqtgraph's on the image, and
         # QMainWindow's (toolbar and docks on/off) over the toolbar, the dock titles and the sliders; an open one
         # also left the next keys unanswered (the prototype's app/viewer.py:1018-1028)
@@ -549,6 +588,20 @@ class Shell(QtWidgets.QMainWindow):
         self._want_pick({"l": int(np.clip(int(q.x()), 0, self.lambda_t.nl - 1)),
                          "t": int(np.clip(int(q.y()), 0, self.lambda_t.nt - 1))}, now)
 
+    def _slit_pick(self, pos, now: bool = True) -> None:
+        """A click or drag on the slit panel: the cursor to that point of the slit, locked there as a click on the image
+        does, and t (time slice) or lambda (spectral slice) from y (the prototype's _slit_pick, 1932)."""
+        hit = self.slit_panel.point_at(pos)
+        if hit is None or self.slit_panel.pix is None:
+            return
+        i, axis, v = hit
+        iy, ix = self.slit_panel.pix
+        self.session.lock(False)
+        self.session.hover(int(iy[i]), int(ix[i]))
+        self.session.lock(True)
+        if self.session.present[axis]:
+            self._want_pick({axis: v}, now)
+
     def _want_pick(self, want: dict, now: bool) -> None:
         """now: at once (a press); else the latest wins at the next pass of the event loop (a fast drag reads one
         image per pass, not one per mouse event)."""
@@ -566,6 +619,7 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- playback
     def set_playing(self, on: bool) -> None:
+        self.session.set_playing(on)
         self._fps = []
         (self._play.start if on else self._play.stop)()
         self.nav.play.setIcon(icons.glyph_icon("pause" if on else "play", self.nav.play))
@@ -730,6 +784,7 @@ class Shell(QtWidgets.QMainWindow):
                                                      "double click: automatic again")]
         if self.lambda_t is not None:
             rows.append(("click on λ–t", "pick t and λ"))
+        rows.append(("click on the slit panel", "the cursor to that point of the slit; t or λ from the height"))
         ns = self.session.sizes["s"] if self.session.present["s"] else 1
         if ns > 1:
             rows.append(("click on a panel of the side-by-side view", "lock the cursor there; λ–t shows its Stokes"))
@@ -777,6 +832,67 @@ class Shell(QtWidgets.QMainWindow):
             b.setChecked(on)
             b.blockSignals(False)
         self._gestures.rest = self.slit_tool.pointer()
+        self._slit_shown(on or self.session.state.path is not None)
+
+    def _slit_shown(self, on: bool) -> None:
+        """The slit's tab there and in front (S: its slices live while the slit is drawn; a slit finished), or gone
+        (no slit, none being drawn). The prototype's set_slit_mode (1505-1515) and _slit_changed (1745)."""
+        self._slit_tab(on)
+        if on:
+            self.slit_dock.raise_()
+
+    def _slit_tab(self, on: bool) -> None:
+        """The Slit tab beside lambda-t, lambda-t left in front; gone with the slit (the prototype's _slit_tab, 1772):
+        as lambda-t's tab whenever it comes back, even from a layout that had it as a third panel (its F70b). In
+        glass, whose panels float, a floating panel over lambda-t's place."""
+        d, lt = self.slit_dock, self.lt_dock
+        d.toggleViewAction().setEnabled(on)
+        if on and d.isHidden():
+            front = lt.isVisible()
+            if self.glass is not None and (lt.isFloating() or self.spec_dock.isFloating()):
+                self._slit_float()
+                return
+            d.show()
+            if (d not in self.tabifiedDockWidgets(lt) and not lt.isHidden() and not lt.isFloating()
+                    and not d.isFloating()):
+                self.tabifyDockWidget(lt, d)
+            if front:
+                lt.raise_()
+        elif not on and not d.isHidden():
+            d.hide()
+
+    def _slit_float(self) -> None:
+        """In glass: the slit's panel floating below lambda-t (or the spectra, with lambda-t closed), SLIT_FLOAT_H
+        high, when the screen has room for it there (the prototype's slit_tab_float, app/look_glass.py:604-618);
+        else over lambda-t's place. Docked it would narrow the image. Without room the prototype stacked the three
+        beside the window, 40/30/30: that is glass's place_panels (ROADMAP E7.4)."""
+        from ..platform.screens import monitor_rect
+
+        d = self.slit_dock
+        ref = self.lt_dock if not self.lt_dock.isHidden() else self.spec_dock
+        if self.glass is None or not ref.isFloating():
+            return
+        g = ref.frameGeometry()
+        scr = monitor_rect(QtWidgets.QApplication.instance(), g.center())
+        d.setFloating(True)
+        d.show()
+        if g.bottom() + glass.GAP + SLIT_FLOAT_H <= scr.bottom():
+            d.setGeometry(g.x(), g.bottom() + glass.GAP, glass.FLOAT_W, SLIT_FLOAT_H)
+        else:
+            d.setGeometry(ref.geometry())
+        d.raise_()
+
+    def _slit_dock_again(self) -> None:
+        """Out of glass: the slit's panel back as lambda-t's tab, in front, while there is a slit or one is drawn.
+        Glass gives back the window's state from before it (hidden there if no slit had been drawn yet)."""
+        d = self.slit_dock
+        if d.isFloating():
+            d.setFloating(False)
+        if self.session.state.path is None and not self.slit_tool.mode:
+            return
+        if not d.isHidden() and d not in self.tabifiedDockWidgets(self.lt_dock):
+            d.hide()                                    # _slit_tab places it again as lambda-t's tab
+        self._slit_shown(True)
 
     def _place_slit_hint(self) -> None:
         """The slit's hint at the image's top left; in glass below the colour key, which glass moves there (the
@@ -796,8 +912,11 @@ class Shell(QtWidgets.QMainWindow):
             self.view.set_crosshair(*st.cursor)
             if self.grid is not None:
                 self.grid.set_crosshair(*st.cursor)
+            self.slit_panel.set_cursor(*st.cursor)
         if "path" in changed:
             self.slit_tool.show_path(st.path)
+            if st.path is not None or not self.slit_tool.mode:
+                self._slit_shown(st.path is not None)
         if "locked" in changed:
             self.view.set_locked(st.locked)
             if self.grid is not None:
@@ -806,6 +925,8 @@ class Shell(QtWidgets.QMainWindow):
             self.spectra.set_lambda(st.l)
         if changed & {"t", "l"} and self.lambda_t is not None:
             self.lambda_t.set_markers(st.t, st.l)
+        if changed & {"t", "l"}:
+            self.slit_panel.set_markers(st.t, st.l)
         self.update_status()
 
     def update_status(self) -> None:

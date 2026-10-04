@@ -1,0 +1,311 @@
+"""The slit panel's reads (ROADMAP E7.3, core.slitreads), without a display: the slices along a slit are the cube's
+values at its pixels, through the per-pixel file's blocks and through rows read per frame without it; t, lambda and
+Stokes give the slices at them; nothing is read while the panel is behind, nor on the UI thread; a result made for
+another slit is never shown; the slit being drawn is read live (only its new pixels with the per-pixel file, after
+the pointer rests without it); the blocks kept are bounded; without the per-pixel file the spectral slice waits out
+playback."""
+import concurrent.futures as cf
+import threading
+
+import numpy as np
+import pytest
+from astropy.io import fits
+
+from explorer.core import slitreads
+from explorer.core.loop import ManualLoop
+from explorer.core.scheduler import Scheduler
+from explorer.core.session import Session
+from explorer.data.dataset import Dataset
+from explorer.data.slits import slit_path, slit_pixels
+from explorer.obs import summary
+from explorer.testing import synth
+from explorer.testing.driver import Driver
+
+SHAPE = (3, 4, 5, 48, 40)                               # t, s, lambda, y, x
+A = ((5.5, 10.5), (30.5, 35.5))                         # (x, y) points clicked
+B = ((8.5, 40.5), (20.5, 12.5), (34.5, 20.5))
+
+
+@pytest.fixture(scope="module")
+def cube(tmp_path_factory):
+    d = synth.write_dataset(tmp_path_factory.mktemp("slitreads"), "c", shape=SHAPE, icube=False)
+    return d["im"], fits.getdata(d["im"]).astype(np.float32)
+
+
+def pixels(pts, ny=SHAPE[3], nx=SHAPE[4]):
+    return slit_pixels(slit_path(np.asarray(pts, float)), ny, nx)
+
+
+def want(data, pts, t, s, l):  # noqa: E741
+    """The slices straight from the cube read by astropy: (nt, n) at (s, l) and (nl, n) at (t, s)."""
+    iy, ix = pixels(pts)
+    return data[:, s, l, iy, ix], data[t, s, :, iy, ix].T
+
+
+@pytest.fixture(params=["per-pixel", "frames"])
+def drv(request, cube):
+    d = Driver.open(cube[0], no_sp=request.param == "frames")
+    yield d
+    d.close()
+
+
+def show_slit(d, pts):
+    d.show("slit")
+    d.set_slit(pts)
+    d.wait_idle()
+
+
+def test_the_slices_are_the_cubes_values_at_the_slits_pixels(drv, cube):
+    data = cube[1]
+    show_slit(drv, A)
+    st = drv.state()
+    ts, sl = want(data, A, st.t, st.s, st.l)
+    iy, ix = pixels(A)
+    assert np.array_equal(drv.shown.slit_pix[0], iy) and np.array_equal(drv.shown.slit_pix[1], ix)
+    assert drv.shown.slit_ts.shape == (SHAPE[0], len(iy)) and drv.shown.slit_sl.shape == (SHAPE[2], len(iy))
+    np.testing.assert_array_equal(drv.shown.slit_ts, ts)
+    np.testing.assert_array_equal(drv.shown.slit_sl, sl)
+
+
+def test_t_lambda_and_stokes_give_the_slices_at_them(drv, cube):
+    data = cube[1]
+    show_slit(drv, B)
+    drv.set_index("l", 1)
+    drv.set_index("t", 2)
+    drv.set_stokes(3)
+    drv.wait_idle()
+    ts, sl = want(data, B, 2, 3, 1)
+    np.testing.assert_array_equal(drv.shown.slit_ts, ts)
+    np.testing.assert_array_equal(drv.shown.slit_sl, sl)
+    assert drv.shown.slit_s == 3
+
+
+def test_removing_the_slit_empties_the_panel(drv):
+    show_slit(drv, A)
+    drv.set_slit(None)
+    drv.wait_idle()
+    assert drv.shown.slit_pix is None and drv.shown.slit_ts is None and drv.shown.slit_sl is None
+
+
+def test_nothing_is_read_while_the_panel_is_behind_then_it_fills(drv, cube):
+    drv.set_slit(A)
+    drv.wait_idle()
+    assert drv.shown.slit_pix is not None                # its pixels are known: the markers can follow
+    assert drv.shown.counts.get("slit", 0) == 0 and drv.scheduler.slit.reads == []
+    drv.show("slit")
+    drv.wait_idle()
+    st = drv.state()
+    np.testing.assert_array_equal(drv.shown.slit_ts, want(cube[1], A, st.t, st.s, st.l)[0])
+
+
+def test_nothing_is_read_on_the_ui_thread(drv, monkeypatch):
+    from explorer.data.io import FrameReader
+    from explorer.data.pixel import SpFits
+
+    on_main = []
+    for cls, name in ((SpFits, "strip_read"), (FrameReader, "band_values")):
+        orig = getattr(cls, name)
+
+        def spy(self, *a, _o=orig, **k):
+            on_main.append(threading.current_thread() is threading.main_thread())
+            return _o(self, *a, **k)
+        monkeypatch.setattr(cls, name, spy)
+    show_slit(drv, B)
+    drv.step("t")
+    drv.step("l")
+    drv.wait_idle()
+    assert on_main and not any(on_main)
+
+
+class Recorder:
+    def __init__(self):
+        self.calls = []
+
+    def image(self, idx, img, levels):
+        pass
+
+    def spectra(self, spec, pixel, t):
+        pass
+
+    def lambda_t(self, lt, pixel, s, levels):
+        pass
+
+    def cleared(self, pixel):
+        pass
+
+    def grid_image(self, s, idx, img, levels):
+        pass
+
+    def y_range(self, k, r):
+        pass
+
+    def units(self, iscale):
+        pass
+
+    def slit_path(self, pix):
+        self.calls.append(("path", None if pix is None else len(pix[0])))
+
+    def slit(self, ts, sl, s, ts_levels, sl_levels):
+        self.calls.append(("slit", None if ts is None else ts.shape, None if sl is None else sl.shape))
+
+
+def settle(sched, rounds=500):
+    for _ in range(rounds):
+        cf.wait(sched.in_flight(), timeout=10)
+        if sched.loop.pump() == 0 and not sched.in_flight():
+            return
+    raise AssertionError("the scheduler did not settle")
+
+
+@pytest.fixture
+def frames_only(cube):
+    ds = Dataset.open(cube[0], no_sp=True)
+    yield ds
+    ds.close()
+
+
+def test_a_result_made_for_another_slit_is_never_shown(frames_only, monkeypatch):
+    """The first slit's read is held until the second slit is set: its slices come after, and are dropped."""
+    ds = frames_only
+    gate, started = threading.Event(), threading.Event()
+    orig = ds.read_bands
+
+    def held(idxs, iy, ix, threads=None):
+        if len(iy) == len(pixels(A)[0]):
+            started.set()
+            assert gate.wait(10)
+        return orig(idxs, iy, ix, threads)
+    monkeypatch.setattr(ds, "read_bands", held)
+    rec, loop = Recorder(), ManualLoop()
+    session = Session(loop, ds)
+    sched = Scheduler(session, rec)
+    settle(sched)
+    dropped = summary()["counters"].get("core.slit.dropped_other_slit", 0)
+    session.show("slit")
+    session.set_path(A)
+    loop.pump()
+    assert started.wait(10)                             # A's read is on the slit thread now
+    session.set_path(B)
+    loop.pump()
+    gate.set()
+    settle(sched)
+    nA, nB = len(pixels(A)[0]), len(pixels(B)[0])
+    shown = [i for i, c in enumerate(rec.calls) if c[0] == "slit"]
+    assert shown and all(rec.calls[i][1] in (None, (SHAPE[0], nB)) and rec.calls[i][2] in (None, (SHAPE[2], nB))
+                         for i in shown), rec.calls
+    assert rec.calls.index(("path", nA)) < rec.calls.index(("path", nB)) < shown[0]
+    assert summary()["counters"].get("core.slit.dropped_other_slit", 0) > dropped
+    sched.close()
+
+
+def test_the_slit_being_drawn_is_read_live_its_new_pixels_only(cube):
+    with Driver.open(cube[0]) as d:
+        d.show("slit")
+        d.draw_slit(A[:1])                              # one point: nothing to show yet
+        d.wait_idle()
+        assert d.shown.slit_pix is None
+        d.draw_slit(A)                                  # the point and the pointer's pixel
+        d.wait_idle()
+        first = d.scheduler.slit.reads[-1]["pixels"]
+        np.testing.assert_array_equal(d.shown.slit_ts, want(cube[1], A, 0, 0, d.state().l)[0])
+        moved = (A[0], (A[1][0] + 1, A[1][1]))         # the pointer one pixel on
+        d.draw_slit(moved)
+        d.wait_idle()
+        iy0, ix0 = pixels(A)
+        iy1, ix1 = pixels(moved)
+        new = set(zip(iy1.tolist(), ix1.tolist(), strict=True)) - set(zip(iy0.tolist(), ix0.tolist(), strict=True))
+        assert first == len(set(zip(iy0.tolist(), ix0.tolist(), strict=True)))
+        assert d.scheduler.slit.reads[-1]["pixels"] == len(new) < first
+        np.testing.assert_array_equal(d.shown.slit_sl, want(cube[1], moved, 0, 0, d.state().l)[1])
+        n = len(d.scheduler.slit.reads)
+        d.set_slit(moved)                               # finished where it was drawn: nothing more to read
+        d.draw_slit(None)
+        d.wait_idle()
+        assert len(d.scheduler.slit.reads) == n and np.array_equal(d.shown.slit_pix[0], iy1)
+
+
+def test_without_the_per_pixel_file_the_slit_being_drawn_waits_for_the_pointer_to_rest(cube):
+    with Driver.open(cube[0], no_sp=True) as d:
+        d.show("slit")
+        d.draw_slit(A)
+        d.wait_idle()
+        assert d.shown.slit_pix is not None and d.scheduler.slit.reads == []
+        d.advance(slitreads.REST_S * 0.6)
+        d.wait_idle()
+        d.draw_slit(B)                                  # moved before the rest: A's timer, due next, does nothing
+        d.wait_idle()
+        d.advance(slitreads.REST_S * 0.6)
+        d.wait_idle()
+        assert d.scheduler.slit.reads == []
+        d.advance(slitreads.REST_S * 0.6)
+        d.wait_idle()
+        assert len(d.scheduler.slit.reads) == 2         # the time slice, then the spectral slice
+        np.testing.assert_array_equal(d.shown.slit_ts, want(cube[1], B, 0, 0, d.state().l)[0])
+
+
+def test_without_the_per_pixel_file_the_spectral_slice_waits_out_playback(cube):
+    with Driver.open(cube[0], no_sp=True) as d:
+        show_slit(d, A)
+        kinds = [r["kind"] for r in d.scheduler.slit.reads]
+        d.play(True)
+        d.step("t", 1, wrap=True)
+        d.wait_idle()
+        assert [r["kind"] for r in d.scheduler.slit.reads] == kinds      # the time slice is kept; no reads
+        d.play(False)
+        d.wait_idle()
+        assert [r["kind"] for r in d.scheduler.slit.reads] == kinds + ["sl"]
+        np.testing.assert_array_equal(d.shown.slit_sl, want(cube[1], A, 1, 0, d.state().l)[1])
+
+
+def test_one_block_read_at_a_time_the_latest_slit_next(cube, monkeypatch):
+    ds = Dataset.open(cube[0])
+    try:
+        gate, calls, active, most = threading.Event(), [], [0], [0]
+        orig = ds.slit_blocks
+        lock = threading.Lock()
+
+        def slow(pix):
+            calls.append(set(pix))
+            fut = orig(pix)
+            out: cf.Future = cf.Future()
+
+            def later():
+                with lock:
+                    active[0] += 1
+                    most[0] = max(most[0], active[0])
+                gate.wait(10)
+                with lock:
+                    active[0] -= 1
+                out.set_result(fut.result())
+            threading.Thread(target=later, daemon=True).start()
+            return out
+        monkeypatch.setattr(ds, "slit_blocks", slow)
+        rec, loop = Recorder(), ManualLoop()
+        session = Session(loop, ds)
+        sched = Scheduler(session, rec)
+        settle(sched)
+        session.show("slit")
+        for pts in (A, B, ((2.5, 2.5), (20.5, 3.5))):   # three slits while the first read is held
+            session.set_draft(pts)
+            loop.pump()
+        gate.set()
+        settle(sched)
+        last = pixels(((2.5, 2.5), (20.5, 3.5)))
+        assert most[0] == 1 and len(calls) == 2         # A's, then the latest's: B was never read
+        assert set(zip(last[0].tolist(), last[1].tolist(), strict=True)) <= calls[1] | calls[0]
+        assert not (calls[1] & calls[0])                # only what A's read did not bring
+        sched.close()
+    finally:
+        ds.close()
+
+
+def test_the_blocks_kept_are_bounded_and_the_shown_slits_stay(cube, monkeypatch):
+    monkeypatch.setattr(slitreads, "SLIT_BLOCKS", 40)
+    with Driver.open(cube[0]) as d:
+        show_slit(d, A)
+        d.set_slit(B)
+        d.wait_idle()
+        iy, ix = pixels(B)
+        assert set(d.scheduler.slit.blocks) == set(zip(iy.tolist(), ix.tolist(), strict=True))
+        st = d.state()
+        np.testing.assert_array_equal(d.shown.slit_ts, want(cube[1], B, st.t, st.s, st.l)[0])

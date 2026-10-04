@@ -8,6 +8,8 @@ Threads (from the prototype's Viewer and viewer.py):
 - strips: serial nogil kernels (reduction to u8, running maxima) split in row strips; never parallel numba.
 - background: long jobs (Q U V ranges from whole frames, slabs along a slit) on a thread of their own, so they
   never delay the reads the cursor waits for.
+- slit: the slit panel's slices, built from the pixel blocks read along it (or its rows read per frame, without a
+  per-pixel file) with their levels, one job at a time; the UI thread only draws them.
 
 Latest wins, in two parts (prototype Viewer._series_job and _lt_ready):
 - before a job starts, and between its steps, it is skipped if a newer request for the same key arrived
@@ -69,6 +71,7 @@ class Executors:
         self.n_strips = max(1, strips)                  # the row strips a kernel is split into (kernels.reduce_u8)
         self.strips = ThreadPoolExecutor(self.n_strips, thread_name_prefix="strips")
         self.background = ThreadPoolExecutor(1, thread_name_prefix="background")
+        self.slit = ThreadPoolExecutor(1, thread_name_prefix="slit")
         self.generations = Generations()
 
     def submit_latest(self, key: str, fn, *args, pool: ThreadPoolExecutor | None = None) -> tuple[int, Future]:
@@ -88,7 +91,7 @@ class Executors:
         return gen, (pool or self.numba).submit(run)
 
     def close(self) -> None:
-        for p in (self.background, self.strips, self.io, self.numba):
+        for p in (self.slit, self.background, self.strips, self.io, self.numba):
             p.shutdown(wait=True, cancel_futures=True)
 
 

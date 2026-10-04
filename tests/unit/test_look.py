@@ -118,7 +118,7 @@ def test_classic(themed, cube):
         themed.processEvents()
         assert w.view.hl.pen.color() == CURSOR_PEN.color()
         assert w.colours is None and w.colour_key is None and w.nav.drop is None
-        assert len(w._rounders) == 3                                    # image, spectra, lambda-t
+        assert len(w._rounders) == 4                                    # image, spectra, lambda-t, slit
         before = list(w.colours.maps) if w.colours is not None else None
         w.cycle_colours(1)                                              # C: the modern look's only
         assert (list(w.colours.maps) if w.colours is not None else None) == before

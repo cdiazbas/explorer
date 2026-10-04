@@ -27,7 +27,7 @@ from .io import FrameReader
 from .pixel import PixelReader, SpFits, calibrate_frames, open_pixel
 from .policy import Budgets, MemoryGuard, StorageProbe, plan_budgets
 from .rowbands import RowBands
-from .slits import read_slit_bands, read_slit_slab, slit_pixels
+from .slits import read_slit_bands, read_slit_blocks, read_slit_slab, slit_pixels
 
 log = get_logger("data")
 
@@ -188,21 +188,37 @@ class Dataset:
         """(iy, ix): the pixels under a slit path (view coordinates, pixel centres at .5)."""
         return slit_pixels(np.asarray(path_xy, np.float64), self.ny, self.nx)
 
+    def _slab_threads(self) -> ThreadPoolExecutor:
+        if self._slab_pool is None:
+            self._slab_pool = ThreadPoolExecutor(min(SLAB_THREADS, self.probe.gather_threads),
+                                                 thread_name_prefix="slab")
+        return self._slab_pool
+
     def slab(self, iy, ix) -> Future:
         """[npath, s, t, lambda] float32 along a slit from the per-pixel file."""
         if self.pixel is None:
             raise LookupError(f"{self.path}: no per-pixel file; use bands()")
-        if self._slab_pool is None:
-            self._slab_pool = ThreadPoolExecutor(min(SLAB_THREADS, self.probe.gather_threads),
-                                                 thread_name_prefix="slab")
-        pool, sp = self._slab_pool, self.pixel
+        pool, sp = self._slab_threads(), self.pixel
         return self._io.submit(lambda: read_slit_slab(sp, iy, ix, pool=pool)[0])
+
+    def slit_blocks(self, pixels) -> Future:
+        """({(y, x): (s, t, lambda) float32}, number of reads) for the given pixels from the per-pixel file: one read
+        per run of neighbouring pixels in a row, all on the slab pool. Not through the per-pixel cache of the cursor's
+        blocks: a slit's pixels would push the cursor's strips out of it."""
+        if self.pixel is None:
+            raise LookupError(f"{self.path}: no per-pixel file; use bands()")
+        pool, sp, pix = self._slab_threads(), self.pixel, [(int(y), int(x)) for y, x in pixels]
+        return self._io.submit(lambda: read_slit_blocks(sp, pix, pool=pool))
 
     def bands(self, idxs, iy, ix, threads: int | None = None) -> Future:
         """(len(idxs), npath) float32 along a slit from whole frames, one read of its rows per frame."""
-        n = min(16, self.probe.gather_threads) if threads is None else threads
         assert self.executors is not None
-        return self.executors.background.submit(read_slit_bands, self.frames, idxs, iy, ix, n)
+        return self.executors.background.submit(self.read_bands, idxs, iy, ix, threads)
+
+    def read_bands(self, idxs, iy, ix, threads: int | None = None):
+        """bands(), read now on the calling thread (a worker of the caller's: never the UI's)."""
+        n = min(16, self.probe.gather_threads) if threads is None else threads
+        return read_slit_bands(self.frames, idxs, iy, ix, n)
 
     # ---------------------------------------------------------------- description and closing
     def describe(self) -> str:

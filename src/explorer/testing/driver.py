@@ -36,6 +36,10 @@ class Shown:
     y_ranges: dict = field(default_factory=dict)        # plot k -> (lo, hi)
     iscale: float | None = None
     cleared_at: tuple | None = None
+    slit_pix: tuple | None = None                       # (iy, ix) of the slit shown
+    slit_ts: np.ndarray | None = None                   # its time slice (t x position), spectral slice (lambda x ...)
+    slit_sl: np.ndarray | None = None
+    slit_s: int | None = None
     counts: dict = field(default_factory=dict)
 
 
@@ -82,6 +86,17 @@ class Driver:
 
     def show(self, panel: str, on: bool = True) -> None:
         self.session.show(panel, on)
+
+    def set_slit(self, points) -> None:
+        """The finished slit, (x, y) points in view coordinates; None removes it."""
+        self.session.set_path(points)
+
+    def draw_slit(self, points) -> None:
+        """The slit being drawn (the points so far and the pointer's pixel); None: drawing ended."""
+        self.session.set_draft(points)
+
+    def play(self, on: bool = True) -> None:
+        self.session.set_playing(on)
 
     def fix_levels(self, on: bool = True, refit: bool = False) -> None:
         self.scheduler.fix_levels(on, refit)
@@ -157,6 +172,20 @@ class _Recorder:
         self.s.spectra = self.s.lambda_t = None
         self.s.cleared_at = tuple(pixel)
         self._count("cleared")
+
+    def slit_path(self, pix):
+        self.s.slit_pix = pix
+        if pix is None:
+            self.s.slit_ts = self.s.slit_sl = None
+        self._count("slit_path")
+
+    def slit(self, ts, sl, s, ts_levels, sl_levels):
+        if ts is not None:
+            self.s.slit_ts = ts
+        if sl is not None:
+            self.s.slit_sl = sl
+        self.s.slit_s = s
+        self._count("slit")
 
     def y_range(self, k, r):
         self.s.y_ranges[k] = r

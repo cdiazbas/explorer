@@ -17,7 +17,7 @@ from .loop import Loop
 log = get_logger("core")
 
 Path2D = tuple[tuple[float, float], ...]                # points clicked, view coordinates (x, y), pixel centres at .5
-PANELS = frozenset({"spectra", "lambda_t"})
+PANELS = frozenset({"spectra", "lambda_t"})           # shown at start; "slit" joins while its tab is in front
 
 
 @dataclass(frozen=True)
@@ -28,6 +28,7 @@ class ViewState:
     cursor: tuple[int, int] = (0, 0)                    # (y, x) pixel of the main Dataset
     locked: bool = False                                # the mouse no longer moves the cursor
     path: Path2D | None = None                          # the slit, when there is one
+    draft: Path2D | None = None                         # the slit being drawn, to the pointer; None: not drawing
     playing: bool = False
     panels: frozenset[str] = field(default=PANELS)      # shown: nothing is read for a hidden panel
 

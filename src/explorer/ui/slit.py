@@ -4,13 +4,14 @@ left, the mode ends), Esc or S again leave the mode and the unfinished slit with
 finished one. Two points give a straight slit, more a curve through every point (data.slits.slit_path). Drag still
 pans and the wheel still zooms: only the click changes. The mode shows that it is on three ways: the button on, a
 pencil for the pointer and a line inside the image saying how to draw; with a slit drawn, that line says how to
-remove it. The finished slit is the session's (ViewState.path, the points clicked); what it samples, and the panel
-that shows it, come with E7.2-E7.3.
+remove it. The finished slit is the session's (ViewState.path, the points clicked); the slit being drawn is too, with
+the pixel under the pointer as its free end (ViewState.draft, once per pixel the pointer enters), and the slit panel
+(ui.slitpanel, core.slitreads) shows its slices while it is drawn.
 
-This is the prototype's variant D (its audit's F74): A's drawing and erasing, with C's live slices while drawing once
-the slit has a panel. From the prototype's app/viewer.py: SlitHint (836), the class comment on the variants (869-875),
-the slit's items (1224-1243), _escape (1355), _image_click (1419), _image_pointer to _slit_backspace (1486-1619),
-_slit_draw_band to _slit_style (1721-1739); app/icons.py pencil_cursor (219).
+This is the prototype's variant D (its audit's F74): A's drawing and erasing, with C's live slices while drawing. From
+the prototype's app/viewer.py: SlitHint (836), the class comment on the variants (869-875), the slit's items
+(1224-1243), _escape (1355), _image_click (1419), _image_pointer to _slit_backspace (1486-1619), the free end of
+_slit_hover (1596-1604), _slit_draw_band to _slit_style (1721-1739); app/icons.py pencil_cursor (219).
 
     tool = SlitTool(session, view, hint)        view: the ImageView to draw on; attach() adds the 2x2 view's
     tool.set_mode(True); tool.click(ev, vb); tool.hover(y, x); tool.clear()
@@ -131,6 +132,7 @@ class SlitTool(QtCore.QObject):
         self.hint = hint
         self.mode = False
         self.pts: list[tuple[float, float]] = []        # the slit being drawn: points clicked, view coordinates (x, y)
+        self.free: tuple[float, float] | None = None     # its free end: the centre of the pixel under the pointer
         self.colour = QtGui.QColor(colour) if colour is not None else QtGui.QColor(255, 80, 80)
         self.views: list = []
         self.marks: list[SlitMarks] = []
@@ -167,6 +169,8 @@ class SlitTool(QtCore.QObject):
             return
         self.mode = on
         self.pts = []
+        self.free = None
+        self.session.set_draft(() if on else None)
         self._draw_band()
         self.hint_text()
         for v in self.views:
@@ -214,6 +218,8 @@ class SlitTool(QtCore.QObject):
         if self.pts and self.pts[-1] == p:
             return
         self.pts.append(p)
+        self.free = p
+        self._push_draft()
         self._draw_band()
         self.hint_text()
 
@@ -223,6 +229,7 @@ class SlitTool(QtCore.QObject):
             self.set_mode(False)
             return
         self.pts.pop()
+        self._push_draft()
         self._draw_band()
         self.hint_text()
 
@@ -246,10 +253,23 @@ class SlitTool(QtCore.QObject):
         self.show_path(None)
 
     def hover(self, y: float, x: float) -> None:
-        """The pointer over an image view, in data pixels: the slit being drawn reaches to it."""
+        """The pointer over an image view, in data pixels: the slit being drawn reaches to it, and its slices to the
+        pixel under it, once per pixel entered (the prototype's _slit_hover, 1592-1604)."""
         if not (self.mode and self.pts):
             return
         self._draw_band((float(np.clip(x, 0, self.nx)), float(np.clip(y, 0, self.ny))))
+        free = (float(np.clip(math.floor(x), 0, self.nx - 1)) + 0.5,
+                float(np.clip(math.floor(y), 0, self.ny - 1)) + 0.5)
+        if free != self.free:
+            self.free = free
+            self._push_draft()
+
+    def _push_draft(self) -> None:
+        """The points so far and the free end, when it is not the last point, to the session (its slices follow)."""
+        pts = list(self.pts)
+        if pts and self.free is not None and self.free != pts[-1]:
+            pts.append(self.free)
+        self.session.set_draft(tuple(pts))
 
     # ---------------------------------------------------------------- drawing
     def show_path(self, path) -> None:

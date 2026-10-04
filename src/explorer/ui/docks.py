@@ -25,17 +25,36 @@ def gutter(widget: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
 
 def dock(window: QtWidgets.QMainWindow, title: str, widget: QtWidgets.QWidget, name: str,
-         area=QtCore.Qt.DockWidgetArea.RightDockWidgetArea) -> QtWidgets.QDockWidget:
+         area=QtCore.Qt.DockWidgetArea.RightDockWidgetArea,
+         cls: type[QtWidgets.QDockWidget] = QtWidgets.QDockWidget) -> QtWidgets.QDockWidget:
     """A movable, floatable and closable dock (closing one costs nothing: its reads are skipped). name: the fixed
-    key for saved layouts, so translating a title never loses where the user put it."""
+    key for saved layouts, so translating a title never loses where the user put it. cls: GatedDock for a panel
+    that may be shown only sometimes."""
     F = QtWidgets.QDockWidget.DockWidgetFeature
-    d = QtWidgets.QDockWidget(title, window)
+    d = cls(title, window)
     d.setObjectName(name)
     d.setWidget(gutter(widget))
     d.setFeatures(F.DockWidgetMovable | F.DockWidgetFloatable | F.DockWidgetClosable)
     window.addDockWidget(area, d)
     d._home = DockHome(d)  # type: ignore[attr-defined]  # kept alive with its panel (a Qt class: no slot)
     return d
+
+
+class GatedDock(QtWidgets.QDockWidget):
+    """A dock shown only while allowed() says so: the slit's panel, only with a slit (or one being drawn). Every
+    show goes through setVisible, Qt's own too: the saved layout's restore shows each hidden panel ("places and
+    sizes, never absences"), and restoreState shows those saved open, which brought the slit's tab back at start
+    with no slit (the prototype's F70a, its restore 2536); in glass, docked beside the image, it held the window
+    1098 px wide around a 480-px image."""
+
+    def __init__(self, *a):
+        super().__init__(*a)
+        self.allowed = lambda: True
+
+    def setVisible(self, visible: bool) -> None:
+        if visible and not self.allowed():
+            return
+        super().setVisible(visible)
 
 
 class DockHome(QtCore.QObject):

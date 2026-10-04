@@ -113,10 +113,24 @@ class Session:
         if points is None:
             self.store.set(path=None)
             return
-        pts = tuple((float(np.clip(x, 0, self.main.nx)), float(np.clip(y, 0, self.main.ny))) for x, y in points)
+        pts = self._clip(points)
         if len(pts) < 2:
             raise ValueError(f"a slit needs two points at least, not {len(pts)}")
         self.store.set(path=pts)
+
+    def set_draft(self, points) -> None:
+        """The slit being drawn: the points clicked so far and the pointer's pixel, (x, y) as set_path's, any number
+        (its slices follow it once it has two); None when no slit is being drawn. The prototype's variant D draws
+        its live slices from the same points (_slitd_preview, app/viewer.py:1664)."""
+        self.store.set(draft=None if points is None else self._clip(points))
+
+    def _clip(self, points) -> tuple:
+        return tuple((float(np.clip(x, 0, self.main.nx)), float(np.clip(y, 0, self.main.ny))) for x, y in points)
+
+    def set_playing(self, on: bool) -> None:
+        """Playback on or off: without a per-pixel file the slit's spectral slice waits until it stops (the
+        prototype's _slit_refresh and _toggle_play, app/viewer.py:1817, 2082)."""
+        self.store.set(playing=bool(on))
 
     def show(self, panel: str, on: bool = True) -> None:
         """A panel shown or hidden: nothing is read for a hidden one (the prototype's skipped_hidden)."""
