@@ -6,7 +6,8 @@ through each program's own start-up and X11 bridge: the prototype (its app/start
 
 The drag: 40 pointer moves 20 ms apart from the spectrum's title, over lambda-t, then over the main window. An observer
 on the X server itself (:N, not through the link) presses, moves and releases (XTEST) and samples where X has the
-panel. Reported: how long X takes to show the panel where each move puts it (median, p95, moves never shown), how long
+panel. Reported: how long X takes to show the panel where each move puts it (median, p95, the longest, how many took
+over 100 ms: a panel that stops mid-drag, as seen through XQuartz; moves never shown), how long
 after the release it is where the drag ends and stays, whether it ends there, Qt and X agreeing, its stacking, and the
 link and pixel bytes the drag cost. The prototype runs with its own Python (its .venv) and explorer's src on PYTHONPATH.
 
@@ -97,10 +98,16 @@ def top(widget_xid):
 
 def drag(sp, lt, start, sx, sy, path):
     try:
-        p0 = x_at(sx)
         xtest.fake_input(obs, X.MotionNotify, x=start[0], y=start[1])
         obs.sync()
         time.sleep(0.2)
+        # a click first: XQuartz gives an inactive window's first click to the window manager only (its
+        # "click-through" preference is off by default), so the drag's press would not reach the panel
+        xtest.fake_input(obs, X.ButtonPress, 1)
+        xtest.fake_input(obs, X.ButtonRelease, 1)
+        obs.sync()
+        time.sleep(0.6)
+        p0 = x_at(sx)
         xtest.fake_input(obs, X.ButtonPress, 1)
         obs.sync()
         time.sleep(0.1)
@@ -131,10 +138,17 @@ def drag(sp, lt, start, sx, sy, path):
                 break
             time.sleep(0.003)
         lags = sorted((seen[pos] - t) * 1e3 for pos, t in want if pos in seen and seen[pos] >= t - 0.001)
+        # what X showed, whatever the positions: the distinct ones from the first move to the release, and the
+        # longest time between two changes (a panel that stops while the pointer goes on)
+        shown_at = sorted(v for v in seen.values() if t0 <= v <= released + 0.05)
+        changes = [b - a for a, b in zip([t0] + shown_at, shown_at + [released], strict=True)]
         order = [c.id for c in root.query_tree().children]
         res.update(
             moves=len(want), shown=len(lags), lag_ms_median=round(lags[len(lags) // 2], 1) if lags else None,
             lag_ms_p95=round(lags[int(len(lags) * 0.95) - 1], 1) if lags else None,
+            lag_ms_max=round(lags[-1], 1) if lags else None, stalls_over_100ms=sum(lag > 100 for lag in lags),
+            x_positions_during_drag=len(shown_at), x_still_ms_max=round(max(changes) * 1e3, 1) if changes else None,
+            start_x=list(p0),
             release_to_end_ms=round((settled_at - released) * 1e3, 1) if settled_at else None,
             end_want=list(end), end_x=list(x_at(sx)),
             spectrum_above_lambda_t=order.index(top(sx)) > order.index(top(xid(lt))),
