@@ -63,3 +63,24 @@ def test_a_foreign_library_path_is_left_behind_on_linux(tmp_path):
     assert "LD_LIBRARY_PATH" not in cli.clean_library_path(env, "linux", str(tmp_path / "no_qtlibs"))
     assert cli.clean_library_path({}, "linux", str(tmp_path / "no_qtlibs")) is None  # nothing to clean
     assert cli.clean_library_path(env, "darwin", str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [["-m", "explorer"], ["/env/bin/explorer"]])
+def test_started_again_the_same_way(monkeypatch, command):
+    """`python -m explorer` started again as `python .../explorer/__main__.py` (sys.argv[0]), a script: its relative
+    import failed (bellatrix, a tree with .qtlibs/only)."""
+    from explorer import cli
+
+    ran = []
+
+    def execve(path, args, env):
+        ran.append(args)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "clean_library_path", lambda environ, platform: {"EXPLORER_REEXEC": "1"})
+    monkeypatch.setattr(cli.os, "execve", execve)
+    monkeypatch.setattr(sys, "orig_argv", ["python3"] + command + ["c.fits"])
+    monkeypatch.setattr(sys, "argv", ["/src/explorer/__main__.py" if command[0] == "-m" else command[0], "c.fits"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    assert ran == [[sys.executable] + command + ["c.fits"]]

@@ -65,7 +65,8 @@ def main(argv: list[str] | None = None) -> int:
     if argv is None:                                    # the command itself, not a call from a test
         env = clean_library_path(os.environ, sys.platform)
         if env is not None:
-            os.execve(sys.executable, [sys.executable] + sys.argv, env)
+            # the command line as given: under `python -m explorer` sys.argv[0] is __main__.py, a script there
+            os.execve(sys.executable, [sys.executable] + sys.orig_argv[1:], env)
     argv = sys.argv[1:] if argv is None else list(argv)
     from . import obs  # standard library only: cheap
 
