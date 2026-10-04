@@ -3026,3 +3026,35 @@ documento en blanco. Si el Dock lo pinta en su primer fotograma no se sabe sin m
 
 **Solo se comprueba mirando:** que el primer fotograma del Dock sea el cubo (`scripts/demo.sh`). Para comparar con
 lo de antes: `.venv-Darwin-arm64/bin/explorer demo`.
+
+### 2026-10-04 (25): referencias golden reexportadas, qué cambió (ROADMAP E0.13)
+
+**Qué copia del prototipo vale:** la del Mac, la más nueva, con `app/pens.py` y los cambios del 10-03 y el 10-04.
+En bellatrix no había nada más reciente ni cerrojo de edición, así que se subió con el `actualize.py push` del
+prototipo. Las dos copias tienen ya la misma huella, `956a5a1e…`; las referencias tenían `a5f3bfce…`.
+
+**La reexportación:** los dos casos, en bellatrix, con el Python del prototipo (3.12.14, numpy 2.5.3), en el nodo
+1 y sin escribir cachés dentro del prototipo. Comparados con `compare.py --meta`:
+- **stokes_6173:** las 35 matrices y todos los números de la meta son idénticos; solo cambia la huella. Las dos
+  exportaciones son de bellatrix, así que ningún cambio del prototipo desde el 2026-09-29 toca lo que se exporta.
+  No hay diff del código, porque el prototipo no está en git; la prueba es la salida idéntica.
+- **synth_small:** 38 de 44 idénticas. Además de la huella, difieren 5 float64 en el último dígito. La referencia
+  vieja era del Mac, y las 5 diferencias son de la máquina, no del código. Se aisló en las dos máquinas con el
+  `slit_path` del prototipo (`viewer.py:811`, mismo texto) y el ajuste de `SpLP.calibrate` (`sources.py:96-100`,
+  misma md5), sobre las mismas entradas: cada máquina reproduce su referencia bit a bit y no la otra.
+  - `slit_path`, un valor por rendija (3.55e-15): los puntos, `hypot` y la longitud de arco son idénticos; difiere
+    `np.interp`. Su `slope*(x - xp) + fp` con un solo redondeo (FMA, calculado exacto) da el valor del Mac, y con
+    dos el de bellatrix, en los dos valores.
+  - La calibración (escala, cero, residuo): `np.polyfit` sobre entradas idénticas bit a bit, con Accelerate en el
+    Mac y OpenBLAS en bellatrix. Sin aislar qué rutina de LAPACK diverge.
+
+  Las tolerancias de `test_data.py` (1e-12 relativo) ya lo cubren.
+
+**Sustituidas:** la de synth_small, versionada, y la de stokes_6173, en la copia de bellatrix (no se versiona).
+`tests/golden` en bellatrix: 26 pasan, con el caso real.
+
+**La ruta del prototipo, dentro de la referencia versionada:**
+- La exportación guarda en `meta["prototype"]` la ruta absoluta del prototipo. En la referencia nueva ese campo
+  pasa a `../prototype`; el resto de la meta y las 41 claves se comprobaron iguales.
+- La referencia anterior, versionada desde `b93c4a3` (2026-09-29) y ya subida, lleva la ruta personal del Mac.
+  Ni `hygiene.py` ni el grep de la historia la ven, porque numpy guarda las cadenas en UTF-32. Se abre X.11.
