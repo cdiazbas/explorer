@@ -149,7 +149,11 @@ def test_modern(themed, cube):
         assert w.colour_key.state[0] == "V" and w.colour_key.state[3] == "CET-D4"
         w.cycle_colours(-1)
         assert w.colours.maps[3] == "gray" and w.view.img.lut is None
-        assert QtGui.QColor(w.spectra.w.backgroundBrush().color()).name() == "#141416"     # the cards
+        # the cards in the image's black: a grey (20, 20, 22) parted the panels from the image beside them
+        image_bg = QtGui.QColor(w.view.widget.backgroundBrush().color()).name()
+        cards = {QtGui.QColor(x.backgroundBrush().color()).name() for x in (w.spectra.w, w.lambda_t.w)}
+        print("modern: image background", image_bg, "panels", cards)
+        assert cards == {image_bg} == {"#000000"}
         assert len([i for i in w.spectra.plots[1].items if type(i).__name__ == "InfiniteLine"]) >= 2   # zero line
     finally:
         w.close()

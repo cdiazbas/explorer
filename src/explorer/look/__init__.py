@@ -9,7 +9,7 @@
   - cmap: C and Shift+C step through the maps for the Stokes shown, each Stokes keeping its own;
   - reticle: a short cross with a gap and a dark halo instead of two red lines across the image;
   - marks: the markers in the accent colour, quieter curves and grid, a zero line on Q U V;
-  - cards: the plots on dark grey cards instead of black;
+  - cards: the plots on cards of the image's colour (black; white in the light theme);
 The spectra's grid is quiet in both looks (alpha 0.07): at 0.2 its lines read as a mesh over the curves.
   - stokes: I Q U V as a segmented control, in a drop-down as narrow as the classic combo.
 - glass: the modern look's parts but its cards, and its own (ui.glass): the image to the window's edges, the

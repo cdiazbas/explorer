@@ -13,12 +13,16 @@ screen with another ratio, follow() walks its plots and scales the pens they hol
 application, the main window's screen's: a panel floated onto a monitor with another ratio keeps it.
 From the prototype's app/pens.py.
 """
+import weakref
+
 import pyqtgraph as pg
+import shiboken6
 from pyqtgraph import functions as fn
 from PySide6 import QtGui
 
 RATIO = 1.0
 _kept: list[QtGui.QPen] = []
+_marks: "weakref.WeakSet" = weakref.WeakSet()           # the lambda and t markers (mark())
 _mk = fn.mkPen
 
 
@@ -39,6 +43,19 @@ def keep(*pens: QtGui.QPen) -> None:
     """Pens kept as module constants: scaled with every later change of ratio. Not scaled here: one made after the
     ratio was set came out of mkPen scaled already (on Retina, a lambda line of 8 device px for 4)."""
     _kept.extend(pens)
+
+
+def mark_width() -> float:
+    """The lambda and t markers' width in logical px: 2 at ratio 1, where 1.5 (not antialiased) lit 2 columns at 24 of
+    40 subpixel places and 1 at the others, and at 1 px their colour read grey; 1.5 from ratio 1.5 on, 3 device px at
+    ratio 2, where 2 was 4 device px and heavy over the ring on the value read."""
+    return 2.0 if RATIO < 1.5 else 1.5
+
+
+def mark(line, colour) -> None:
+    """line (a pyqtgraph InfiniteLine) as a marker in colour, mark_width() wide, again whenever the ratio changes."""
+    line.setPen(fn.mkPen(colour, width=mark_width()))
+    _marks.add(line)
 
 
 def _scaled(pen, f: float):
@@ -67,6 +84,8 @@ def _rescale_item(it, f: float) -> None:
     elif isinstance(it, pg.ScatterPlotItem):
         it.setPen(_scaled(it.opts["pen"], f))
     elif isinstance(it, pg.InfiniteLine):
+        if it in _marks:                                # set by set_ratio from mark_width()
+            return
         hover = _scaled(it.hoverPen, f)
         it.setPen(_scaled(it.pen, f))
         it.setHoverPen(hover)
@@ -90,6 +109,13 @@ def set_ratio(ratio: float, *roots) -> None:
         if p.isCosmetic():
             p.setWidthF(p.widthF() * f)
     seen: set[int] = set()
+    for line in list(_marks):                           # their width is not the same at every ratio: set again
+        if not shiboken6.isValid(line):                 # its panel gone, the Python side still alive: a RuntimeError
+            _marks.discard(line)
+            continue
+        pen = QtGui.QPen(line.pen)
+        pen.setWidthF(mark_width() * RATIO)
+        line.setPen(pen)
     for root in roots:
         views = root.findChildren(pg.GraphicsView)
         if isinstance(root, pg.GraphicsView):

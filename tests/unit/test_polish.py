@@ -114,7 +114,8 @@ def test_plot_lines_keep_their_width_on_a_retina_screen(qapp, panel):
     print(f"a 1.5 line at ratio 2: {at1} device columns made at ratio 1, {at2} made at ratio 2; "
           f"the panel's (lambda, curve, ring) widths {held1} -> {held2} -> {back}")
     assert at1 == 1 and at2 == 3                         # 1.5 logical px: 3 device columns at ratio 2
-    assert held2 == tuple(2 * w for w in held1) and back == held1
+    # the curve and the ring at twice the width; the lambda line a marker: 2 px at 1x, 1.5 on Retina (3 device px)
+    assert held2 == (3.0, 2 * held1[1], 2 * held1[2]) and back == held1
 
 
 def test_a_pen_made_after_the_ratio_is_known_is_scaled_once(qapp):
@@ -139,6 +140,26 @@ def test_a_pen_made_after_the_ratio_is_known_is_scaled_once(qapp):
             pens._kept.remove(pen)
     print(f"width 1.5 made at ratio 2: {made}, after keep(): {kept}, back at ratio 1: {back}")
     assert (made, kept, back) == (3.0, 3.0, 1.5)
+
+
+def test_a_change_of_ratio_survives_a_panel_that_is_gone(qapp, axes):
+    """The markers are kept to be set again at each change of ratio: one whose panel was deleted must be dropped, not
+    touched (a RuntimeError from a deleted InfiniteLine, on a move to another screen)."""
+    from PySide6 import QtCore
+
+    from explorer.ui import pens
+    from explorer.ui.lambda_t import LambdaTPanel
+
+    lt = LambdaTPanel(SHAPE[0], SHAPE[2], axes)
+    line = lt.t_line
+    lt.w.deleteLater()
+    QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+    try:
+        pens.set_ratio(2.0)
+    finally:
+        pens.set_ratio(1.0)
+    print("deleted marker still kept:", line in pens._marks)
+    assert line not in pens._marks
 
 
 def test_the_velocity_axis_draws_no_grid(panel):
@@ -245,13 +266,32 @@ def test_the_spectra_padlock_has_no_square_of_its_own(qapp):
 
 
 def test_the_lambda_line_reads_in_its_colour_at_1x(panel):
-    from explorer.ui import spectra
-
-    mark_w = getattr(spectra, "MARK_W", None)
     w = [ln.pen.widthF() for ln in panel.lines]
     cols = sorted({_columns(panel.lines[0].pen, dpr=1, x=10 + i / 20) for i in range(20)})
-    print("lambda line widths:", w, "modern:", mark_w, "columns lit at 1x over 20 subpixel places:", cols)
-    assert cols == [2] and mark_w is not None and mark_w >= 2
+    print("lambda line widths:", w, "columns lit at 1x over 20 subpixel places:", cols)
+    assert cols == [2]
+
+
+def test_the_markers_are_2_px_at_1x_and_1_5_on_retina_in_spectra_and_lambda_t(qapp, panel, axes):
+    from explorer.ui import pens
+    from explorer.ui.lambda_t import LambdaTPanel
+
+    lt = LambdaTPanel(SHAPE[0], SHAPE[2], axes)
+
+    def widths():
+        return ([ln.pen.widthF() for ln in panel.lines[:1]] + [lt.t_line.pen.widthF(), lt.l_line.pen.widthF()])
+
+    at1 = widths()
+    pens.set_ratio(2.0, panel.w, lt.w)
+    try:
+        at2 = widths()
+        cols2 = _columns(panel.lines[0].pen, dpr=2)
+    finally:
+        pens.set_ratio(1.0, panel.w, lt.w)
+    back = widths()
+    print(f"marker widths (spectra lambda, lambda-t t, lambda-t lambda) in device px: ratio 1 {at1}, ratio 2 {at2} "
+          f"({cols2} device columns), back at 1 {back}")
+    assert at1 == [2.0] * 3 and at2 == [3.0] * 3 and cols2 == 3 and back == at1
 
 
 def test_dots_and_a_ring_on_the_value_read(qapp, panel):

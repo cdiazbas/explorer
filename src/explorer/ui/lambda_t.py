@@ -11,6 +11,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..data.axes import fmt_signed
+from . import pens
 from .imageview import CURSOR_PEN
 from .spectra import SignedAxis
 
@@ -119,8 +120,10 @@ class LambdaTPanel:
         pi.hideButtons()
         self.w.setLabel("bottom", "Δλ [Å]" if self.physical else "λ index")
         self.w.setLabel("left", "t [UT]" if self.timed else "t index")
-        self.t_line = pg.InfiniteLine(angle=0, pen=CURSOR_PEN)
-        self.l_line = pg.InfiniteLine(angle=90, pen=CURSOR_PEN)
+        self.t_line = pg.InfiniteLine(angle=0)
+        self.l_line = pg.InfiniteLine(angle=90)
+        for ln in (self.t_line, self.l_line):           # markers, as the spectra's lambda line (pens.mark)
+            pens.mark(ln, CURSOR_PEN.color())
         self.w.addItem(self.t_line)
         self.w.addItem(self.l_line)
         self.w.disableAutoRange()
@@ -159,15 +162,15 @@ class LambdaTPanel:
         self.img.setLookupTable(lut)
 
     def set_marks(self, colour) -> None:
-        """The t and lambda markers in colour, 2 px (1.4 px came out 1 px and grey at 1x), above the image."""
+        """The t and lambda markers in colour (pens.mark: 1.4 px came out 1 px and grey at 1x), above the image."""
         for ln in (self.t_line, self.l_line):
             ln.setZValue(max(ln.zValue(), 10.0) + 1)
-            ln.setPen(pg.mkPen(colour, width=2.0))
+            pens.mark(ln, colour)
 
     def clear_marks(self) -> None:
         """The classic look's red markers again."""
         for ln in (self.t_line, self.l_line):
-            ln.setPen(CURSOR_PEN)
+            pens.mark(ln, CURSOR_PEN.color())
 
     def set_markers(self, t: int, l: int) -> None:  # noqa: E741
         self.t_line.setValue(t + 0.5)

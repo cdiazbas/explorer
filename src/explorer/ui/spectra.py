@@ -23,11 +23,7 @@ from .padlock import PanelLock
 
 GRID = 0.07                                             # the grid's alpha: at 0.2 its lines read as a mesh
 # the lambda line: at 1 px (CURSOR_PEN) its red was there, (243, 89, 89), but over the black plot and its grid it read
-# grey. 2 px at 1x reads red: width 2, as the glass look's (1.5, not antialiased, lit 2 columns at 24 of 40 subpixel
-# places and 1 at the others). The image's crosshair stays 1 px
-LAMBDA_PEN = pg.mkPen((255, 80, 80), width=2.0)
-pens.keep(LAMBDA_PEN)
-MARK_W = 2.0                                            # the modern look's: 1.2 drew 1 px, its blue read dark
+# grey; as a marker (pens.mark: 2 px at 1x, 1.5 on Retina), the same as lambda-t's. The image's crosshair stays 1 px
 DOT, RING = 4, 9                                        # px: each measured point; the ring round the one read
 
 X_PAD = 0.04                                            # of the lambda span, each side
@@ -217,10 +213,11 @@ class SpectraPanel:
             dot.setAlpha(225)
             c = p.plot(pen=pg.mkPen(ink, width=1.5), symbol="o", symbolSize=DOT, symbolPen=None, symbolBrush=dot,
                        antialias=True)
-            ln = pg.InfiniteLine(angle=90, pen=LAMBDA_PEN)
+            ln = pg.InfiniteLine(angle=90)
+            pens.mark(ln, CURSOR_PEN.color())
             p.addItem(ln)
             # the point read at this lambda, ringed in the markers' colour: the line says where, the ring which value
-            ring = pg.ScatterPlotItem(size=RING, pen=pg.mkPen(LAMBDA_PEN.color(), width=1.5), brush=None,
+            ring = pg.ScatterPlotItem(size=RING, pen=pg.mkPen(CURSOR_PEN.color(), width=1.5), brush=None,
                                       antialias=True)
             ring.setZValue(20)
             p.addItem(ring, ignoreBounds=True)
@@ -271,12 +268,11 @@ class SpectraPanel:
             else:
                 p.setLabel("left", f"{name}/I<sub>c</sub> [%]")
 
-    def set_marks(self, colour, light: bool, width: float = MARK_W) -> None:
-        """The modern look's marks: the lambda markers and rings in colour (width px; the glass look's 2), quieter
-        curves, and a dashed zero line on Q U V, where zero is at a glance."""
-        mark = pg.mkPen(colour, width=width)
+    def set_marks(self, colour, light: bool) -> None:
+        """The modern look's marks: the lambda markers and rings in colour, quieter curves, and a dashed zero line on
+        Q U V, where zero is at a glance."""
         for ln in self.lines:
-            ln.setPen(mark)
+            pens.mark(ln, colour)
         for ring in self.rings:
             ring.setPen(pg.mkPen(colour, width=1.5))
         ink = QtGui.QColor(30, 30, 34) if light else QtGui.QColor(235, 235, 240)
@@ -300,7 +296,7 @@ class SpectraPanel:
     def clear_marks(self) -> None:
         """The classic look's marks again: red lambda markers, the curves as built, no zero lines."""
         for ln in self.lines:
-            ln.setPen(LAMBDA_PEN)
+            pens.mark(ln, CURSOR_PEN.color())
         for ring in self.rings:
             ring.setPen(pg.mkPen(CURSOR_PEN.color(), width=1.5))
         for c, (pen, spen, sbrush) in zip(self.curves, self._classic, strict=True):

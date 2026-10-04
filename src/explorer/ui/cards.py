@@ -3,7 +3,8 @@ the classic look rounds the panels' corners, the modern one also puts them on ca
 from PySide6 import QtCore, QtGui, QtWidgets
 
 RADIUS = 6
-CARD = QtGui.QColor(20, 20, 22)                         # plot cards; the image's stays black
+CARD = QtGui.QColor(0, 0, 0)                            # plot cards: black, as the image's (a grey 20, 20, 22 parted
+                                                        # them from the image beside them)
 CARD_LIGHT = QtGui.QColor(255, 255, 255)                # light theme: white plot cards on the #ececec window
 
 
