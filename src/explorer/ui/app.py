@@ -44,6 +44,13 @@ def chrome(app, shell, ops, ops_for, bridge: bool):
     return bar
 
 
+def app_icon(app) -> None:
+    """ui.appicon on the application, imported here: none of it runs before the first image."""
+    from . import appicon
+
+    appicon.install(app)
+
+
 def window_options(ap) -> None:
     """--theme, --look and --reset-layout on an argparse parser: the window's options, for `explorer` and
     `explorer demo` alike (run() takes them by these names)."""
@@ -144,6 +151,8 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         if store is not None and store.for_look(look).restore(shell, app):   # the last session's panels, sizes too
             shell._sized = True
         disp.attach(app, shell, ops)
+        # after the first image: before it, the icon cost it 15 ms on a local Mac (the SVG engine, the Dock's 256 px)
+        shell.after_first_image(0, lambda: app_icon(app))
         from . import termkeys
 
         shell.terminal_keys = termkeys.attach(shell)     # over ssh -Y the keyboard stays in the terminal until a click

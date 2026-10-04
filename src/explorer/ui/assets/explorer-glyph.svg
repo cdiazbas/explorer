@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>.slice{fill:#c55300}@media (prefers-color-scheme: dark){.slice{fill:#ff9230}}</style>
+  <path class="slice" d="M32 21 L52 32 L32 43 L12 32 Z"/>
+  <path d="M32 10 L52 21 V43 L32 54 L12 43 V21 Z M12 21 L32 32 L52 21 M32 32 V54" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>
