@@ -505,12 +505,14 @@ class GlassChrome:
 
     def _hud_title(self) -> None:
         """The window's title bar in the image's colour with the panels' light, and its edge with their rim and accent
-        line; given back by remove(). None where the window manager draws the title (a local Mac)."""
+        line; given back by remove(). None where the window manager draws the title (a local Mac). Only its window
+        colour is its own: the rest it takes from the application, so it follows a change of theme (T); a whole
+        palette copied here kept the old theme's text and, given back, the old theme's colours."""
         tb = getattr(self.w, "title_bar", None)
-        if tb is None or "title_bar" in self._was:
+        if tb is None:
             return
-        self._was["title_bar"] = (tb, QtGui.QPalette(tb.palette()))
-        pal = QtGui.QPalette(tb.palette())
+        self._was["title_bar"] = tb
+        pal = QtGui.QPalette()                      # nothing set but the window colour: the rest inherited
         pal.setColor(QtGui.QPalette.ColorRole.Window, TITLE[_mode()])
         tb.setPalette(pal)
         tb.hud = accent()
@@ -633,6 +635,8 @@ class GlassChrome:
                 x.setStyleSheet(f"color: {INK[_mode()].name()};")
         for sk in self.skins:
             sk.retheme()
+        if "title_bar" in self._was:                # the title bar in the new theme's image colour and accent
+            self._hud_title()
         self.bar.invalidate()
 
     def _fit_sliders(self, room: int) -> None:
@@ -889,8 +893,8 @@ class GlassChrome:
         w.statusBar().setVisible(self._was["statusbar"])
         w.setWindowTitle(self._was["title"])
         if "title_bar" in self._was:
-            tb, pal = self._was["title_bar"]
-            tb.setPalette(pal)
+            tb = self._was["title_bar"]
+            tb.setPalette(QtGui.QPalette())         # nothing of its own: the application's, in the theme of now
             tb.hud = tb.corners.line.hud = None
             tb.corners.line.update()
             tb.update()

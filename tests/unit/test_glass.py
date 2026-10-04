@@ -389,6 +389,34 @@ def test_the_title_bar_and_edge_take_the_glass_light_and_give_it_back(qapp, shel
     assert bar.hud is None and bar.corners.line.hud is None and after == before
 
 
+def test_the_title_bar_follows_a_change_of_theme_in_glass_and_out_of_it(qapp, shell, monkeypatch):
+    """T while glass is worn: the title bar in the new theme's image colour (black, then white) with its text in the
+    new theme's; out of glass, the application's colours of the theme then."""
+    from PySide6 import QtGui
+
+    from explorer.ui import glass
+
+    w = shell
+    bar = _chrome(qapp, w, monkeypatch)
+    R = QtGui.QPalette.ColorRole
+    wear(qapp, w, "glass")
+    seen = [(bar.palette().color(R.Window).name(), bar.palette().color(R.WindowText).name())]
+    w.set_theme("light")
+    qapp.processEvents()
+    seen.append((bar.palette().color(R.Window).name(), bar.palette().color(R.WindowText).name()))
+    lit = _rows(bar)
+    wear(qapp, w, "classic")
+    seen.append((bar.palette().color(R.Window).name(), bar.palette().color(R.WindowText).name()))
+    app_light = (qapp.palette().color(R.Window).name(), qapp.palette().color(R.WindowText).name())
+    w.set_theme("dark")
+    qapp.processEvents()
+    print("title bar (window, text): glass dark, glass light, classic light:", seen, "| the application's light:",
+          app_light, "| bottom row in glass light:", lit[-1])
+    assert seen[0][0] == glass.TITLE["dark"].name() and seen[1][0] == glass.TITLE["light"].name()
+    assert seen[1][1] == app_light[1] and lit[-1] == (255, 255, 255)
+    assert seen[2] == app_light and bar.hud is None
+
+
 def test_started_in_glass_its_title_bar_takes_the_light(qapp, cube, monkeypatch):
     """The title bar is made after the look when the window starts in glass (ui.app.start): the shell has it before
     glass is told the titles changed."""
