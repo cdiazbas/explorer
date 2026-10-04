@@ -42,6 +42,31 @@ def test_reduction_in_strips_equals_one_serial_call():
     assert np.array_equal(serial, strips) and serial[:20].max() == 0 and serial[20:].min() >= 1
 
 
+def test_a_small_image_from_a_big_region_is_reduced_in_strips():
+    """What a reduction costs is what it reads (output pixels x f^2), not what it writes: a quadrant of the 2x2 Stokes
+    view, ~350x350 px from a whole 2k frame (f 6), was below the output threshold and reduced on one thread, the four
+    one after another; a step in t took 68 ms against the prototype's 49 (bellatrix, ABBA, ROADMAP E5.19)."""
+    class Pool:                                         # counts the strips handed out, runs each at once
+        def __init__(self):
+            self.n = 0
+
+        def submit(self, fn, *a):
+            self.n += 1
+            fn(*a)
+            return type("F", (), {"result": lambda self: None})()
+
+    img = np.random.default_rng(0).normal(size=(2048, 2048)).astype(np.float32)
+    out, pool = np.empty((340, 340), np.uint8), Pool()
+    reduce_u8(img, 0, 0, 6, -1.0, 1.0, out, pool, 8)
+    serial = np.empty_like(out)
+    reduce_u8_serial(img, 0, 0, 6, -1.0, 1.0, serial)
+    assert pool.n == 8 and np.array_equal(out, serial), pool.n
+    small = np.empty((40, 40), np.uint8)                # little to read: one call
+    pool.n = 0
+    reduce_u8(img, 0, 0, 2, -1.0, 1.0, small, pool, 8)
+    assert pool.n == 0
+
+
 @pytest.mark.parametrize("dtype", [">f4", "<f4"])
 def test_absmax_equals_numpy_serial_and_in_strips(dtype):
     rng = np.random.default_rng(2)

@@ -12,7 +12,7 @@ import numpy as np
 
 from ._numba import numba
 
-STRIP_MIN = 200_000         # output pixels (or values) below which one strip is cheaper than handing out several
+STRIP_MIN = 200_000         # pixels read (or values) below which one strip is cheaper than handing out several
 
 
 @numba.njit(cache=True, nogil=True)
@@ -41,9 +41,11 @@ def _edges(n: int, parts: int) -> list[tuple[int, int]]:
 
 
 def reduce_u8(img, y0, x0, f, lo, hi, out, pool: ThreadPoolExecutor | None = None, parts: int = 1) -> None:
-    """reduce_u8_serial in `parts` row strips on pool; small outputs, or no pool, in one call."""
+    """reduce_u8_serial in `parts` row strips on pool; little to read, or no pool, in one call. What it reads (output
+    pixels x f^2) decides, not what it writes: a quadrant of the 2x2 Stokes view, ~350x350 px from a whole frame,
+    was reduced on one thread, and a step in t took 68 ms against 49 with strips (bellatrix, ABBA)."""
     rows = out.shape[0]
-    if pool is None or parts < 2 or rows * out.shape[1] < STRIP_MIN:
+    if pool is None or parts < 2 or rows * out.shape[1] * f * f < STRIP_MIN:
         return reduce_u8_serial(img, y0, x0, f, lo, hi, out)
     futs = [pool.submit(reduce_u8_serial, img, y0 + a * f, x0, f, lo, hi, out[a:b]) for a, b in _edges(rows, parts)]
     for fu in futs:
