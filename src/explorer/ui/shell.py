@@ -166,6 +166,7 @@ class Shell(QtWidgets.QMainWindow):
         # set by whoever shows the window (ui.app): the saved layout (not `layout`: that is QWidget.layout(), which it
         # hid), its WindowOps (zoom state for the layout), our title bar, the keys read from the terminal
         self.layout_store: LayoutStore | None = None
+        self.theme: str | None = None                   # the one applied (ui.app.start, set_theme): kept at the close
         self.window_ops: WindowOps | None = None
         self.title_bar: TitleBar | None = None
         self.terminal_keys: TerminalKeys | None = None
@@ -275,7 +276,7 @@ class Shell(QtWidgets.QMainWindow):
             for w in (self, self.spec_dock, self.lt_dock):
                 w.setStyle(None)  # type: ignore[arg-type]  # None: the application's style again
             self._seams = None
-        style.apply_theme(app, theme)
+        self.theme = style.apply_theme(app, theme)
         style.separators(self)
         light = style.is_light()
         self.view.set_light(light)
@@ -812,7 +813,8 @@ class Shell(QtWidgets.QMainWindow):
         if self.layout_store is not None and not self._closing:   # before the docks say hidden
             ops = self.window_ops
             store = self.layout_store.for_look(self.look.name)  # the glass look's own layout
-            store.save(self, zoomed=ops is not None and ops.unzoomed is not None, look=self.look.name)
+            store.save(self, zoomed=ops is not None and ops.unzoomed is not None, look=self.look.name,
+                       theme=self.theme)
         self._closing = True                            # the docks then say hidden: nothing to read any more
         self._play.stop()
         self._mem.stop()

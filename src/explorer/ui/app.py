@@ -46,8 +46,10 @@ def chrome(app, shell, ops, ops_for, bridge: bool):
 def window_options(ap) -> None:
     """--theme, --look and --reset-layout on an argparse parser: the window's options, for `explorer` and
     `explorer demo` alike (run() takes them by these names)."""
-    ap.add_argument("--theme", choices=("auto", "dark", "light", "native"), default="auto",
-                    help="dark or light everywhere; native: the system's (macOS); auto: native on a Mac, else dark")
+    ap.add_argument("--theme", choices=("auto", "dark", "light", "native"), default=None,
+                    help="dark or light everywhere; native: the system's (macOS); auto: native on a Mac, else dark. "
+                         "T switches dark and light while it runs; without --theme, the one in use at the last "
+                         "close on this way of displaying, else auto")
     ap.add_argument("--look", choices=("classic", "modern", "glass"), default=None,
                     help="classic: red cursor and markers; modern: reticle, accent marks, cards, Stokes drop-down, "
                          "colour maps on C (EXPLORER_LOOK_OFF=part,...: leave parts out); glass: the image to the "
@@ -75,13 +77,14 @@ class Started:
         self.disp.close()
 
 
-def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look=None, reset_layout=False,
+def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False,
           saved_layout=True) -> Started | None:
     """Everything `explorer cube` does before its event loop: the display plan, the themed application, the cube,
     the Shell with its title bar, its saved layout, the display's attachment, the terminal's keys and the link probe.
     The self-test (bench/explorer_selftest.py) goes through it too, so it measures the window as it is shown (as the
     prototype's app/startup.py, audit F4). saved_layout False: the user's saved layout is neither read, nor written
-    at the close, nor dropped. None (and why, on stderr) when there is no display or the cube cannot be read."""
+    at the close, nor dropped. theme None: the one in use at the last close on this way of displaying, else auto.
+    None (and why, on stderr) when there is no display or the cube cannot be read."""
     t0 = time.perf_counter()
     before = process_age()                              # Python's start and the imports up to here
     phases: dict[str, float] = {}
@@ -92,6 +95,13 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", lo
     for note in plan.notes:
         print(f"[{APP_NAME}] {note}", file=sys.stderr)
     disp = for_plan(plan)
+    from .layout import LayoutStore
+    from .style import THEMES
+
+    store = LayoutStore(plan.kind) if saved_layout else None
+    if theme is None:                                   # the one in use at the last close, else auto
+        kept = store.theme() if store is not None else None
+        theme = kept if kept in THEMES else "auto"
     try:
         disp.prepare_env()
         q = time.perf_counter()
@@ -114,9 +124,7 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", lo
     try:
         q = time.perf_counter()
         from ..look import LOOKS, get_look
-        from .layout import LayoutStore
 
-        store = LayoutStore(plan.kind) if saved_layout else None
         if reset_layout and store is not None:
             store.forget()
         if look is None:                                # the one worn at the last close, else classic
@@ -131,6 +139,7 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", lo
         ops = shell.window_ops = disp.ops(shell)        # before show: our title bar makes the window frameless
         shell.title_bar = chrome(app, shell, ops, disp.ops, bridge=plan.bridge)
         shell.layout_store = store
+        shell.theme = theme
         if store is not None and store.for_look(look).restore(shell, app):   # the last session's panels, sizes too
             shell._sized = True
         disp.attach(app, shell, ops)
@@ -151,7 +160,7 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", lo
         raise
 
 
-def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme="auto", look=None, reset_layout=False,
+def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False,
         quit_after: float | None = None) -> int:
     """Open path and run the event loop until the window closes; returns the exit code. quit_after: seconds after the
     first image, then quit (measurements, as the prototype's --quit-after)."""

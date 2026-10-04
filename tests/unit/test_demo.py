@@ -60,4 +60,4 @@ def test_the_demo_takes_a_look_and_a_theme(headless, monkeypatch):
     monkeypatch.setattr(app, "run", lambda path, **kw: seen.update(kw) or 0)     # the window, not opened here
     assert demo.main([str(cube), "--look", "glass", "--theme", "light"]) == 0
     assert seen["look"] == "glass" and seen["theme"] == "light"
-    assert demo.main([str(cube)]) == 0 and seen["look"] is None and seen["theme"] == "auto"   # as `explorer`
+    assert demo.main([str(cube)]) == 0 and seen["look"] is None and seen["theme"] is None     # as `explorer`

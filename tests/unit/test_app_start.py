@@ -47,3 +47,31 @@ def test_the_self_test_goes_through_start(headless):
     r = json.loads(out.read_text())
     assert r["bridge"] is False and r["platform"] == "offscreen" and r["open_to_first_frame_s"] >= 0
     assert {"step in t", "step in λ", "change Stokes"} <= set(r["actions"])
+
+
+def test_the_theme_switched_with_t_is_the_next_starts(qapp, headless, monkeypatch):
+    """Without --theme a start takes the theme in use at the last close (ROADMAP E5.24); --theme wins over it."""
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.ui import style
+    from explorer.ui.app import start
+
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    monkeypatch.setenv("EXPLORER_LAYOUT", str(headless / "layout.ini"))
+    cube = synth.write_dataset(headless / "d", "c", shape=(2, 4, 3, 32, 24), icube=False)["im"]
+    try:
+        for given, want, switch in (("dark", "dark", True), (None, "light", True), (None, "dark", False),
+                                    ("light", "light", False)):
+            s = start(cube, theme=given)
+            assert s is not None
+            try:
+                assert s.theme == want and style.is_light() == (want == "light"), (given, want, s.theme)
+                if switch:
+                    s.shell.toggle_theme()              # T: the other one, kept at the close
+            finally:
+                s.shell.close()
+                s.close()
+    finally:
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+        qapp.setProperty("explorer_light", False)

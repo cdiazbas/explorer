@@ -1,7 +1,7 @@
 """The window's layout across sessions (ROADMAP E5.3), offscreen: geometry and panel places come back; a panel closed
 at exit is open at start; a zoomed close keeps the last normal size; a window that no longer fits its monitor gets
 the first window's size; another schema's layout is discarded; forget starts fresh; the Shell keeps its own on
-close; the file is the user's config, or EXPLORER_LAYOUT."""
+close, its theme with it, one per way of displaying; the file is the user's config, or EXPLORER_LAYOUT."""
 import pytest
 from PySide6 import QtCore
 
@@ -194,3 +194,19 @@ def test_a_restored_layout_leaves_the_toolbar_as_the_look_wants_it(qapp, store):
         lay.restore(b, qapp)
         assert tb.isVisible() == (look != "glass"), (look, wearing)
         b.close()
+
+
+def test_the_theme_is_kept_per_way_of_displaying(qapp, store):
+    """Through the bridge auto is dark, on a local Mac native: light chosen in one is not the other's default. Glass
+    keeps a layout of its own but not a theme of its own."""
+    from explorer.ui.layout import LayoutStore
+
+    w = window(qapp)
+    w.show()
+    qapp.processEvents()
+    store.save(w, theme="light")
+    assert store.theme() == "light" and store.for_look("glass").theme() == "light"
+    assert LayoutStore("other", store.path).theme() is None
+    store.save(w)                                       # no theme given: the kept one stays
+    assert store.theme() == "light"
+    w.close()

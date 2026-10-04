@@ -8,6 +8,8 @@ local Mac, Qt's own X11, the bridge, ...), as the prototype keeps them (app/view
 - At start the last geometry if it still fits one monitor, else the first window's size (ui.docks.first_geometry).
 - The schema has a version: the groups are app/v<SCHEMA>.<kind>/, and those of another version are discarded.
 - The look the window wore (classic or modern), the same for every way of displaying.
+- The theme it was in (dark, light, native), one per way of displaying: through the bridge auto is dark, on a local
+  Mac native, and a theme chosen in one is not the other's default.
 - One INI file per user (config_dir()/layout.ini, never next to the code); EXPLORER_LAYOUT names another one.
 """
 import os
@@ -53,18 +55,29 @@ class LayoutStore:
             return LayoutStore(self.base[:-len("-glass")], self.path)
         return self
 
-    def save(self, window: QtWidgets.QMainWindow, zoomed: bool = False, look: str | None = None) -> None:
+    def _theme_key(self) -> str:
+        return f"ui/v{SCHEMA}.{self.for_look(None).base}/theme"     # glass's layout or not, one theme
+
+    def save(self, window: QtWidgets.QMainWindow, zoomed: bool = False, look: str | None = None,
+             theme: str | None = None) -> None:
         st = self._settings()
         if not (zoomed or window.isMaximized() or window.isFullScreen()):
             st.setValue(self.geometry_key, window.saveGeometry())
         st.setValue(self.state_key, window.saveState())
         if look is not None:
             st.setValue(self.LOOK_KEY, look)
+        if theme is not None:
+            st.setValue(self._theme_key(), theme)
         st.sync()
 
     def look(self) -> str | None:
         """The look the window wore when it last closed; None if none was kept."""
         v = self._settings().value(self.LOOK_KEY)
+        return str(v) if v else None
+
+    def theme(self) -> str | None:
+        """The theme the window was in when it last closed, on this way of displaying; None if none was kept."""
+        v = self._settings().value(self._theme_key())
         return str(v) if v else None
 
     def restore(self, window: QtWidgets.QMainWindow, app) -> bool:
