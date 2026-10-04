@@ -69,6 +69,9 @@ def startup_module():
         from explorer.data.dataset import Dataset
 
         ds = Dataset.open(path, sp=sp_path, no_sp=no_sp)
+        # the slit's checks read the cube's values one by one, past every reader of explorer's (smoke.py
+        # cube_values): the file, its sample type and where a frame starts, under the prototype cube's names
+        ds.fd, ds.dtype, ds.frame_offset = ds.frames.fd, ds.layout.dtype, ds.frames.frame_offset
         return ds, ds.probe, ds.guard, ds.pixel, None
 
     def make_viewer(app, s, cube, sp, probe, guard, kind=None):
@@ -97,8 +100,8 @@ def startup_module():
 
 
 # checks of what explorer has not yet, by a word of their name: NOT YET whatever they gave, SKIP included (a SKIP
-# there would hide the gap)
-NOT_YET_CHECKS = (("slit", "slit (E7)"),)
+# there would hide the gap). The slit's (E7) run since explorer has one
+NOT_YET_CHECKS: tuple = ()
 
 
 def table(path, rc):

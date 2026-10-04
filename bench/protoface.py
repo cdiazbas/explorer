@@ -18,7 +18,8 @@ HOVER_ASK_S = 0.2           # for the cursor's read to be asked: a few turns of 
 
 # which later task brings what a missing name belongs to (ROADMAP)
 LATER = {"slit": "slit (E7)", "title": "own title bar (E5)", "persist": "layout persistence (E5)",
-         "look": "the modern look (E5)"}
+         "look": "the modern look (E5)",
+         "slit C": "the prototype's slit C: not ported, explorer has variant D alone (ROADMAP P5, its F74)"}
 
 
 class NotInExplorer(AttributeError):
@@ -30,6 +31,9 @@ class NotInExplorer(AttributeError):
 
 _SLIT = {"slit_w", "slit_ts", "slit_sl", "slit_ts_img", "slit_sl_img", "slit_path",
          "slit_t", "slit_p", "slit_l"}
+# the slit tool the prototype's tests may pin: D is explorer's (ROADMAP P5); A draws as D does, without the slices
+# while drawing, and the checks pinned to it test the drawing. C is another tool, not ported
+SLIT_TOOLS = ("A", "D")
 
 
 class _Flag:
@@ -54,21 +58,18 @@ class _Flag:
         return False
 
 
-class _Missing:
-    """A widget explorer does not have yet (the slit's panel and button): hidden and not visible, which is true of
-    it; anything else asked of it is NotInExplorer."""
+class _Hint:
+    """v._slit_hint: the slit's line inside the image (ui.slit.SlitHint), its text under the prototype's name."""
 
-    def __init__(self, name, what):
-        self._name, self._what = name, what
+    def __init__(self, hint):
+        self._hint = hint
 
-    def isHidden(self):
-        return True
-
-    def isVisible(self):
-        return False
+    @property
+    def _text(self):
+        return self._hint.text
 
     def __getattr__(self, attr):
-        raise NotInExplorer(f"{self._name}.{attr}", self._what)
+        return getattr(self._hint, attr)
 
 
 class _RestTimer:
@@ -130,29 +131,17 @@ class ProtoViewer:
         r = self.dataset.roles
         self._pf_roles = r
         self._pf_names = {r.t: "t", r.s: "s", r.l: "l"}
-        self._pf_slit_ui = None                         # which slit tool: none in explorer yet (the tests set it)
+        self._pf_slit_ui = "D"                          # the slit tool: explorer's D (the tests pin A for some checks)
         self.be = _Backend(self.view)
         self.stats = _Stats()
         self.fix = _Flag(self.image_lock)
-        self.slit_dock, self.slit_btn = _Missing("slit_dock", "slit"), _Missing("slit_btn", "slit")
         self._yfit_timer = _RestTimer(self.scheduler.yrange)
         for pe in getattr(self, "_panel_edges", None) or ():   # each panel's resizer, where the tests look for it
             pe.d._crispex_resizer = pe.resizer
 
-    # ------------------------------------------------------------------ what is missing
-    # no slit in explorer yet: its state reads as the prototype's with none (off, no points, no slit), and leaving or
-    # clearing it is nothing to do; entering it, or anything else of the slit, is NotInExplorer
-    _slit_mode = False
-    _slit_pts: list = []
-    slit = None
-
-    def set_slit_mode(self, on):
-        if on:
-            raise NotInExplorer("set_slit_mode(True)", "slit")
-
-    def clear_slit(self):
-        pass
-
+    # ------------------------------------------------------------------ the slit (ui.slit, ui.slitpanel, slitreads)
+    # set_slit_mode, clear_slit and _slit_tab are the Shell's own, under the prototype's names already. A name of the
+    # slit's not mapped here is NotInExplorer
     def __getattr__(self, name):
         if name in _SLIT or name.startswith("_slit"):
             raise NotInExplorer(name, "slit")
@@ -164,7 +153,95 @@ class ProtoViewer:
 
     @SLIT_UI.setter
     def SLIT_UI(self, value):
+        if value not in SLIT_TOOLS:
+            raise NotInExplorer(f"SLIT_UI = {value!r}", f"slit {value}")
         self._pf_slit_ui = value
+
+    slit_btn = property(lambda self: self._w.nav.slit)
+    _slit_mode = property(lambda self: self._w.slit_tool.mode)
+    _slit_pts = property(lambda self: self._w.slit_tool.pts)          # the slit being drawn: the points clicked
+    _slit_hint = property(lambda self: _Hint(self._w.slit_hint))
+
+    @property
+    def _slit_front(self):
+        """Its tab in front: the core reads for it (a tab behind is moved off screen, not hidden)."""
+        return "slit" in self._w.session.state.panels
+
+    @property
+    def slit(self):
+        """The finished slit: its points (x, y) as an array, or None (ViewState.path)."""
+        path = self._w.session.state.path
+        return None if path is None else np.asarray(path, np.float64)
+
+    @property
+    def slit_path(self):
+        """The finished slit sampled every pixel, (N, 2) x, y (data.slits.slit_path), or None."""
+        from explorer.data.slits import slit_path
+
+        pts = self.slit
+        return None if pts is None else slit_path(pts)
+
+    def _slit_add(self, p):
+        """A point at view coordinates p (QPointF), as a click there in the mode."""
+        self._w.slit_tool.add(p.x(), p.y())
+
+    def _slit_finish(self):
+        self._w.slit_tool.finish()
+
+    def _slit_hover(self, scene_pos):
+        """The pointer at a scene position of the image: the slit being drawn reaches to it (Shell._hover)."""
+        q = self._w.view.vb.mapSceneToView(scene_pos)
+        self._w._hover(q.y(), q.x())
+
+    # what the panel shows: the pixels along the slit shown (the one being drawn, else the finished one) and the first
+    # point on each pixel, as the prototype's _slit_pix and _slit_on
+    _slit_pix = property(lambda self: self._w.slit_panel.pix)
+    _slit_on = property(lambda self: self._w.slit_panel.on)
+    slit_w = property(lambda self: self._w.slit_panel.w)
+    slit_ts = property(lambda self: self._w.slit_panel.ts)
+    slit_sl = property(lambda self: self._w.slit_panel.sl)
+    slit_ts_img = property(lambda self: self._w.slit_panel.ts_img)
+    slit_sl_img = property(lambda self: self._w.slit_panel.sl_img)
+    slit_t = property(lambda self: self._w.slit_panel.t_line)
+    slit_l = property(lambda self: self._w.slit_panel.l_line)
+    slit_p = property(lambda self: self._w.slit_panel.cur_lines)
+
+    # the reads (core.slitreads.SlitReads). The prototype painted the slices in the call that had read them; explorer
+    # makes them on its slit thread and shows them a turn of the loop later, so what the tests wait for (the blocks
+    # read, the bands read) counts only once the slices of the newest request are on screen
+    @property
+    def _slit_slab(self):
+        """The prototype's A read one slab per slit with a per-pixel file, and the checks pinned to A wait for it:
+        here the blocks of every pixel of the slit, once its newest slices are on screen. None until then, and
+        without a per-pixel file (the bands, _slit_bands)."""
+        r = self._w.scheduler.slit
+        pix = r.pix
+        if not r.per_pixel or pix is None or self._slitc_busy:
+            return None
+        with r._lock:
+            whole = all(p in r.blocks for p in zip(pix[0].tolist(), pix[1].tolist(), strict=True))
+        return r.blocks if whole else None
+
+    def _pf_slit_pending(self, kind):
+        """The newest request's slice of this kind ("ts" or "sl") not on screen yet."""
+        r = self._w.scheduler.slit
+        return r.shown._shown.get(f"slit_{kind}", 0) < r.gens.current("slit")
+
+    @property
+    def _slitc_busy(self):
+        r = self._w.scheduler.slit
+        return r._busy or self._pf_slit_pending("ts") or self._pf_slit_pending("sl")
+
+    @property
+    def _slitc_blocks(self):
+        return self._w.scheduler.slit.blocks
+
+    @property
+    def _slit_bands(self):
+        """(kind, s, lambda or t) of the slices read without a per-pixel file for the slit shown, once on screen."""
+        r = self._w.scheduler.slit
+        return {(k, s, u): v for (pid, k, s, u), v in list(r._bands.items())
+                if pid == r.path_id and not self._pf_slit_pending(k)}
 
     # the title bar's zoom: the geometry before it while zoomed (the prototype kept it on the window)
     @property
@@ -239,7 +316,10 @@ class ProtoViewer:
             self._w.session.step(self._axis(a), d, wrap=wrap)
 
     def _frame_index(self, t, s, l):  # noqa: E741
-        raise NotInExplorer("_frame_index", "slit")
+        """The frame at (t, s, lambda): its leading-axes index, which the cube's frame_offset takes."""
+        from explorer.data.slits import frame_index
+
+        return frame_index(len(self._w.dataset.shape) - 2, self._pf_roles, t=t, s=s, l=l)
 
     # ------------------------------------------------------------------ cursor
     @property
@@ -324,6 +404,7 @@ class ProtoViewer:
         return {a: (self._w.nav.labels[n], self._w.nav.n[n]) for a, n in self._pf_names.items()
                 if a is not None and n in self._w.nav.labels}
 
+    nav_tb = property(lambda self: self._w.nav.tb)
     stokes_box = property(lambda self: self._w.nav.stokes)
     play = property(lambda self: self._w.nav.play)
     fps_box = property(lambda self: self._w.nav.fps)
@@ -412,7 +493,7 @@ def adopt(shell):
     """shell becomes a ProtoViewer: the same object, its class a subclass of its own with the prototype's names. None
     of those names may already be the Shell's: they would change how it works."""
     names = {n for c in (ProtoViewer,) for n in vars(c) if not n.startswith("__")}
-    names |= {"be", "stats", "fix", "slit_dock", "slit_btn", "_pf_roles", "_pf_names", "_pf_slit_ui"}
+    names |= {"be", "stats", "fix", "_pf_roles", "_pf_names", "_pf_slit_ui"}
     names -= {"restore"}                                # QMainWindow has none; QWidget's restoreGeometry is not it
     clash = sorted(n for n in names if hasattr(type(shell), n) or n in vars(shell))
     if clash:
@@ -454,5 +535,5 @@ def viewer_module():
         def __getattr__(cls, name):
             raise NotInExplorer(f"Viewer.{name}", "slit" if "SLIT" in name else name)
 
-    Viewer = _ViewerMeta("Viewer", (), {"FILL": docks.FILL})
+    Viewer = _ViewerMeta("Viewer", (), {"FILL": docks.FILL, "SLIT_UI": "D"})
     return _ViewerModule(Viewer=Viewer, monitor_rect=monitor_rect, nice_range=nice_range, np=np)
