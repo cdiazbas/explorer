@@ -137,8 +137,16 @@ def test_limits_and_reduction_identical_to_the_prototype(golden):
     case, ref, meta, im = golden
     with FrameReader(formats.open_layout(im)) as r:
         imgs = [r.read(tuple(idx)) for idx in case["frames"]]
+    # np.percentile on float32 rounds its interpolation differently from one numpy to another: 2.3.5 (the Intel
+    # Mac's pin) and 2.5.3 give limits 1 float32 ulp apart on the same values, on the same machine. Bit for bit with
+    # the numpy the reference was exported with; within 1 ulp with another
+    same_numpy = meta.get("numpy") == np.__version__
     for i, (img, idx) in enumerate(zip(imgs, case["frames"], strict=True)):
-        assert np.array_equal(np.asarray(limits(img, symmetric=idx[1] > 0)), ref[f"limits.{i}"]), f"limits.{i}"
+        got, want = np.asarray(limits(img, symmetric=idx[1] > 0)), ref[f"limits.{i}"]
+        if same_numpy:
+            assert np.array_equal(got, want), f"limits.{i}"
+        else:
+            np.testing.assert_array_max_ulp(got.astype(np.float32), want.astype(np.float32), maxulp=1)
     for k, c in enumerate(case["reduce"]):
         lo, hi = ref[f"limits.{c['frame']}"]
         out = np.empty((c["h"], c["w"]), np.uint8)
