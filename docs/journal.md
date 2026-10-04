@@ -2986,3 +2986,43 @@ sin ese fallo.
 **Una nota sobre mis sondas:** una primera versión de la sonda miraba las ventanas justo después de la limpieza, y
 esa suite acabó en segfault dentro del `gc.collect()` de la limpieza. Mirando al empezar la prueba siguiente no
 volvió a pasar. Es probable que la causara la propia sonda, pero no lo he aislado.
+
+### 2026-10-04 (24): el icono en el Dock desde el lanzamiento (ROADMAP E5.28)
+
+El usuario: en el Mac aparecía primero un icono blanco y al rato el cubo.
+
+**De dónde sale el blanco:** no es un retraso de Qt. Es el icono que LaunchServices da a un ejecutable sin bundle,
+un documento en blanco.
+- Leído desde otro proceso (`NSRunningApplication.icon`), es ese documento antes y después de `setWindowIcon`.
+- El proceso entra en el Dock al volver `QApplication()`. Antes no hay NSApp; después tiene política regular y
+  tipo Foreground en LaunchServices.
+
+**Primer paso: el icono justo después de la QApplication,** antes de abrir el cubo.
+
+| | Mac (cocoa) | bellatrix (xcb) |
+|---|---|---|
+| condiciones | cubo sintético del demo, 8 arranques, 0.3–1.5 GB de swap libre | Xvfb, nodo 1, 8 pares alternados |
+| icono puesto, desde el inicio del proceso | 0.46–0.53 s (antes 1.5–3.3 s) | 1.20–1.29 s (antes 2.6–2.8 s) |
+| tras la QApplication | 12–28 ms | 2.1–2.8 ms |
+| coste del icono | 11–27 ms, mediana 17 ms | — |
+| primera imagen | ruido de 1.3–3.0 s | mediana 2.651 s frente a 2.649 s |
+
+Aun así el blanco se veía.
+
+**Segundo paso: en macOS, explorer arranca dentro de un bundle.** `run.sh` lo arranca a través de `explorer.app`,
+dentro del entorno. Lo construyen `setup_env.sh` y, si falta, `run.sh` la primera vez; en el Mac del usuario
+tardó 1.0 s.
+- Lleva un `Info.plist` con `CFBundleIconFile` y el `.icns` hecho del SVG.
+- El ejecutable es un enlace al Python del entorno; `__PYVENV_LAUNCHER__` hace que encuentre su entorno, y Python
+  la borra, así que nada de lo que lance explorer la hereda.
+- LaunchServices da entonces el cubo desde el lanzamiento.
+- Sin bundle (un entorno que no es del usuario), arranca como antes.
+
+Sin cambio medible en la primera imagen: 1.47–2.16 s frente a 1.46–3.11 s, en 4 pares. `run.sh` tarda 0.20 s
+frente a 0.19 s.
+
+**Resultado negativo:** poner el icono de NSApp por ctypes antes de Qt no cambia el que da LaunchServices; sigue el
+documento en blanco. Si el Dock lo pinta en su primer fotograma no se sabe sin mirarlo, y no se implementó.
+
+**Solo se comprueba mirando:** que el primer fotograma del Dock sea el cubo (`scripts/demo.sh`). Para comparar con
+lo de antes: `.venv-Darwin-arm64/bin/explorer demo`.
