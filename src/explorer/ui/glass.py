@@ -2,9 +2,12 @@
 prototype's app/look_glass.py, its floating panels (its default; the column of cards is not ported).
 
 - The image has the main window to itself, to its edges; the window as wide as the image at its height.
-- The panels (spectra, lambda-t) float beside the main window as rounded slabs of smoked glass, with a title of
-  their own (PanelSkin, PanelTitle). They move, resize, close and dock back as any floating panel; I hides and shows
-  them all, Panels one by one, the reset button places them again.
+- The panels (spectra, lambda-t) float beside the main window as rounded slabs in the image's own colour (near-black;
+  near-white in the light theme), lit from above, with a rim and the accent's light along their top edge, and a title
+  of their own (PanelSkin, PanelTitle). The window's title bar and edge take the same while glass is worn: the three
+  windows read as one set, on the image's black (a smoked grey parted the panels from it). They move, resize, close
+  and dock back as any floating panel; I hides and shows them all, Panels one by one, the reset button places them
+  again.
 - The toolbar's controls float in one compact glass bar at the bottom of the image, two rows. It hides after HIDE_MS
   without a mouse move, wheel or key, and comes back on the next one; it stays while in use (AutoHide).
 - The cursor's readout is the window's title while the pointer is on the image or the cursor is locked; the status
@@ -49,13 +52,14 @@ INK = {"dark": QtGui.QColor(235, 235, 240), "light": QtGui.QColor(30, 30, 34)}
 ACCENT = {"dark": QtGui.QColor(255, 146, 48), "light": QtGui.QColor(197, 83, 0)}
 ACCENT_ENV = "EXPLORER_GLASS_ACCENT"
 MIN_VIEW_W = 480                                   # px: the image's least width when the window is fitted to it
-# a floating panel, opaque on every path (XQuartz has no alpha to blend with): smoked glass, lighter at the top; pure
-# greys, for the bridge
-SMOKE = {"dark": (QtGui.QColor(44, 44, 44), QtGui.QColor(22, 22, 22)),
-         "light": (QtGui.QColor(252, 252, 252), QtGui.QColor(232, 232, 232))}
-EDGE = {"dark": QtGui.QColor(0, 0, 0, 170), "light": QtGui.QColor(0, 0, 0, 56)}
-LIP = {"dark": (QtGui.QColor(255, 255, 255, 46), QtGui.QColor(255, 255, 255, 12)),
-       "light": (QtGui.QColor(255, 255, 255, 255), QtGui.QColor(255, 255, 255, 120))}
+# a floating panel, opaque on every path (XQuartz has no alpha to blend with): a slab in the image's colour, a touch
+# lighter (dark) or darker (light) at the top, its outer edge against what is behind; the light, rim and accent line
+# are titlebar's hud_*; pure greys, for the bridge
+SLAB = {"dark": (QtGui.QColor(16, 16, 19), QtGui.QColor(4, 4, 6)),
+        "light": (QtGui.QColor(244, 244, 246), QtGui.QColor(255, 255, 255))}
+EDGE = {"dark": QtGui.QColor(0, 0, 0, 200), "light": QtGui.QColor(0, 0, 0, 70)}
+TITLE = {"dark": QtGui.QColor(0, 0, 0), "light": QtGui.QColor(255, 255, 255)}      # the title bar: the image's colour
+GLOW_H = 56                                        # px of a panel's light from above: its title and a little below
 AXIS = {"dark": (QtGui.QColor(255, 255, 255, 60), QtGui.QColor(160, 160, 160)),
         "light": (QtGui.QColor(0, 0, 0, 60), QtGui.QColor(90, 90, 90))}
 GRAIN = 0.03
@@ -389,7 +393,7 @@ class PanelSkin(QtCore.QObject):
         p = QtGui.QPainter(d)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         rect = QtCore.QRectF(d.rect())
-        top, bottom = SMOKE[mode]
+        top, bottom = SLAB[mode]
         g = QtGui.QLinearGradient(0, 0, 0, rect.height())
         g.setColorAt(0, top)
         g.setColorAt(1, bottom)
@@ -401,19 +405,17 @@ class PanelSkin(QtCore.QObject):
             p.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_Source)
             p.fillRect(rect, QtCore.Qt.GlobalColor.transparent)
             p.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_SourceOver)
-        p.setPen(QtCore.Qt.PenStyle.NoPen)
-        p.setBrush(g)
-        p.drawRoundedRect(rect, r, r)
+        path = QtGui.QPainterPath()
+        path.addRoundedRect(rect, r, r)
+        p.setClipPath(path)
+        p.fillRect(rect, g)
+        titlebar.hud_glow(p, rect, GLOW_H, mode == "light")
+        p.setClipping(False)
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.setPen(QtGui.QPen(EDGE[mode], 1.0))
         p.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), r - 0.5, r - 0.5)
-        lip_top, lip = LIP[mode]
-        lg = QtGui.QLinearGradient(0, 0, 0, rect.height())
-        lg.setColorAt(0, lip_top)
-        lg.setColorAt(0.25, lip)
-        lg.setColorAt(1, lip)
-        p.setPen(QtGui.QPen(QtGui.QBrush(lg), 1.0))
-        p.drawRoundedRect(rect.adjusted(1.5, 1.5, -1.5, -1.5), r - 1.5, r - 1.5)
+        titlebar.hud_rim(p, rect, r, mode == "light")
+        titlebar.hud_accent(p, rect, r, accent())
 
 
 class _Watch(QtCore.QObject):
@@ -487,6 +489,7 @@ class GlassChrome:
         self.bar.show()
         self.bar.raise_()
         self.autohide = AutoHide(w, (self.bar,))
+        self._hud_title()
         key = w.colour_key                          # at the top left: the bar is at the bottom (look_glass.py:937-943)
         if key is not None:
             key._place = lambda view_: key.move(MARGIN, MARGIN)
@@ -494,9 +497,26 @@ class GlassChrome:
         self.readout()
 
     def titles_changed(self) -> None:
-        """The chrome put its dock titles on after glass (app.chrome): glass's own over them again."""
+        """The chrome put its dock titles on after glass (app.chrome): glass's own over them again, and its title bar
+        (made after the look when the window starts in glass) takes the look's."""
         for s in self.skins:
             s.titles_changed()
+        self._hud_title()
+
+    def _hud_title(self) -> None:
+        """The window's title bar in the image's colour with the panels' light, and its edge with their rim and accent
+        line; given back by remove(). None where the window manager draws the title (a local Mac)."""
+        tb = getattr(self.w, "title_bar", None)
+        if tb is None or "title_bar" in self._was:
+            return
+        self._was["title_bar"] = (tb, QtGui.QPalette(tb.palette()))
+        pal = QtGui.QPalette(tb.palette())
+        pal.setColor(QtGui.QPalette.ColorRole.Window, TITLE[_mode()])
+        tb.setPalette(pal)
+        tb.hud = accent()
+        tb.corners.line.hud = accent()
+        tb.corners.line.update()
+        tb.update()
 
     def docks(self) -> list:
         return [d for d in (self.w.spec_dock, self.w.lt_dock) if d is not None]
@@ -858,6 +878,12 @@ class GlassChrome:
             view.widget.ci.setContentsMargins(*self._was["ci"])
         w.statusBar().setVisible(self._was["statusbar"])
         w.setWindowTitle(self._was["title"])
+        if "title_bar" in self._was:
+            tb, pal = self._was["title_bar"]
+            tb.setPalette(pal)
+            tb.hud = tb.corners.line.hud = None
+            tb.corners.line.update()
+            tb.update()
         key = w.colour_key
         if key is not None and "_place" in vars(key):   # its own corner again
             del key._place

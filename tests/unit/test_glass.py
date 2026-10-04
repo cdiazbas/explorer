@@ -343,3 +343,129 @@ def test_started_in_glass_its_panel_titles_survive_the_chrome(qapp, cube, monkey
         ds.close()
         qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
         qapp.setPalette(pal)
+
+
+def _chrome(qapp, w, monkeypatch):
+    """Our title bar and edges on the shell, as ui.app.start puts them on (app.chrome), wherever the test runs."""
+    from explorer.platform.display import Display
+    from explorer.platform.plan import DisplayPlan
+    from explorer.ui import app, titlebar
+
+    monkeypatch.setattr(titlebar, "wanted", lambda *a, **k: True)          # a local Mac keeps its own
+    disp = Display(DisplayPlan("offscreen"))
+    shown = w.isVisible()
+    bar = app.chrome(qapp, w, disp.ops(w), disp.ops, bridge=False)
+    if shown:                                            # frameless now: a change of flags hides a shown window (the
+        w.show()                                         # app puts the bar on before showing it)
+    qapp.processEvents()
+    return bar
+
+
+def _rows(widget):
+    """The widget's column of pixels 40 px from its right edge, as (r, g, b) from top to bottom."""
+    from PySide6 import QtGui
+
+    img = widget.grab().toImage()
+    x = img.width() - int(40 * img.devicePixelRatio())
+    return [QtGui.QColor(img.pixel(x, y)).getRgb()[:3] for y in range(img.height())]
+
+
+def test_the_title_bar_and_edge_take_the_glass_light_and_give_it_back(qapp, shell, monkeypatch):
+    from PySide6 import QtGui
+
+    from explorer.ui import glass
+
+    w = shell
+    bar = _chrome(qapp, w, monkeypatch)
+    before = bar.palette().color(QtGui.QPalette.ColorRole.Window).name()
+    wear(qapp, w, "glass")
+    rows = _rows(bar)
+    print("title bar in glass, top to bottom:", [r[0] for r in rows], "edge hud:", bar.corners.line.hud)
+    assert bar.hud == glass.accent() and bar.corners.line.hud == glass.accent()
+    assert rows[0][0] > rows[-1][0] and rows[-1] == (0, 0, 0)     # light from above, down to the image's black
+    wear(qapp, w, "classic")
+    after = bar.palette().color(QtGui.QPalette.ColorRole.Window).name()
+    print("title bar colour before glass, after it:", before, after)
+    assert bar.hud is None and bar.corners.line.hud is None and after == before
+
+
+def test_started_in_glass_its_title_bar_takes_the_light(qapp, cube, monkeypatch):
+    """The title bar is made after the look when the window starts in glass (ui.app.start): the shell has it before
+    glass is told the titles changed."""
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.data.dataset import Dataset
+    from explorer.look import get_look
+    from explorer.ui import glass, style
+    from explorer.ui.shell import Shell
+
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    style.apply_theme(qapp, "dark")
+    ds = Dataset.open(cube)
+    w = Shell(ds, title="c_im.fits", look=get_look("glass"))
+    try:
+        bar = _chrome(qapp, w, monkeypatch)
+        colour = bar.palette().color(QtGui.QPalette.ColorRole.Window)
+        print("started in glass: title bar hud", bar.hud, "colour", colour.name())
+        assert bar.hud == glass.accent()
+        assert colour == glass.TITLE["dark"]
+    finally:
+        w.close()
+        ds.close()
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+
+
+def _panel_pixels(qapp, w):
+    from PySide6 import QtGui
+
+    from explorer.ui import glass
+
+    floating = spin(qapp, lambda: all(d.isFloating() for d in w.glass.docks()))
+    print("panels:", [(d.objectName(), d.isFloating(), d.isVisible(), d.geometry().getRect()) for d in w.glass.docks()],
+          "window visible:", w.isVisible(), "glass on:", w.glass.on)
+    assert floating
+    d = w.spec_dock
+    img = d.grab().toImage()
+    k = img.devicePixelRatio()
+    top = QtGui.QColor(img.pixel(img.width() // 2, int(1.75 * k))).getRgb()[:3]       # the accent's light
+    body = QtGui.QColor(img.pixel(int((glass.RADIUS_PANEL + 4) * k), img.height() - int(8 * k))).getRgb()[:3]
+    return top, body
+
+
+def test_the_panels_are_the_images_colour_with_the_accent_light(qapp, shell):
+    w = shell
+    wear(qapp, w, "glass")
+    top, body = _panel_pixels(qapp, w)
+    print("dark panel: top edge", top, "body near the bottom", body)
+    assert max(body) <= 12                               # near-black, as the image
+    assert top[0] > 150 and top[0] > top[2] + 80         # orange along the top edge
+
+
+def test_the_light_theme_has_the_same_on_white(qapp, cube, monkeypatch):
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.data.dataset import Dataset
+    from explorer.ui import style
+    from explorer.ui.shell import Shell
+
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    style.apply_theme(qapp, "light")
+    ds = Dataset.open(cube)
+    w = Shell(ds, title="c_im.fits")
+    try:
+        w.setGeometry(60, 50, 1000, 700)
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        bar = _chrome(qapp, w, monkeypatch)
+        wear(qapp, w, "glass")
+        top, body = _panel_pixels(qapp, w)
+        rows = _rows(bar)
+        print("light panel: top edge", top, "body", body, "| title bar top to bottom:", [r[0] for r in rows])
+        assert min(body) >= 243 and top[0] > 120 and top[2] < 90
+        assert rows[0][0] < rows[-1][0] and rows[-1] == (255, 255, 255)   # a shade from above, down to white
+    finally:
+        w.close()
+        ds.close()
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)

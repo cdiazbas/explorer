@@ -34,6 +34,47 @@ def light(w) -> bool:
     return w.palette().color(QtGui.QPalette.ColorRole.Window).lightness() > 128
 
 
+# ---------------------------------------------------------------- the glass look's light (ui.glass), on its panels and
+# on the window's title bar and edge: inside, light falling from above (dark) or a shade (light) that fades out; a rim
+# brighter at the top; the accent's light along the top edge, fading at the sides. Keyed by light().
+HUD_GLOW = {False: (255, ((0.0, 22), (0.35, 10), (0.7, 3), (1.0, 0))),
+            True: (0, ((0.0, 10), (0.35, 5), (0.7, 1), (1.0, 0)))}
+HUD_RIM = {False: (255, ((0.0, 70), (0.3, 26), (1.0, 16))), True: (0, ((0.0, 46), (0.3, 18), (1.0, 12)))}
+
+
+def hud_glow(p: QtGui.QPainter, rect: QtCore.QRectF, height: float, lt: bool) -> None:
+    """The light from above over the top `height` px of rect, to nothing at its end: over a 32-px title bar it has
+    to end within it, or its last row stood grey against the image below."""
+    grey, stops = HUD_GLOW[lt]
+    g = QtGui.QLinearGradient(0, rect.top(), 0, rect.top() + height)
+    for at, a in stops:
+        g.setColorAt(at, QtGui.QColor(grey, grey, grey, a))
+    p.fillRect(QtCore.QRectF(rect.left(), rect.top(), rect.width(), height), g)
+
+
+def hud_rim(p: QtGui.QPainter, rect: QtCore.QRectF, r: float, lt: bool) -> None:
+    """The rim 1.5 px inside rect's rounded edge, brighter (darker, in light) at the top."""
+    grey, stops = HUD_RIM[lt]
+    g = QtGui.QLinearGradient(0, rect.top(), 0, rect.bottom())
+    for at, a in stops:
+        g.setColorAt(min(at, 120 / max(1.0, rect.height())) if 0 < at < 1 else at, QtGui.QColor(grey, grey, grey, a))
+    p.setPen(QtGui.QPen(QtGui.QBrush(g), 1.0))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRoundedRect(rect.adjusted(1.5, 1.5, -1.5, -1.5), r - 1.5, r - 1.5)
+
+
+def hud_accent(p: QtGui.QPainter, rect: QtCore.QRectF, r: float, colour: QtGui.QColor) -> None:
+    """The accent's light along rect's top edge between the corners, strongest at the middle."""
+    g = QtGui.QLinearGradient(rect.left() + r, 0, rect.right() - r, 0)
+    for at, a in ((0.0, 0), (0.5, 210), (1.0, 0)):
+        c = QtGui.QColor(colour)
+        c.setAlpha(a)
+        g.setColorAt(at, c)
+    p.setPen(QtGui.QPen(QtGui.QBrush(g), 1.5))
+    y = rect.top() + 1.75
+    p.drawLine(QtCore.QPointF(rect.left() + r, y), QtCore.QPointF(rect.right() - r, y))
+
+
 class TitleBar(QtWidgets.QWidget):
     """macOS-style: traffic lights (close, minimise, zoom) at the left, the title centred; drag to move, double click
     to zoom. Geometry and colours of macOS 26 (Tahoe), a titlebar-only window; XQuartz shows 1 X pixel per point, so
@@ -41,6 +82,7 @@ class TitleBar(QtWidgets.QWidget):
     H = 32                                             # Tahoe titled window (Sequoia: 28)
     corners: "Corners"                                 # set by install(): the rounded shape and the edges
     resizer: "EdgeResizer"
+    hud: QtGui.QColor | None = None                    # the glass look's light (hud_*), in this accent
     D, PITCH, INSET = 14, 23, 9                        # light diameter, centre to centre, left edge (inset: estimate)
     FILL = ("#ED6A5F", "#F6BE50", "#61C555")           # close, minimise, zoom
     RIM = ("#E24B41", "#E1A73E", "#2DAC2F")
@@ -105,6 +147,8 @@ class TitleBar(QtWidgets.QWidget):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         p.fillRect(self.rect(), self.palette().color(QtGui.QPalette.ColorRole.Window))   # Tahoe: bar = window
+        if self.hud is not None:
+            hud_glow(p, QtCore.QRectF(self.rect()), self.height(), light(self))
         active = self._active()
         for i, r in enumerate(self._lights()):
             if active or self._hover:
@@ -233,6 +277,8 @@ class Corners(QtCore.QObject):
 
 
 class Hairline(QtWidgets.QWidget):
+    hud: QtGui.QColor | None = None                    # the glass look's rim and accent light (hud_*) instead
+
     def __init__(self, window, radius):
         super().__init__(window)
         self.r = radius
@@ -249,6 +295,11 @@ class Hairline(QtWidgets.QWidget):
         lt = light(self)
         p.setPen(QtGui.QPen(OUTLINE_LIGHT if lt else OUTLINE, 1.0))
         p.drawRoundedRect(QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), self.r - 0.5, self.r - 0.5)
+        if self.hud is not None:
+            rect = QtCore.QRectF(self.rect())
+            hud_rim(p, rect, self.r, lt)
+            hud_accent(p, rect, self.r, self.hud)
+            return
         p.setPen(QtGui.QPen(HAIRLINE_LIGHT if lt else HAIRLINE, 1.0))
         p.drawRoundedRect(QtCore.QRectF(self.rect()).adjusted(1.5, 1.5, -1.5, -1.5), self.r - 1.5, self.r - 1.5)
 

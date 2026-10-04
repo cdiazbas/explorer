@@ -38,6 +38,7 @@ def chrome(app, shell, ops, ops_for, bridge: bool):
     from . import titlebar
 
     bar = titlebar.chrome(app, shell, ops, ops_for, bridge=bridge)
+    shell.title_bar = bar                               # before the look hears of it: glass recolours it
     if shell.glass is not None:
         shell.glass.titles_changed()
     return bar
