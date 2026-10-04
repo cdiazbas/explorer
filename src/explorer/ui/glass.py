@@ -1,7 +1,9 @@
 """The glass look (ROADMAP E5.12): the image fills the window and the rest floats over it on glass. From the
 prototype's app/look_glass.py, its floating panels (its default; the column of cards is not ported).
 
-- The image has the main window to itself, to its edges; the window as wide as the image at its height.
+- The image has the main window to itself, to its edges; the window as wide as the image at its height. A zoomed
+  window (maximised, full screen, or by our title bar's zoom) leaves its zoom: it keeps the monitor's height, left of
+  the panels' column; out of glass it is zoomed again.
 - The panels (spectra, lambda-t) float beside the main window as rounded slabs in the image's own colour (near-black;
   near-white in the light theme), lit from above, with a rim and the accent's light along their top edge, and a title
   of their own (PanelSkin, PanelTitle). The window's title bar and edge take the same while glass is worn: the three
@@ -63,6 +65,7 @@ GLOW_H = 56                                        # px of a panel's light from 
 AXIS = {"dark": (QtGui.QColor(255, 255, 255, 60), QtGui.QColor(160, 160, 160)),
         "light": (QtGui.QColor(0, 0, 0, 60), QtGui.QColor(90, 90, 90))}
 GRAIN = 0.03
+ZOOMED = QtCore.Qt.WindowState.WindowMaximized | QtCore.Qt.WindowState.WindowFullScreen
 
 
 def _app() -> QtWidgets.QApplication:
@@ -463,7 +466,11 @@ class GlassChrome:
                          statusbar=w.statusBar().isVisibleTo(w), floating={d: d.isFloating() for d in self.docks()},
                          margins=w.centralWidget().layout().contentsMargins(),
                          ci=view.widget.ci.getContentsMargins() if hasattr(view.widget, "ci") else None,
-                         sliders={a: (s.minimumWidth(), s.maximumWidth()) for a, s in nav.sliders.items()})
+                         sliders={a: (s.minimumWidth(), s.maximumWidth()) for a, s in nav.sliders.items()},
+                         # the zoom to give back: Qt's (a Mac's green button, a window manager's maximise) with the
+                         # size under it, and our title bar's
+                         zoom=w.windowState() & ZOOMED, normal=w.normalGeometry(),
+                         unzoomed=w.window_ops.unzoomed if w.window_ops is not None else None)
         # the image to the window's edges (look_glass.py:651-658)
         w.centralWidget().layout().setContentsMargins(0, 0, 0, 0)
         if hasattr(view.widget, "ci"):
@@ -688,27 +695,45 @@ class GlassChrome:
 
     def fit_window(self, scr: QtCore.QRect, room: int) -> QtCore.QRect:
         """The main window as wide as the image at its height; room: px kept free on its right for the panels.
-        Returns its frame as it will be (look_glass.py:496-516)."""
+        Returns its frame as it will be (look_glass.py:496-516).
+
+        A zoomed window leaves its zoom and takes the monitor's height at its left edge, the panels' column on its
+        right. Left maximised (as the prototype did, look_glass.py:543), a window zoomed by a Mac's green button
+        (Qt's maximised state) kept the screen's width and the panels landed on it. The zoom is left before the
+        window is sized, so the size asked is not the zoom's to undo. Our title bar's zoom is a geometry
+        only: the window has the monitor's height already, and the button's next press zooms rather than going back
+        to the size before glass. remove() zooms it again."""
         w, vb = self.w, self.w.view.vb
-        fg = w.frameGeometry()
         dx, dy = vb.viewPixelSize()
         img = w.scheduler.img
-        if w.isMaximized() or w.isFullScreen() or img is None or not (dx > 0 and dy > 0) or vb.height() < 50:
-            return fg
+        if img is None or not (dx > 0 and dy > 0) or vb.height() < 50:
+            return w.frameGeometry()
         ny, nx = img.shape
-        frame_w, frame_h = fg.width() - w.width(), fg.height() - w.height()
+        # read before the zoom is left: the view follows a resize only once its layout has run
         dw, dh = w.width() - int(vb.width()), w.height() - int(vb.height())
+        zoomed = w.windowState() & ZOOMED
+        if zoomed:
+            w.setWindowState(w.windowState() & ~ZOOMED)
+        if w.window_ops is not None:
+            w.window_ops.unzoomed = None
+        fg = w.frameGeometry()
+        if zoomed and w.windowHandle() is not None:     # out of full screen its frame is back, which the platform
+            fg = w.geometry().marginsAdded(w.windowHandle().frameMargins())     # knows before the widget does
+        frame_w, frame_h = fg.width() - w.width(), fg.height() - w.height()
         aspect = nx / ny * dy / dx                  # the image's width / height on screen
-        h = int(vb.height())
+        if zoomed:
+            h, top, at = scr.height() - frame_h - dh, scr.top(), scr.left()
+        else:
+            h, top, at = int(vb.height()), fg.top(), fg.left()
         wd = int(round(h * aspect))
         most = scr.width() - room - frame_w - dw
         if wd > most:
             wd = max(MIN_VIEW_W, most)
             h = int(round(wd / aspect))
         W, H = wd + dw, h + dh
-        left = max(scr.left(), min(fg.left(), scr.right() + 1 - (W + frame_w + room)))
-        w.setGeometry(left + (w.geometry().x() - fg.x()), w.geometry().y(), W, H)
-        return QtCore.QRect(left, fg.top(), W + frame_w, H + frame_h)
+        left = max(scr.left(), min(at, scr.right() + 1 - (W + frame_w + room)))
+        w.setGeometry(left + (w.geometry().x() - fg.x()), top + (w.geometry().y() - fg.y()), W, H)
+        return QtCore.QRect(left, top, W + frame_w, H + frame_h)
 
     def place_panels(self) -> None:
         """The panels stacked beside the fitted window (look_glass.py:518-536)."""
@@ -878,13 +903,22 @@ class GlassChrome:
         self.skins = []
         for d, floating in self._was["floating"].items():
             d.setFloating(floating)
+        # a zoom taken in glass is left first: the geometry given back below is the window's, not the zoom's
+        if w.windowState() & ZOOMED:
+            w.setWindowState(w.windowState() & ~ZOOMED)
+        if w.window_ops is not None:
+            w.window_ops.unzoomed = self._was["unzoomed"]
         # the window's size before the panels': restored into glass's narrowed window, Qt shared that width out and
         # kept the shares (spectra 414x245 where 520x343 had been). Once more when the window manager has applied
         # the size, which it may do later
         if self._fresh:
             self._start_afresh()
         else:
-            w.setGeometry(self._was["geometry"])
+            if self._was["zoom"]:                   # zoomed as it came: its size under the zoom first, which the
+                w.setGeometry(self._was["normal"])  # zoom's undo then gives back (a Mac's green button, measured)
+                w.setWindowState(w.windowState() | self._was["zoom"])
+            else:
+                w.setGeometry(self._was["geometry"])
             self._restore_panels()
             QtCore.QTimer.singleShot(0, self._restore_panels)
         w.centralWidget().layout().setContentsMargins(self._was["margins"])
