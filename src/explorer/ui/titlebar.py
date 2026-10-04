@@ -195,6 +195,9 @@ def rounded_region(rect, r) -> QtGui.QRegion:
     return QtGui.QRegion(path.toFillPolygon().toPolygon())
 
 
+EDGE = 3                    # px of the hairline overlay along each edge: its two lines are 1 px, at 0.5 and 1.5
+
+
 class Corners(QtCore.QObject):
     """Keeps the window's shape rounded (WindowOps.set_shape: a mask on xcb, the X SHAPE through the bridge) and the
     hairline overlay above every child."""
@@ -210,7 +213,15 @@ class Corners(QtCore.QObject):
     def apply(self):
         self.region = QtGui.QRegion() if self.w.isFullScreen() else rounded_region(self.w.rect(), self.r)
         self.ops.set_shape(self.region)
-        self.line.setGeometry(self.w.rect())
+        rect = self.w.rect()
+        self.line.setGeometry(rect)
+        # masked to what it draws, the edges and the corners' curves: unmasked, every repaint under it repainted it
+        # too (8 rounded outlines a step of the 2x2 view, 2.4 ms on bellatrix)
+        ring = QtGui.QRegion(rect).subtracted(QtGui.QRegion(rect.adjusted(EDGE, EDGE, -EDGE, -EDGE)))
+        for x, y in ((0, 0), (rect.width() - self.r, 0), (0, rect.height() - self.r),
+                     (rect.width() - self.r, rect.height() - self.r)):
+            ring = ring.united(QtGui.QRegion(x, y, self.r, self.r))
+        self.line.setMask(ring)
         self.line.raise_()
 
     def eventFilter(self, obj, e):

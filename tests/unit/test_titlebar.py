@@ -61,6 +61,34 @@ def test_frameless_with_the_bar_and_a_rounded_shape(win):
     assert not region.contains(QtCore.QPoint(w.width() - 1, w.height() - 1))
 
 
+def test_the_hairline_repaints_only_along_the_edges(qapp, win):
+    """The hairline overlay covers the window to draw a 1-2 px rounded edge: unmasked, every repaint below it repainted
+    it too (762 rounded outlines in 45 steps of the 2x2 view, 2.4 ms a step, bellatrix). Masked to the edges and the
+    corners, a change inside the window, away from them, leaves it alone."""
+    from PySide6 import QtCore
+
+    w, bar, _ops = win
+    line = bar.corners.line
+    m = line.mask()
+    W, H = w.width(), w.height()
+    assert all(m.contains(QtCore.QPoint(*p)) for p in ((1, H // 2), (W - 2, H // 2), (W // 2, 1), (W // 2, H - 2),
+                                                       (4, 4), (W - 5, H - 5)))
+    assert not m.contains(QtCore.QPoint(W // 2, H // 2))
+    paints = []
+
+    class Count(QtCore.QObject):
+        def eventFilter(self, obj, e):
+            if e.type() == QtCore.QEvent.Type.Paint:
+                paints.append(e.region().boundingRect())
+            return False
+    c = Count()
+    line.installEventFilter(c)
+    w.centralWidget().repaint(QtCore.QRect(100, 100, 300, 200))      # inside: touches no edge
+    qapp.processEvents()
+    line.removeEventFilter(c)
+    assert paints == [], paints
+
+
 def test_the_zoom_light_and_a_double_click_fill_the_monitor_and_come_back(qapp, win):
     from PySide6 import QtCore
 
