@@ -251,7 +251,7 @@ class Shell(QtWidgets.QMainWindow):
             self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light)
             self.colour_key = ColourKey(self.view.widget, unit_text(getattr(self.dataset.axes, "bunit", None) or ""))
         if self.colour_key is not None:
-            self.colour_key.setVisible(L.has("colour"))
+            self.colour_key.show_with(L.has("colour"), grid=self.grid is not None and not self.grid.isHidden())
         self._shown_lut = object()
         if L.has("colour"):
             self._paint_colour()
@@ -350,7 +350,7 @@ class Shell(QtWidgets.QMainWindow):
             self._grid_luts()
             self.grid.show()
             self.grid.raise_()
-            for w in (self.image_lock, self.colour_key, self.slit_hint):  # the padlock, key and hint stay on top
+            for w in (self.image_lock, self.slit_hint):  # the padlock and the hint stay on top
                 if w is not None:
                     w.raise_()
             self.scheduler.set_grid(True)
@@ -360,6 +360,8 @@ class Shell(QtWidgets.QMainWindow):
             self.grid.hide()
             self.scheduler.set_grid(False)
             self.view.set_paused(False)
+        if self.colour_key is not None:                 # no single Stokes' key over the four panels
+            self.colour_key.show_with(self.look.has("colour"), grid=on)
         self.nav.set_all(on)
         self._place_slit_hint()
         if self.glass is not None:
@@ -436,6 +438,7 @@ class Shell(QtWidgets.QMainWindow):
         name = self.colours.cycle(s, step)
         self._shown_lut = object()
         self._paint_colour()
+        self._grid_luts()                               # the 2x2 view's panel of that Stokes too
         if self.lambda_t is not None:
             self.lambda_t.set_lut(self.colours.lut(s))
         if self.colour_key is not None:
