@@ -2482,3 +2482,24 @@ nueva falla antes del arreglo. `tests/xvfb` 22 pasan; `check.sh` solo falla en l
 La sesión acabó con «the X display went away»: las dos conexiones del puente (la ventana y el contorno) se
 cerraron a la vez a los 53.8 s, lo que apunta a XQuartz o al túnel X de ssh, no a una petición de explorer
 (que cortaría solo una). El doctor de después salió bien. Pendiente de lo que diga el usuario.
+
+### 2026-10-04 (8): «the X display went away»: XQuartz se cayó
+
+La segunda sesión desde bellatrix acabó con las dos conexiones X del puente cerradas a la vez (la ventana y
+el contorno de redimensionado), 3 s después de que el usuario redimensionara la λ-t por el borde. El
+usuario no cerró nada.
+
+En el Mac hay un informe de fallo de `X11.bin` a las 12:13:20, el final de esa sesión. XQuartz 2.8.6 en
+macOS 26.5.2 murió por SIGSEGV (`KERN_INVALID_ADDRESS`) en su hilo de dibujo asíncrono
+(`com.apple.Xplugin.asyncRendering`), al aplicar la forma de una ventana: `_xp_configure_window_cb` →
+`shape_window_internal` → `CGSWindowSetShape` → `memmove`. Después XQuartz se reinició: ahora es `:4`, y
+eso explica que mi conexión de prueba a `:3` fuera rechazada por autorización.
+
+Explorer da forma (X SHAPE) a tres cosas: las esquinas redondeadas de la ventana, las de los paneles y el
+anillo del contorno de redimensionado. El contorno es una ventana override-redirect reutilizada a la que se
+cambia tamaño y forma en cada paso del arrastre. Es el patrón de la incidencia de XQuartz #499 (macOS 26,
+XQuartz 2.8.6): redimensionados repetidos de una ventana override-redirect reutilizada bloquean el servidor
+durante segundos (3.4 s tras 40), en el mismo código rootless con SkyLight. La #499 informa de bloqueos,
+no de cierres; nuestro fallo, con su forma, no aparece documentado. **Hipótesis sin verificar:** el
+contorno lo provoca. Reproducirlo en el XQuartz del usuario puede tirarlo abajo, así que no lo he
+intentado sin preguntar.
