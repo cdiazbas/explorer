@@ -3117,3 +3117,83 @@ solo existe en glass); con solo la mitad del arreglo, 2.
 
 **Visto una vez y sin explicar:** en la batería del agente, `test_theme::…[light-dark-glass-False]` falló con un
 ~14 % de píxeles distintos, y pasó sola y al repetirla. Se abre X.12.
+
+### 2026-10-04 (28): E7.2 y E7.3, el panel de la rendija y sus lecturas
+
+El usuario, tras probar E7.1: solo se dibujaba la rendija, y no aparecía ninguna ventana con el resultado.
+
+**Portado** de `app/viewer.py` (1023-1048, 1505-1515, 1664-1719, 1745-1948) a `ui/slitpanel.py` y
+`core/slitreads.py`:
+- **El panel:**
+  - Los cortes temporal y espectral a lo largo de la rendija, con marcas de t, λ y el cursor.
+  - Un clic elige t o λ y el punto de la rendija.
+  - Sin el menú de pyqtgraph (F20g).
+  - Sigue el tema, los aspectos, los mapas de color y la vista 2×2.
+- **La pestaña de λ–t:** sale con S y se pone delante al terminar la rendija; se va con ⌫. En glass, el panel
+  flota bajo λ–t.
+- **Las lecturas:**
+  - Con fichero por píxel, bloques en caché (F71, 8000), una lectura a la vez.
+  - Sin él, filas por frame, tras 250 ms de reposo al dibujar; el corte espectral no se lee al reproducir.
+  - Los cortes y sus niveles se hacen en un hilo propio (`Executors.slit`).
+- **`GatedDock`:** la pestaña no se puede mostrar sin rendija. Sin esto, la restauración de la disposición la
+  abría vacía (F70a), y en glass dejaba la ventana en 1098 px alrededor de una imagen de 480 px.
+
+**Medida:** bellatrix, cubo 6173, nodo 0, bajo el cerrojo, ABBA en 4 rondas, offscreen. Con fichero por píxel,
+carga 2.9-5.0 y 16 rendijas de 601-688 px:
+
+| | explorer | prototipo |
+|---|---|---|
+| E/S de la rendija entera | 75.9 ms (24.1-103.8) | 76.0 ms (28.0-102.4) |
+| de terminar a pintar los dos cortes | 118.6 ms | 109.5 ms |
+| actualizaciones al dibujar (60 movimientos a 16 ms) | 45.5 | 76 |
+
+La E/S es igual y queda dentro de los 23-96 ms, salvo la primera rendija de cada proceso. Sin fichero por píxel,
+con carga 5.2-19.6, 217 frente a 381 ms; confundido por la caché de páginas y la carga.
+
+**Negativo** (queda como E7.5):
+- **Menos actualizaciones al dibujar.** Al principio eran 31, porque el resultado de cada paso llegaba tras el
+  siguiente y se descartaba; ahora se muestra mientras se dibuja (`434cf1e`). Aún quedan 49 peticiones para 60
+  movimientos y 25 llegadas de bloques. La causa no está medida: la hipótesis es que el hilo de la interfaz se
+  queda atrás.
+- **Al terminar, 9 ms más que el prototipo.** La primera rendija de cada proceso tiene ~75 ms de más tras la
+  lectura.
+
+**Pruebas:** 43 nuevas, que pasan en 3 de 3 ejecuciones; las del panel fallan en `e578f6d`. Una de ellas pasa por
+`ui.app.start` y dibuja la rendija con el ratón en los tres aspectos. `tests/unit` y `tests/golden` en la copia
+del agente: 604 pasan y falla la de `test_doctor`, por la copia sin entorno.
+
+### 2026-10-04 (29): glass con la ventana ampliada: se estrecha a la izquierda de los paneles (ROADMAP E5.27)
+
+**El fallo:** en el Mac, con la ventana ampliada con el botón verde, al pasar a glass la ventana seguía del ancho de
+la pantalla y los dos paneles caían encima. La traza lo mostraba: `PLACE … window (0, 30, 1352, 785)`, los
+paneles en x = 791 y ningún `setGeometry` de la principal.
+
+**Causa:** `fit_window` no hacía nada con la ventana ampliada (`isMaximized()`), igual que el prototipo
+(`look_glass.py:543`).
+
+**Medido en el Mac** (cocoa, una ventana de prueba):
+- El botón verde deja a Qt en `WindowMaximized` al instante.
+- Tras él, `setGeometry` y `showNormal` actúan al momento sin que la animación los deshaga, y `showMaximized`
+  vuelve a ampliarla.
+- Con FullScreenNone, `toggleFullScreen:` no hace nada: en un Mac local no se llega a pantalla completa.
+
+**El arreglo,** la opción 1 que eligió el usuario:
+- **Al entrar en glass,** la ventana ampliada deja de estarlo. Ocupa la altura del monitor desde su borde
+  izquierdo, tan ancha como la imagen, con la columna de los paneles a su derecha. El resto de glass no cambia.
+- **Al salir,** primero recupera el tamaño de antes de ampliarla y después se vuelve a ampliar, así que el botón
+  verde la devuelve luego a ese tamaño.
+- **El zoom de nuestra barra de título** (puente, xcb): la ventana ya se estrechaba, pero el botón la seguía dando
+  por ampliada en glass. Ahora ese estado se olvida en glass y se devuelve al salir.
+- **Pantalla completa** se trata igual que ampliada, porque no deja sitio para los paneles al lado. Al salir de
+  pantalla completa, el marco cambia antes de que el widget lo sepa, así que se leen los márgenes de la plataforma;
+  sin eso, la ventana se pasaba 4 px del monitor.
+
+**Pruebas:**
+- `test_glass_zoomed`, fuera de pantalla con un monitor de 1352×878: ampliada, pantalla completa y zoom de nuestra
+  barra.
+- `test_bridge_glass_zoomed`, por el puente con el gestor tipo quartz-wm: ampliada y zoom de la barra.
+- Las cinco fallan antes, con una ventana de 1352 px en glass y los paneles en x = 791 o con el zoom de la barra
+  aún puesto en glass, y pasan después.
+- En bellatrix, `tests/xvfb` pasa entero dos veces y `tests/unit` no tiene fallos nuevos.
+
+**Sin probar:** GNOME y KDE maximizando por xcb, y el Mac de punta a punta, que lo mira el usuario.
