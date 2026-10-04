@@ -2391,3 +2391,19 @@ rueda 0.62.1 para Mac Intel no trae `py.typed` (comprobado listando la rueda de 
 `ignore_missing_imports`, mypy toma numba como `Any` y no hay nada que ignorar. La 0.67.0 sí lo trae, y
 en ella esos atributos no existen. Reproducido aquí con una configuración de mypy que no sigue los tipos
 de numba: los mismos 6 errores. Con `unused-ignore` añadido a esos `ignore`, ninguno en los dos casos.
+
+### 2026-10-04 (3): los límites de color golden en el Mac Intel (ROADMAP X.10)
+
+Tras el arreglo de mypy, el Mac Intel llegó a las pruebas, y una golden falló. Los límites simétricos de
+una frame del caso sintético (`limits.2`) salían a 1 ulp de float32 de la referencia: 5.744442768684799e-11
+frente a 5.744443115629494e-11. Para separar versión y arquitectura, guardé la submuestra exacta de esa
+frame y calculé `np.percentile(|s|, 99)` en este Mac arm64. Con numpy 2.5.3 (la de la referencia) sale el
+valor de la referencia; con 2.3.5 (la que fija el Mac Intel), en un entorno temporal, el del Mac Intel. Es
+la versión: la interpolación de `np.percentile` sobre float32 redondea distinto. El prototipo, con la
+misma numpy, daría lo mismo.
+
+La prueba sigue exigiendo igualdad bit a bit cuando numpy es la que registra la referencia, y admite 1 ulp
+de float32 con otra versión. Comprobé la segunda rama sustituyendo solo el percentil de esa frame por el
+de 2.3.5. Dos errores de mi simulación por el camino, ambos corregidos:
+- falsear `np.__version__` antes de importar astropy rompió astropy;
+- `np.isclose` con su `atol=1e-8` por defecto sustituía todos los percentiles de orden 1e-11.
