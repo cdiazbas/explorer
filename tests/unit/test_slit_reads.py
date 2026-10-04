@@ -2,8 +2,8 @@
 values at its pixels, through the per-pixel file's blocks and through rows read per frame without it; t, lambda and
 Stokes give the slices at them; nothing is read while the panel is behind, nor on the UI thread; a result made for
 another slit is never shown; the slit being drawn is read live (only its new pixels with the per-pixel file, after
-the pointer rests without it); the blocks kept are bounded; without the per-pixel file the spectral slice waits out
-playback."""
+the pointer rests without it); the blocks kept are bounded, and count in the Dataset's memory; without the per-pixel
+file the spectral slice waits out playback."""
 import concurrent.futures as cf
 import threading
 
@@ -15,6 +15,7 @@ from explorer.core import slitreads
 from explorer.core.loop import ManualLoop
 from explorer.core.scheduler import Scheduler
 from explorer.core.session import Session
+from explorer.data import dataset as dataset_mod
 from explorer.data.dataset import Dataset
 from explorer.data.slits import slit_path, slit_pixels
 from explorer.obs import summary
@@ -299,16 +300,41 @@ def test_one_block_read_at_a_time_the_latest_slit_next(cube, monkeypatch):
         ds.close()
 
 
-def test_the_blocks_kept_are_bounded_and_the_shown_slits_stay(cube, monkeypatch):
-    monkeypatch.setattr(slitreads, "SLIT_BLOCKS", 40)
+def test_the_blocks_kept_are_bounded_and_the_shown_slits_stay(cube):
     with Driver.open(cube[0]) as d:
+        d.session.main.slit_cache.max_blocks = 40
         show_slit(d, A)
         d.set_slit(B)
         d.wait_idle()
         iy, ix = pixels(B)
-        assert set(d.scheduler.slit.blocks) == set(zip(iy.tolist(), ix.tolist(), strict=True))
+        assert set(d.scheduler.slit.blocks.keys()) == set(zip(iy.tolist(), ix.tolist(), strict=True))
         st = d.state()
         np.testing.assert_array_equal(d.shown.slit_ts, want(cube[1], B, st.t, st.s, st.l)[0])
+
+
+def test_the_blocks_kept_count_in_the_datasets_memory_and_its_budget_bounds_them(cube):
+    """The blocks along slits are the Dataset's (slit_cache): in nbytes(), and over their share of the memory budget
+    only the shown slit's stay, copied out of the runs they were read in, so that the memory of the others is freed."""
+    with Driver.open(cube[0]) as d:
+        ds = d.session.main
+        before = ds.nbytes()
+        show_slit(d, A)
+        block = SHAPE[1] * SHAPE[0] * SHAPE[2] * 4
+        nA = len(set(zip(*(a.tolist() for a in pixels(A)), strict=True)))
+        assert ds.slit_cache.nbytes() == nA * block and ds.nbytes() == before + nA * block
+        d.set_slit(B)
+        d.wait_idle()
+        keyB = set(zip(*(a.tolist() for a in pixels(B)), strict=True))
+        assert len(ds.slit_cache) > len(keyB)            # A's are still kept
+        ds.guard.budget = int(len(keyB) * block / dataset_mod.SLIT_SHARE)       # B's alone fit
+        ds.guard.update = lambda: ds.guard.budget                               # whatever the machine has free
+        ds.update_memory()
+        assert set(ds.slit_cache.keys()) == keyB and ds.slit_cache.nbytes() == len(keyB) * block
+        assert all(ds.slit_cache.get(p).base is None for p in keyB)            # no longer views of the runs read
+        st = d.state()
+        d.set_index("t", 1)
+        d.wait_idle()
+        np.testing.assert_array_equal(d.shown.slit_ts, want(cube[1], B, 1, st.s, st.l)[0])
 
 
 def test_while_drawn_a_late_result_for_its_previous_stage_is_shown_once_drawn_not(cube, monkeypatch):

@@ -27,12 +27,13 @@ from .io import FrameReader
 from .pixel import PixelReader, SpFits, calibrate_frames, open_pixel
 from .policy import Budgets, MemoryGuard, StorageProbe, plan_budgets
 from .rowbands import RowBands
-from .slits import read_slit_bands, read_slit_blocks, read_slit_slab, slit_pixels
+from .slits import SLIT_BLOCKS, SlitCache, read_slit_bands, read_slit_blocks, read_slit_slab, slit_pixels
 
 log = get_logger("data")
 
 IO_THREADS = 16             # the prototype's Cube pool: frame chunks and frames read ahead
 SLAB_THREADS = 64           # slabs along a slit: measured with 64 Python threads (E1.9), not beyond
+SLIT_SHARE = 0.2            # of the memory budget, for the blocks kept along slits (also at most SLIT_BLOCKS of them)
 
 
 def _done(value) -> Future:
@@ -65,6 +66,7 @@ class Dataset:
             self._slab_pool: ThreadPoolExecutor | None = None
             self.budgets: Budgets = self._plan()
             self.cache = FrameCache(self.frames, self.budgets.images)
+            self.slit_cache = SlitCache(int(self.guard.budget * SLIT_SHARE), SLIT_BLOCKS)
             self.pixel: PixelReader | None = None
             self.calibration = None
             self.frame_calibration: dict | None = None  # integer LP frames fitted to a FITS per-pixel file
@@ -127,11 +129,13 @@ class Dataset:
             self.pixel.set_budget(self.budgets.pixel)
         if self.rowbands is not None:
             self.rowbands.set_budget(self.budgets.pixel)
+        self.slit_cache.set_budget(int(self.guard.budget * SLIT_SHARE))
         return self.budgets
 
     def nbytes(self) -> int:
+        """The bytes the caches hold: images, the cursor's per-pixel blocks or row blocks, the blocks along slits."""
         return (self.cache.nbytes() + (self.pixel.nbytes() if self.pixel is not None else 0)
-                + (self.rowbands.nbytes() if self.rowbands is not None else 0))
+                + (self.rowbands.nbytes() if self.rowbands is not None else 0) + self.slit_cache.nbytes())
 
     # ---------------------------------------------------------------- reads
     def image(self, idx) -> Future:
@@ -204,7 +208,8 @@ class Dataset:
     def slit_blocks(self, pixels) -> Future:
         """({(y, x): (s, t, lambda) float32}, number of reads) for the given pixels from the per-pixel file: one read
         per run of neighbouring pixels in a row, all on the slab pool. Not through the per-pixel cache of the cursor's
-        blocks: a slit's pixels would push the cursor's strips out of it."""
+        blocks: a slit's pixels would push the cursor's strips out of it. Whoever keeps them keeps them in slit_cache
+        (core.slitreads), so that they count in nbytes() and in the memory budget (SLIT_SHARE)."""
         if self.pixel is None:
             raise LookupError(f"{self.path}: no per-pixel file; use bands()")
         pool, sp, pix = self._slab_threads(), self.pixel, [(int(y), int(x)) for y, x in pixels]
@@ -237,6 +242,8 @@ class Dataset:
         if self.executors is not None:
             self.executors.close()
             self.executors = None
+        if getattr(self, "slit_cache", None) is not None:
+            self.slit_cache.clear()
         sp = getattr(self, "pixel", None)
         if sp is not None:
             sp.close()

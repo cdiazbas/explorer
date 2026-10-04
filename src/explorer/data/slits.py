@@ -4,6 +4,7 @@ app/viewer.py (slit_path, slit_pixels, read_slit_blocks, read_slit_slab, read_sl
 With a per-pixel file one read per run of neighbouring pixels in a row gives everything along the slit (every
 Stokes, t and lambda); without it, one read per frame of the rows the slit spans gives one slice of it.
 """
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -74,6 +75,88 @@ def read_slit_blocks(sp: PixelReader, pixels, threads=16, pool: ThreadPoolExecut
         for j in range(k):
             where[(y, x0 + j)] = blk[j]
     return where, len(runs)
+
+
+SLIT_BLOCKS = 8000          # pixel blocks kept (the prototype's SLITC_BLOCKS, app/viewer.py:1690): 6173's are 41.7 kB
+
+
+class SlitCache:
+    """The (s, t, lambda) blocks read along slits (read_slit_blocks), kept: a slit moved, redrawn or still being drawn
+    reads only its new pixels. At most max_blocks blocks and max_bytes (the Dataset's share of the memory budget);
+    over either, only the blocks of the pixels given to keep() (the slit shown) stay, as the prototype's _slit_ready
+    (app/viewer.py:1857), even when they alone are over. Each block read is a view of its run's array: the blocks
+    that stay are copied, so that a dropped block frees its memory and nbytes() is the memory held. Thread-safe."""
+
+    def __init__(self, max_bytes: int | None = None, max_blocks: int | None = None):
+        self.max_bytes = max_bytes
+        self.max_blocks = max_blocks
+        self._blocks: dict = {}
+        self._bytes = 0
+        self._keep: set = set()
+        self._lock = threading.Lock()
+        self.version = 0                                # changes with what is kept: a slice made from it is reused
+        self.trims = 0
+
+    def keep(self, pixels) -> None:
+        """The pixels whose blocks are never dropped (the slit shown)."""
+        with self._lock:
+            self._keep = set(pixels)
+
+    def get(self, p):
+        return self._blocks.get(p)
+
+    def __contains__(self, p) -> bool:
+        return p in self._blocks
+
+    def __len__(self) -> int:
+        return len(self._blocks)
+
+    def keys(self) -> list:
+        with self._lock:
+            return list(self._blocks)
+
+    def missing(self, pixels) -> list:
+        """The distinct pixels of `pixels` with no block kept, in order."""
+        with self._lock:
+            return [p for p in dict.fromkeys(pixels) if p not in self._blocks]
+
+    def along(self, pixels) -> tuple[int, list]:
+        """The version, and the block of each pixel, None where none is kept."""
+        with self._lock:
+            return self.version, [self._blocks.get(p) for p in pixels]
+
+    def add(self, got: dict) -> None:
+        """Blocks read, {(y, x): block}; then, over the bounds, only those kept stay."""
+        with self._lock:
+            for p, b in got.items():
+                old = self._blocks.get(p)
+                self._bytes += b.nbytes - (old.nbytes if old is not None else 0)
+                self._blocks[p] = b
+            self.version += 1
+            self._trim()
+
+    def set_budget(self, max_bytes: int) -> None:
+        with self._lock:
+            self.max_bytes = int(max_bytes)
+            self._trim()
+
+    def _trim(self) -> None:
+        over = ((self.max_blocks is not None and len(self._blocks) > self.max_blocks)
+                or (self.max_bytes is not None and self._bytes > self.max_bytes))
+        if not over:
+            return
+        self._blocks = {k: b.copy() for k, b in self._blocks.items() if k in self._keep}
+        self._bytes = sum(b.nbytes for b in self._blocks.values())
+        self.version += 1
+        self.trims += 1
+
+    def nbytes(self) -> int:
+        return self._bytes
+
+    def clear(self) -> None:
+        with self._lock:
+            self._blocks, self._bytes = {}, 0
+            self.version += 1
 
 
 def read_slit_slab(sp: PixelReader, iy, ix, threads=16, pool: ThreadPoolExecutor | None = None):

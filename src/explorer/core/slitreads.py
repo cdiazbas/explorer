@@ -11,8 +11,9 @@ and lambda) and the spectral slice (lambda x position, at this Stokes and t).
 
 With a per-pixel file:
 - the (s, t, lambda) block of each pixel along the slit, read in runs of neighbouring pixels in a row on the slab
-  pool (Dataset.slit_blocks), and kept: a slit moved, redrawn or still being drawn reads only its new pixels, and a
-  change of t, lambda or Stokes reads nothing. One read at a time; the latest slit's missing pixels are read next.
+  pool (Dataset.slit_blocks), and kept (Dataset.slit_cache, counted in the Dataset's memory and bounded by its
+  budget): a slit moved, redrawn or still being drawn reads only its new pixels, and a change of t, lambda or Stokes
+  reads nothing. One read at a time; the latest slit's missing pixels are read next.
   The prototype measured 5-21 ms per read and 112-120 updates in 1.5-1.7 s of pointer motion this way (F73, 6173 on
   bellatrix);
 - the slices come from the blocks kept, NaN where a pixel's block has not come yet: they follow the pointer while
@@ -32,22 +33,19 @@ the prototype's synchronous paint 75), the panels frozen as the cursor's were be
 computes the path's pixels (a few hundred points) and draws. Nothing is read while the panel's tab is behind
 ("slit" not in ViewState.panels).
 """
-import threading
 import time
 from collections import OrderedDict
 
 import numpy as np
 
 from ..data.executors import Generations, ShownGate
-from ..data.slits import frame_index, slit_path, slit_pixels
+from ..data.slits import SLIT_BLOCKS, SlitCache, frame_index, slit_path, slit_pixels
 from ..obs import counter, get_logger
 from .levels import panel_levels
 from .state import ViewState
 
 log = get_logger("core")
 
-SLIT_BLOCKS = 8000          # pixel blocks kept (the prototype's SLITC_BLOCKS: 6173's are 42 kB, 330 MB); over it,
-                            # only the shown slit's stay
 REST_S = 0.25               # without a per-pixel file, a slit being drawn is read once the pointer rests this long
 BANDS = 64                  # slices kept per slit without a per-pixel file (the prototype kept every one)
 DRAFTS = 64                 # stages of the slit being drawn whose late results may still be shown
@@ -67,10 +65,9 @@ class SlitReads:
         self.pix: tuple[np.ndarray, np.ndarray] | None = None   # its pixels (iy, ix), one per sample
         self.path_id = 0                                # changes with the pixels: a result for another slit is dropped
         self._drafts: set[int] = set()                  # the path_ids that were stages of a slit being drawn
-        self.blocks: dict = {}                          # (y, x) -> (s, t, lambda) float32, per-pixel file only
-        self._version = 0                               # of blocks: a slice made from as many blocks is reused
-        self._keep: set = set()                         # the shown slit's pixels: never dropped from blocks
-        self._lock = threading.Lock()                   # blocks, _version, _keep
+        # (y, x) -> (s, t, lambda) float32 with a per-pixel file: the Dataset's, counted in its memory
+        cache = getattr(self.ds, "slit_cache", None)
+        self.blocks: SlitCache = cache if cache is not None else SlitCache(max_blocks=SLIT_BLOCKS)
         self._want: tuple | None = None                 # pixels whose missing blocks are read next
         self._busy = False                              # a block read in flight
         self._bands: OrderedDict = OrderedDict()        # (path_id, kind, s, u) -> (slice, levels); slit thread only
@@ -136,8 +133,7 @@ class SlitReads:
         if pix is not None and self._drawing(st):
             self._drafts = {p for p in self._drafts if p > self.path_id - DRAFTS} | {self.path_id}
         self.gens.new("slit")                           # a job for the slit before is skipped
-        with self._lock:
-            self._keep = set(zip(pix[0].tolist(), pix[1].tolist(), strict=True)) if pix is not None else set()
+        self.blocks.keep(zip(pix[0].tolist(), pix[1].tolist(), strict=True) if pix is not None else ())
         self.sink.slit_path(pix)
         return True
 
@@ -175,8 +171,7 @@ class SlitReads:
             return
         iy, ix = self._want
         self._want = None
-        with self._lock:
-            miss = [p for p in dict.fromkeys(zip(iy.tolist(), ix.tolist(), strict=True)) if p not in self.blocks]
+        miss = self.blocks.missing(zip(iy.tolist(), ix.tolist(), strict=True))
         if not miss:
             return
         self._busy = True
@@ -187,11 +182,7 @@ class SlitReads:
             if not f.cancelled() and f.exception() is None:
                 got, runs = f.result()
                 ms = (time.perf_counter() - q) * 1e3
-                with self._lock:
-                    self.blocks.update(got)
-                    self._version += 1
-                    if len(self.blocks) > SLIT_BLOCKS:  # the shown slit's only (the prototype's _slit_ready, 1857)
-                        self.blocks = {k: b for k, b in self.blocks.items() if k in self._keep}
+                self.blocks.add(got)                    # over its bounds, the shown slit's only (_slit_ready, 1857)
                 self.reads = self.reads[-999:] + [dict(pixels=len(miss), runs=runs, ms=round(ms, 2))]
                 counter("core.slit.block_reads")
             elif not f.cancelled():
@@ -211,10 +202,8 @@ class SlitReads:
 
     def _from_blocks(self, g, pid, pix, t, s, l, playing) -> None:  # noqa: E741
         """Both slices from the blocks kept (the prototype's _slitc_slices, 1709), on the slit thread; one made from
-        as many blocks for the same slit, Stokes and lambda (or t) is reused."""
-        with self._lock:
-            ver = self._version
-            got = [self.blocks.get(p) for p in zip(pix[0].tolist(), pix[1].tolist(), strict=True)]
+        the same blocks kept (SlitCache.version) for the same slit, Stokes and lambda (or t) is reused."""
+        ver, got = self.blocks.along(zip(pix[0].tolist(), pix[1].tolist(), strict=True))
         r, n = self.ds.roles, len(pix[0])
         out = {}
         for kind, rows, u in (("ts", max(1, r.nt), l), ("sl", max(1, r.nl), t)):
