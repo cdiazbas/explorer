@@ -142,9 +142,10 @@ class Dataset:
             return _done(hit)
         return self._images.submit(self.cache.get, idx)
 
-    def prefetch(self, idx) -> None:
-        """Read the frame at idx ahead, in the background (ignored outside the cube, cached or in flight)."""
-        self.cache.prefetch(idx)
+    def prefetch(self, idx) -> Future | None:
+        """Read the frame at idx ahead, in the background: the read's future, the one in flight if any (None when
+        cached or outside the cube)."""
+        return self.cache.prefetch(idx)
 
     def pixel_block(self, y: int, x: int) -> Future:
         """(s, t, lambda) float32 at pixel (y, x) from the per-pixel file (one read of the strip around it, or its

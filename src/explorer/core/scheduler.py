@@ -18,8 +18,13 @@ before they start (the spectrum is 56 reads, the lambda-t ~2600: sent together, 
 lambda-t, Mac 18-23 -> 3-5 ms, StorNext ~165 -> ~40 ms). A result is shown unless a newer one already is
 (executors.ShownGate): showing only the latest request's froze the panels while the mouse moved.
 Results come back from other threads through Loop.post, and the Sink is called on the main thread only.
+The image's levels are computed on the thread that read the frame, before its result is posted, and on the threads
+that read frames ahead (Levels.ahead): the UI thread finds them cached. Never for a read already stale, nor on the
+main thread: a future that completed before its callback was added runs it there, and the levels are then computed
+when the image is shown, as before.
 """
 import dataclasses
+import functools
 import threading
 from concurrent.futures import Future
 from typing import Protocol
@@ -112,6 +117,19 @@ class Scheduler:
         with self._flock:
             self._futures.discard(fut)
 
+    def _when_read(self, fut: Future, fn) -> None:
+        """fn(fut) on the thread that completes fut (the levels, then the post); in flight until fn returns, so
+        that a wait on in_flight() covers the levels computed after the read."""
+        posted: Future = Future()
+        self._track(posted)
+
+        def run(f: Future) -> None:
+            try:
+                fn(f)
+            finally:
+                posted.set_result(None)
+        fut.add_done_callback(run)
+
     def in_flight(self) -> list[Future]:
         """Reads not finished yet (their results then come through the loop)."""
         with self._flock:
@@ -141,7 +159,10 @@ class Scheduler:
         if fut.done():
             self._image_ready(g, idx, fut)
         else:
-            self._track(fut).add_done_callback(lambda f: self.loop.post(lambda: self._image_ready(g, idx, f)))
+            def done(f: Future, sym: bool = st.s > 0) -> None:     # on the thread that read the frame
+                self._levels_ahead(idx, sym, f, lambda: self.gens.stale("image", g))
+                self.loop.post(lambda: self._image_ready(g, idx, f))
+            self._when_read(fut, done)
 
     def _prefetch(self, st: ViewState, moved) -> None:
         if self._closed:
@@ -156,7 +177,21 @@ class Scheduler:
                     ahead = dataclasses.replace(st, **{axis: (getattr(st, axis) + d) % n})
                     if axis != "s":
                         ahead = dataclasses.replace(ahead, s=s)
-                    self.ds.prefetch(self.session.index(state=ahead))
+                    idx = self.session.index(state=ahead)
+                    fut = self.ds.prefetch(idx)
+                    if isinstance(fut, Future):         # None: cached, or outside the cube
+                        fut.add_done_callback(functools.partial(self._levels_ahead, idx, ahead.s > 0))
+
+    def _levels_ahead(self, idx: tuple, symmetric: bool, fut: Future, stale=None) -> None:
+        """The levels of the frame fut read, into the cache, on the thread that read it (Levels.ahead); nothing on
+        the main thread, for a read that failed or was cancelled, or a request already stale."""
+        if (self._closed or threading.current_thread() is threading.main_thread() or fut.cancelled()
+                or fut.exception() is not None or (stale is not None and stale())):
+            return
+        try:
+            self.levels.ahead(idx, symmetric, fut.result())
+        except Exception as e:                          # computed again when shown, where it reports
+            log.warning("levels of %s not computed ahead: %r", idx, e)
 
     # ---------------------------------------------------------------- the 2x2 view
     def set_grid(self, on: bool) -> None:
@@ -178,9 +213,10 @@ class Scheduler:
             if fut.done():
                 self._grid_ready(g, s, idx, fut)
             else:
-                def done(f: Future, s: int = s, idx: tuple = idx) -> None:
+                def done(f: Future, s: int = s, idx: tuple = idx) -> None:     # on the thread that read the frame
+                    self._levels_ahead(idx, s > 0, f, lambda: not self.grid or g != self._grid_gen)
                     self.loop.post(lambda: self._grid_ready(g, s, idx, f))
-                self._track(fut).add_done_callback(done)
+                self._when_read(fut, done)
 
     def _grid_ready(self, g: int, s: int, idx: tuple, fut: Future) -> None:
         if self._closed or fut.cancelled() or not self.grid or g != self._grid_gen:   # off, or a newer t or lambda

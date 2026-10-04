@@ -43,18 +43,23 @@ class FrameCache:
                 self._lru.move_to_end(idx)
             return img
 
-    def prefetch(self, idx) -> None:
-        """Start reading idx in the background, unless it is cached, in flight, or outside the cube."""
+    def prefetch(self, idx) -> Future | None:
+        """Start reading idx in the background, unless it is cached, in flight, or outside the cube. The read's
+        future (the one already in flight too), whose callbacks run on the thread that read the frame, after it
+        is cached; None when cached or outside the cube."""
         idx = tuple(int(i) for i in idx)
         if len(idx) != len(self.reader.shape) - 2 or any(
                 not 0 <= i < n for i, n in zip(idx, self.reader.shape[:-2], strict=True)):
-            return
+            return None
         with self._lock:
-            if idx in self._lru or idx in self._pending:
-                return
+            if idx in self._lru:
+                return None
+            if idx in self._pending:
+                return self._pending[idx]
             fut = self.reader.pool.submit(self.reader.read, idx, 1)
             self._pending[idx] = fut
         fut.add_done_callback(functools.partial(self._done, idx))
+        return fut
 
     def _store(self, idx, img) -> None:
         with self._lock:
