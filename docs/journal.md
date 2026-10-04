@@ -2364,3 +2364,21 @@ Primer intento, fallido: decidía por el look de la ventana. `test_start_paths` 
 disposición de classic cuando la ventana todavía lleva glass. Ahora se decide por la disposición que se
 restaura (la de glass es la de `-glass`), y la prueba nueva cubre también ese caso. `check.sh` en
 bellatrix: 504 pasan, las 2 de E0.13 como antes.
+
+### 2026-10-04: las pruebas de `setup_env.sh` en los runners de GitHub (ROADMAP X.4)
+
+La CI falló en Ubuntu 22.04 y 24.04 con la prueba de X.4 del caso desfasado. La causa fue una suposición
+mía: que con `PATH=/usr/bin:/bin` no habría uv ni conda, y el script se pararía enseguida. Los runners
+tienen conda. El script siguió a `== pip: requirements/lock-dev.txt`, y pip fue a instalar en el
+intérprete al que enlazaba el entorno de pega, el del propio proyecto. Lo paró PEP 668
+(«externally-managed-environment»); sin esa marca habría modificado ese Python.
+
+Ahora la prueba no depende de lo que tenga la máquina:
+- un uv de pega va primero en el `PATH`: responde a `--version`, así que el script lo elige antes que
+  cualquier conda, y falla en todo lo demás;
+- un conda de pega muestra que nunca se llega a él;
+- el `python` del entorno de pega es un script que no hace nada.
+
+Con un conda en el `PATH`, las dos pruebas pasan. Con el `setup_env.sh` de antes de X.4, la del entorno al
+día falla en el uv de pega, sin tocar nada. En el Mac y en bellatrix ya pasaban, porque allí no había
+conda en ese `PATH`.
