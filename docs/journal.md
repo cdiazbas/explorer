@@ -2607,3 +2607,25 @@ servidor.
 Que vaya mejor tras reiniciar XQuartz encaja con un XQuartz que se degrada con el uso. La incidencia #499
 describe un bloqueo que crece con el número de redimensionados. **Hipótesis, sin medir.** En el Mac, 30
 arrastres del contorno (1200 redimensionados) no mostraron crecimiento de las idas y vueltas.
+
+### 2026-10-04 (13): la vista 2×2, un 40 % más lenta que la del prototipo (ROADMAP E5.19)
+
+`bench/grid_step.py` mide el paso en t con la vista 2×2 (I, Q, U, V a la vez) en los dos programas, cada uno
+por su arranque: desde el paso hasta que los cuatro cuadrantes tienen la t nueva, más una vuelta del
+bucle. Condiciones: bellatrix, offscreen, cubo 6173, fijado al nodo NUMA 0 (CPU pares), bajo el cerrojo,
+4 rondas ABBA de 20 pasos, carga 0.2–2.
+
+| | explorer | prototipo |
+|---|---|---|
+| antes | 68.3–70.4 ms | 48.0–50.8 ms |
+| con todas las reducciones en tiras (experimento, parche en tiempo de ejecución) | 48.6–51.5 ms | — |
+| con el cambio | 48.8–49.4 ms | 49.8–51.2 ms |
+
+cProfile: `reduce_u8`, 8.8 ms por cuadrante, los cuatro uno tras otro. Un cuadrante sale de ~350×350 px,
+por debajo del umbral de tiras, que iba por píxeles de salida, así que se reducía en un solo hilo aunque
+lee la frame entera de 2k (f = 6). El umbral va ahora por lo que se lee (salida × f²). El prototipo diezma
+cada cuadrante (1 de cada k píxeles, sin promediar): más barato y con aliasing. Explorer promedia y queda
+igual de rápido. La vista única no cambia: 19.3–19.9 ms con el cambio frente a 19.5–21.1 con el
+`reduce_u8` antiguo, en ABBA. Una ejecución suelta de 26 ms antes de esa comparación era ruido.
+
+Quedan en el paso unos 11 ms de límites de color (2.7 ms por cuadrante), los mismos que en el prototipo.
