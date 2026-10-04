@@ -4,8 +4,9 @@
   the pointer, so a press anywhere (on another application too) reaches it and closes it.
 - The others are managed: WM_NAME and _NET_WM_NAME, WM_CLASS, WM_HINTS (input), WM_NORMAL_HINTS with static
   gravity (a frame of the manager never shifts the window: quartz-wm moved a framed utility window down 16 px per
-  round trip, audit F23c), WM_PROTOCOLS (delete, take focus, ping), _NET_WM_PID, a window type, the Motif hints of a
-  frameless window, WM_TRANSIENT_FOR of a window owned by another (a panel or a dialog stays above its owner).
+  round trip, audit F23c), WM_PROTOCOLS (delete, take focus, ping), _NET_WM_PID, _NET_WM_ICON (the window's icon,
+  set again when Qt changes it), a window type, the Motif hints of a frameless window, WM_TRANSIENT_FOR of a window
+  owned by another (a panel or a dialog stays above its owner).
 - Geometry: Qt's global coordinates are X root coordinates. A move or resize from Qt is asked of X; the notices of
   X are taken by Qt, except echoes of a request of ours older than the last one (unzooming through ssh met the late
   notice of the zoom and X and Qt ended with swapped sizes, audit F20i) and notices of older requests.
@@ -21,6 +22,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..._name import APP_NAME
 from ...obs import get_logger
+from . import icon as icon_mod
 from . import xproto as X
 from .trace import Trace, rect
 
@@ -35,7 +37,7 @@ ATOMS = ("WM_PROTOCOLS", "WM_DELETE_WINDOW", "WM_TAKE_FOCUS", "_NET_WM_PING", "W
          "_NET_WM_WINDOW_TYPE_TOOLTIP", "_NET_WM_WINDOW_TYPE_POPUP_MENU", "_MOTIF_WM_HINTS", "_NET_ACTIVE_WINDOW",
          "_NET_SUPPORTED", "_NET_WM_USER_TIME", "_NET_WM_STATE", "_NET_WM_STATE_MAXIMIZED_VERT",
          "_NET_WM_STATE_MAXIMIZED_HORZ", "_NET_WM_STATE_FULLSCREEN", "_NET_WM_STATE_HIDDEN", "_NET_WM_MOVERESIZE",
-         "XBRIDGE_TIME")
+         "_NET_WM_ICON", "XBRIDGE_TIME")
 EVENTS = (X.ExposureMask | X.PointerMotionMask | X.ButtonPressMask | X.ButtonReleaseMask | X.KeyPressMask
           | X.KeyReleaseMask | X.StructureNotifyMask | X.FocusChangeMask | X.EnterWindowMask | X.LeaveWindowMask
           | X.PropertyChangeMask)
@@ -83,6 +85,7 @@ class XWin:
         self.grab = False
         self.activate_on_map = False
         self.state_from_x = False
+        self.icon_key: int | None = None                # QIcon.cacheKey of the icon on X (0: none); None: not set yet
 
 
 class Windows:
@@ -101,6 +104,7 @@ class Windows:
         self.host = socket.gethostname()
         self.stats: dict[str, int] = dict(created=0, configures=0, notices=0, echoes=0, activations=0, focus_set=0)
         self.trace: Trace | None = None                 # EXPLORER_BRIDGE_TRACE
+        self._icon_data: tuple[int, tuple[int, ...], bytes] | None = None  # the last icon converted, its sizes
 
     # ---- start
     def start(self, atom_cookies) -> None:
@@ -181,6 +185,7 @@ class Windows:
         c.change_property(rec.xid, X.ATOM_WM_HINTS, X.ATOM_WM_HINTS, 32, [1 | 2, 1, 1, 0, 0, 0, 0, 0, 0])
         self.normal_hints(rec)
         c.change_property(rec.xid, A["_NET_WM_PID"], X.ATOM_CARDINAL, 32, [os.getpid()])
+        self.set_icon(rec)
         c.change_property(rec.xid, A["WM_CLIENT_MACHINE"], X.ATOM_STRING, 8, self.host.encode("latin-1", "replace"))
         if self.xtime:
             c.change_property(rec.xid, A["_NET_WM_USER_TIME"], X.ATOM_CARDINAL, 32, [self.xtime])
@@ -215,6 +220,43 @@ class Windows:
         self.c.change_property(rec.xid, X.ATOM_WM_NAME, X.ATOM_STRING, 8, title.encode("latin-1", "replace"))
         self.c.change_property(rec.xid, self.atoms["_NET_WM_NAME"], self.atoms["UTF8_STRING"], 8,
                                title.encode("utf-8"))
+
+    def set_icon(self, rec: XWin) -> None:
+        """_NET_WM_ICON from the window's icon (its own, else its owner's or the application's: QWidget.windowIcon) at
+        icon.NET_WM_SIZES, in one ChangeProperty; deleted when there is none. Nothing is sent when the icon on X is
+        that one already: Qt tells every window of a change of the application's icon, and the whole icon is 80 kB.
+        The windows of the application share its QIcon, converted once."""
+        ic = rec.w.windowIcon()
+        key = 0 if ic.isNull() else ic.cacheKey()
+        if key == rec.icon_key:
+            return
+        made = rec.icon_key is None                     # a window just made has no property to delete
+        rec.icon_key = key
+        prop = self.atoms["_NET_WM_ICON"]
+        sizes = icon_mod.sizes_within(self.c.max_request) if key else ()
+        data = b""
+        if sizes:
+            cached = self._icon_data
+            if cached is not None and cached[:2] == (key, sizes):
+                data = cached[2]
+            else:
+                data = icon_mod.packed(icon_mod.net_wm_icon(ic, sizes))
+                self._icon_data = (key, sizes, data)
+        tr = self.trace
+        if not data:
+            if not made:
+                self.c.delete_property(rec.xid, prop)
+            if tr is not None:
+                tr.write("ICON", rec.xid, ("none" if made else "none: _NET_WM_ICON deleted")
+                         + ("" if not key else f", not one size fits in a request of {self.c.max_request} B"))
+            return
+        self.c.change_property(rec.xid, prop, X.ATOM_CARDINAL, 32, data)
+        if tr is not None:
+            left = [s for s in icon_mod.NET_WM_SIZES if s not in sizes]
+            tr.write("ICON", rec.xid, f"{', '.join(map(str, sizes))} px, {len(data) // 4} CARDINALs, "
+                                      f"{icon_mod.CHANGE_PROPERTY_HEAD + len(data)} B"
+                     + (f"; {', '.join(map(str, left))} px left out: over the {self.c.max_request} B of a request"
+                        if left else ""))
 
     def normal_hints(self, rec: XWin) -> None:
         w, g = rec.w, rec.w.geometry()

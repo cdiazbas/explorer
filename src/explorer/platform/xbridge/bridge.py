@@ -223,7 +223,7 @@ class Bridge(QtCore.QObject):
                     self._schedule()
             return False
         if t not in (E.Type.Show, E.Type.Hide, E.Type.Move, E.Type.Resize, E.Type.WindowStateChange,
-                     E.Type.WindowTitleChange) or not isinstance(obj, QtWidgets.QWidget):
+                     E.Type.WindowTitleChange, E.Type.WindowIconChange) or not isinstance(obj, QtWidgets.QWidget):
             return False
         if not obj.isWindow():
             if t in (E.Type.Move, E.Type.Resize, E.Type.Hide):
@@ -249,6 +249,11 @@ class Bridge(QtCore.QObject):
             self._state_changed(rec, e.oldState(), obj.windowState())
         elif t == E.Type.WindowTitleChange and not rec.popup:
             self.windows.set_title(rec)
+            self.c.flush()
+        elif t == E.Type.WindowIconChange and not rec.popup:
+            # its own icon, or the application's set after the window was made (QApplication.setWindowIcon tells
+            # every top-level so)
+            self.windows.set_icon(rec)
             self.c.flush()
         return False
 

@@ -606,9 +606,10 @@ class Connection:
         return self._request_n(_encode(12, 0, struct.pack("<IHxx", wid, mask) + vals))[0]
 
     def change_property(self, wid, prop, type_, fmt, data, mode=PropModeReplace) -> None:
-        if fmt == 8:
+        """data: the values, or bytes already in the wire's order (little-endian) for any format."""
+        if fmt == 8 or isinstance(data, (bytes, bytearray)):
             raw = bytes(data)
-            n = len(raw)
+            n = len(raw) // (fmt // 8)
         elif fmt == 16:
             raw = struct.pack(f"<{len(data)}H", *data)
             n = len(data)

@@ -6,6 +6,7 @@ bridge (EXPLORER_X11=bridge); it replaced the prototype's bridge brought over as
     transport.py  pixels: tile comparison, grey at 1 B/px through RENDER, double buffer, on a thread of its own
     kernels.py    the numba kernels of the transport
     windows.py    X windows for Qt's top-levels: ICCCM/EWMH, geometry, state, shape, cursor, activation
+    icon.py       a window's icon as _NET_WM_ICON, in one request (ui.appicon takes the conversion from here)
     qtinput.py    X input into Qt through public API only
     keys.py       X keyboard to Qt keys (no Qt)
     clipboard.py  the X CLIPBOARD, with INCR both ways

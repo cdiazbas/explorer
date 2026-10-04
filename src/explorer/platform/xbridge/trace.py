@@ -9,6 +9,7 @@ One line per step, milliseconds since the trace began, the window by name (main,
 X id:
 
       390.2 CREATE  spectrum  0x400007  (2757, 55, 560, 442) managed, owner -
+      390.3 ICON    spectrum  0x400007  16, 32, 48, 128 px, 19976 CARDINALs, 79928 B
       390.4 OWNER   spectrum  0x400007  transient for main 0x40000b, after its map
       402.9 SHAPE   spectrum  0x400007  41 rects in (0, 0, 560, 442)
       403.1 GRAB    spectrum  0x400007  1 rects in (0, 0, 560, 442)
@@ -20,12 +21,12 @@ X id:
                                          shows), Qt != sent 0 px; saved p0-spectrum-x.png
 
 GRAB is what Qt repainted, grabbed here. Out on the control connection: CREATE, OWNER, MAP, CONF (a geometry asked
-of X), SHAPE, DESTROY; on the image connection: SEND (an update: pixels into the window's back pixmap, then one copy
-into the window), COPY (an exposure answered from the back pixmap), MASK (the 8-bit pixmap the grey pieces of every
-window go through). Times are when a request left this process: X keeps the order of the requests of one connection,
-not between the two. In: NOTICE (a ConfigureNotify, and what the bridge did with it), WHERE (the answer to where a
-framed window is), MAPPED, UNMAPPED, REPARENT, EXPOSE, XERR (an error of either connection: the bridge goes on without
-one, so it is otherwise unseen).
+of X), SHAPE, ICON (_NET_WM_ICON set, at its sizes, or deleted), DESTROY; on the image connection: SEND (an update:
+pixels into the window's back pixmap, then one copy into the window), COPY (an exposure answered from the back
+pixmap), MASK (the 8-bit pixmap the grey pieces of every window go through). Times are when a request left this
+process: X keeps the order of the requests of one connection, not between the two. In: NOTICE (a ConfigureNotify,
+and what the bridge did with it), WHERE (the answer to where a framed window is), MAPPED, UNMAPPED, REPARENT,
+EXPOSE, XERR (an error of either connection: the bridge goes on without one, so it is otherwise unseen).
 PROBE, at EXPLORER_BRIDGE_PROBE seconds after the window was shown (comma-separated; default 2,6): each window's
 pixels read back from the X server (GetImage, on the image connection after the updates sent before it), counted
 against what the bridge sent there and what Qt has now; the X image saved as PNG in bridge-<pid>/, with the other two
@@ -47,8 +48,8 @@ ENV = f"{ENV_PREFIX}BRIDGE_TRACE"
 PROBE_ENV = f"{ENV_PREFIX}BRIDGE_PROBE"
 PROBE_S = (2.0, 6.0)
 REQUESTS = {1: "CreateWindow", 2: "ChangeWindowAttributes", 4: "DestroyWindow", 8: "MapWindow", 12: "ConfigureWindow",
-            18: "ChangeProperty", 40: "TranslateCoordinates", 53: "CreatePixmap", 54: "FreePixmap",
-            55: "CreateGC", 60: "FreeGC", 62: "CopyArea", 72: "PutImage", 73: "GetImage"}
+            18: "ChangeProperty", 19: "DeleteProperty", 40: "TranslateCoordinates", 53: "CreatePixmap",
+            54: "FreePixmap", 55: "CreateGC", 60: "FreeGC", 62: "CopyArea", 72: "PutImage", 73: "GetImage"}
 
 
 def wanted(env=None) -> bool:
