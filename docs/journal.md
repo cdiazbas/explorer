@@ -2730,3 +2730,259 @@ por forma de mostrar (`ui/v1.<forma>/theme` en `layout.ini`):
 
 **Pruebas:** dos nuevas, en `test_layout.py` y `test_app_start.py`; esta encadena cuatro arranques con T. Las
 dos fallan sin el cambio. Toda la suite unitaria pasa en bellatrix: 491 y 1 omitida.
+
+### 2026-10-04 (18): `explorer` en el PATH de una terminal nueva, comprobado (ROADMAP X.3)
+
+En bellatrix, `explorer --version` daba `command not found`. El enlace `~/.local/bin/explorer` existía, pero
+esa carpeta no estaba en el PATH y el `~/.bashrc` no tenía el bloque.
+
+**Causa:** `--link` juzgaba el PATH por el del proceso que lo ejecutaba. Por ssh o desde un guion, ese no es el
+que tendrá la terminal siguiente del usuario. Además, sin una terminal donde preguntar, no escribía el fichero
+de arranque.
+
+**Ahora:**
+- **Qué PATH tendrá:** se pregunta a una terminal nueva de la shell del usuario, de login y sin login, desde un
+  entorno limpio.
+- **Si ya hay una carpeta habitual en ese PATH** (`$XDG_BIN_HOME`, `~/.local/bin`, `~/bin`), el enlace va ahí y
+  no se escribe nada.
+- **Si no,** `~/.local/bin` entra en el fichero de arranque, en un bloque marcado y una sola vez:
+  - bash: `~/.bashrc`, y además el de login si este no lee `~/.bashrc`;
+  - zsh: `~/.zshrc`.
+
+  El bloque se escribe como `$HOME/...`, así sirve a un home montado en otra ruta. `--no-update-shell` no
+  escribe nada y dice qué añadir.
+- **La comprobación:** las terminales nuevas tienen que encontrar este enlace antes que ningún otro `explorer` y
+  ejecutarlo. Si no, falla y dice por qué.
+
+**Probado:**
+- **`test_setup_env.py`,** siempre en un HOME temporal: 6 pruebas nuevas, que fallan con el script anterior. En
+  macOS (bash 3.2 y zsh) y en bellatrix.
+- **Con copias de los ficheros de arranque reales:**
+  - Mac: escribe en `.bashrc` y `.bash_profile`, porque este no lee el primero. 5.8 s.
+  - bellatrix: escribe solo en `.bashrc`. 27 s, por las cinco shells nuevas con ese `.bashrc`.
+  - La segunda ejecución no escribe nada en ninguno de los dos.
+- **El paso del CI,** que ahora prueba bash y zsh, de login y sin login, desde otra carpeta: pasa en el Mac y
+  en bellatrix con un HOME vacío.
+
+**Falta** ejecutarlo en la cuenta real del usuario en bellatrix; toca su `~/.bashrc` y espera su visto bueno.
+
+### 2026-10-04 (19): los límites de color, fuera del hilo de la interfaz (ROADMAP E5.21)
+
+**Hipótesis:** `stats.limits` suelta el GIL, así que calcularlo en el hilo que lee no frena la interfaz.
+Condiciones: bellatrix, fijado al nodo 0, sin el cerrojo, carga 2.8, 8 frames de 2044×2030 del cubo 6173, 80
+llamadas.
+
+| medida | resultado |
+|---|---|
+| `limits` en serie | 1.69 ms por frame |
+| `limits` en 4 hilos | 0.64 ms por frame |
+| bucle de Python en el hilo principal, solo | 11.50 ms |
+| el mismo bucle con `limits` en otro hilo | 10.66 ms |
+
+Lo suelta.
+
+**Hecho:**
+- **Dónde se calculan:** `Levels.ahead` calcula y guarda los límites en el hilo que leyó la frame, antes de
+  pasar el resultado a la interfaz. Vale para la imagen, cada cuadrante de la vista 2×2 y las frames leídas por
+  adelantado; `prefetch` da ahora el futuro de su lectura.
+- **En la interfaz:** los encuentra en la caché. Uno que se está calculando en otro hilo se espera, no se repite.
+- **Cuándo no se calculan:** para una lectura ya vieja, en el hilo principal, y con el candado cerrado (los
+  límites fijos siguen ganando).
+- **Valores:** los de antes (`image_levels`), luego los del prototipo (golden).
+- **Seguimiento de las lecturas:** el planificador sigue una lectura hasta que su resultado está en el bucle.
+  Con el futuro de la lectura, una espera sobre `in_flight()` acababa antes de los límites y `settle` daba
+  vueltas en vacío.
+
+**Medida:** paso en t con la vista 2×2. `bench/grid_step.py`, offscreen, cubo 6173, bellatrix, nodo 0, bajo el
+cerrojo, orden A B C C B A en 4 rondas, 20 pasos por ejecución, carga 2.6–4.8:
+
+| | medianas por ejecución |
+|---|---|
+| antes | 50.8–55.0 ms (y una primera en frío de 61.0) |
+| con el cambio | 45.4–48.6 ms |
+| prototipo | 47.9–54.4 ms |
+
+**Contadores, en los 160 pasos con el cambio:**
+- 0 límites calculados en la interfaz y 0 esperas;
+- 100 de 100 servidos de la caché por ejecución;
+- antes del cambio, 80 calculados en la interfaz por ejecución.
+
+El hueco entre guardar una frame leída por adelantado y tener sus límites no se dio nunca, así que no hace falta
+tocar la caché de frames.
+
+**Negativo:**
+- Se ganan ~5 ms de los ~7 del techo medido con los límites gratis (47 → 40–42 ms, aquel con menos carga).
+- La mediana queda por debajo de los 50 ms de 20 fps; el p95 no (53–66 ms).
+
+### 2026-10-04 (20): E7.1, dibujar la rendija (variante D, sin cortes aún)
+
+**Portado del prototipo** a `ui/slit.py`, de `app/viewer.py` 811, 836, 869-875, 1224-1243, 1355, 1419,
+1486-1619 y 1721-1739, y de `app/icons.py` 111 y 219:
+- S o el botón de la barra activan el modo.
+- Clic añade un punto en el centro del píxel; doble clic termina.
+- Clic derecho quita el último punto; sin puntos, sale del modo.
+- Esc o S cancelan la rendija a medio dibujar y conservan la terminada; ⌫ o Supr la quitan.
+- Dos puntos dan una recta; tres o más, una Catmull-Rom por todos.
+- La terminada va a `ViewState.path` mediante `Session.set_path`, que exige dos puntos como mínimo y los recorta
+  a la imagen.
+
+**El lápiz** se dibuja al dpr de la pantalla de la imagen (F69a), con el punto activo en (1, 23).
+`ui/gestures.py` devolvía la cruz tras cada clic o arrastre; ahora devuelve el puntero en reposo, y el lápiz
+sobrevive al clic.
+
+**Color y aspectos:**
+- El trazo usa el color del cursor en classic y el acento en modern y en glass.
+- La pista sigue al tema (T).
+- En la vista 2×2 la rendija está en los cuatro paneles y se puede dibujar en cualquiera.
+- En glass la pista baja bajo la clave de color.
+- A y D quedan libres (F75); la pista no las nombra hasta que existan.
+
+**Pruebas:** en bellatrix, offscreen, nodo 1.
+- `test_slit_draw`: 15/15 en 3 de 3 ejecuciones. Las 15 fallan en `248db13`. Con solo `gestures.py` revertido
+  falla 1, porque vuelve la cruz.
+- `tests/unit` en la copia del agente: 509 pasan y fallan 2, las mismas que en `248db13`, donde pasan 494:
+  - la de `run.sh` del doctor, porque esa copia no tenía entorno;
+  - el tool tip del puente, que solo falla en la suite completa.
+
+**Negativo:** en glass el botón de la rendija no se ve, porque glass solo pasa a su barra los botones que
+conoce. El arreglo va en `ui/glass.py`: añadir `nav.slit` en `GlassChrome._bar` y en su `_flatten`. Falta
+también comprobarlo en una ventana real, y eso lo mira el usuario.
+
+**Nota de método:** los agentes en paralelo compartían el scratchpad, y un `msg.txt` con nombre fijo llevó el
+mensaje de un commit a otro. Se corrigió con `--amend` antes de integrar. Cada agente debe usar su propio
+subdirectorio.
+
+### 2026-10-04 (21): icono de la aplicación, el cubo con un corte (ROADMAP E5.28)
+
+El usuario eligió el cubo entre cinco propuestas. Hasta ahora explorer no tenía icono.
+
+**Qué es:**
+- La fuente es `ui/assets/explorer.svg`: un cubo isométrico con un corte en el acento, sobre una losa oscura.
+- Lo dibuja el motor SVG de Qt en todas las ventanas.
+- El plugin `qsvgicon` viene en las ruedas de PySide6-Essentials 6.11.2: comprobado en el Mac arm64 y en
+  bellatrix. El CI instala las mismas ruedas, pero no se ha ejecutado allí.
+- Sin el plugin (rutas de plugins vacías), explorer arranca sin icono y lo avisa en el registro.
+
+**Coste,** medido en procesos nuevos con la aplicación ya creada:
+
+| dónde | coste |
+|---|---|
+| Mac, sin pantalla (3 ejecuciones) | 2.6–8 ms |
+| Mac, cocoa (3 ejecuciones) | unos 4 ms de QIcon más 11 ms de la imagen de 256 px del Dock; 34 ms la primera vez |
+| Mac, primera carga del plugin con el Mac en swap | 538 ms |
+| bellatrix, sin pantalla, nodo 1 | 4.3 ms (un QIcon vacío, 1.7 ms) |
+
+Generar los PNG con QSvgRenderer costaba 15–30 ms, así que se descartó.
+
+**Por eso se pone después de la primera imagen.** Importar `appicon` cuesta 2.7 ms en StorNext, y también se
+importa después.
+- Primera imagen en bellatrix (cubo sintético, sin pantalla, 7 ejecuciones alternadas): mediana 2.29 s antes y
+  2.37 s después, dentro del ruido (1.9–3.2 s).
+- El icono llega 29–37 ms después de la primera imagen, así que no puede estar en ese tiempo.
+- En el Mac, el Dock muestra el icono de Python hasta la primera imagen y luego cambia al cubo.
+
+**Qué muestra cada sistema:**
+- **xcb** (Xvfb en bellatrix): la ventana principal, creada antes del icono, publica después `_NET_WM_ICON` a
+  16, 32, 64 y 128 px.
+- **Mac:** `NSApp.applicationIconImage` es el cubo a 256 px.
+- **Puente X11:** la ventana no tiene `_NET_WM_ICON`. Es un resultado negativo y queda como E5.29.
+
+**Exportación:** `tools/icons/export.py` genera desde el mismo SVG los PNG de 16 a 1024, el ICO, el ICNS (con
+iconutil) y el árbol hicolor. No se versiona nada generado.
+
+**Arnés de pruebas:** el de `test_start_paths` sustituía entera la espera tras la primera imagen. Con el icono,
+los 9 arranques fallaban. Ahora solo intercepta la de `run()`.
+
+**Pendiente de diseño, sin probar:** a 16 px el trazo (0.78 px) queda blando. Una variante con trazo más grueso
+para 16 px es decisión de diseño.
+
+**El parche del puente (E5.29),** descrito y sin aplicar, porque el puente lo tenía otro trabajo (E5.25):
+- **La conversión:** el contrato de capas impide que `platform` importe `ui`. La conversión del QIcon a ARGB
+  (`appicon.net_wm_icon`, que solo usa Qt) pasa a `platform/xbridge`, y `ui.appicon` la importa de allí.
+- **`windows.py`:**
+  - `_NET_WM_ICON` entra en `ATOMS`.
+  - En `_properties`, tras `_NET_WM_PID`, se llama a un `set_icon(rec)`, que cambia la propiedad con los datos
+    del icono de la ventana o la borra si no hay icono.
+- **`bridge.py`:**
+  - El filtro de eventos atiende `WindowIconChange`, junto a `WindowTitleChange`, para las ventanas que no son
+    emergentes.
+  - Hace falta porque el icono llega después de la primera imagen, con la ventana principal ya creada.
+  - Que Qt envíe ese evento a las ventanas de nivel superior tras `ApplicationWindowIconChange` sale de leer su
+    código; no está probado.
+- **Tamaño:** 16 + 32 + 48 + 128 px son 79 904 bytes, bajo los 262 140 de una petición sin BIG-REQUESTS. Basta
+  una sola ChangeProperty.
+
+### 2026-10-04 (22): los paneles de glass mal pintados al arrancar por el puente: la máscara gris (ROADMAP E5.25)
+
+**La traza del puente.** La traza de geometría no ve el pintado, así que el puente tiene ahora la suya.
+- `EXPLORER_BRIDGE_TRACE=1` escribe `~/.cache/explorer/logs/bridge-<pid>.log`.
+- Por ventana: lo que se crea, mapea, forma, mueve, envía y copia; los avisos del servidor; y los errores de las
+  dos conexiones del puente, que antes se ignoraban sin decir nada.
+- A los `EXPLORER_BRIDGE_PROBE` s (2 y 6 por defecto) lee cada ventana del servidor X (GetImage), la compara con
+  lo enviado y con lo que tiene Qt, y guarda las imágenes en PNG en `bridge-<pid>/`.
+
+**Reproducido en Xvfb.** Condiciones: bellatrix, Xvfb a 3840×1080, el gestor tipo quartz-wm con `--late 300`, y
+el arranque real en el glass guardado (antes, una sesión en glass cerrada).
+- La imagen de la λ–t quedó negra en X, en todos los sondeos, en 4 de 10 arranques con el cubo sintético
+  (91 709 px) y en 4 de 10 con el CRISP 6173 (118 854 px).
+- Los 8 tenían la λ–t antes que la ventana principal; ninguno de los otros 12 falló.
+- Cada fallo dejó 4 errores en la conexión de imagen, todos sobre la máscara gris: BadDrawable en PutImage y
+  BadPicture en Composite.
+
+**El mecanismo:**
+1. La primera actualización lleva las tres ventanas.
+2. Sus trozos grises (1 B/px por RENDER) pasan por una sola máscara de 8 bits, que crece cuando una ventana la
+   necesita mayor y libera la vieja.
+3. Los trozos de cada ventana se codifican uno tras otro y se envían todos al final. Cuando la máscara creció
+   para la principal (743×923), la de la λ–t (560×437) ya estaba liberada al salir sus trozos.
+4. El puente los anotó como enviados, y la comprobación periódica no volvió a mandarlos.
+
+El orden de las ventanas es el de `topLevelWidgets()` de Qt, que cambia de un arranque a otro: por eso «no
+siempre, muchas veces». El espectro, en oscuro, no tiene trozos grises.
+
+**Arreglo:** una máscara por actualización, del tamaño de la mayor ventana con trozos grises, pedida antes de
+codificar. Después, 0 de 10 con el sintético (3 con la λ–t primero) y 0 de 10 con el 6173 (6 con la λ–t
+primero).
+
+**Pruebas:**
+- `test_bridge_glass_start.py` envía una actualización con un panel de 560×408 y después una ventana de
+  825×863, grises, y las lee de X. Antes del arreglo, 228 480 de 228 480 px mal y 2 errores X; ahora, bien.
+- Otra prueba recorre el arranque entero tres veces con la traza. En una pantalla de 1920 px pasa también sin el
+  arreglo, porque la imagen de la λ–t no siempre va en la primera actualización: 6 arranques antes del arreglo,
+  5 con la λ–t primero, ninguno falló.
+- `tests/xvfb`: 25 pasan y 2 se omiten. `tests/unit`: 498 pasan.
+
+Las 136–153 px distintas en todos los sondeos eran las esquinas fuera de la forma redondeada; la traza ya no las
+cuenta.
+
+**Sin confirmar en XQuartz** que sea lo que ve el usuario.
+
+**Hipótesis sin medir:** la ventana se crea por la conexión de control y su GC por la de imagen, y un servidor
+puede atender antes a la segunda. La traza lo diría con un XERR BadDrawable en CreateGC.
+
+### 2026-10-04 (23): el tooltip que fallaba a veces en la suite completa: ventanas que la limpieza no borraba
+
+**El síntoma:** `test_xbridge_input::test_tool_tip_after_a_rest` fallaba en la suite completa y pasaba sola (3 de
+3).
+
+**No era un commit:** en bellatrix (nodo 1, cuatro suites en paralelo), falló en `d0cd960`, que es anterior a los
+cambios de glass del día, y en `8d25d3e`, pero no en `0c93104` ni en `33b8ffd`.
+
+**Lo que se vio con una sonda (plugin de pytest):**
+- En el momento del fallo, la ventana de la prueba estaba activa, no había emergentes ni modales, y el tooltip no
+  llegó a mostrarse.
+- Seguían visibles dos paneles flotantes, `spectrum` y `lambda_t`. El de espectros ocupaba (239, 48, 560, 380) en
+  la pantalla, y el puntero de la prueba caía en (342, 341), dentro de él.
+- Los dejó `test_polish.py::test_glass_panels_are_never_too_short`: su `Shell` estaba oculto, pero vivo.
+
+**El mecanismo:** la limpieza (`tests/conftest.py`, `_no_windows_left`) apuntaba las ventanas de antes de la prueba
+por el `id()` de sus envoltorios Python, que eran temporales. Liberados, sus direcciones las reutilizaban las
+ventanas que creaba la prueba, que se tomaban por ventanas de antes y no se borraban.
+
+**Medido:** con un registro de esos casos, una suite completa saltó 25 ventanas (11 `Shell` y 14 `QMainWindow`),
+y el tooltip falló. Con los envoltorios vivos mientras dura la prueba, sus `id()` no se reutilizan: 2 de 2 suites
+sin ese fallo.
+
+**Una nota sobre mis sondas:** una primera versión de la sonda miraba las ventanas justo después de la limpieza, y
+esa suite acabó en segfault dentro del `gc.collect()` de la limpieza. Mirando al empezar la prueba siguiente no
+volvió a pasar. Es probable que la causara la propia sonda, pero no lo he aislado.
