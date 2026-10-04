@@ -2714,3 +2714,19 @@ el Mac no lo tienen, y la orden `explorer` pasa por su propio guion.
 
 **Arreglo:** relanzar con `sys.orig_argv`, que conserva `-m explorer`. La prueba nueva de `test_cli.py`
 falla antes del arreglo con `-m` y pasa con la orden.
+
+### 2026-10-04 (17): el tema elegido con T, también en el arranque siguiente (ROADMAP E5.24)
+
+El usuario decidió que el tema se guarde. Se guarda el que está en uso al cerrar, como el aspecto, pero uno
+por forma de mostrar (`ui/v1.<forma>/theme` en `layout.ini`):
+- **Por qué no uno para todas:** por el puente auto es oscuro y en un Mac local es nativo. Uno común
+  llevaría el oscuro de una sesión por ssh al Mac local, que dejaría el tema nativo por Fusion oscuro.
+- **Sin pulsar T** se guarda el mismo que se habría elegido, así que no cambia nada.
+- **`--theme` explícito manda.** Sin él, el guardado; si no hay ninguno, auto.
+- **`--reset-layout`** no lo borra: el tema no es disposición.
+
+`--theme` y `start(theme=...)` pasan a tener `None` por defecto. La prueba de `explorer demo` esperaba
+`auto` y ahora espera `None`, que significa lo mismo que en `explorer`.
+
+**Pruebas:** dos nuevas, en `test_layout.py` y `test_app_start.py`; esta encadena cuatro arranques con T. Las
+dos fallan sin el cambio. Toda la suite unitaria pasa en bellatrix: 491 y 1 omitida.
