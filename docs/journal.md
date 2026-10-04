@@ -2407,3 +2407,17 @@ de float32 con otra versión. Comprobé la segunda rama sustituyendo solo el per
 de 2.3.5. Dos errores de mi simulación por el camino, ambos corregidos:
 - falsear `np.__version__` antes de importar astropy rompió astropy;
 - `np.isclose` con su `atol=1e-8` por defecto sustituía todos los percentiles de orden 1e-11.
+
+### 2026-10-04 (4): una prueba de tiempos en un runner cargado
+
+En `macos-latest` falló `test_the_server_never_waits_for_the_pointer`. El log tenía la explicación: los 20
+pasos con `sleep(0.025)` tardaron 2.41 s en vez de 0.5 (unos 120 ms por cada sleep de 25 ms), y el último
+tamaño llegó 0.246 s después del último movimiento, cuando el límite era 0.2 s. No había nada encolado:
+el runner iba lento. La prueba quería comprobar una propiedad («un tamaño por detrás como mucho, nunca el
+arrastre entero») y la medía con el reloj. Ahora la cuenta: tras el último movimiento, el servidor aplica
+como mucho el tamaño en curso y el último.
+
+Medido con una versión encolada de pega, con movimientos cada 10 ms frente a 30 ms por tamaño: el contorno
+deja 1 o 2 tamaños por aplicar, la versión encolada 13 o 14, igual con todos los tiempos 5 veces más
+largos. Con movimientos cada 25 ms la separación era pobre (1–2 frente a 3–4), por eso la prueba usa 10
+ms. Pasa 5 de 5 veces aquí, con 8 procesos ocupando la CPU, y 3 de 3 en bellatrix.
