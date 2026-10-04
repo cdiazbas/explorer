@@ -17,6 +17,7 @@ from explorer.ui import app as appmod
 from explorer.ui.shell import Shell
 
 SETTLE_S = 0.8                                          # a look's deferred placing and fitting are done by then
+QUIT_AFTER = 0.1                                        # run()'s quit_after: the call the scenario takes over
 
 
 def snapshot(w: Shell, step: str) -> dict:
@@ -56,8 +57,11 @@ def scenario(w: Shell, quit) -> None:
 
 def main() -> int:
     cube, look = sys.argv[1], sys.argv[2]
-    Shell.after_first_image = lambda self, s, quit: QtCore.QTimer.singleShot(0, lambda: scenario(self, quit))
-    return appmod.run(cube, look=None if look == "-" else look, quit_after=0.1)
+    after = Shell.after_first_image
+    # run()'s wait to quit runs the scenario instead, which quits at its end; the others (the app's icon) are kept
+    Shell.after_first_image = lambda self, s, fn: (QtCore.QTimer.singleShot(0, lambda: scenario(self, fn))
+                                                   if s == QUIT_AFTER else after(self, s, fn))
+    return appmod.run(cube, look=None if look == "-" else look, quit_after=QUIT_AFTER)
 
 
 if __name__ == "__main__":
