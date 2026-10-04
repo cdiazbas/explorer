@@ -26,6 +26,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ...obs import get_logger
 from . import clipboard as clip_mod
 from . import keys
+from . import trace as trace_mod
 from . import xproto as X
 from .qtinput import QtInput
 from .transport import Transport
@@ -48,10 +49,11 @@ class XLink:
         self.events = X.EventQueue(lambda: None)        # the bridge takes over the wake-up
         self.lost: BaseException | None = None
         self.ready_cb: Callable[[], None] | None = None
+        self.trace = trace_mod.from_env()                # EXPLORER_BRIDGE_TRACE=1: what goes to X, per window
         self.c = X.Connection(self.display, name="xbridge-ctl", on_event=self.events.put,
                               on_error=self._error, on_lost=self._lost)
         self.connect_s = time.perf_counter() - t0
-        self.transport = Transport(self.display, on_ready=self._ready, on_error=self._lost)
+        self.transport = Transport(self.display, on_ready=self._ready, on_error=self._lost, trace=self.trace)
         c = self.c
         ext_cookies = {}
         for n in EXTENSIONS:                            # sent together; one round trip for all
@@ -79,6 +81,8 @@ class XLink:
 
     def _error(self, err):
         log.debug("X error on the control connection: %s", err)
+        if self.trace is not None:
+            self.trace.error("ctl", err)
 
     def _lost(self, e):
         self.lost = e
@@ -119,6 +123,8 @@ class Bridge(QtCore.QObject):
         link.ready_cb = self._sender_ready.emit
         self.transport = link.transport
         self.windows = Windows(self.c, on_destroyed=lambda rec: self.transport.forget(rec.xid))
+        self.trace = link.trace
+        self.windows.trace = self.trace
         self.windows.start({n: link.atom_cookies[n] for n in ATOMS})
         self.keymap: keys.Keymap | None = None
         try:
@@ -170,6 +176,9 @@ class Bridge(QtCore.QObject):
         self._check.start()
         self._schedule()
         self._drain()                                   # anything that came before the bridge took over
+        if self.trace is not None:
+            for k, s in enumerate(self.trace.probes):
+                QtCore.QTimer.singleShot(int(s * 1000), lambda k=k: self._probe(k))
 
     def _add(self, w: QtWidgets.QWidget) -> XWin:
         rec = self.windows.create(w)
@@ -311,11 +320,18 @@ class Bridge(QtCore.QObject):
             if len(rects) > MAX_RECTS:
                 rects = [d.boundingRect()]
             W, H = w.width(), w.height()
+            if self.trace is not None:
+                b = d.boundingRect()
+                self.trace.write("GRAB", rec.xid, f"{len(rects)} rects in ({b.x()}, {b.y()}, {b.width()}, "
+                                                  f"{b.height()}) of {W}x{H}{', the periodic check' if check else ''}")
             for r in rects:
                 img = self._grab(w, r)
                 if img is None:
                     if w.isVisible():
                         rec.dirty += r                  # no backing store yet (just shown)
+                    if self.trace is not None:
+                        self.trace.write("GRAB", rec.xid, "nothing: no backing store yet" if w.isVisible()
+                                         else "nothing: hidden")
                     continue
                 a = _pixels(img)
                 items.append((rec.xid, W, H, r.x(), r.y(), a, img, False, check))
@@ -412,14 +428,24 @@ class Bridge(QtCore.QObject):
         elif code in (X.EnterNotify, X.LeaveNotify):
             self.input.crossing(w, e)
         elif code == X.Expose:
+            if self.trace is not None:
+                self.trace.write("EXPOSE", rec.xid, f"({e.x}, {e.y}, {e.width}, {e.height}) count {e.count}")
+                self.trace.count(rec.xid, exposes=1)
             self.transport.expose(rec.xid, e.x, e.y, e.width, e.height)
         elif code == X.ConfigureNotify:
             self.windows.configured(rec, e, self._apply_geometry)
         elif code == X.ReparentNotify:
             rec.reparented = e.parent != self.c.screen.root
+            if self.trace is not None:
+                root = "" if rec.reparented else " (the root)"
+                self.trace.write("REPARENT", rec.xid, f"into {e.parent:#x}{root}")
         elif code == X.MapNotify:
+            if self.trace is not None:
+                self.trace.write("MAPPED", rec.xid, "")
             self._mapped(rec, True)
         elif code == X.UnmapNotify:
+            if self.trace is not None:
+                self.trace.write("UNMAPPED", rec.xid, "")
             self._mapped(rec, False)
         elif code == X.ClientMessage:
             self._client_message(rec, e)
@@ -491,6 +517,32 @@ class Bridge(QtCore.QObject):
                 rec.w.setGeometry(g)
         finally:
             rec.state_from_x = False
+
+    def _probe(self, k: int) -> None:
+        """Trace: each window's pixels as Qt has them now, to be read back from X and compared (trace.Trace.probed),
+        and where it does not show: outside its shape, and under another window of ours (X may hold that one's
+        pixels there)."""
+        import numpy as np
+
+        if self.dead:
+            return
+        recs = [r for r in self.windows if not r.iconic and r.w.isVisible()]
+        for rec in recs:
+            img = self._grab(rec.w, rec.w.rect())
+            if img is None:
+                continue
+            g = rec.w.geometry()
+            hidden = np.zeros((g.height(), g.width()), bool)
+            if rec.mask is not None and not rec.mask.isEmpty():
+                hidden[:] = True
+                for r in rec.mask:
+                    hidden[r.y():r.y() + r.height(), r.x():r.x() + r.width()] = False
+            for o in recs:
+                if o is not rec:
+                    i = o.w.geometry().intersected(g).translated(-g.x(), -g.y())
+                    if not i.isEmpty():
+                        hidden[i.y():i.y() + i.height(), i.x():i.x() + i.width()] = True
+            self.transport.probe(k, rec.xid, _pixels(img).copy(), hidden)
 
     def _apply_geometry(self, rec: XWin, x: int, y: int, w: int, h: int, from_reader: bool = False) -> None:
         if from_reader:
@@ -594,6 +646,8 @@ class Bridge(QtCore.QObject):
                 pass
         self.transport.stop()
         self.dead = True
+        if self.trace is not None:
+            self.trace.stop()
 
     # ---------------------------------------------------------------- report
     def summary(self) -> dict:

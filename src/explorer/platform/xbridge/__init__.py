@@ -10,6 +10,7 @@ bridge (EXPLORER_X11=bridge); it replaced the prototype's bridge brought over as
     keys.py       X keyboard to Qt keys (no Qt)
     clipboard.py  the X CLIPBOARD, with INCR both ways
     bridge.py     the two stages (before and after the QApplication) and the event flow
+    trace.py      what goes to X and comes back, per window, read back from the server (EXPLORER_BRIDGE_TRACE=1)
 """
 import os
 import sys

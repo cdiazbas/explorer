@@ -22,6 +22,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ..._name import APP_NAME
 from ...obs import get_logger
 from . import xproto as X
+from .trace import Trace, rect
 
 log = get_logger("platform.xbridge")
 Qt, E = QtCore.Qt, QtCore.QEvent
@@ -50,6 +51,17 @@ CURSORS = {Qt.CursorShape.ArrowCursor: 68, Qt.CursorShape.UpArrowCursor: 22, Qt.
            Qt.CursorShape.WhatsThisCursor: 92, Qt.CursorShape.BusyCursor: 150, Qt.CursorShape.OpenHandCursor: 58,
            Qt.CursorShape.ClosedHandCursor: 52, Qt.CursorShape.BitmapCursor: 86}
 WIDGET_SIZE_MAX = (1 << 24) - 1
+
+
+def who(w: QtWidgets.QWidget) -> str:
+    """A window's name in the bridge's trace, as in the geometry trace: main, a panel's name, else its title."""
+    if isinstance(w, QtWidgets.QMainWindow):
+        return "main"
+    return (w.objectName() or w.windowTitle() or type(w).__name__).replace(" ", "_")
+
+
+def _rect(r: QtCore.QRect) -> str:
+    return rect(r.x(), r.y(), r.width(), r.height())
 
 
 class XWin:
@@ -88,6 +100,7 @@ class Windows:
         self.on_destroyed = on_destroyed
         self.host = socket.gethostname()
         self.stats: dict[str, int] = dict(created=0, configures=0, notices=0, echoes=0, activations=0, focus_set=0)
+        self.trace: Trace | None = None                 # EXPLORER_BRIDGE_TRACE
 
     # ---- start
     def start(self, atom_cookies) -> None:
@@ -139,9 +152,16 @@ class Windows:
         # the geometry it is created with is asked for too: a manager's late notice of it (quartz-wm through ssh -Y,
         # 230 ms after the glass look had placed a panel elsewhere) is an echo once newer geometry is asked
         rec.asked.append((g.x(), g.y(), g.width(), g.height()))
+        tr = self.trace
+        if tr is not None:
+            tr.name(xid, f"{who(w)} window")
+            tr.write("CREATE", xid, f"{_rect(g)} {'override-redirect' if popup else 'managed'}, owner "
+                                    f"{tr.who(owner.xid) + f' {owner.xid:#x}' if owner is not None else '-'}")
         if not popup:
             self._properties(rec)
         c.map_window(xid)
+        if tr is not None:
+            tr.write("MAP", xid, "asked")
         if w.windowType() == Qt.WindowType.Popup:
             c.grab_pointer(xid, POPUP_GRAB, owner_events=True)       # reply not awaited
             rec.grab = True
@@ -186,6 +206,8 @@ class Windows:
             if r.owner is None and not r.popup and pw is not None and pw.window() is w:
                 r.owner = rec
                 c.change_property(r.xid, X.ATOM_WM_TRANSIENT_FOR, X.ATOM_WINDOW, 32, [rec.xid])
+                if self.trace is not None:
+                    self.trace.write("OWNER", r.xid, f"transient for {who(w)} {rec.xid:#x}, after its map")
 
     def set_title(self, rec: XWin) -> None:
         title = rec.w.windowTitle() or APP_NAME
@@ -214,6 +236,8 @@ class Windows:
         if rec is None:
             return None
         log.debug("X window %#x of %r destroyed", rec.xid, w.windowTitle())
+        if self.trace is not None:
+            self.trace.write("DESTROY", rec.xid, "")
         self.by_xid.pop(rec.xid, None)
         if rec.grab and not any(r.grab for r in self.by_widget.values()):
             self.c.ungrab_pointer(self.xtime)
@@ -238,6 +262,8 @@ class Windows:
         # and the request was skipped (an edge drag left X 60 px larger than Qt, audit F23)
         rec.xg = None
         self.stats["configures"] += 1
+        if self.trace is not None:
+            self.trace.write("CONF", rec.xid, " ".join(f"{k}={v}" for k, v in kw.items()))
 
     def qt_geometry(self, rec: XWin, resized: bool) -> None:
         """Qt moved or resized a top-level: ask X, unless X told Qt this geometry."""
@@ -256,17 +282,28 @@ class Windows:
     def configured(self, rec: XWin, e, apply) -> None:
         """A ConfigureNotify of our window; apply(rec, x, y, w, h) makes Qt agree (on this thread)."""
         self.stats["notices"] += 1
+        tr = self.trace
+
+        def say(what: str) -> None:
+            if tr is not None:
+                tr.write("NOTICE", rec.xid, f"{'synthetic' if e.sent else 'real'} "
+                                            f"{rect(e.x, e.y, e.width, e.height)}: {what}")
         if rec.cfg_seq is not None and 0 < ((rec.cfg_seq - e.seq) & 0xFFFF) < 0x8000:
             self.stats["echoes"] += 1
+            say("an echo, older than the last request")
             return                                      # generated before our last request reached the server
         got = (e.x, e.y, e.width, e.height)
         if e.sent and rec.asked and got == rec.asked[-1]:
+            say("applied (the last asked)")
             apply(rec, e.x, e.y, e.width, e.height)     # ICCCM 4.1.5: a synthetic notice is in root coordinates
         elif e.sent and got in rec.asked:
             self.stats["echoes"] += 1                   # the notice of an older request: X moved on since
+            say("an echo, asked before the last")
         elif e.sent or rec.popup or not rec.reparented:
+            say("applied")
             apply(rec, e.x, e.y, e.width, e.height)
         else:                                           # inside the manager's frame: ask where that is, not waiting
+            say("framed: where it is asked of X")
             # an answer that comes after Qt asked for another geometry is where the window was: taken, it set Qt
             # back and Qt asked again (through XQuartz the glass panels jumped about for 1.2 s). An answer that is a
             # geometry asked before the last one is where the window was too, before the manager acted on the last
@@ -279,7 +316,11 @@ class Windows:
                 x, y = struct.unpack_from("<hh", r, 12)
                 if rec.asked and (x, y, w, h) != rec.asked[-1] and (x, y, w, h) in rec.asked:
                     self.stats["echoes"] += 1
+                    if tr is not None:
+                        tr.write("WHERE", rec.xid, f"({x}, {y}): an echo, dropped")
                     return
+                if tr is not None:
+                    tr.write("WHERE", rec.xid, f"({x}, {y}): applied")
                 apply(rec, x, y, w, h, True)
             self.c.translate_coordinates(rec.xid, self.scr.root).then(where)
 
@@ -353,9 +394,13 @@ class Windows:
         if m.isEmpty():
             # no mask: no shape (a rectangle of the window's size stayed that size when the window grew, audit F23a)
             self.c.shape_reset(rec.xid)
+            if self.trace is not None:
+                self.trace.write("SHAPE", rec.xid, "none (rectangular)")
         else:
             rects = [(r.x(), r.y(), r.width(), r.height()) for r in iter(m)]     # type: ignore[call-overload]
             self.c.shape_rectangles(rec.xid, rects)
+            if self.trace is not None:
+                self.trace.write("SHAPE", rec.xid, f"{len(rects)} rects in {_rect(m.boundingRect())}")
         self.c.flush()
         rec.mask = QtGui.QRegion(m)
 

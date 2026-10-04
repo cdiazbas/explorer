@@ -30,8 +30,8 @@ class Grey:
     """What RENDER needs for grey pixels at 1 B/px: A8 and window picture formats, a white source, one 8-bit mask
     pixmap shared by every window (grown as needed), a picture per back pixmap."""
 
-    def __init__(self, c: xproto.Connection):
-        self.c, self.ok = c, False
+    def __init__(self, c: xproto.Connection, trace=None):
+        self.c, self.ok, self.trace = c, False, trace
         info = c.ext("RENDER")
         if info is None or 8 not in c.setup.formats:
             return
@@ -96,6 +96,10 @@ class Grey:
                 c.free_gc(m[1])
                 c.free_pixmap(m[0])
             self.mask = m = (pm, gc, pic, W, H)
+            if self.trace is not None:
+                self.trace.write("MASK", None, f"grey mask {W}x{H}: pixmap {pm:#x}, picture {pic:#x}")
+                for i, what in ((pm, "pixmap"), (gc, "gc"), (pic, "picture")):
+                    self.trace.name(i, f"grey mask {W}x{H} {what}")
         return m
 
 
@@ -113,8 +117,9 @@ class Transport:
     """Start it before Qt (it connects and loads its kernels while Qt starts). submit() takes one update when ready
     is set; on_ready() is called from the sender thread each time it can take another."""
 
-    def __init__(self, display: str, on_ready, on_error=None, grey: bool = True):
+    def __init__(self, display: str, on_ready, on_error=None, grey: bool = True, trace=None):
         self.display = display
+        self.trace = trace                              # trace.Trace: what is sent, per window (EXPLORER_BRIDGE_TRACE)
         self.on_ready, self.on_error = on_ready, on_error
         self.want_grey = grey
         self.grey: Grey | None = None
@@ -153,6 +158,10 @@ class Transport:
     def forget(self, xid: int) -> None:
         self._q.put(("forget", xid))
 
+    def probe(self, k: int, xid: int, qt, hidden) -> None:
+        """Trace: read the window back from the server once the updates before are sent (trace.Trace.probed)."""
+        self._q.put(("probe", (k, xid, qt, hidden)))
+
     def stop(self) -> None:
         self._q.put(("stop", None))
 
@@ -177,7 +186,7 @@ class Transport:
         try:
             self.c = xproto.Connection(self.display, name="xbridge-img", on_error=self._x_error)
             if self.want_grey:
-                g = Grey(self.c)
+                g = Grey(self.c, self.trace)
                 self.grey = g if g.ok else None
             from . import kernels
 
@@ -220,6 +229,8 @@ class Transport:
                     self._copy(*arg)
                 elif kind == "forget":
                     self._forget(arg)
+                elif kind == "probe":
+                    self._probe(*arg)
         except BaseException as e:                      # handed to the interface, which closes
             self.failed = e
             if self.on_error is not None:
@@ -227,7 +238,8 @@ class Transport:
 
     def _x_error(self, err):
         # a window closed while its pixels were on the way: BadDrawable/BadWindow on a CopyArea; nothing to do
-        pass
+        if self.trace is not None:
+            self.trace.error("img", err)
 
     def _back(self, xid: int, W: int, H: int) -> tuple[_Back, bool]:
         """The back pixmap of xid at this size, and whether it is new (then everything is sent)."""
@@ -248,6 +260,11 @@ class Transport:
         c.create_gc(b.gc, b.pixmap)
         b.picture = self.grey.picture(b.pixmap) if self.grey is not None else 0
         b.last = np.zeros((H, W), np.uint32)
+        if self.trace is not None:
+            who = self.trace.who(xid)
+            self.trace.name(b.wgc, f"{who} window's gc")
+            self.trace.name(b.pixmap, f"{who} back pixmap")
+            self.trace.name(b.gc, f"{who} back pixmap's gc")
         return b, True
 
     def _free(self, b: _Back) -> None:
@@ -263,8 +280,11 @@ class Transport:
         assert c is not None
         t0 = time.perf_counter()
         work = []
+        fresh = set()
         for xid, W, H, x, y, a, _owner, force, check in items:
             b, new = self._back(xid, W, H)
+            if new:
+                fresh.add(xid)
             h, w = a.shape
             x1, y1 = min(W, x + w), min(H, y + h)
             if x1 <= x or y1 <= y:
@@ -316,11 +336,29 @@ class Transport:
         for b, x0, y0, x1, y1 in touched.values():
             c.copy_area(b.pixmap, b.xid, b.wgc, x0, y0, x0, y0, x1 - x0, y1 - y0)
         marker = c.get_input_focus()                    # flushes; its answer says the server has the update
+        if self.trace is not None:
+            self._traced(work, touched, fresh)
         t3 = time.perf_counter()
         marker.then(lambda _r, _e, t=t2: self._acked(t))
         self._unacked.append(marker)
         self.stats["wire"] += c.bytes_out - wire0
         self._stat(t0, t1, t2, t3, nbytes, npieces, marker)
+
+    def _traced(self, work, touched, fresh) -> None:
+        per: dict[int, list] = {}
+        for b, _x, _y, _a, rects in work:
+            px = rects[:, 3] * rects[:, 4]
+            grey = int(px[rects[:, 0] == 1].sum())
+            s = per.setdefault(b.xid, [0, 0, 0])
+            s[0] += len(rects)
+            s[1] += int(px.sum())
+            s[2] += grey + 4 * (int(px.sum()) - grey)
+        for xid, (n, px, nb) in per.items():
+            b, x0, y0, x1, y1 = touched[xid]
+            new = f"new back {b.size[0]}x{b.size[1]}; " if xid in fresh else ""
+            self.trace.write("SEND", xid, f"{new}{n} pieces, {px} px, {nb / 1e3:.0f} kB; copy "
+                                          f"({x0}, {y0}, {x1 - x0}, {y1 - y0})")
+            self.trace.count(xid, updates=1, px=px)
 
     def _acked(self, t_sent: float) -> None:
         now = time.perf_counter()
@@ -349,15 +387,51 @@ class Transport:
         W, H = b.size if b is not None else (0, 0)
         x1, y1 = min(W, x + w), min(H, y + h)
         if b is None or self.c is None or x1 <= x or y1 <= y:
+            if self.trace is not None:
+                self.trace.write("COPY", xid, "nothing: no pixels sent there yet" if b is None else "nothing")
             self._copy_done()
             return
         self.c.copy_area(b.pixmap, xid, b.wgc, x, y, x, y, x1 - x, y1 - y)
         self.stats["copies"] += 1
+        if self.trace is not None:
+            self.trace.write("COPY", xid, f"({x}, {y}, {x1 - x}, {y1 - y})")
+            self.trace.count(xid, copies=1)
         self.c.get_input_focus().then(lambda _r, _e: self._copy_done())
 
     def _copy_done(self) -> None:
         with self._copies_lock:
             self._copies -= 1
+
+    def _probe(self, k: int, xid: int, qt, hidden) -> None:
+        """Trace: the window's pixels as the server holds them (the part on the screen: GetImage refuses the rest),
+        against what was sent (b.last) and what Qt has (qt)."""
+        b, c, tr = self._backs.get(xid), self.c, self.trace
+        if tr is None or c is None:
+            return
+        if b is None:
+            tr.write("PROBE", xid, "nothing sent to it yet")
+            return
+        W, H = b.size
+        try:
+            r = c.translate_coordinates(xid, c.screen.root).result(30.0)
+            rx, ry = struct.unpack_from("<hh", r, 12)
+            x0, y0 = max(0, -rx), max(0, -ry)
+            x1, y1 = min(W, c.screen.width - rx), min(H, c.screen.height - ry)
+            if x1 <= x0 or y1 <= y0:
+                tr.write("PROBE", xid, f"at ({rx}, {ry}) {W}x{H}: off the screen")
+                return
+            reply = c.get_image(xid, x0, y0, x1 - x0, y1 - y0).result(60.0)
+        except (xproto.XError, TimeoutError) as e:
+            tr.write("PROBE", xid, f"not read back: {e}")
+            return
+        w, h = x1 - x0, y1 - y0
+        got = np.frombuffer(reply, ">u4" if self.msb else "<u4", count=w * h, offset=32).reshape(h, w)
+        got = got.astype(np.uint32)
+        if self.swap_rb:
+            got = (got & 0xFF00FF00) | ((got >> 16) & 0xFF) | ((got & 0xFF) << 16)
+        sent = b.last[y0:y1, x0:x1]
+        tr.probed(k, xid, (rx, ry), (W, H), (x0, y0, w, h), got & 0xFFFFFF, sent & 0xFFFFFF,
+                  _piece(qt, x0, y0, w, h, 0) & 0xFFFFFF, _piece(hidden, x0, y0, w, h, True))
 
     def _forget(self, xid: int) -> None:
         b = self._backs.pop(xid, None)
@@ -381,3 +455,11 @@ class Transport:
                     diff_ms=med(s["diff_ms"]), encode_ms=med(s["encode_ms"]), send_ms=med(s["send_ms"]),
                     ack_ms=med(s["ack_ms"]), grey=self.grey is not None, check_hits=s["check_hits"],
                     expose_copies=s["copies"])
+
+
+def _piece(a, x: int, y: int, w: int, h: int, fill):
+    """a[y:y + h, x:x + w], filled out to (h, w) with fill where a is smaller (Qt's size is not always X's)."""
+    out = np.full((h, w), fill, a.dtype)
+    part = a[y:y + h, x:x + w]
+    out[:part.shape[0], :part.shape[1]] = part
+    return out
