@@ -712,7 +712,13 @@ class GlassChrome:
         if not self.on or not w.isVisible():
             return
         shown = [d for d in self.docks() if not d.isHidden()]
-        for d in shown:                             # floating first: docked, they hold the window wider than the image
+        # out of the layout first: docked, they hold the window wider than the image. A panel not floating yet is
+        # hidden, floated, given its place, and shown: floated while shown, its X window was made where Qt first put
+        # it, and through XQuartz the manager's late notice of that place (with the size asked after it) moved it
+        # back there after it was placed (a geometry trace through ssh -Y; the second time Qt had its place already)
+        fresh = [d for d in shown if not d.isFloating()]
+        for d in fresh:
+            d.hide()
             d.setFloating(True)
         lay = QtWidgets.QMainWindow.layout(w)
         if lay is not None:
@@ -730,9 +736,13 @@ class GlassChrome:
             # never shorter than its plots need: at 245 px the 2x2 spectra's axis titles ran into each other; below a
             # short window they go on past its bottom edge
             h = max(int(avail * f), FLOAT_MIN_H.get(d.objectName(), 0))
-            d.setFloating(True)
-            d.show()
-            d.setGeometry(x, y, FLOAT_W, h)
+            if d in fresh:                          # its window made where it goes
+                d.setGeometry(x, y, FLOAT_W, h)
+                d.show()
+            else:
+                d.setFloating(True)
+                d.show()
+                d.setGeometry(x, y, FLOAT_W, h)
             y += h + GAP
 
     def toggle_panels(self) -> None:

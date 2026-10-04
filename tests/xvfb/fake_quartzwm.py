@@ -10,10 +10,13 @@ made before their window placed by the manager. This one does what quartz-wm was
   ConfigureNotify (ICCCM 4.1.5, root coordinates) says so, at the map and after every move asked;
 - --late MS: the synthetic notice of the geometry a window had when it was mapped comes MS ms later, for framed and
   unframed windows alike, as through ssh -Y to a Mac (2026-10-04: 230 ms after the glass look had placed a panel,
-  the notice of its first geometry came and the bridge took it).
+  the notice of its first geometry came and the bridge took it);
+- --mixed (with --late): that notice has the place the window was mapped at with the size it has when the notice
+  goes, a geometry never asked for as a whole (a later trace: 1.8 s after the glass look had placed a panel, its
+  first place with its new size came, and the bridge moved it back).
 
-    python tests/xvfb/fake_quartzwm.py [--late MS]   (DISPLAY: the X server; prints "ready", or exits 3 if a manager
-                                                       runs)
+    python tests/xvfb/fake_quartzwm.py [--late MS [--mixed]]   (DISPLAY: the X server; prints "ready", or exits 3
+                                                                 if a manager runs)
 """
 import select
 import sys
@@ -27,6 +30,7 @@ STRIP = 16
 
 def main() -> int:
     late = float(sys.argv[sys.argv.index("--late") + 1]) / 1e3 if "--late" in sys.argv else 0.0
+    mixed = "--mixed" in sys.argv
     later: list = []                                    # (when, window, x, y, w, h): notices still to send
     d = display.Display()
     root = d.screen().root
@@ -60,6 +64,9 @@ def main() -> int:
         for item in [it for it in later if it[0] <= now]:
             later.remove(item)
             try:
+                if mixed:                               # the first place, the size it has now
+                    cg = item[1].get_geometry()
+                    item = (*item[:4], cg.width, cg.height)
                 tell(*item[1:])
             except error.XError:
                 pass
