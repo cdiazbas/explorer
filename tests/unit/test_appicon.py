@@ -1,11 +1,17 @@
 """The application icon (ui.appicon, ROADMAP E5.28): drawn from its SVG at every size asked, the tile and the slice
-where the geometry puts them, on the application once the first image is up, and the value of X11's _NET_WM_ICON."""
+where the geometry puts them, on the application once the first image is up, the value of X11's _NET_WM_ICON, and
+the files tools/icons/export.py writes for the operating systems."""
+import os
+import struct
+import subprocess
+import sys
 import time
 
 import pytest
 
 from explorer.testing import synth
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SIZES = (16, 24, 32, 48, 64, 128, 256)
 ORANGE = (0xFF, 0x92, 0x30)
 
@@ -111,3 +117,36 @@ def test_net_wm_icon_is_width_height_then_argb_pixels_per_size(icon):
     assert i == len(data)
     assert appicon.net_wm_icon(QtGui.QIcon()) == []
 
+
+def _png_size(data: bytes) -> tuple[int, int]:
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR"
+    return struct.unpack(">II", data[16:24])
+
+
+def test_the_export_writes_the_pngs_the_ico_and_the_hicolor_tree(tmp_path):
+    out = tmp_path / "icons"
+    env = dict(os.environ)
+    env.pop("DISPLAY", None)
+    p = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "icons", "export.py"), str(out)], env=env,
+                       capture_output=True, text=True, timeout=120)
+    assert p.returncode == 0, p.stderr[-2000:]
+    for n in (16, 24, 32, 48, 64, 128, 256, 512, 1024):
+        assert _png_size((out / "png" / f"explorer-{n}.png").read_bytes()) == (n, n)
+    ico = (out / "explorer.ico").read_bytes()
+    assert struct.unpack("<HHH", ico[:6]) == (0, 1, 5)                   # reserved, icon, five images
+    sizes = []
+    for k in range(5):
+        w, h, colours, _, planes, bits, size, offset = struct.unpack("<BBBBHHII", ico[6 + 16 * k:22 + 16 * k])
+        n = w or 256
+        assert (h or 256, colours, planes, bits) == (n, 0, 1, 32)
+        assert offset + size <= len(ico) and _png_size(ico[offset:offset + size]) == (n, n)
+        sizes.append(n)
+    assert sizes == [16, 24, 32, 48, 256]
+    for n in (16, 24, 32, 48, 64, 128, 256, 512):
+        assert _png_size((out / "hicolor" / f"{n}x{n}" / "apps" / "explorer.png").read_bytes()) == (n, n)
+    svg = os.path.join(ROOT, "src", "explorer", "ui", "assets", "explorer.svg")
+    assert (out / "hicolor" / "scalable" / "apps" / "explorer.svg").read_bytes() == open(svg, "rb").read()
+    if sys.platform == "darwin":
+        assert (out / "explorer.icns").read_bytes()[:4] == b"icns"
+    else:
+        assert not (out / "explorer.icns").exists() and "skipped" in p.stdout
