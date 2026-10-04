@@ -100,6 +100,35 @@ def test_start_puts_the_icon_on_the_application_before_the_cube_is_opened(qapp, 
         qapp.setWindowIcon(QtGui.QIcon())
 
 
+class _App:
+    """What install asks of the application: its platform, and the icon it is given."""
+
+    def __init__(self, platform):
+        self.platform, self.given = platform, []
+
+    def platformName(self):
+        return self.platform
+
+    def setWindowIcon(self, ic):
+        self.given.append(ic)
+
+
+def test_a_mac_started_from_the_bundle_keeps_the_bundles_icon(qapp, monkeypatch):
+    """The Dock has the bundle's icon from launch: Qt's image would replace it in the tile."""
+    from explorer.ui import appicon
+
+    assert appicon.bundle_has_icon() is False                           # pytest's Python is not in a bundle
+    monkeypatch.setattr(appicon, "bundle_has_icon", lambda: True)
+    for platform, given in (("cocoa", 0), ("xcb", 1), ("offscreen", 1)):
+        app = _App(platform)
+        appicon.install(app)
+        assert len(app.given) == given, platform
+    monkeypatch.setattr(appicon, "bundle_has_icon", lambda: False)
+    app = _App("cocoa")
+    appicon.install(app)
+    assert len(app.given) == 1
+
+
 def test_net_wm_icon_is_width_height_then_argb_pixels_per_size(icon):
     from PySide6 import QtCore, QtGui
 
@@ -155,3 +184,30 @@ def test_the_export_writes_the_pngs_the_ico_and_the_hicolor_tree(tmp_path):
         assert (out / "explorer.icns").read_bytes()[:4] == b"icns"
     else:
         assert not (out / "explorer.icns").exists() and "skipped" in p.stdout
+
+
+def test_the_app_bundle_names_its_icon_and_runs_the_environments_python(tmp_path):
+    """scripts/run.sh starts explorer through it on a Mac: its Python must find this environment, and be the
+    bundle's, which names its icon."""
+    import plistlib
+
+    app = tmp_path / "explorer.app"
+    env = dict(os.environ)
+    env.pop("DISPLAY", None)
+    p = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "icons", "export.py"), "--app", str(app),
+                        "--exe", sys.executable], env=env, capture_output=True, text=True, timeout=120)
+    assert p.returncode == 0, p.stderr[-2000:]
+    info = plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
+    assert (info["CFBundleExecutable"], info["CFBundleIconFile"], info["CFBundlePackageType"]) == (
+        "explorer", "explorer", "APPL")
+    exe = app / "Contents" / "MacOS" / "explorer"
+    assert exe.is_symlink() and os.readlink(exe) == sys.executable
+    assert not (tmp_path / "explorer.app.tmp").exists()
+    if sys.platform != "darwin":
+        return
+    assert (app / "Contents" / "Resources" / "explorer.icns").read_bytes()[:4] == b"icns"
+    code = "import sys; from explorer.ui import appicon; print(sys.prefix, appicon.bundle_has_icon())"
+    p = subprocess.run([str(exe), "-c", code], env=dict(env, __PYVENV_LAUNCHER__=sys.executable),
+                       capture_output=True, text=True, timeout=120)
+    assert p.returncode == 0, p.stderr[-2000:]
+    assert p.stdout.split() == [sys.prefix, "True"]

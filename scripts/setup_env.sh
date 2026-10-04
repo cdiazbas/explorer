@@ -192,6 +192,16 @@ if [ "$(uname -s)" = Linux ] && ! /sbin/ldconfig -p 2>/dev/null | grep -q "libxc
   fi
 fi
 
+# macOS: explorer.app in the environment, a link to its Python with explorer's icon, which run.sh starts explorer
+# through: the Dock then shows the icon from launch, where a bare executable has a blank document
+if [ "$(uname -s)" = Darwin ]; then
+  if "$venv/bin/python" tools/icons/export.py --app "$venv/explorer.app" --exe "$venv/bin/python" >/dev/null; then
+    echo "== $venv/explorer.app: the Dock's icon from launch"
+  else
+    echo "note: no explorer.app: the Dock shows a blank icon until the window sets explorer's" >&2
+  fi
+fi
+
 echo "== checking (explorer doctor, headless)"
 [ -d "$qtlibs/only" ] && [ "$(uname -s)" = Linux ] && export LD_LIBRARY_PATH="$qtlibs/only"
 env -u DISPLAY QT_QPA_PLATFORM=offscreen "$venv/bin/explorer" doctor

@@ -45,4 +45,16 @@ done
 export PYTHONPATH="$root/src${inherited:+:$inherited}"
 # NUMBA_NUM_THREADS is left to the user: unset, explorer sizes numba's pool for its scattered reads
 # (src/explorer/data/_numba.py, at least 128 threads)
+# macOS: Python started through explorer.app (made by setup_env.sh; here, once, if missing), so that the Dock shows
+# explorer's icon from launch: a bare executable's is a blank document until the window sets its own.
+# __PYVENV_LAUNCHER__ tells that Python its environment; Python unsets it, so nothing started from explorer sees it
+if [ "$(uname -s)" = Darwin ]; then
+  app="$venv/explorer.app"
+  if [ ! -x "$app/Contents/MacOS/explorer" ] && [ -w "$venv" ]; then
+    "$venv/bin/python" "$root/tools/icons/export.py" --app "$app" --exe "$venv/bin/python" >/dev/null 2>&1 || true
+  fi
+  if [ -x "$app/Contents/MacOS/explorer" ]; then
+    __PYVENV_LAUNCHER__="$venv/bin/python" exec "$app/Contents/MacOS/explorer" "$venv/bin/explorer" "$@"
+  fi
+fi
 exec "$venv/bin/explorer" "$@"

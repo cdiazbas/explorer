@@ -6,9 +6,11 @@ slice of the cube), on a dark rounded tile, so that it reads on a light desktop 
 
 One source: assets/explorer.svg, drawn by Qt's SVG icon engine (QtSvg's plugin, in PySide6-Essentials' wheels for
 every platform explorer runs on) at each size and scale a window asks for. tools/icons/export.py makes the PNGs, the
-ICO, the ICNS and the hicolor tree from the same file. assets/explorer-glyph.svg is the glyph without its tile
-(the ink in currentColor), for a symbolic icon.
+ICO, the ICNS and the hicolor tree from the same file, and on a Mac the app bundle scripts/run.sh starts explorer
+through, so that the Dock has the icon from launch. assets/explorer-glyph.svg is the glyph without its tile (the
+ink in currentColor), for a symbolic icon.
 """
+import sys
 from array import array
 from pathlib import Path
 
@@ -33,9 +35,37 @@ def icon() -> QtGui.QIcon:
     return ic
 
 
+def bundle_has_icon() -> bool:
+    """macOS: this process runs from an app bundle whose Info.plist names its icon (scripts/run.sh starts explorer
+    through one), so the Dock has had the icon from launch. False elsewhere."""
+    if sys.platform != "darwin":
+        return False
+    import ctypes
+
+    cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+    cf.CFBundleGetMainBundle.restype = ctypes.c_void_p
+    cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+    cf.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+    cf.CFBundleGetValueForInfoDictionaryKey.restype = ctypes.c_void_p
+    cf.CFBundleGetValueForInfoDictionaryKey.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    cf.CFRelease.argtypes = [ctypes.c_void_p]
+    main = cf.CFBundleGetMainBundle()
+    if not main:
+        return False
+    key = cf.CFStringCreateWithCString(None, b"CFBundleIconFile", 0x08000100)          # kCFStringEncodingUTF8
+    try:
+        return bool(cf.CFBundleGetValueForInfoDictionaryKey(main, key))
+    finally:
+        cf.CFRelease(key)
+
+
 def install(app) -> None:
     """The icon on the application: every window without an icon of its own takes it, those already shown too (Qt
-    sends them ApplicationWindowIconChange); on a Mac it becomes the Dock's icon of an unbundled app."""
+    sends them ApplicationWindowIconChange); on a Mac it becomes the Dock's icon of an unbundled app. Not on a Mac
+    started from a bundle with its icon: the Dock shows that one from launch, as the system draws app icons, and
+    Qt's image would replace it in the tile with the bare drawing."""
+    if app.platformName() == "cocoa" and bundle_has_icon():
+        return
     ic = icon()
     if not ic.isNull():
         app.setWindowIcon(ic)

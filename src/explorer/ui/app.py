@@ -48,8 +48,8 @@ def chrome(app, shell, ops, ops_for, bridge: bool):
 def app_icon(app) -> None:
     """ui.appicon on the application as soon as it exists. An unbundled Python on a Mac enters the Dock with Qt's
     application, under the blank icon of a bare executable, and keeps it until this is set: anything run before it
-    (the theme, the cube, the window) is that much longer with the blank icon. Only an app bundle has its icon from
-    launch."""
+    (the theme, the cube, the window) is that much longer with the blank icon. Started through the app bundle of
+    scripts/run.sh, the Dock has the icon from launch and this leaves it."""
     from . import appicon
 
     appicon.install(app)
