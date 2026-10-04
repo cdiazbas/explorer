@@ -37,7 +37,10 @@ def _no_windows_left():
 
     qt = sys.modules.get("PySide6.QtWidgets")
     app = qt.QApplication.instance() if qt is not None else None
-    before = {id(w) for w in qt.QApplication.topLevelWidgets()} if app is not None else set()
+    # the wrappers kept alive while the test runs: freed, their ids were reused by the windows the test made, which
+    # were then taken for windows of before and left alive, floating panels and all
+    kept = list(qt.QApplication.topLevelWidgets()) if app is not None else []
+    before = {id(w) for w in kept}
     yield
     qt = sys.modules.get("PySide6.QtWidgets")
     app = qt.QApplication.instance() if qt is not None else None
