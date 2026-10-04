@@ -255,17 +255,15 @@ def test_the_session_path_two_points_at_least_clipped_to_the_image(qapp, shell):
     assert s.state.path is None
 
 
-def test_the_keys_are_in_the_one_table_and_a_d_are_left_free(qapp, shell):
+def test_the_keys_are_in_the_one_table_with_a_d_along_the_slit(qapp, shell):
     from PySide6 import QtCore, QtGui
 
     w, K = shell, QtCore.Qt.Key
     rows = {k: what for k, what, _b in w.key_table()}
     assert "S" in rows and "⌫" in rows and "slit" in rows["Esc"]
     seqs = [QtGui.QKeySequence(seq) for seq, _fn in w.action_registry.binds()]
-    for k in (K.Key_S, K.Key_Backspace, K.Key_Delete):
+    for k in (K.Key_S, K.Key_Backspace, K.Key_Delete, K.Key_A, K.Key_D):   # A, D: along the slit (F75)
         assert QtGui.QKeySequence(k) in seqs
-    for k in (K.Key_A, K.Key_D):                                    # walking along the slit, later (F75)
-        assert QtGui.QKeySequence(k) not in seqs
     html = w.action_registry.sheet_html(w.palette())
     assert "draw a slit" in html and "remove the slit" in html and "S, then click on the image" in html
 

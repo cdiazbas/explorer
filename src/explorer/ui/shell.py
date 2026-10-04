@@ -11,7 +11,8 @@ image again. The keys, from the prototype's _key_table, in one table (ui.actions
 - L: lock or release the cursor; Esc: release it (while a slit is drawn: drop it);
 - S: the slit mode on and off, ⌫ or Delete: the slit removed (ui.slit; a click in the mode adds a point to the slit
   instead of locking the cursor). The slit panel (ui.slitpanel) is a tab beside lambda-t from the first S on, in front
-  while a slit is drawn and when one is finished, gone with the slit;
+  while a slit is drawn and when one is finished, gone with the slit; A / D: the cursor to the previous / next point
+  along the slit, locked;
 - Ctrl+W close, Ctrl+M minimise, Ctrl+Q quit (Qt reads Ctrl as Cmd on a Mac, where Cmd+Q is the application menu's).
 """
 import math
@@ -163,9 +164,10 @@ class Shell(QtWidgets.QMainWindow):
         # the slit's slices: lambda-t's tab, there from the first S on and only with a slit or one being drawn
         # (_slit_tab; the prototype's 1046-1052)
         self.slit_panel = SlitPanel(r.nt, r.nl, dataset.axes)
-        self.slit_dock = docks.dock(self, "Slit", self.slit_panel.widget, "slit", cls=docks.GatedDock)
+        slit_dock = docks.dock(self, "Slit", self.slit_panel.widget, "slit", cls=docks.GatedDock)
+        assert isinstance(slit_dock, docks.GatedDock)
+        self.slit_dock = slit_dock
         self.slit_dock.hide()
-        assert isinstance(self.slit_dock, docks.GatedDock)
         self.slit_dock.allowed = lambda: self.session.state.path is not None or self.slit_tool.mode
         self.slit_dock.toggleViewAction().setEnabled(False)
         self.setAnimated(False)
@@ -511,8 +513,10 @@ class Shell(QtWidgets.QMainWindow):
         for d in (self.spec_dock, self.lt_dock):
             if d.isHidden():
                 d.show()
-        if self.session.state.path is not None:         # the slit's tab only with a slit (the prototype's 2536)
-            self._slit_tab(True)
+        if self.slit_dock.allowed():                    # the slit's tab only with a slit, or one being drawn (the
+            self._slit_tab(True)                        # prototype's 2536); in front while drawn, its slices live
+            if self.slit_tool.mode:
+                self.slit_dock.raise_()
         self.reset_sizes()
         QtCore.QTimer.singleShot(0, self.reset_sizes)     # again once the layout has settled
         self.reset_view()
@@ -746,9 +750,11 @@ class Shell(QtWidgets.QMainWindow):
         if s.present["t"] and s.sizes["t"] > 1:
             rows.append(("Space", "play, pause t", ((K.Key_Space, lambda: self.nav.play.toggle()),)))
         rows.append(("L", "lock, release the cursor", ((K.Key_L, lambda: s.lock(not s.state.locked)),)))
-        # S draws a slit; A and D stay free for walking along it (the prototype's F75)
+        # A and D walk along the slit: the left hand on them, the right on the mouse (the prototype's 1324-1327, F75)
         rows += [("S", "draw a slit on the image (again: cancel)", ((K.Key_S, self.toggle_slit_mode),)),
-                 ("\u232b", "remove the slit", ((K.Key_Backspace, self.clear_slit), (K.Key_Delete, self.clear_slit)))]
+                 ("\u232b", "remove the slit", ((K.Key_Backspace, self.clear_slit), (K.Key_Delete, self.clear_slit))),
+                 ("A  D", "along the slit: previous, next point (the cursor locked there)",
+                  ((K.Key_A, lambda: self.slit_step(-1)), (K.Key_D, lambda: self.slit_step(1))))]
         if self.spectra is not None:
             rows += [("F", "spectra: fit y to this pixel, and keep it", ((K.Key_F, self.fit_spectra),)),
                      ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
@@ -820,6 +826,32 @@ class Shell(QtWidgets.QMainWindow):
     def clear_slit(self) -> None:
         """⌫: the finished slit removed, from the image and from the session."""
         self.slit_tool.clear()
+
+    def slit_step(self, d: int) -> None:
+        """A (d = -1) and D (+1): the cursor to the previous or next pixel of the slit shown, locked there as a click on
+        the slit panel does; held down, the key's auto-repeat walks the slit. From a cursor off the slit, its nearest
+        point first. The slit is sampled every pixel and two samples can fall on one pixel: a step goes to the next
+        different one. The slit shown is the slit panel's: the finished one, or the one being drawn. Without one the
+        prototype did nothing; here the status line says what the keys are for. From the prototype's _slit_step
+        (app/viewer.py:1901-1920)."""
+        p = self.slit_panel
+        if p.pix is None:
+            self.statusBar().showMessage("A D: along a slit (S draws one)", 3000)
+            return
+        iy, ix = p.pix
+        n = len(iy)
+        y, x = self.session.state.cursor
+        i = p.on.get((y, x))
+        if i is None:
+            i = int(np.argmin((iy - y) ** 2 + (ix - x) ** 2))
+        else:
+            j = i
+            while 0 <= j + d < n and iy[j + d] == iy[i] and ix[j + d] == ix[i]:
+                j += d
+            i = int(np.clip(j + d, 0, n - 1))
+        self.session.lock(False)
+        self.session.hover(int(iy[i]), int(ix[i]))
+        self.session.lock(True)
 
     def _slit_mode_changed(self, on: bool) -> None:
         """The button and the image's pointer at rest (ui.gestures puts it back after a pan) follow the mode, however
