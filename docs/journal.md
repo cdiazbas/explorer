@@ -2503,3 +2503,36 @@ durante segundos (3.4 s tras 40), en el mismo código rootless con SkyLight. La 
 no de cierres; nuestro fallo, con su forma, no aparece documentado. **Hipótesis sin verificar:** el
 contorno lo provoca. Reproducirlo en el XQuartz del usuario puede tirarlo abajo, así que no lo he
 intentado sin preguntar.
+
+### 2026-10-04 (9): arrastrar un panel sobre otro, explorer frente al prototipo
+
+El usuario nota más lento en explorer que en el prototipo arrastrar paneles sueltos unos sobre otros. En
+el prototipo eso se alivió (F27: una ida y vuelta a X por cada aviso del gestor, 167 de 780 ms en un
+arrastre de 40 pasos). Nada lo medía en explorer.
+
+`bench/panel_drag.py` lo mide. Cada programa arranca por su camino real, con el puente y sus títulos de
+panel. Con los dos paneles sueltos, se arrastra el título del espectro con XTEST (40 movimientos cada
+20 ms, sobre la λ-t y luego sobre la ventana principal), y un observador en el propio servidor X mide el
+retraso con que se ve cada movimiento, el final y los bytes.
+
+Dos primeras versiones no valían:
+- movía los paneles por la API en `bridge_vs_prototype.py`, con la ventana sin barra de título: los
+  paneles los enmarcaba el gestor, y el puente del prototipo ni llevaba a X los movimientos de Qt;
+- tenía un error de signo en la posición de X.
+
+Bellatrix, Xvfb 3840×1080, quartz-wm de pega, enlace emulado de 8 ms por sentido, 4 rondas ABBA, carga
+0.4–0.7 (`bench/results/panel_drag_2026-10-04/`):
+
+| | explorer | prototipo |
+|---|---|---|
+| retraso de X por movimiento, mediana | 17.7–18.0 ms | 33.4–35.5 ms |
+| p95 | 19.2–19.5 ms | 38.8–40.6 ms |
+| movimientos mostrados | 40/40 | 38–40 |
+| de soltar a la posición final | 0.1 ms | 0.1–21.8 ms |
+| píxeles por arrastre | 4.0–4.1 MB | 5.6–7.1 MB |
+
+En esta emulación, explorer sigue al ratón con una ida y vuelta y el prototipo con dos. Lo que nota el
+usuario tendría que venir de lo que la emulación no tiene: el XQuartz real (quartz-wm, el dibujo de macOS,
+bloqueos como los de la incidencia #499) o su enlace real. Sin medir en XQuartz: XTEST está apagado allí
+salvo que se active. Que el panel arrastrado quede debajo de la λ-t, en los dos programas, no es
+concluyente: el gestor de pega no sube la ventana al hacer clic, y quartz-wm sí.
