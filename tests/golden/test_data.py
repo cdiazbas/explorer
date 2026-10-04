@@ -137,16 +137,18 @@ def test_limits_and_reduction_identical_to_the_prototype(golden):
     case, ref, meta, im = golden
     with FrameReader(formats.open_layout(im)) as r:
         imgs = [r.read(tuple(idx)) for idx in case["frames"]]
-    # np.percentile on float32 rounds its interpolation differently from one numpy to another: 2.3.5 (the Intel
-    # Mac's pin) and 2.5.3 give limits 1 float32 ulp apart on the same values, on the same machine. Bit for bit with
-    # the numpy the reference was exported with; within 1 ulp with another
+    # np.percentile on float32 rounds its interpolation differently from one numpy to another, by more the farther
+    # apart the two values it interpolates between: on these frames numpy 2.3.5 (the Intel Mac's pin) and 2.5.3 give
+    # limits 0-3 float32 ulp apart, at most 1.8e-7 relative. Bit for bit with the numpy the reference was exported
+    # with; within 8 float32 eps (9.5e-7) with another: a real change (another percentile or subsample) moves them by
+    # 4e-3 or more, and one step of the 8-bit image they scale is 1/255
     same_numpy = meta.get("numpy") == np.__version__
     for i, (img, idx) in enumerate(zip(imgs, case["frames"], strict=True)):
         got, want = np.asarray(limits(img, symmetric=idx[1] > 0)), ref[f"limits.{i}"]
         if same_numpy:
             assert np.array_equal(got, want), f"limits.{i}"
         else:
-            np.testing.assert_array_max_ulp(got.astype(np.float32), want.astype(np.float32), maxulp=1)
+            np.testing.assert_allclose(got, want, rtol=8 * np.finfo(np.float32).eps, atol=0, err_msg=f"limits.{i}")
     for k, c in enumerate(case["reduce"]):
         lo, hi = ref[f"limits.{c['frame']}"]
         out = np.empty((c["h"], c["w"]), np.uint8)
