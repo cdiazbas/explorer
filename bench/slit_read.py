@@ -2,12 +2,14 @@
 run (ROADMAP E7.3; the prototype's audit F70, F71, F73, its slitc_bench).
 
     QT_QPA_PLATFORM=offscreen python bench/slit_read.py proto|explorer <cube_im.fits> <out.json>
-        [--seed N] [--half 0|1] [--slits 4] [--length 600] [--moves 60] [--no-sp]
-    python bench/slit_read.py abba <cube_im.fits> <out_dir> --proto-python P [--rounds 4] [same options]
+        [--seed N] [--half 0|1|2] [--slits 4] [--length 600] [--moves 60] [--no-sp]
+    python bench/slit_read.py abba <cube_im.fits> <out_dir> --proto-python P [--rounds 4] [--before-src DIR]
+        [same options]
 
-Per slit, a shape of three points about --length px end to end at a random angle (the same for both programs for a
-given --seed), centred at a random x in the upper (--half 0) or lower (1) half of the image, so that the two programs
-of a round read different pixels; abba runs the rounds in alternating order and swaps the halves every two rounds.
+Per slit, a shape of three points about --length px end to end at a random angle (the same for every program for a
+given --seed), centred at a random x in the upper (--half 0) or lower (1) half of the image, or across its middle
+(2), so that the programs of a round read different pixels; abba runs the rounds in alternating order and swaps the
+halves every two rounds (with three programs, each takes the next of the three places every round).
 Two cases per slit, each ending with the slit removed:
 - finished: a finished slit given at once (the prototype: its slit, slit_path and slitChanged, as _slit_finish sets
   them; explorer: Session.set_path), so that each reads the whole slit in one job and not a slit drawn point by
@@ -15,8 +17,12 @@ Two cases per slit, each ending with the slit removed:
   read without it) and painted (one more pass of the event loop); io_ms is the time spent inside the reads
   (read_slit_blocks or read_slit_bands, timed around the function each program calls);
 - live (variant D): the first point added, then --moves pointer moves 16 ms apart along the slit to its far end,
-  sent as mouse moves to the image's viewport; the time slice's updates during the motion, each read's time, and the
-  time from the last move until the slices are complete.
+  sent as mouse moves to the image's viewport; during the motion, the time slice's updates (images given to its
+  ImageItem) and how many of them were painted (paints of that item with an image it had not painted yet: an image
+  replaced before the next paint never reaches the screen), each read's time, and the time from the last move until
+  the slices are complete. Both programs paint once per pass of the event loop; a pass that outlasts 16 ms puts the
+  moves behind their schedule, and the moves sent before the next pass are handled in it.
+With --before-src, abba runs a third program: explorer from the sources in DIR (PYTHONPATH), named "before".
 The JSON has host, date, the load before and after, the CPUs the process may run on, and every slit's numbers.
 """
 import argparse
@@ -47,6 +53,8 @@ def args():
     ap.add_argument("--no-sp", action="store_true")
     ap.add_argument("--rounds", type=int, default=4)
     ap.add_argument("--proto-python", default=sys.executable)
+    ap.add_argument("--before-src", default=None)
+    ap.add_argument("--label", default=None)
     ap.add_argument("--prototype", default=os.environ.get("EXPLORER_PROTOTYPE", os.path.join(ROOT, "..", "prototype")))
     return ap.parse_args()
 
@@ -61,7 +69,7 @@ def shapes(seed, n, length, ny, nx, half):
         ang = rng.uniform(0, np.pi)
         d = np.array([np.cos(ang), np.sin(ang)]) * length / 2
         mid = rng.normal(0, length / 8, 2)
-        c = np.array([rng.uniform(nx * 0.35, nx * 0.65), ny * (0.28 if half == 0 else 0.72)])
+        c = np.array([rng.uniform(nx * 0.35, nx * 0.65), ny * (0.28, 0.72, 0.5)[half]])
         pts = np.clip(np.array([-d, mid, d]) + c, 1, [nx - 2, ny - 2])
         out.append([(float(np.floor(x)) + 0.5, float(np.floor(y)) + 0.5) for x, y in pts])
     return out
@@ -180,6 +188,7 @@ def run_one(a):
 
         return {k: v for k, v in summary().get("counters", {}).items() if k.startswith("core.slit.")}
 
+    import pyqtgraph as pg
     from PySide6 import QtCore, QtGui, QtWidgets
 
     def spin(until, timeout=60.0):
@@ -188,13 +197,23 @@ def run_one(a):
             app.processEvents()
         return until()
 
-    painted = [0]
+    painted = [0]                                       # images given to the time slice
+    shown = dict(version=0, at=0, n=0)                  # and those of them painted
     orig_set = ts_item.setImage
 
     def counted(*x, **k):
         painted[0] += 1
+        shown["version"] += 1
         return orig_set(*x, **k)
     ts_item.setImage = counted
+    orig_paint = pg.ImageItem.paint
+
+    def paint(self, *x, **k):
+        if self is ts_item and shown["at"] != shown["version"]:
+            shown["at"] = shown["version"]
+            shown["n"] += 1
+        return orig_paint(self, *x, **k)
+    pg.ImageItem.paint = paint
 
     def move(x, y):
         """A mouse move over the image's viewport at data point (x, y), as the platform delivers it."""
@@ -208,8 +227,9 @@ def run_one(a):
     for _ in range(100):
         app.processEvents()
         time.sleep(0.01)
-    res = dict(program=a.which, host=socket.gethostname().split(".")[0], date=time.strftime("%Y-%m-%dT%H:%M:%S"),
-               cube=os.path.basename(a.cube), per_pixel=sp is not None, seed=a.seed, half=a.half, length=a.length,
+    res = dict(program=a.label or a.which, host=socket.gethostname().split(".")[0],
+               date=time.strftime("%Y-%m-%dT%H:%M:%S"), cube=os.path.basename(a.cube), per_pixel=sp is not None,
+               seed=a.seed, half=a.half, length=a.length,
                load_before=os.getloadavg(), cpus=sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity")
                else None, slits=[])
     for k, pts in enumerate(shapes(a.seed, a.slits, a.length, ny, nx, a.half)):
@@ -230,6 +250,7 @@ def run_one(a):
         start(lpts[0])
         app.processEvents()
         painted[0] = 0
+        shown["n"] = 0
         c0 = counters()
         t0 = time.perf_counter()
         for j in range(1, a.moves + 1):
@@ -237,13 +258,13 @@ def run_one(a):
             move(lpts[0][0] + f * (lpts[1][0] - lpts[0][0]), lpts[0][1] + f * (lpts[1][1] - lpts[0][1]))
             spin(lambda: False, max(0.0, t0 + j * MOVE_S - time.perf_counter()))
         motion = time.perf_counter() - t0
-        during = painted[0]
+        during, seen = painted[0], shown["n"]
         c1 = counters()
         q = time.perf_counter()
         ok = spin(complete)
         app.processEvents()
         reads = [m for _k, m in io]
-        row["live"] = dict(ok=ok, npath=npath(), moves=a.moves, motion_s=round(motion, 2), updates=during,
+        row["live"] = dict(ok=ok, npath=npath(), moves=a.moves, motion_s=round(motion, 2), updates=during, painted=seen,
                            reads=len(reads), read_median_ms=round(statistics.median(reads), 1) if reads else None,
                            read_max_ms=round(max(reads), 1) if reads else None,
                            settle_ms=round((time.perf_counter() - q) * 1e3, 1),
@@ -254,7 +275,8 @@ def run_one(a):
         f_, l_ = row["finished"], row["live"]
         print(f"{a.which} slit {k}: {f_['npath']} px, finished {f_['total_ms']} ms (I/O {f_['io_ms']} ms in "
               f"{f_['reads']} reads); live {l_['updates']} updates in {l_['motion_s']} s, reads median "
-              f"{l_['read_median_ms']} ms, complete {l_['settle_ms']} ms after the last move", flush=True)
+              f"{l_['read_median_ms']} ms, complete {l_['settle_ms']} ms after the last move; "
+              f"{l_['painted']} painted", flush=True)
     res["load_after"] = os.getloadavg()
     json.dump(res, open(a.out, "w"), indent=1)
     app.quit()
@@ -264,26 +286,33 @@ def run_one(a):
 def run_abba(a):
     os.makedirs(a.out, exist_ok=True)
     progs = {"proto": a.proto_python, "explorer": sys.executable}
+    names = ["proto", "explorer"]
+    if a.before_src:
+        progs["before"] = sys.executable
+        names.append("before")
     rows = []
     for r in range(a.rounds):
-        order = ["proto", "explorer"] if r % 2 == 0 else ["explorer", "proto"]
+        order = names if r % 2 == 0 else names[::-1]
         seed = a.seed * 1000 + r
         for k, which in enumerate(order):
-            half = (k + r // 2) % 2
+            half = (k + r // 2) % 2 if len(names) == 2 else (k + r) % 3
             out = os.path.join(a.out, f"r{r}_{which}.json")
-            cmd = [progs[which], os.path.abspath(__file__), which, a.cube, out, "--seed", str(seed), "--half",
-                   str(half), "--slits", str(a.slits), "--length", str(a.length), "--moves", str(a.moves),
-                   "--prototype", a.prototype] + (["--no-sp"] if a.no_sp else [])
+            cmd = [progs[which], os.path.abspath(__file__), "proto" if which == "proto" else "explorer", a.cube, out,
+                   "--seed", str(seed), "--half", str(half), "--slits", str(a.slits), "--length", str(a.length),
+                   "--moves", str(a.moves), "--prototype", a.prototype, "--label", which] + (
+                       ["--no-sp"] if a.no_sp else [])
             env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
             env.pop("DISPLAY", None)
             if which == "proto":
                 env.pop("PYTHONPATH", None)
+            elif which == "before":
+                env["PYTHONPATH"] = os.path.abspath(a.before_src)
             print(f"round {r + 1}: {which} (half {half})", flush=True)
             subprocess.run(cmd, env=env, check=True)
             rows.append(json.load(open(out)))
     summary: dict = dict(host=socket.gethostname().split(".")[0], date=time.strftime("%Y-%m-%dT%H:%M:%S"),
                          cube=os.path.basename(a.cube), rounds=a.rounds, no_sp=a.no_sp, programs={})
-    for which in ("proto", "explorer"):
+    for which in names:
         mine = [s for x in rows if x["program"] == which for s in x["slits"]]
 
         def med(case, key, mine=mine):
@@ -293,7 +322,8 @@ def run_abba(a):
             slits=len(mine), npath=med("finished", "npath"), finished_total_ms=med("finished", "total_ms"),
             finished_io_ms=med("finished", "io_ms"), io_ms_range=[min(s["finished"]["io_ms"] for s in mine),
                                                                   max(s["finished"]["io_ms"] for s in mine)],
-            live_updates=med("live", "updates"), live_read_median_ms=med("live", "read_median_ms"),
+            live_updates=med("live", "updates"), live_painted=med("live", "painted"),
+            live_read_median_ms=med("live", "read_median_ms"),
             live_settle_ms=med("live", "settle_ms"), all_ok=all(s["finished"]["ok"] and s["live"]["ok"] for s in mine),
             load=[x["load_before"][0] for x in rows if x["program"] == which])
     json.dump(summary, open(os.path.join(a.out, "summary.json"), "w"), indent=1)
