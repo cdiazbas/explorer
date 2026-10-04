@@ -92,7 +92,9 @@ def export(case, proto, make):
     from sources import SpFits, SpLP
 
     im, spf, icf = case_inputs(case, make)
-    arrays, meta = {}, dict(case=case, prototype=proto, prototype_code_md5=prototype_md5(proto),
+    # the prototype's place relative to explorer, never its absolute path: the reference is versioned
+    arrays, meta = {}, dict(case=case, prototype=os.path.relpath(proto, ROOT),
+                            prototype_code_md5=prototype_md5(proto),
                             host=socket.gethostname().split(".")[0], date=time.strftime("%Y-%m-%dT%H:%M:%S"),
                             python=platform.python_version(), numpy=np.__version__,
                             inputs={os.path.basename(p): fingerprint(p) for p in (im, spf, icf) if p})
