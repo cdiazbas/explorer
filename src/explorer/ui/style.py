@@ -126,6 +126,8 @@ _LIGHT_SHEET = dict(bg="#ffffff", fg=LABEL_LIGHT_HEX, border="rgba(0,0,0,0.18)",
                     dis=DISABLED_LIGHT_HEX, sep="rgba(0,0,0,0.10)", ink="rgba(0,0,0")
 MENU_QSS, POPUP_QSS, SCROLL_QSS = (q % _DARK_SHEET for q in (_MENU_QSS, _POPUP_QSS, _SCROLL_QSS))
 MENU_QSS_LIGHT, POPUP_QSS_LIGHT, SCROLL_QSS_LIGHT = (q % _LIGHT_SHEET for q in (_MENU_QSS, _POPUP_QSS, _SCROLL_QSS))
+# the sheets polish may replace: none, or ours in either theme (a switch of theme while running: Shell.set_theme)
+_OURS = {"", MENU_QSS, POPUP_QSS, SCROLL_QSS, MENU_QSS_LIGHT, POPUP_QSS_LIGHT, SCROLL_QSS_LIGHT}
 
 
 def dark_palette() -> QtGui.QPalette:
@@ -206,6 +208,9 @@ class _RoundMask(QtCore.QObject):
         return False
 
 
+TOOLBAR_SPACING = 6                                     # px between toolbar items (Fusion: 3)
+
+
 class MacDarkStyle(QtWidgets.QProxyStyle):
     """Fusion with macOS dark-mode primitives. Only paints: every metric and hint is Fusion's (no pixelMetric,
     styleHint or sizeFromContents override; sizes are set once in polish). Every draw call of the application comes
@@ -248,14 +253,14 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
                 arg.installEventFilter(_RoundMask(r, arg))
             sheet = (self.MENU if isinstance(arg, QtWidgets.QMenu) else
                      self.SCROLL if isinstance(arg, QtWidgets.QScrollBar) else None)
-            if sheet and not arg.styleSheet():         # never over a sheet the application set
+            if sheet and arg.styleSheet() in _OURS and arg.styleSheet() != sheet:   # never over the application's
                 arg.setStyleSheet(sheet)
             # set here, not through pixelMetric: Qt asks for metrics ~230 times per cursor move (dock layouts)
             if isinstance(arg, QtWidgets.QToolBar) and (lay := arg.layout()) is not None:
-                lay.setSpacing(6)                      # between toolbar items (Fusion: 3)
+                lay.setSpacing(TOOLBAR_SPACING)
             if name == "QTipLabel" and isinstance(arg, QtWidgets.QLabel):
                 arg.setMargin(5)                       # room round the tool tip's text
-            if isinstance(arg, QtWidgets.QComboBox) and not arg.view().styleSheet():
+            if isinstance(arg, QtWidgets.QComboBox) and arg.view().styleSheet() in _OURS - {self.POPUP}:
                 arg.view().setStyleSheet(self.POPUP)
         return super().polish(arg)
 
@@ -723,6 +728,11 @@ def apply(app, theme: str = "dark") -> bool:
     app.setStyle(style)
     if app.palette() != pal:                             # setStyle resets the palette to the style's own
         app.setPalette(pal)
+    # the toolbars polished before (a switch of theme): Qt's StyleChange, which comes after the polish, set their
+    # spacing back to the style's
+    for tb in app.allWidgets():
+        if isinstance(tb, QtWidgets.QToolBar) and (lay := tb.layout()) is not None:
+            lay.setSpacing(TOOLBAR_SPACING)
     tip = QtGui.QPalette(QtWidgets.QToolTip.palette())
     tip.setColor(QtGui.QPalette.ColorRole.ToolTipBase, cls.TIP_BG)
     tip.setColor(QtGui.QPalette.ColorRole.ToolTipText, cls.TIP_FG)
@@ -778,6 +788,15 @@ def plot_theme(app) -> bool:
     pg.setConfigOptions(background="w" if light else "k", foreground=(70, 70, 74) if light else "d")
     app.setProperty("explorer_light", light)
     return light
+
+
+def default_axes(view) -> None:
+    """The axes of a pyqtgraph view in its default pens again, the ones plot_theme chose: an axis takes the foreground
+    when it is made and keeps it."""
+    for it in view.scene().items():
+        if isinstance(it, pg.AxisItem):
+            it.setPen()
+            it.setTextPen()
 
 
 def is_light() -> bool:

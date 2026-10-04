@@ -36,21 +36,30 @@ class StokesGrid(QtWidgets.QWidget):
         lay.setSpacing(SPACING)
         self.views: list[ImageView] = []
         self._following = False
-        ink = QtGui.QColor(30, 30, 34) if light else QtGui.QColor(235, 235, 240)
         cols = 1 if ns == 1 else 2
+        self.labels: list[pg.TextItem] = []
         for k in range(ns):
             v = ImageView(on_hover=on_hover, strips=strips, parts=parts, light=light)
             v._first = False                            # the region comes from the single view, not the whole image
             v.vb.setMenuEnabled(False)
             v.widget.viewport().setCursor(QtCore.Qt.CursorShape.CrossCursor)
             v.vb.sigRangeChanged.connect(lambda *_a, v=v: self._follow(v))
-            label = pg.TextItem(STOKES[k], color=ink, anchor=(0, 0))
+            label = pg.TextItem(STOKES[k], anchor=(0, 0))
             label.setParentItem(v.vb)
             label.setPos(8, 6)
+            self.labels.append(label)
             v.widget.scene().sigMouseClicked.connect(lambda ev, k=k: on_click(k, ev))
             lay.addWidget(v.widget, k // cols, k % cols)
             self.views.append(v)
+        self.set_light(light)
         self.hide()
+
+    def set_light(self, light: bool) -> None:
+        for v in self.views:
+            v.set_light(light)
+        ink = QtGui.QColor(30, 30, 34) if light else QtGui.QColor(235, 235, 240)
+        for label in self.labels:
+            label.setColor(ink)
 
     def _follow(self, src: ImageView) -> None:
         """A zoom or pan in one panel: the same region in the others. Not pyqtgraph's setXLink/setYLink, which lines

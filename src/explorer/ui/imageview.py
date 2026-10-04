@@ -59,23 +59,17 @@ class ImageView:
         look)."""
         self.on_hover = on_hover
         self.strips, self.parts = strips, parts
-        self.light = light
         self.widget = pg.GraphicsLayoutWidget()
         self.vb = self.widget.addViewBox(lockAspect=True)
         self.img = pg.ImageItem()
         self.vb.addItem(self.img)
-        self.widget.setBackground("w" if light else "k")
-        if light:                                       # data on 1..255 black to white, level 0 (padding) white
-            grey = np.repeat(np.arange(256, dtype=np.uint8)[:, None], 3, 1)
-            grey[1:] = grey[np.round(np.linspace(0, 255, 255)).astype(int)]
-            grey[0] = 255
-            self.img.setLookupTable(grey)
         self.hl, self.vl = pg.InfiniteLine(angle=0, pen=CURSOR_PEN), pg.InfiniteLine(angle=90, pen=CURSOR_PEN)
         self.vb.addItem(self.hl)
         self.vb.addItem(self.vl)
         self.reticle: Reticle | None = None
         self._locked = False
-        self.base_lut = self.img.lut                    # the look's grey: pyqtgraph's own, or the light theme's
+        self.base_lut: np.ndarray | None = None          # the look's grey: pyqtgraph's own, or the light theme's
+        self.set_light(light)
         if reticle:
             self.set_reticle(True)
         self._moves = _Moves(self)
@@ -91,6 +85,22 @@ class ImageView:
         self.vb.sigRangeChanged.connect(lambda *a: self._pending.start())
         self.last_render: dict = {}
         self.paused = False                             # covered (the 2x2 view over it): keeps images, draws none
+
+    def set_light(self, light: bool) -> None:
+        """The surround, the padding and the locked crosshair for this theme. The grey table goes on only if the image
+        wears the old one: a look's colour map stays until the look sets it again."""
+        self.light = light
+        self.widget.setBackground("w" if light else "k")
+        grey = None
+        if light:                                       # data on 1..255 black to white, level 0 (padding) white
+            grey = np.repeat(np.arange(256, dtype=np.uint8)[:, None], 3, 1)
+            grey[1:] = grey[np.round(np.linspace(0, 255, 255)).astype(int)]
+            grey[0] = 255
+        if self.img.lut is self.base_lut:
+            self.img.setLookupTable(grey)
+            grey = self.img.lut                         # as pyqtgraph keeps it: compared by identity above
+        self.base_lut = grey
+        self.set_locked(self._locked)
 
     # ---------------------------------------------------------------- input
     def _moved(self, pos) -> None:

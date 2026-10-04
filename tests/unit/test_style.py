@@ -177,3 +177,33 @@ def test_no_line_under_a_panel_title(restore):
     bottom = {QtGui.QColor(img.pixel(x, img.height() - 1)).name() for x in range(start, img.width() - 4)}
     assert img.width() - 4 > start and bottom == {window}
     win.close()
+
+
+def test_a_switch_of_theme_keeps_the_toolbar_spacing_and_changes_our_sheets(restore):
+    """Switched while the window runs (Shell.set_theme): Qt's style change, after the polish, set the toolbar's
+    spacing back to the style's (1 px: the controls 5 px closer together than at a start in that theme), and a menu,
+    a scroll bar and a combo's list kept the old theme's sheet (polish only filled an empty one)."""
+    from PySide6 import QtWidgets
+
+    from explorer.ui import style
+
+    style.apply_theme(restore, "dark")
+    win = QtWidgets.QMainWindow()
+    tb = win.addToolBar("nav")
+    tb.addWidget(QtWidgets.QLabel("t"))
+    combo = QtWidgets.QComboBox()
+    combo.addItems(["I", "Q"])
+    tb.addWidget(combo)
+    menu = QtWidgets.QMenu(win)
+    bar = QtWidgets.QScrollBar(win)
+    own = QtWidgets.QMenu(win)
+    own.setStyleSheet("QMenu { color: red; }")         # the application's own sheet stays
+    win.show()
+    restore.processEvents()
+    assert tb.layout().spacing() == style.TOOLBAR_SPACING and menu.styleSheet() == style.MENU_QSS
+    style.apply_theme(restore, "light")
+    restore.processEvents()
+    assert tb.layout().spacing() == style.TOOLBAR_SPACING
+    assert menu.styleSheet() == style.MENU_QSS_LIGHT and bar.styleSheet() == style.SCROLL_QSS_LIGHT
+    assert combo.view().styleSheet() == style.POPUP_QSS_LIGHT and own.styleSheet() == "QMenu { color: red; }"
+    win.close()

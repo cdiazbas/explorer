@@ -17,7 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import APP_NAME
 from ..data.axes import C_KMS, STOKES, SUP, fmt_signed, unit_text
-from . import pens
+from . import pens, style
 from .imageview import CURSOR_PEN
 from .padlock import PanelLock
 
@@ -230,6 +230,7 @@ class SpectraPanel:
         # the classic look's curves, to come back to after the modern marks
         self._classic = [(c.opts["pen"], c.opts["symbolPen"], c.opts["symbolBrush"]) for c in self.curves]
         self._zeros: list = []
+        self.light = light
         # the x axes are linked: their values once, on the outer edges (delta-lambda under the bottom row, v over the
         # top one), as two rows of the same numbers between the plots read as a third axis. Inner axes keep their
         # line, the box's edge. The velocity ticks point out, to their labels: it has no grid, and inward they hung
@@ -267,6 +268,19 @@ class SpectraPanel:
                 p.setLabel("left", f"{name} [{e}{u}]" if (e or u) else name)
             else:
                 p.setLabel("left", f"{name}/I<sub>c</sub> [%]")
+
+    def set_light(self, light: bool) -> None:
+        """The classic curves, the zero lines and the axes in this theme's ink. The curves change when the look puts
+        its marks on again (set_marks, clear_marks); the background is the shell's (a card, or the plots' own)."""
+        self.light = light
+        ink = QtGui.QColor(30, 30, 34) if light else QtGui.QColor(255, 255, 255)
+        dot = QtGui.QColor(ink)
+        dot.setAlpha(225)
+        self._classic = [(pg.mkPen(ink, width=1.5), None, pg.mkBrush(dot)) for _ in self.curves]
+        zero = QtGui.QColor(0, 0, 0, 70) if light else QtGui.QColor(255, 255, 255, 70)
+        for ln in self._zeros:
+            ln.setPen(pg.mkPen(zero, width=1, style=QtCore.Qt.PenStyle.DashLine))
+        style.default_axes(self.w)
 
     def set_marks(self, colour, light: bool) -> None:
         """The modern look's marks: the lambda markers and rings in colour, quieter curves, and a dashed zero line on

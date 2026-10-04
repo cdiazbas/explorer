@@ -259,11 +259,49 @@ class Shell(QtWidgets.QMainWindow):
                 w.setStyle(self._seams)
         card = (CARD_LIGHT if light else CARD) if L.has("cards") else pg.getConfigOption("background")
         for pw in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None)):
-            if pw is not None:
+            if pw is not None and self.glass is None:   # worn, glass keeps them clear over its slabs
                 pw.setBackground(card)
         if L.has("glass") and self.glass is None:       # its own parts last, over the modern look's (ui.glass)
             self.glass = glass.GlassChrome(self)
             self.glass.apply()
+
+    # ---------------------------------------------------------------- the theme (ui.style), while the window runs
+    def set_theme(self, theme: str) -> None:
+        """dark or light (style.apply_theme) while the window runs (T): the application's style and palette, and
+        every part that took the theme when it was made, given the new one. The look stays as worn; glass in place,
+        its panels where they are and the image's region kept."""
+        app = QtWidgets.QApplication.instance()
+        if self._seams is not None:                     # off a Mac's native style: its seams go with it
+            for w in (self, self.spec_dock, self.lt_dock):
+                w.setStyle(None)  # type: ignore[arg-type]  # None: the application's style again
+            self._seams = None
+        style.apply_theme(app, theme)
+        style.separators(self)
+        light = style.is_light()
+        self.view.set_light(light)
+        if self.grid is not None:
+            self.grid.set_light(light)
+        for lock in (self.image_lock, self.spec_lock):
+            if lock is not None:
+                lock.set_light(light)
+        if self.spectra is not None:
+            self.spectra.set_light(light)
+        if self.lambda_t is not None:
+            self.lambda_t.set_light(light)
+        if self.colours is not None:
+            self.colours.set_light(light)
+        self.nav.restyle()
+        self.sheet.setText(self.action_registry.sheet_html(self.palette()))
+        self.set_look(self.look)                        # marks, cards and colour maps in the new theme
+        if self.glass is not None:
+            self.glass.retheme()
+        if self.colour_key is not None:
+            self.colour_key.update()
+
+    def toggle_theme(self) -> None:
+        """T: dark and light in turn; from a Mac's native theme, the other of the two."""
+        self.set_theme("dark" if style.is_light() else "light")
+        self.statusBar().showMessage(f"{'light' if style.is_light() else 'dark'} theme (T switches)", 3000)
 
     def _reticle_colours(self) -> None:
         """The reticles white, in the glass look its accent; the 2x2 view's too, whenever it is made."""
@@ -640,6 +678,7 @@ class Shell(QtWidgets.QMainWindow):
                       (("Shift+F", self.spectra_to_sample),))]
         # always bound: the terminal's keys are read once, and the look can change while the window runs
         rows += [("M", "look: classic \u2192 modern \u2192 glass", ((K.Key_M, self.toggle_look),)),
+                 ("T", "theme: dark \u21c4 light", ((K.Key_T, self.toggle_theme),)),
                  ("I", "panels: hide all, show again (glass look)", ((K.Key_I, self.toggle_panels),)),
                  ("C  \u21e7C", "colours: next, previous map for the Stokes shown (modern look)",
                   (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1))))]

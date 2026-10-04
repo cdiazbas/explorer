@@ -20,22 +20,9 @@ class StokesSegments(QtWidgets.QWidget):
 
     def __init__(self, ns: int, current: int, pick):
         super().__init__()
-        from . import style
-
         self.setObjectName("stokes_segments")
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
-        pal = self.palette()
-        text = pal.color(QtGui.QPalette.ColorRole.ButtonText)
-        hover, track = QtGui.QColor(text), QtGui.QColor(text)
-        hover.setAlphaF(0.10)
-        track.setAlphaF(0.07)
-        H = QtGui.QColor.NameFormat.HexArgb
-        self.setStyleSheet(
-            f"#stokes_segments {{ background: {track.name(H)}; border-radius: 7px; }}"
-            f"QToolButton {{ border: none; border-radius: 5px; padding: 2px 10px; margin: 2px;"
-            f" color: {text.name()}; background: transparent; }}"
-            f"QToolButton:hover:!checked {{ background: {hover.name(H)}; }}"
-            f"QToolButton:checked {{ background: {style.selected().name()}; color: white; }}")
+        self.restyle()
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
@@ -51,6 +38,23 @@ class StokesSegments(QtWidgets.QWidget):
             lay.addWidget(b)
         self.group.button(current).setChecked(True)
         self.group.idClicked.connect(pick)
+
+    def restyle(self) -> None:
+        """Its sheet, from the application's palette and selection colour: a sheet keeps the colours it was made
+        with, so a new theme makes it again."""
+        from . import style
+
+        text = QtWidgets.QApplication.palette().color(QtGui.QPalette.ColorRole.ButtonText)
+        hover, track = QtGui.QColor(text), QtGui.QColor(text)
+        hover.setAlphaF(0.10)
+        track.setAlphaF(0.07)
+        H = QtGui.QColor.NameFormat.HexArgb
+        self.setStyleSheet(
+            f"#stokes_segments {{ background: {track.name(H)}; border-radius: 7px; }}"
+            f"QToolButton {{ border: none; border-radius: 5px; padding: 2px 10px; margin: 2px;"
+            f" color: {text.name()}; background: transparent; }}"
+            f"QToolButton:hover:!checked {{ background: {hover.name(H)}; }}"
+            f"QToolButton:checked {{ background: {style.selected().name()}; color: white; }}")
 
     def set(self, s: int) -> None:
         """s: a Stokes, or ns for All."""
@@ -299,6 +303,11 @@ class NavBar:
                 self.stokes.blockSignals(False)
         if self.drop is not None:
             self.drop.set(s, self.all)
+
+    def restyle(self) -> None:
+        """Another theme (Shell.set_theme): the Stokes segments make their sheet again."""
+        if self.drop is not None:
+            self.drop.segments.restyle()
 
     def fit(self, width: int) -> None:
         """Sliders between SLIDER_W so the whole toolbar fits `width`: at a fixed 220 px it needed 1210 px, and below

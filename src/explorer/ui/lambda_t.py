@@ -11,7 +11,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..data.axes import fmt_signed
-from . import pens
+from . import pens, style
 from .imageview import CURSOR_PEN
 from .spectra import SignedAxis
 
@@ -133,6 +133,10 @@ class LambdaTPanel:
             pi.getAxis(side).setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
             pi.getAxis(side).setStyle(tickLength=4)     # out of the image, to the labels: pyqtgraph's 5 px went in
         self.widget = self.w
+
+    def set_light(self, light: bool) -> None:
+        """The axes in this theme's ink; the background is the shell's (a card, or the plots' own)."""
+        style.default_axes(self.w)
 
     def lam_label(self, i: int) -> str:
         return fmt_signed(self.xl[i], 2) if self.physical else str(i)

@@ -86,6 +86,17 @@ class ColormapRegistry:
         for m in set(self.maps):
             table(m)                                    # read now, not on the first frame of V
 
+    def set_light(self, light: bool) -> None:
+        """The other theme's diverging maps: Q U V keep theirs if that theme has it, else the one in its place."""
+        if light == self.light:
+            return
+        old, new = _divergings(self.light), _divergings(light)
+        self.maps = [m if s == 0 or m in new else new[min(old.index(m), len(new) - 1)] if m in old else new[0]
+                     for s, m in enumerate(self.maps)]
+        self.light = light
+        for m in set(self.maps):
+            table(m)
+
     def names_for(self, s: int) -> tuple:
         return SEQUENTIAL if s == 0 else _divergings(self.light)
 

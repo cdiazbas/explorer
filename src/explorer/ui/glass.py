@@ -314,6 +314,21 @@ class PanelSkin(QtCore.QObject):
         dock.topLevelChanged.connect(self._floated)
         self.shape()
 
+    def retheme(self) -> None:
+        """Another theme while worn: its plots' axes went back to the default pens (Shell.set_theme), which remove()
+        gives back now; the glass's go on again, and the plots stay clear over the slab."""
+        edge, label = AXIS[_mode()]
+        views = []
+        for gv, bg, fill, css, axes in self._views:
+            axes = [(it, it.pen(), it.textPen()) for it, _p, _t in axes]
+            gv.setBackground(None)
+            for it, _p, _t in axes:
+                it.setPen(edge)
+                it.setTextPen(label)
+            views.append((gv, bg, fill, css, axes))
+        self._views = views
+        self.d.update()
+
     def titles_changed(self) -> None:
         """Someone put another title on the panel (the chrome's, after the look): that one is the panel's own, to
         give back on remove(); the glass title goes on again."""
@@ -567,19 +582,38 @@ class GlassChrome:
     def _flatten(self, buttons) -> None:
         """The bar's buttons flat on the glass: out of a toolbar a Mac's native style drew each in a grey box. A sheet
         of their own (the Stokes segments, a child of the drop-down, keep theirs); the one they had comes back."""
+        self._sheets = {b: b.styleSheet() for b in buttons if b is not None}
+        sheet = self._flat_sheet()
+        for b in self._sheets:
+            b.setStyleSheet(sheet)
+
+    @staticmethod
+    def _flat_sheet() -> str:
         ink = INK[_mode()]
         H = QtGui.QColor.NameFormat.HexArgb
         hover, down = QtGui.QColor(ink), QtGui.QColor(ink)
         hover.setAlphaF(0.10)
         down.setAlphaF(0.18)
-        sheet = (f"QToolButton {{ border: none; border-radius: 6px; padding: 3px 7px; background: transparent;"
-                 f" color: {ink.name()}; }}"
-                 f"QToolButton:hover {{ background: {hover.name(H)}; }}"
-                 f"QToolButton:pressed {{ background: {down.name(H)}; }}"
-                 f"QToolButton:checked {{ background: {for_white_text(accent()).name()}; color: white; }}")
-        self._sheets = {b: b.styleSheet() for b in buttons if b is not None}
+        return (f"QToolButton {{ border: none; border-radius: 6px; padding: 3px 7px; background: transparent;"
+                f" color: {ink.name()}; }}"
+                f"QToolButton:hover {{ background: {hover.name(H)}; }}"
+                f"QToolButton:pressed {{ background: {down.name(H)}; }}"
+                f"QToolButton:checked {{ background: {for_white_text(accent()).name()}; color: white; }}")
+
+    def retheme(self) -> None:
+        """Another theme while worn (Shell.set_theme), in place: the panels where they are, the image's region kept,
+        which taking glass off and on again would not. What took the old theme's colours when glass went on takes
+        the new ones; the rest (bar, slabs, titles, glyphs) reads the theme when it paints."""
+        self._tint(accent())                        # the new style has no tint; the segments' sheet is made anew
+        sheet = self._flat_sheet()
         for b in self._sheets:
             b.setStyleSheet(sheet)
+        for x in self._made:
+            if isinstance(x, QtWidgets.QLabel):
+                x.setStyleSheet(f"color: {INK[_mode()].name()};")
+        for sk in self.skins:
+            sk.retheme()
+        self.bar.invalidate()
 
     def _fit_sliders(self, room: int) -> None:
         """The sliders give way first, as in the toolbar: in a 480-px window the bar needed 505 px for 448 (its t

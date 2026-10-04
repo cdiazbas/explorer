@@ -56,6 +56,19 @@ def test_the_colour_tables():
     assert reg.maps[3] == "gray"                         # round the list
 
 
+def test_another_theme_keeps_each_stokes_map_where_it_can(monkeypatch):
+    """Shell.set_theme: a map both themes have stays; one only the dark theme has (CET-D4, second in its list) gives
+    way to the light list's second; I's sequential maps are the same in both."""
+    from explorer.look import colormaps as cm
+
+    monkeypatch.delenv("EXPLORER_DIVERGING", raising=False)
+    reg = cm.ColormapRegistry(4)
+    reg.maps = ["CET-L1", "CET-D4", "RdBu_r", "gray"]
+    reg.set_light(True)
+    assert reg.light and reg.maps == ["CET-L1", cm._divergings(True)[1], "RdBu_r", "gray"]
+    assert reg.names_for(1) == cm._divergings(True)
+
+
 @pytest.fixture(scope="module")
 def cube(tmp_path_factory):
     return synth.write_dataset(tmp_path_factory.mktemp("look"), "c", shape=SHAPE, icube=False)["im"]

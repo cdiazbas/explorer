@@ -28,6 +28,10 @@ class PanelLock(QtWidgets.QToolButton):
         self._place(view)
         self.raise_()
 
+    def set_light(self, light: bool) -> None:
+        self.light = light
+        self.update()
+
     def set_closed(self, on: bool) -> None:
         """Show the state without acting on it (the scale was fixed by a key or a refit)."""
         if self.isChecked() != on:
