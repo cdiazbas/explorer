@@ -10,11 +10,16 @@ One line per event, milliseconds since the trace began:
     1302.4 CALL lambda_t  move (561, 389)  <- bridge.py:509 _apply_geometry <- windows.py:257 configured
     1303.0 LOOK glass
     1310.2 SHOW Spectrum
+    1520.7 RESET panels
+    1520.9 PLACE monitor (0, 25, 1512, 912)  window (102, 25, 900, 887)  panels spectrum, lambda_t
 
 EVT is what the window or a panel underwent (Qt's Move, Resize); CALL is explorer's Python asking for it (setGeometry,
 move, resize, setFloating on the main window and the panels), with the frames that asked, innermost first. An EVT with
 no CALL just before it came from Qt itself, the window manager or the bridge. LOOK is M or --look; SHOW and HIDE a
-panel or a window appearing or going. Nothing is wrapped or watched unless the trace is asked for.
+panel or a window appearing or going. SCREENS, at the start: the screens Qt sees and, with an X display, Xinerama's
+heads (through the bridge one XQuartz screen can be two monitors). RESET: the reset button; PLACE: the glass look
+placing its panels, from the monitor and the window frame it starts from. Nothing is wrapped or watched unless the
+trace is asked for.
 
     tracer = install_from_env()      # None unless EXPLORER_GEOMETRY_TRACE is set (and not 0)
     tracer = Tracer(path); ...; tracer.stop()
@@ -90,6 +95,18 @@ def _origin(limit: int = 3) -> str:
     return " <- ".join(out) or "?"
 
 
+def _screens() -> str:
+    """The screens Qt sees (geometry, available) and, with an X display, Xinerama's heads and whether it is XQuartz."""
+    out = [f"{i}: {_rect(sc.geometry())} available {_rect(sc.availableGeometry())}"
+           for i, sc in enumerate(QtGui.QGuiApplication.screens())]
+    if os.environ.get("DISPLAY"):
+        from ..platform.screens import _x_facts
+
+        f = _x_facts()
+        out.append(f"X heads {[_rect(h) for h in f['heads']] or 'none'}{', XQuartz' if f['xquartz'] else ''}")
+    return "; ".join(out) or "none"
+
+
 class Tracer(QtCore.QObject):
     def __init__(self, path):
         super().__init__(QtWidgets.QApplication.instance())
@@ -107,10 +124,21 @@ class Tracer(QtCore.QObject):
             _t.write(f"LOOK {look.name}")
             return _o(shell, look)
         Shell.set_look = set_look                        # type: ignore[method-assign]
+        self._wrap_said(Shell, "reset_panels", lambda shell: "RESET panels")
+        from ..platform.screens import monitor_rect
+        from .glass import GlassChrome
+
+        def placing(chrome):
+            w = chrome.w
+            m = monitor_rect(QtWidgets.QApplication.instance(), w.frameGeometry().center())
+            shown = ", ".join(d.objectName() for d in chrome.docks() if not d.isHidden()) or "none"
+            return f"PLACE monitor {_rect(m)}  window {_rect(w.frameGeometry())}  panels {shown}"
+        self._wrap_said(GlassChrome, "place_panels", placing)
         app = QtWidgets.QApplication.instance()
         assert app is not None                           # made before the window, as the tracer
         app.installEventFilter(self)
         self.write(f"START pid {os.getpid()}, {QtGui.QGuiApplication.platformName()}")
+        self.write("SCREENS " + _screens())
 
     def _wrap(self, cls, name) -> None:
         orig = getattr(cls, name)
@@ -119,6 +147,16 @@ class Tracer(QtCore.QObject):
         def call(w, *a, _o=orig, _n=name, _t=self):
             _t.write(f"CALL {_who(w):9s} {_n} {_args(a)}  <- {_origin()}")
             return _o(w, *a)
+        setattr(cls, name, call)
+
+    def _wrap_said(self, cls, name, say) -> None:
+        """cls.name writes say(obj) to the trace before it runs."""
+        orig = getattr(cls, name)
+        self._kept.append((cls, name, orig, True))
+
+        def call(obj, *a, _o=orig, _t=self, **k):
+            _t.write(say(obj))
+            return _o(obj, *a, **k)
         setattr(cls, name, call)
 
     def write(self, line: str) -> None:

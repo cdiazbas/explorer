@@ -100,5 +100,38 @@ def test_a_start_with_the_variable_writes_the_trace(cube, tmp_path):
     assert p.returncode == 0 and len(logs) == 1, dict(exit=p.returncode, logs=logs, stderr=p.stderr[-3000:])
     text = logs[0].read_text()
     assert "[geometry] tracing" in p.stderr, p.stderr[-2000:]
-    assert "LOOK glass" in text and "EVT  main" in text, text[-3000:]
+    assert f"[geometry] the trace of this session: {logs[0]}" in p.stderr, p.stderr[-2000:]     # named at the close
+    assert "LOOK glass" in text and "EVT  main" in text and "SCREENS " in text, text[-3000:]
     assert not (tmp_path / "geometry").exists() and not list(tmp_path.glob("*.json")), "a spans trace was written"
+
+
+def test_it_says_which_monitor_the_panels_were_placed_in(qapp, cube, tmp_path):
+    """A panel placed wrongly can come from the monitor explorer believed it was in (the bridge takes XQuartz's one
+    screen as one monitor) or from the window manager moving it afterwards: the trace names the screens at the start,
+    each reset, and the monitor and window frame each placement of the glass look's panels started from."""
+    from explorer.data.dataset import Dataset
+    from explorer.look import get_look
+    from explorer.ui import geomtrace
+    from explorer.ui.glass import GlassChrome
+    from explorer.ui.shell import Shell
+
+    t = geomtrace.Tracer(tmp_path / "geometry.log")
+    ds = Dataset.open(cube)
+    w = Shell(ds, look=get_look("glass"))
+    try:
+        w.resize(900, 700)
+        w.show()
+        assert spin(qapp, lambda: "lambda_t" in w.last)
+        w.reset_panels()
+        spin(qapp, lambda: False, 0.5)
+    finally:
+        w.close()
+        ds.close()
+        t.stop()
+    lines = (tmp_path / "geometry.log").read_text().splitlines()
+    text = "\n".join(lines)
+    assert any(ln.split()[1] == "SCREENS" and "available" in ln for ln in lines[:3]), text[:2000]
+    assert any(ln.split()[1] == "RESET" for ln in lines), text[-3000:]
+    place = [ln for ln in lines if ln.split()[1] == "PLACE"]
+    assert place and "monitor (" in place[-1] and "window (" in place[-1], text[-3000:]
+    assert GlassChrome.place_panels.__qualname__ == "GlassChrome.place_panels"     # stop() put it back

@@ -70,6 +70,7 @@ class Started:
     def close(self) -> None:
         if self.tracer is not None:
             self.tracer.stop()
+            print(f"[geometry] the trace of this session: {self.tracer.path}", file=sys.stderr)
         self.ds.close()
         self.disp.close()
 
