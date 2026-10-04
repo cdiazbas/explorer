@@ -2642,3 +2642,75 @@ Del perfil del paso en t con la vista 2×2 quedaban dos costes que no son de lec
   prototipo hace lo mismo. El techo, con los límites gratis (parche en tiempo de ejecución), es 47 → 40–42
   ms. Pide calcularlos en el hilo que lee, también en la lectura anticipada (que hoy no da futuros), y que
   sigan idénticos a los del prototipo. Queda como E5.21.
+
+### 2026-10-04 (15): oscuro y claro mientras corre, con T (ROADMAP E5.23)
+
+El usuario pidió una forma de cambiar entre el modo oscuro y el claro, y que la rendija (E7) suba en la hoja
+de ruta. E7 pasa a ser la primera de las abiertas, marcada como prioridad.
+
+**Medida:** las dos ventanas, la cambiada y una arrancada en ese tema, offscreen en bellatrix, con el cubo
+sintético (20, 4, 15, 120, 160) a 1400×900. Por cada parte se cuenta qué fracción de píxeles difiere en más
+de 24 niveles. El cambio solo de la aplicación (`style.apply_theme`, oscuro → claro, classic) dejó en el tema
+viejo:
+- la ventana, 53 %;
+- la imagen, 60 %;
+- los espectros, 99 %;
+- la λ–t, 30 %;
+- el candado de la imagen, 87 %;
+- el panel de espectros, 91 %.
+
+La paleta llega a todos los widgets, pero cada parte tomó el tema al construirse:
+- el fondo y el gris de la imagen;
+- la tinta de las curvas y de los ejes de pyqtgraph, que fija la pluma al crearse;
+- los candados;
+- los rótulos de la vista 2×2;
+- los mapas divergentes;
+- la hoja de los segmentos de Stokes y la de la hoja `?`;
+- el estilo propio de la ventana (separadores).
+
+**Hecho:**
+- cada parte tiene `set_light`, y `Shell.set_theme` los llama tras `apply_theme`;
+- el aspecto se vuelve a poner (marcas, tarjetas, mapas);
+- en glass, en su sitio (`GlassChrome.retheme`). Quitarlo y ponerlo devolvía los paneles junto a la
+  ventana y mostraba la imagen entera.
+
+**Resultado:** las 16 combinaciones dan 0 píxeles distintos en todas las partes:
+- classic, modern, glass y la vista 2×2;
+- en los dos sentidos.
+
+El arranque con el código nuevo es idéntico al de antes en los 8 casos. El cambio cuesta ~205–215 ms
+(~300 en glass), sin fijar al nodo 0: es una tecla, no un paso.
+
+**Dos fallos del estilo, que solo se ven al cambiar:**
+- **Separación de la barra de herramientas:** `polish` la pone a 6 px, pero el `StyleChange` de Qt llega
+  después y la devuelve a 1. Los controles quedaban 5 px más juntos que en un arranque en ese tema; el único
+  resto del primer intento (6.9 % de la barra).
+- **Hojas de estilo:** los menús, las barras de desplazamiento y las listas de los combos conservaban la hoja
+  del tema viejo, porque `polish` solo llenaba una hoja vacía. Ahora reemplaza también la suya del otro
+  tema, nunca la de la aplicación.
+
+**Pruebas:** `tests/unit/test_theme.py`, más una en `test_style.py` y otra en `test_look.py`. Contra el
+código de HEAD, con `set_theme` como el cambio de la aplicación sola, fallan 11 de 12. Pasa la de glass en
+su sitio, que vigila que nadie lo resuelva quitando y poniendo glass. Toda la suite unitaria pasa en
+bellatrix con los dos arreglos, (15) y (16): 489 y 1 omitida.
+
+**Queda:**
+- **El contorno de redimensionar** conserva el azul de selección con que se creó, de un tono algo distinto
+  en el otro tema.
+- **Un Mac en tema nativo:** T pasa a Fusion y suelta las costuras (`MacSeams`); no se ha probado en
+  ventana real.
+- **Guardar el tema para la sesión siguiente** es una decisión del usuario (E5.24).
+
+### 2026-10-04 (16): `python -m explorer` en un árbol con `.qtlibs/only`
+
+Encontrado al pasar la suite en bellatrix: `test_a_start_with_the_variable_writes_the_trace` falla con
+`attempted relative import with no known parent package`.
+
+**Causa:** en Linux, `cli.main` se relanza sin el `LD_LIBRARY_PATH` ajeno, como `[python] + sys.argv`. Bajo
+`-m`, `sys.argv[0]` es la ruta de `__main__.py`, que el proceso nuevo ejecuta como guion suelto.
+
+**Por qué no se veía:** solo se relanza donde existe `.qtlibs/only` (bellatrix). La integración continua y
+el Mac no lo tienen, y la orden `explorer` pasa por su propio guion.
+
+**Arreglo:** relanzar con `sys.orig_argv`, que conserva `-m explorer`. La prueba nueva de `test_cli.py`
+falla antes del arreglo con `-m` y pasa con la orden.
