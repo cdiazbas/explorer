@@ -135,3 +135,30 @@ def test_it_says_which_monitor_the_panels_were_placed_in(qapp, cube, tmp_path):
     place = [ln for ln in lines if ln.split()[1] == "PLACE"]
     assert place and "monitor (" in place[-1] and "window (" in place[-1], text[-3000:]
     assert GlassChrome.place_panels.__qualname__ == "GlassChrome.place_panels"     # stop() put it back
+
+
+def test_it_writes_the_pointer_events_the_bridge_takes_with_the_x_servers_time(qapp, tmp_path):
+    """Through ssh -Y a dragged panel moved in bursts every ~510 ms. Each X pointer event carries the X server's time:
+    events stamped 500 ms apart came late from the server (XQuartz, the Mac); stamped close together and taken in a
+    burst, the delay is the link's or explorer's. The trace writes each one the bridge takes (XIN)."""
+    import struct
+
+    from explorer.platform.xbridge.bridge import Bridge
+    from explorer.ui import geomtrace
+
+    t = geomtrace.Tracer(tmp_path / "geometry.log")
+    try:
+        raw = bytearray(32)
+        raw[0] = 6                                      # MotionNotify
+        struct.pack_into("<IIIIhhhhHB", raw, 4, 123456, 1, 2, 0, 640, 480, 10, 20, 0x100, 1)
+        fake = type("B", (), {"stats": {"x_events": 0}, "windows": type("W", (), {"xtime": 0, "by_xid": {}})(),
+                              "clip": None})()
+        try:
+            Bridge._event(fake, bytes(raw))
+        except Exception:                               # the stand-in has no more of a bridge than this needs
+            pass
+    finally:
+        t.stop()
+    text = (tmp_path / "geometry.log").read_text()
+    assert "XIN  motion  x_time 123456 at (640, 480)" in text, text[-2000:]
+    assert Bridge._event.__qualname__ == "Bridge._event"                     # stop() put it back

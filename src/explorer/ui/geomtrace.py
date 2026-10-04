@@ -18,7 +18,8 @@ move, resize, setFloating on the main window and the panels), with the frames th
 no CALL just before it came from Qt itself, the window manager or the bridge. LOOK is M or --look; SHOW and HIDE a
 panel or a window appearing or going. SCREENS, at the start: the screens Qt sees and, with an X display, Xinerama's
 heads (through the bridge one XQuartz screen can be two monitors). RESET: the reset button; PLACE: the glass look
-placing its panels, from the monitor and the window frame it starts from. Nothing is wrapped or watched unless the
+placing its panels, from the monitor and the window frame it starts from. XIN: a pointer event (motion, press, release)
+the X11 bridge takes, with the X server's time in ms and the root position. Nothing is wrapped or watched unless the
 trace is asked for.
 
     tracer = install_from_env()      # None unless EXPLORER_GEOMETRY_TRACE is set (and not 0)
@@ -134,6 +135,7 @@ class Tracer(QtCore.QObject):
             shown = ", ".join(d.objectName() for d in chrome.docks() if not d.isHidden()) or "none"
             return f"PLACE monitor {_rect(m)}  window {_rect(w.frameGeometry())}  panels {shown}"
         self._wrap_said(GlassChrome, "place_panels", placing)
+        self._wrap_pointer_events()
         app = QtWidgets.QApplication.instance()
         assert app is not None                           # made before the window, as the tracer
         app.installEventFilter(self)
@@ -148,6 +150,24 @@ class Tracer(QtCore.QObject):
             _t.write(f"CALL {_who(w):9s} {_n} {_args(a)}  <- {_origin()}")
             return _o(w, *a)
         setattr(cls, name, call)
+
+    def _wrap_pointer_events(self) -> None:
+        """Each pointer event the X11 bridge takes, with the X server's time: bursts of events stamped close together
+        were delayed on the way (the link, explorer); events stamped far apart came late from the server."""
+        from ..platform.xbridge import xproto
+        from ..platform.xbridge.bridge import Bridge
+
+        orig = Bridge._event
+        self._kept.append((Bridge, "_event", orig, True))
+        kinds = {xproto.MotionNotify: "motion", xproto.ButtonPress: "press", xproto.ButtonRelease: "release"}
+
+        def event(bridge, raw, _o=orig, _t=self):
+            kind = kinds.get(raw[0] & 0x7F)
+            if kind is not None:
+                e = xproto.decode_event(raw)
+                _t.write(f"XIN  {kind:7s} x_time {e.time} at ({e.root_x}, {e.root_y})")
+            return _o(bridge, raw)
+        Bridge._event = event                            # type: ignore[method-assign]
 
     def _wrap_said(self, cls, name, say) -> None:
         """cls.name writes say(obj) to the trace before it runs."""
