@@ -2629,3 +2629,16 @@ igual de rápido. La vista única no cambia: 19.3–19.9 ms con el cambio frente
 `reduce_u8` antiguo, en ABBA. Una ejecución suelta de 26 ms antes de esa comparación era ruido.
 
 Quedan en el paso unos 11 ms de límites de color (2.7 ms por cuadrante), los mismos que en el prototipo.
+
+### 2026-10-04 (14): el filo de las esquinas y los límites de color en la vista 2×2
+
+Del perfil del paso en t con la vista 2×2 quedaban dos costes que no son de lectura:
+- **El filo de las esquinas (`Hairline`):** 762 contornos redondeados en 45 pasos, 2.4 ms por paso. Cubre
+  la ventana para dibujar 1–2 px, y Qt lo repintaba con cualquier cambio debajo. Ahora tiene una máscara:
+  una banda de 3 px en los bordes y las esquinas. La ventana sale idéntica, con máscara o sin ella (0
+  píxeles distintos de 540 000). En ABBA, fijado al nodo 0, las medianas por ronda son 47.6–52.5 ms con
+  máscara frente a 49.6–51.8 sin ella: unos 2 ms, con solape. `check.sh` y `tests/xvfb` (22) en bellatrix.
+- **Los límites de color:** ~11 ms por paso (2.7 por cuadrante), calculados en el hilo de la interfaz; el
+  prototipo hace lo mismo. El techo, con los límites gratis (parche en tiempo de ejecución), es 47 → 40–42
+  ms. Pide calcularlos en el hilo que lee, también en la lectura anticipada (que hoy no da futuros), y que
+  sigan idénticos a los del prototipo. Queda como E5.21.
