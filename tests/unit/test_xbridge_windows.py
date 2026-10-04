@@ -95,3 +95,18 @@ def test_a_synthetic_notice_of_an_older_request_is_an_echo_and_dropped(setup):
     ws.configured(rec, notice(c.seq, 600, 300, sent=True), lambda *a: applied.append(a))   # late, of the first
     seen = dict(applied=applied, asked_x=len(c.replies), echoes=ws.stats["echoes"] - echoes)
     assert seen == dict(applied=[], asked_x=0, echoes=1), seen
+
+
+def test_where_x_says_is_an_echo_when_it_is_an_older_geometry_asked(setup):
+    """Seen from bellatrix through ssh -Y (2026-10-04, a geometry trace): glass placed the spectrum at (2757, 55), the
+    manager had not yet acted on it, and X answered where the panel's window had been created, (2703, 87): taken, the
+    panel went back over the main window until a later notice. An answer that is a geometry asked before the last
+    one (the window's first geometry is one) is an echo, as a synthetic notice of one is."""
+    ws, c, rec, applied = setup
+    rec.asked.append((2703, 87, 598, 434))              # as create() records the geometry it makes the window with
+    ws.configure(rec, x=2757, y=55, width=560, height=442)
+    echoes = ws.stats["echoes"]
+    ws.configured(rec, notice(c.seq, 0, 0, 598, 434), lambda *a: applied.append(a))
+    c.replies[-1].done(reply_at(2703, 87), None)
+    seen = dict(applied=applied, echoes=ws.stats["echoes"] - echoes)
+    assert seen == dict(applied=[], echoes=1), seen

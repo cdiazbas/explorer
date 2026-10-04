@@ -268,11 +268,20 @@ class Windows:
             apply(rec, e.x, e.y, e.width, e.height)
         else:                                           # inside the manager's frame: ask where that is, not waiting
             # an answer that comes after Qt asked for another geometry is where the window was: taken, it set Qt
-            # back and Qt asked again (through XQuartz the glass panels jumped about for 1.2 s)
+            # back and Qt asked again (through XQuartz the glass panels jumped about for 1.2 s). An answer that is a
+            # geometry asked before the last one is where the window was too, before the manager acted on the last
+            # request (through ssh -Y a glass panel went back to its first geometry, over the main window)
             asked = rec.cfg_seq
-            self.c.translate_coordinates(rec.xid, self.scr.root).then(
-                lambda r, err, w=e.width, h=e.height: err is None and rec.cfg_seq == asked and apply(
-                    rec, *struct.unpack_from("<hh", r, 12), w, h, True))
+
+            def where(r, err, w=e.width, h=e.height):
+                if err is not None or rec.cfg_seq != asked:
+                    return
+                x, y = struct.unpack_from("<hh", r, 12)
+                if rec.asked and (x, y, w, h) != rec.asked[-1] and (x, y, w, h) in rec.asked:
+                    self.stats["echoes"] += 1
+                    return
+                apply(rec, x, y, w, h, True)
+            self.c.translate_coordinates(rec.xid, self.scr.root).then(where)
 
     # ---- state
     def minimize(self, rec: XWin) -> None:
