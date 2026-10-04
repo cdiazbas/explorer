@@ -5,7 +5,9 @@ and one more pass of the event loop (painted, as the prototype's self-test settl
     QT_QPA_PLATFORM=offscreen python bench/grid_step.py proto|explorer <cube_im.fits> <out.json> [--steps 20]
 
 The prototype runs with its own Python (its .venv); its view is the glass look's (G), explorer's the Stokes control's
-All (set_grid). Five steps first, not counted: numba and the caches warm.
+All (set_grid). Five steps first, not counted: numba and the caches warm. For explorer the JSON also has the image
+levels of the counted steps: computed in all, computed ahead (off the UI thread), and found cached or waited for by
+the UI thread (obs counters core.levels.*).
 """
 import json
 import os
@@ -81,6 +83,15 @@ else:
         return len(set(done)) >= 4
 
 
+def levels_counters():
+    if which == "proto":
+        return {}
+    from explorer.obs import summary
+
+    c = summary().get("counters", {})
+    return {k: c.get(f"core.levels.{k}", 0) for k in ("computed", "ahead", "cached", "waited")}
+
+
 def spin(until, timeout=30.0):
     end = time.perf_counter() + timeout
     while not until() and time.perf_counter() < end:
@@ -98,6 +109,8 @@ for _ in range(100):
     time.sleep(0.01)
 ms = []
 for k in range(5 + steps):
+    if k == 5:
+        lev0 = levels_counters()
     done.clear()
     q = time.perf_counter()
     step()
@@ -105,9 +118,12 @@ for k in range(5 + steps):
     app.processEvents()
     if k >= 5 and ok:
         ms.append((time.perf_counter() - q) * 1e3)
+lev = {k: v - lev0[k] for k, v in levels_counters().items()}
 ms.sort()
 res = dict(program=which, steps=len(ms), median_ms=round(ms[len(ms) // 2], 2) if ms else None,
-           p95_ms=round(ms[int(len(ms) * 0.95) - 1], 2) if ms else None, all_ms=[round(v, 1) for v in ms])
+           p95_ms=round(ms[int(len(ms) * 0.95) - 1], 2) if ms else None, all_ms=[round(v, 1) for v in ms],
+           levels=lev or None)
 json.dump(res, open(out, "w"), indent=1)
-print(f"{which}: step in t with the 2x2 view, median {res['median_ms']} ms, p95 {res['p95_ms']} ms ({len(ms)} steps)")
+print(f"{which}: step in t with the 2x2 view, median {res['median_ms']} ms, p95 {res['p95_ms']} ms ({len(ms)} steps)"
+      + (f", levels {lev}" if lev else ""))
 app.quit()
