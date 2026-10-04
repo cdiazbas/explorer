@@ -2467,3 +2467,18 @@ usa ahora `glass_switch_app.py`. Con la geometría de creación anotada como ped
 Por confirmar en el caso real: si quartz-wm, además, devuelve de verdad la ventana a su tamaño de
 creación. En el registro hubo cambios de tamaño posteriores por la rama de «ventana dentro de un marco»
 (7.2–7.3 s), que con el lado de Qt solo no se pueden distinguir de un eco.
+
+### 2026-10-04 (7): segunda sesión desde bellatrix: la otra ruta del mismo fallo
+
+Con el arreglo de (6), el usuario repitió la sesión por `ssh -Y`: entró seis veces en glass con M. El
+registro (`geometry-819580.log`) muestra que el aviso sintético viejo ya no se aplica. Pero en las
+colocaciones 1, 3 y 6, 150–200 ms después, el espectro volvió a (2703, 87) por otra rama del puente: la de
+una ventana dentro del marco del gestor, en la que el puente pregunta a X dónde está. X respondió la
+geometría de creación porque quartz-wm aún no había aplicado la petición de glass. En la 3 y la 6, un aviso
+posterior lo puso bien entre 0.6 y 1.1 s después; en la 1 se quedó mal. Ahora esa respuesta pasa la misma
+regla que los avisos sintéticos: una geometría pedida antes de la última es un eco. La prueba unitaria
+nueva falla antes del arreglo. `tests/xvfb` 22 pasan; `check.sh` solo falla en las 2 de E0.13.
+
+La sesión acabó con «the X display went away»: las dos conexiones del puente (la ventana y el contorno) se
+cerraron a la vez a los 53.8 s, lo que apunta a XQuartz o al túnel X de ssh, no a una petición de explorer
+(que cortaría solo una). El doctor de después salió bien. Pendiente de lo que diga el usuario.
