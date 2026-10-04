@@ -9,6 +9,14 @@ from explorer.testing import synth
 SHAPE = (6, 4, 21, 48, 40)
 
 
+def _glyph(button, name=None):
+    """The play button's icon (or the named glyph) painted at 18 px: compared as images."""
+    from explorer.ui import icons
+
+    icon = button.icon() if button is not None else icons.glyph_icon(name)
+    return icon.pixmap(18, 18).toImage()
+
+
 def spin(qapp, until, timeout=10.0):
     end = time.perf_counter() + timeout
     while not until() and time.perf_counter() < end:
@@ -46,12 +54,12 @@ def test_space_plays_t_round_the_end_and_stops(qapp, shell):
     space = [sc for sc in shell.findChildren(QtGui.QShortcut) if sc.key() == key]
     assert len(space) == 1
     space[0].activated.emit()                            # Space
-    assert nav.play.isChecked() and nav.play.text() == "⏸ t"
+    assert nav.play.isChecked() and nav.play.text() == "t" and _glyph(nav.play) == _glyph(None, "pause")
     seen = set()
     # every t, and round the end back to 0
     assert spin(qapp, lambda: seen.add(s.state.t) or len(seen) == SHAPE[0] and s.state.t == 0, 5.0)
     nav.play.click()                                    # the button stops it too
-    assert not nav.play.isChecked() and nav.play.text() == "▶ t"
+    assert not nav.play.isChecked() and nav.play.text() == "t" and _glyph(nav.play) == _glyph(None, "play")
     t = s.state.t
     for _ in range(20):
         QtWidgets.QApplication.processEvents()

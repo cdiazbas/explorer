@@ -30,8 +30,9 @@ class ColourKey(QtWidgets.QWidget):
     only when the limits, the Stokes or the map change, never with the cursor. After C the map's name takes the
     numbers' row for NOTE_MS, so the key keeps its size. The power of ten goes with the unit on the top row, as the
     spectra's axis titles write it; the numbers under the bar carry none (after the last one only it reads as that
-    number's)."""
+    number's). Its text in pixels, 11 px: in points, max(7, size - 2) was 7 px on a Mac (72 dpi) and 9 over X11."""
     W, H = 230, 50
+    TEXT_PX = 11
     NOTE_MS = 1500
 
     def __init__(self, view: QtWidgets.QWidget, unit: str = ""):
@@ -78,7 +79,8 @@ class ColourKey(QtWidgets.QWidget):
         r = QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         lt = style.is_light()                           # over a white image in light: a light key, dark text
         p.setPen(QtCore.Qt.PenStyle.NoPen)
-        p.setBrush(QtGui.QColor(255, 255, 255, 215) if lt else QtGui.QColor(0, 0, 0, 150))
+        # alpha 185: at 150, over the brightest granules the white text stood at 4.3:1; now about 9:1
+        p.setBrush(QtGui.QColor(255, 255, 255, 215) if lt else QtGui.QColor(0, 0, 0, 185))
         p.drawRoundedRect(r, 8, 8)
         bar = QtCore.QRectF(12, 22, self.W - 24, 6)
         g = QtGui.QLinearGradient(bar.topLeft(), bar.topRight())
@@ -88,8 +90,11 @@ class ColourKey(QtWidgets.QWidget):
         g.setColorAt(1.0, QtGui.QColor(*[int(c) for c in lut[255]]))
         p.setBrush(g)
         p.drawRoundedRect(bar, 3, 3)
-        f = p.font()
-        f.setPointSizeF(max(7.0, f.pointSizeF() - 2))
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)       # a hairline round the bar: its dark end vanished into the key
+        p.setPen(QtGui.QPen(QtGui.QColor(0, 0, 0, 70) if lt else QtGui.QColor(255, 255, 255, 70), 1))
+        p.drawRoundedRect(bar.adjusted(-0.5, -0.5, 0.5, 0.5), 3.5, 3.5)
+        f = QtGui.QFont(p.font())
+        f.setPixelSize(self.TEXT_PX)
         p.setFont(f)
         k, pw = _sci(max(abs(lo), abs(hi)))
         power = pw.replace(" ×", "")
@@ -100,8 +105,15 @@ class ColourKey(QtWidgets.QWidget):
         A = QtCore.Qt.AlignmentFlag
         p.setPen(QtGui.QColor(0, 0, 0, 217) if lt else QtGui.QColor(255, 255, 255, 215))
         p.drawText(QtCore.QRectF(12, 3, self.W - 24, 16), A.AlignLeft | A.AlignVCenter, f"{name}   {label}".rstrip())
-        p.setPen(QtGui.QColor(0, 0, 0, 150) if lt else QtGui.QColor(255, 255, 255, 170))
-        top = bar.bottom() + 2
+        ink = QtGui.QColor(0, 0, 0, 150) if lt else QtGui.QColor(255, 255, 255, 170)
+        p.setPen(QtGui.QPen(ink, 1))                    # a short tick under each number's place on the bar
+        ticks = [bar.left() + 0.5, bar.right() - 0.5] + ([bar.left() + bar.width() * (-lo) / (hi - lo)]
+                                                          if lo < 0 < hi else [])
+        for tx in ticks:
+            x = round(tx) + 0.5
+            p.drawLine(QtCore.QPointF(x, bar.bottom() + 1), QtCore.QPointF(x, bar.bottom() + 3))
+        p.setPen(ink)
+        top = bar.bottom() + 3
         if self.note:
             p.drawText(QtCore.QRectF(bar.left(), top, bar.width(), 16), A.AlignHCenter, self.note)
             p.end()

@@ -5,8 +5,10 @@ over ssh -Y and through the X11 bridge. A local Mac keeps its native style.
 
 auto is native on macOS and dark elsewhere (over X11 there is no desktop theme, and Qt's default there is light).
 EXPLORER_STYLE=0 keeps plain Fusion with the theme's palette (to measure what the style costs).
-What it styles (no fonts, no behaviour, one metric on the main window only; toolbar, dock titles and status bar
-keep Fusion's heights, so the plots keep their size):
+The interface's font is chosen, in every theme (ui_font): on a Mac the system's (SF); elsewhere Noto Sans, then
+DejaVu Sans and Liberation Sans, at UI_PX pixels; tabular figures everywhere.
+What it styles (no behaviour, one metric on the main window only; toolbar, dock titles and status bar keep Fusion's
+heights, so the plots keep their size):
 - a proxy style paints
   - QSlider: thin track, accent fill up to the knob, round white knob with a soft shadow;
   - QComboBox / QSpinBox: 6 px corners, faint border with a lighter top edge (dark) or a shadow along the
@@ -41,6 +43,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 THEMES = ("auto", "dark", "light", "native")
+UI_PX = 12                                              # px: the interface's text away from a Mac
 ACCENT = "#0a84ff"
 C = QtGui.QColor
 P = QtWidgets.QStyle
@@ -727,6 +730,22 @@ def apply(app, theme: str = "dark") -> bool:
     return True
 
 
+def ui_font(app) -> QtGui.QFont:
+    """The interface's font, chosen rather than left to the platform. On a Mac the system's (SF), as Qt has it.
+    Elsewhere Qt asked fontconfig for "Sans Serif" at 9 pt and took DejaVu Sans (bellatrix), wide and with a minus
+    1.32 digits wide: Noto Sans first, then DejaVu and Liberation, sized in pixels (a point is a pixel on a Mac, 72
+    dpi, and 1.33 px offscreen and over X11, 96 dpi). Tabular figures: SF's digits are proportional (5.8 to 7.9 px
+    at 12 px), so every readout that changes jittered; with tnum all are 7.8 px."""
+    f = QtGui.QFont(app.font())
+    if sys.platform != "darwin":
+        f.setFamilies(["Noto Sans", "DejaVu Sans", "Liberation Sans"])
+        f.setPixelSize(UI_PX)
+    if hasattr(QtGui.QFont, "setFeature"):              # Qt >= 6.7
+        f.setFeature(QtGui.QFont.Tag("tnum"), 1)
+    app.setFont(f)
+    return f
+
+
 def apply_theme(app, theme: str = "auto") -> str:
     """auto: native on macOS (it follows the system's dark mode), dark elsewhere; dark / light: Fusion with this
     look, the same everywhere. Returns the theme applied. Before the window builds its plots: their colours follow
@@ -735,6 +754,11 @@ def apply_theme(app, theme: str = "auto") -> str:
         theme = "native" if sys.platform == "darwin" else "dark"
     if theme not in THEMES:
         raise ValueError(f"theme {theme!r}: one of {', '.join(THEMES)}")
+    ui_font(app)
+    from . import pens
+
+    scr = app.primaryScreen()
+    pens.set_ratio(scr.devicePixelRatio() if scr is not None else 1.0)     # before the plots exist
     if theme != "native":
         app.setStyle("Fusion")
         hints = app.styleHints()

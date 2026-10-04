@@ -65,12 +65,13 @@ class TuningAxis(SignedAxis):
 class IndexAxis(pg.AxisItem):
     """An axis on the index grid, labelled with physical values: ticks at cell centres (i + 0.5) every 1, 2, 5, 10,
     20... cells, as many as the labels leave room for, each cell labelled once (pyqtgraph's own ticks sat on cell
-    edges and read 0 2 2 4 4 6 6 8 8 under a 10-tuning axis)."""
+    edges and read 0 2 2 4 4 6 6 8 8 under a 10-tuning axis). fine_of: finer labels, taken when label_of's would
+    repeat (times to the minute with ticks 20 s apart read 08:17 08:17 08:16)."""
     GAP = 14                                            # px between two labels along the axis
 
-    def __init__(self, orientation, label_of, n, **kw):
+    def __init__(self, orientation, label_of, n, fine_of=None, **kw):
         super().__init__(orientation, **kw)
-        self.label_of, self.n = label_of, n
+        self.label_of, self.n, self.fine_of = label_of, n, fine_of
         self.enableAutoSIPrefix(False)
 
     def _label_px(self):
@@ -89,10 +90,11 @@ class IndexAxis(pg.AxisItem):
         return [(step, [i + 0.5 for i in range(-(-i0 // step) * step, i1 + 1, step)])]
 
     def tickStrings(self, values, scale, spacing):
-        out = []
-        for v in values:
-            i = int(np.floor(v))
-            out.append(self.label_of(i) if 0 <= i < self.n else "")
+        cells = [int(np.floor(v)) for v in values]
+        out = [self.label_of(i) if 0 <= i < self.n else "" for i in cells]
+        shown = [x for x in out if x]
+        if self.fine_of is not None and len(set(shown)) < len(shown):
+            out = [self.fine_of(i) if 0 <= i < self.n else "" for i in cells]
         return out
 
 
@@ -106,7 +108,8 @@ class LambdaTPanel:
         self.xl = np.asarray(dl, float) if self.physical else np.arange(nl, dtype=float)
         self.timed = axes is not None and getattr(axes, "t_sec", None) is not None
         bottom = TuningAxis("bottom", self.xl) if self.physical else IndexAxis("bottom", self.lam_label, nl)
-        self.w = pg.PlotWidget(axisItems={"bottom": bottom, "left": IndexAxis("left", self.t_label, nt)})
+        left = IndexAxis("left", self.t_label, nt, fine_of=self.t_label_fine)
+        self.w = pg.PlotWidget(axisItems={"bottom": bottom, "left": left})
         self.img = pg.ImageItem()
         self.w.addItem(self.img)
         pi = self.w.getPlotItem()
@@ -125,6 +128,7 @@ class LambdaTPanel:
         pi.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         for side in ("left", "bottom"):
             pi.getAxis(side).setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
+            pi.getAxis(side).setStyle(tickLength=4)     # out of the image, to the labels: pyqtgraph's 5 px went in
         self.widget = self.w
 
     def lam_label(self, i: int) -> str:
@@ -132,6 +136,10 @@ class LambdaTPanel:
 
     def t_label(self, i: int) -> str:
         u = self.ax.utc_str(i, seconds=False) if self.timed else None
+        return u or str(i)
+
+    def t_label_fine(self, i: int) -> str:
+        u = self.ax.utc_str(i, seconds=True) if self.timed else None
         return u or str(i)
 
     def show(self, lt: np.ndarray, levels) -> None:

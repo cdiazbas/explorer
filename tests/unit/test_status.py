@@ -26,17 +26,18 @@ def test_physical_fields_and_the_value_in_its_units():
     txt = pixel_text(ax, 4, 5, 6, 1, 0, 0, 3.2e-8, None, 1e-8, False)
     f = txt.split(SEP)
     assert f[0] == "x 6  y 5"                                               # no corners: the pixel
-    assert f[1] == "08:17:17 UT"
-    assert f[2] == "λ 6173.000 Å" and f[3] == "Δλ −0.300 Å"
-    assert f[4].startswith("v −") and f[4].endswith("km s⁻¹")
-    assert f[5] == "I 3.200 × 10⁻⁸ W m⁻² Hz⁻¹ sr⁻¹"
+    # a no-break space between each number and its unit: never apart at a line's end
+    assert f[1] == "08:17:17\u00a0UT"
+    assert f[2] == "λ 6173.000\u00a0Å" and f[3] == "Δλ −0.300\u00a0Å"
+    assert f[4].startswith("v −") and f[4].endswith("\u00a0km s⁻¹")
+    assert f[5] == "I 3.200 × 10⁻⁸\u00a0W m⁻² Hz⁻¹ sr⁻¹"
     q = pixel_text(ax, 4, 5, 6, 1, 0, 1, -0.64e-8, 3.2e-8, 1e-8, True)      # Q in % of I_c, locked
-    assert q.split(SEP)[-2:] == ["Q/Ic −20.00 %", "locked"]
+    assert q.split(SEP)[-2:] == ["Q/Ic −20.00\u00a0%", "locked"]
 
 
 def test_indices_without_a_header_and_padding():
     txt = pixel_text(Axes(), 1, 5, 6, 3, 2, 0, 1.5, None, None, False)
-    assert txt.split(SEP) == ["x 6  y 5", "t 3", "λ 2", "I 1.5"]
+    assert txt.split(SEP) == ["x 6  y 5", "t 3", "λ 2", "I 1.500"]            # 4 significant figures, no %g
     assert pixel_text(Axes(), 1, 5, 6, 3, 2, 0, float("nan"), None, None, False).endswith("I  no data (padding)")
     assert padding(0.0, 0) and not padding(0.0, 1) and padding(float("nan"), 2)
     only_l = pixel_text(Axes(), 1, 5, 6, 0, 2, 0, 1.5, None, None, False, present=("l",))
@@ -68,7 +69,7 @@ def test_the_shell_shows_q_in_percent_of_ic_and_f12_the_diagnostics(qapp, cube):
         s.hover(20, 15)
         s.set_index("s", 1)
         assert spin(qapp, lambda: "Q/Ic" in w.status.text())                  # I_c came with the spectrum
-        assert "″" in w.status.text() and " UT" in w.status.text()
+        assert "″" in w.status.text() and "\u00a0UT" in w.status.text()
         assert w.sys_status.isHidden()
         w.set_diagnostics(True)
         assert w.sys_status.isVisible() and "image cache" in w.sys_status.text()

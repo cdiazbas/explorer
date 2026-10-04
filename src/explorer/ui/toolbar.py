@@ -91,6 +91,37 @@ class StokesDrop(QtWidgets.QToolButton):
         self.segments.set(len(self.segments.group.buttons()) - 1 if all_ else s)
 
 
+class MenuButton(QtWidgets.QToolButton):
+    """A tool button with a menu, with room for its arrow beside the label, and the arrow level with the label's
+    middle: the style drew it in the bottom-right corner, over the label's last letter ("Panels" with the arrow on
+    its s) and its tip below the baseline. The button and its label as the style draws them, the style's own arrow."""
+    ARROW = 12                                          # px: the arrow and a gap, right of the label
+
+    def sizeHint(self):
+        s = super().sizeHint()
+        return QtCore.QSize(s.width() + self.ARROW, s.height())
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+    def paintEvent(self, e):
+        p = QtWidgets.QStylePainter(self)
+        opt = QtWidgets.QStyleOptionToolButton()
+        self.initStyleOption(opt)
+        opt.features &= ~QtWidgets.QStyleOptionToolButton.ToolButtonFeature.HasMenu
+        bevel = QtWidgets.QStyleOptionToolButton(opt)
+        bevel.text = ""
+        bevel.icon = QtGui.QIcon()
+        p.drawComplexControl(QtWidgets.QStyle.ComplexControl.CC_ToolButton, bevel)
+        opt.rect = self.rect().adjusted(0, 0, -self.ARROW, 0)
+        p.drawControl(QtWidgets.QStyle.ControlElement.CE_ToolButtonLabel, opt)
+        tw = self.fontMetrics().horizontalAdvance(self.text())
+        a = QtWidgets.QStyleOption()
+        a.initFrom(self)
+        a.rect = QtCore.QRect(int(opt.rect.center().x() + tw / 2 + 4), self.height() // 2 - 4, 8, 8)
+        p.drawPrimitive(QtWidgets.QStyle.PrimitiveElement.PE_IndicatorArrowDown, a)
+
+
 class JumpSlider(QtWidgets.QSlider):
     """A click on the track jumps to the value under the pointer, as a macOS slider does, and a drag goes on from
     there. Qt's own click steps one page (10): on a 14-tuning slider a click anywhere left of the handle went to 0."""
@@ -158,7 +189,9 @@ class NavBar:
             self._stokes_act = tb.addWidget(self.stokes)
         tb.addSeparator()
         self.play = QtWidgets.QToolButton()
-        self.play.setText("▶ t")
+        self.play.setText("t")
+        self.play.setIcon(icons.glyph_icon("play", self.play))
+        self.play.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.play.setCheckable(True)
         self.play.setEnabled(s.present["t"] and self.n["t"] > 1)
         tb.addWidget(self.play)
@@ -168,7 +201,7 @@ class NavBar:
         self.fps.setSuffix(" fps")
         tb.addWidget(self.fps)
         tb.addSeparator()
-        self.panels = QtWidgets.QToolButton()
+        self.panels = MenuButton()
         self.panels.setObjectName("panels")
         self.panels.setText("Panels")
         self.panels.setToolTip("Show or hide the panels")
@@ -210,10 +243,10 @@ class NavBar:
                 return f"{v}/{n - 1}"
             # the time is what one reads, the index what one quotes
             dim = self.shell.palette().color(QtGui.QPalette.ColorRole.PlaceholderText).name()
-            return f'{u} UT&nbsp;&nbsp;<span style="color:{dim}; font-size:small">{v}/{n - 1}</span>'
+            return f'{u}&nbsp;UT&nbsp;&nbsp;<span style="color:{dim}; font-size:small">{v}/{n - 1}</span>'
         dl = self.ax.dlam_A() if self.ax is not None else None
         if dl is not None and len(dl) == n:
-            return f"Δλ {fmt_signed(dl[v], 3)} Å" + ("  (cont.)" if v == self.ax.cont else "")
+            return f"Δλ {fmt_signed(dl[v], 3)}\u00a0Å" + ("  (cont.)" if v == self.ax.cont else "")
         return f"{v}/{n - 1}"
 
     def set_stokes_drop(self, on: bool) -> None:

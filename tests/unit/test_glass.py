@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from explorer.testing import synth
+from explorer.ui.status import SEP
 
 SHAPE = (6, 4, 21, 96, 80)
 
@@ -82,7 +83,11 @@ def test_the_readout_is_the_title_while_locked(qapp, shell):
     w = shell
     wear(qapp, w, "glass")
     w.session.lock(True)
-    assert spin(qapp, lambda: w.windowTitle() == w.status.text() and w.status.text())
+
+    def whole_fields():                                 # the readout's first fields, as many as the title has room for
+        t, full = w.windowTitle(), w.status.text()
+        return bool(full) and full.startswith(t) and (t == full or full[len(t):].startswith(SEP))
+    assert spin(qapp, whole_fields), (w.windowTitle(), w.status.text())
     w.session.lock(False)
     assert spin(qapp, lambda: w.windowTitle() == "c_im.fits")
 

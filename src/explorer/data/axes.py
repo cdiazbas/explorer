@@ -19,6 +19,7 @@ Not applied: the per-pixel wavelength distortion in WCSDVARR (CWDIS3 = 'Lookup')
 cube (~6 km/s); velocities are those of the tabulated lambda. Axes.distortion says when a header has one.
 """
 import json
+import math
 import re
 from typing import NamedTuple
 
@@ -339,6 +340,19 @@ def plot_units(spec, cont, iscale):
 def unit_text(u) -> str:
     """'W m^-2 Hz^-1 sr^-1' -> 'W m⁻² Hz⁻¹ sr⁻¹'."""
     return re.sub(r"\^(-?\d+)", lambda m: m.group(1).translate(SUP), str(u or ""))
+
+
+def fmt_sig(v, n=4) -> str:
+    """n significant figures without %g's exponent form ("1e-05"): fixed between 1e-3 and 1e4, else a x 10^k form
+    with a superscript exponent; a typographic minus."""
+    v = float(v)
+    if not math.isfinite(v):
+        return str(v)
+    if v == 0 or 1e-3 <= abs(v) < 1e4:
+        nd = max(0, n - 1 - math.floor(math.log10(abs(v)))) if v else n - 1
+        return f"{v:.{nd}f}".replace("-", "−")
+    k = math.floor(math.log10(abs(v)))
+    return f"{v / 10 ** k:.{n - 1}f} × 10{str(k).translate(SUP)}".replace("-", "−")
 
 
 def fmt_signed(v, nd=1) -> str:

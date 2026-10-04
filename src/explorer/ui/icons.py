@@ -52,12 +52,30 @@ class Pen:
             path.lineTo(tip)
         self.p.drawPath(path)
 
+    def line(self, x0, y0, x1, y1):
+        self.p.drawLine(QtCore.QPointF(self.x(x0), self.x(y0)), QtCore.QPointF(self.x(x1), self.x(y1)))
+
+    def poly(self, pts):
+        """A closed outline through grid points, its corners rounded by the pen's round join."""
+        self.p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(self.x(x), self.x(y)) for x, y in pts]))
+
 
 def _arrow(g):
     g.arrow(9, 10, 6.8)
 
 
-GLYPHS = {"arrow": (18, 18, _arrow)}                    # name: (grid width, grid height, draw(Pen))
+def _play(g):                                           # an outlined triangle, optically centred: its area's centre
+    g.poly(((6, 3.5), (6, 14.5), (14.5, 9)))            # sits right of its box's, so the box 0.5 unit to the right
+
+
+def _pause(g):                                          # two bars
+    g.line(6.5, 4, 6.5, 14)
+    g.line(11.5, 4, 11.5, 14)
+
+
+# name: (grid width, grid height, draw(Pen)). Play and pause drawn as the others: the font's ▶ and ⏸ were another
+# style beside them, and over X11 another font's
+GLYPHS = {"arrow": (18, 18, _arrow), "play": (18, 18, _play), "pause": (18, 18, _pause)}
 RESET = "arrow"                                         # the usual sign for "back to how it was"
 
 

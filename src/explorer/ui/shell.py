@@ -27,7 +27,7 @@ from ..core.state import ViewState
 from ..data.axes import STOKES, unit_text
 from ..look import LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
-from . import docks, glass, style
+from . import docks, glass, icons, pens, style
 from .actions import ActionRegistry, KeySheet, mod_key
 from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
 from .gestures import Gestures
@@ -159,7 +159,7 @@ class Shell(QtWidgets.QMainWindow):
         if self.spectra is not None:
             self.spec_lock = PanelLock(self.spectra.w, "Spectra y range: open = automatic, closed = fixed (I from "
                                        "100 random profiles, Q U V from the whole image). Click to switch; right click "
-                                       "(or F) fixes it to this pixel", light=light)
+                                       "(or F) fixes it to this pixel", light=light, backed=False)
             self.spec_lock.toggled.connect(lambda on: self.scheduler.set_y_fixed(on))
             self.spec_lock.refit.connect(self.fit_spectra)
         self._closing = False
@@ -202,6 +202,7 @@ class Shell(QtWidgets.QMainWindow):
         self._mem.start()
         self._initial_state = self.saveState()          # before the first show: reset_panels comes back to it
         self._sized = False
+        self._ratio_followed = False
         style.separators(self)                          # 8 px to grab between the docked panels, with the theme
         panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel) if p is not None]
         self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
@@ -234,8 +235,7 @@ class Shell(QtWidgets.QMainWindow):
         self.nav.set_stokes_drop(L.has("stokes"))
         self._reticle_colours()
         if self.spectra is not None:
-            width = 2.0 if L.has("glass") else 1.2      # the glass look's markers: 2 px, as its lambda-t's
-            self.spectra.set_marks(acc, light, width) if L.has("marks") else self.spectra.clear_marks()
+            self.spectra.set_marks(acc, light) if L.has("marks") else self.spectra.clear_marks()
         if self.lambda_t is not None:
             self.lambda_t.set_marks(acc) if L.has("marks") else self.lambda_t.clear_marks()
         if L.has("colour") and self.colours is None:
@@ -400,6 +400,9 @@ class Shell(QtWidgets.QMainWindow):
 
     def showEvent(self, ev) -> None:
         super().showEvent(ev)
+        if not self._ratio_followed:                    # the plots' line widths at this screen's ratio (ui.pens)
+            self._ratio_followed = True
+            pens.follow(self)
         if not self._sized:                             # the fresh start's sizes, once the layout exists
             self._sized = True
             QtCore.QTimer.singleShot(0, self.reset_sizes)
@@ -508,7 +511,7 @@ class Shell(QtWidgets.QMainWindow):
     def set_playing(self, on: bool) -> None:
         self._fps = []
         (self._play.start if on else self._play.stop)()
-        self.nav.play.setText("\u23f8 t" if on else "\u25b6 t")
+        self.nav.play.setIcon(icons.glyph_icon("pause" if on else "play", self.nav.play))
         if self.nav.play.isChecked() != on:
             self.nav.play.setChecked(on)
 

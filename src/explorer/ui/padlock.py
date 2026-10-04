@@ -13,9 +13,11 @@ class PanelLock(QtWidgets.QToolButton):
     refit = QtCore.Signal()
     SIZE, MARGIN = 22, 8
 
-    def __init__(self, view: QtWidgets.QWidget, tip: str, light: bool = False):
+    def __init__(self, view: QtWidgets.QWidget, tip: str, light: bool = False, backed: bool = True):
+        """backed: a dark (light) square under it, needed over an image; over a plot's plain background it stood out
+        as a hole in the glass look's panel, so there only on hover."""
         super().__init__(view)
-        self.light = light
+        self.light, self.backed = light, backed
         self.setCheckable(True)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.setAutoRaise(True)
@@ -53,7 +55,11 @@ class PanelLock(QtWidgets.QToolButton):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         bg = QtGui.QColor(255, 255, 255, 200) if self.light else QtGui.QColor(0, 0, 0, 140)
-        if self.underMouse():
+        if not self.backed:
+            bg = QtGui.QColor(0, 0, 0, 0)
+            if self.underMouse():
+                bg = QtGui.QColor(0, 0, 0, 22) if self.light else QtGui.QColor(255, 255, 255, 28)
+        elif self.underMouse():
             bg.setAlpha(min(255, bg.alpha() + 50))
         p.setPen(QtCore.Qt.PenStyle.NoPen)
         p.setBrush(bg)

@@ -18,6 +18,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore
 
 from ..data.kernels import reduce_u8
+from . import pens
 
 if TYPE_CHECKING:
     from .overlays import Reticle
@@ -28,6 +29,10 @@ pg.setConfigOptions(imageAxisOrder="row-major", antialias=False, useNumba=False)
 
 CURSOR_PEN = pg.mkPen((255, 80, 80), width=1)
 LOCK_PEN = pg.mkPen((255, 190, 60), width=1.5)          # the crosshair while the cursor is locked
+# in the light theme: (255, 190, 60) on a white image stood at 1.66:1, under the 3:1 a line needs (WCAG 1.4.11); this
+# one 3.19:1 on white, 6.59:1 on black
+LOCK_PEN_LIGHT = pg.mkPen((217, 119, 6), width=1.5)
+pens.keep(CURSOR_PEN, LOCK_PEN, LOCK_PEN_LIGHT)         # made before the screen is known
 
 
 class _Moves(QtCore.QObject):
@@ -54,6 +59,7 @@ class ImageView:
         look)."""
         self.on_hover = on_hover
         self.strips, self.parts = strips, parts
+        self.light = light
         self.widget = pg.GraphicsLayoutWidget()
         self.vb = self.widget.addViewBox(lockAspect=True)
         self.img = pg.ImageItem()
@@ -111,8 +117,9 @@ class ImageView:
     def set_locked(self, on: bool) -> None:
         """The cursor locked: the crosshair in its own colour (the reticle yellow with a ring)."""
         self._locked = on
+        lock = LOCK_PEN_LIGHT if self.light else LOCK_PEN
         for ln in (self.hl, self.vl):
-            ln.setPen(LOCK_PEN if on else CURSOR_PEN)
+            ln.setPen(lock if on else CURSOR_PEN)
         if self.reticle is not None:
             self.reticle.set_locked(on)
 

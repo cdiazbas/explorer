@@ -7,9 +7,11 @@ import math
 
 import numpy as np
 
-from ..data.axes import STOKES, SUP, fmt_signed, unit_text
+from ..data.axes import STOKES, SUP, fmt_sig, fmt_signed, unit_text
 
 SEP = "   ·   "
+NB = "\u00a0"                                           # between a number and its unit: never apart at a line end
+# (U+202F, the narrow one, is nearly nothing in SF: "08:17:40UT")
 
 
 def padding(v0: float, s: int) -> bool:
@@ -28,13 +30,13 @@ def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, i
     f.append(f"x {fmt_signed(xy[0], 1)}″  y {fmt_signed(xy[1], 1)}″" if xy else f"x {x}  y {y}")
     if "t" in present:
         u = ax.utc_str(t) if ax is not None and ax.t_sec is not None else None
-        f.append(f"{u} UT" if u else f"t {t}")
+        f.append(f"{u}{NB}UT" if u else f"t {t}")
     if "l" in present:
         dl = ax.dlam_A() if ax is not None else None
         if dl is not None:
-            f.append(f"λ {ax.lam_A(l):.3f} Å")
-            f.append(f"Δλ {fmt_signed(float(dl[l]), 3)} Å")
-            f.append(f"v {fmt_signed(ax.vel_kms(l), 2)} km s⁻¹")
+            f.append(f"λ {ax.lam_A(l):.3f}{NB}Å")
+            f.append(f"Δλ {fmt_signed(float(dl[l]), 3)}{NB}Å")
+            f.append(f"v {fmt_signed(ax.vel_kms(l), 2)}{NB}km s⁻¹")
         else:
             f.append(f"λ {l}")
     name = STOKES[s] if ns > 1 else "I"
@@ -42,12 +44,12 @@ def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, i
     if padding(v0, s):
         f.append(f"{name}  no data (padding)")
     elif s > 0 and ic:
-        f.append(f"{name}/Ic {fmt_signed(100 * v0 / ic, 2)} %")
+        f.append(f"{name}/Ic {fmt_signed(100 * v0 / ic, 2)}{NB}%")
     elif iscale:
         e = str(int(np.log10(iscale))).translate(SUP)
-        f.append(f"{name} {v0 / iscale:.3f} × 10{e} {bunit}".rstrip().replace("-", "−"))
+        f.append(f"{name} {v0 / iscale:.3f} × 10{e}{NB}{bunit}".rstrip().replace("-", "−"))
     else:
-        f.append(f"{name} {v0:.4g} {bunit}".rstrip())
+        f.append(f"{name} {fmt_sig(v0)}{NB}{bunit}".rstrip())
     if locked:
         f.append("locked")
     return SEP.join(f)

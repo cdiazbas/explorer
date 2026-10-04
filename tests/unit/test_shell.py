@@ -46,7 +46,8 @@ def test_first_image_keys_and_status(shell):
 
     w, qapp = shell
     K = QtCore.Qt.Key
-    assert w.scheduler.img_idx == (0, 0, 2) and "\u2033" in w.status.text() and " UT" in w.status.text()   # arcsec, UT
+    text = w.status.text()
+    assert w.scheduler.img_idx == (0, 0, 2) and "\u2033" in text and "\u00a0UT" in text      # arcsec, UT
     QTest.keyClick(w, K.Key_Up)
     QTest.keyClick(w, K.Key_Right)
     QTest.keyClick(w, K.Key_3)

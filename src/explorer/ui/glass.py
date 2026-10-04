@@ -27,8 +27,11 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..platform.screens import monitor_rect
 from . import style, titlebar
+from .status import SEP
 
 FLOAT_W = 560                                      # px: a floating panel's width
+FLOAT_MIN_H = {"spectrum": 380, "lambda_t": 240}   # px: the least height its plots read at
+SLIDER_MIN, SLIDER_LEAST = 140, 48                 # px: a slider in the bar, and the least it gives way to
 HIDE_MS = 2500
 BAR_BOTTOM = 6                                     # px between the bar and the image's bottom edge
 REST_MS = 250                                      # still this long: the glass takes the new image as its backdrop
@@ -504,7 +507,7 @@ class GlassChrome:
             s = nav.sliders.get(axis)
             if s is None:
                 continue
-            s.setMinimumWidth(140)
+            s.setMinimumWidth(SLIDER_MIN)
             s.setMaximumWidth(16777215)
             if row == 0:
                 rows[0].addWidget(nav.play)
@@ -578,9 +581,26 @@ class GlassChrome:
         for b in self._sheets:
             b.setStyleSheet(sheet)
 
+    def _fit_sliders(self, room: int) -> None:
+        """The sliders give way first, as in the toolbar: in a 480-px window the bar needed 505 px for 448 (its t
+        row: play, the slider at 140, its label, Panels, reset, ?), and Qt squeezed the rest below their size."""
+        sl = list(self.w.nav.sliders.values())
+        lay = self.bar.layout()
+        if lay is None:
+            return
+        for s in sl:
+            s.setMinimumWidth(SLIDER_MIN)
+        lay.activate()
+        excess = self.bar.minimumSizeHint().width() - room
+        if excess > 0:
+            for s in sl:
+                s.setMinimumWidth(max(SLIDER_LEAST, SLIDER_MIN - excess))
+            lay.activate()
+
     def place_bar(self) -> None:
         view = self.w.view.widget
         W, H = view.width(), view.height()
+        self._fit_sliders(max(320, W - 2 * MARGIN))
         bw = min(self.bar.sizeHint().width() + 8, max(320, W - 2 * MARGIN))
         self.bar.resize(bw, self.bar.sizeHint().height())
         self.bar.move((W - bw) // 2, H - self.bar.height() - BAR_BOTTOM)
@@ -653,7 +673,9 @@ class GlassChrome:
         avail = fg.height() - GAP * (len(shown) - 1)
         y = fg.top()
         for d, f in zip(shown, share, strict=True):
-            h = int(avail * f)
+            # never shorter than its plots need: at 245 px the 2x2 spectra's axis titles ran into each other; below a
+            # short window they go on past its bottom edge
+            h = max(int(avail * f), FLOAT_MIN_H.get(d.objectName(), 0))
             d.setFloating(True)
             d.show()
             d.setGeometry(x, y, FLOAT_W, h)
@@ -702,7 +724,18 @@ class GlassChrome:
         """The window's title: the cursor's readout while the pointer is on the image or the cursor is locked."""
         w = self.w
         text = w.status.text()
-        w.setWindowTitle(text if (self.over_image or w.session.state.locked) and text else self._was["title"])
+        if not ((self.over_image or w.session.state.locked) and text):
+            w.setWindowTitle(self._was["title"])
+            return
+        # as many whole fields as the title has room for: elided in its middle at 480 px it read
+        # "x -701.5" y +248.1" · 0...W m-2 Hz-1 sr-1", the values gone
+        fm, room = QtGui.QFontMetrics(w.font()), max(120, w.width() - 2 * 90)
+        fields, out = text.split(SEP), list[str]()
+        for f in fields:
+            if fm.horizontalAdvance(SEP.join([*out, f])) > room:
+                break
+            out.append(f)
+        w.setWindowTitle(SEP.join(out) or fields[0])
 
     def grid_changed(self, on: bool) -> None:
         """The four Stokes shown or gone: the bar over them (look_glass.py:887)."""

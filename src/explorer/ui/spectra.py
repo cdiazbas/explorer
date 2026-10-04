@@ -13,13 +13,22 @@ import os
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import APP_NAME
 from ..data.axes import C_KMS, STOKES, SUP, fmt_signed, unit_text
+from . import pens
 from .imageview import CURSOR_PEN
+from .padlock import PanelLock
 
 GRID = 0.07                                             # the grid's alpha: at 0.2 its lines read as a mesh
+# the lambda line: at 1 px (CURSOR_PEN) its red was there, (243, 89, 89), but over the black plot and its grid it read
+# grey. 2 px at 1x reads red: width 2, as the glass look's (1.5, not antialiased, lit 2 columns at 24 of 40 subpixel
+# places and 1 at the others). The image's crosshair stays 1 px
+LAMBDA_PEN = pg.mkPen((255, 80, 80), width=2.0)
+pens.keep(LAMBDA_PEN)
+MARK_W = 2.0                                            # the modern look's: 1.2 drew 1 px, its blue read dark
+DOT, RING = 4, 9                                        # px: each measured point; the ring round the one read
 
 X_PAD = 0.04                                            # of the lambda span, each side
 AXIS_W = 56                                             # px: tick digits changing never re-lays out the plots
@@ -36,34 +45,101 @@ def decimals(spacing: float) -> int:
 
 class SignedAxis(pg.AxisItem):
     """Tick labels with a typographic minus and no automatic SI prefix ('x1e-09'); plus=True also writes '+'
-    (offsets such as delta-lambda and velocity)."""
+    (offsets such as delta-lambda and velocity).
+
+    One level of ticks, every 1, 2 or 5 x 10^k: pyqtgraph's own two levels (major 1, minor 0.5) were labelled apart,
+    so one axis read 2.5 2 1.5 1, and the decimals of a minor level it did not label gave 0.0 and +0.50. The finest
+    step that leaves GAP px between each two neighbouring labels, measured in the axis's font: counted against a
+    guessed label, a 190-px plot got 0 +0.5 where -0.2 0 +0.2 +0.4 +0.6 fitted, 9.5 px apart."""
+    GAP = (8, 8)                                        # px between two labels: stacked (y), side by side (x)
 
     def __init__(self, orientation, plus=False, **kw):
         super().__init__(orientation, **kw)
         self.plus = plus
         self.enableAutoSIPrefix(False)
+        self.finest: float | None = None                # the step of the ticks last chosen: their labels' decimals
 
-    def tickStrings(self, values, scale, spacing):
-        nd = decimals(spacing)
+    def fmt(self, values, step):
+        nd = decimals(step)
         if self.plus:
             return [fmt_signed(v, nd) if abs(v) > 1e-12 else "0" for v in values]
         return [f"{v:.{nd}f}".replace("-", "−") for v in values]
 
+    def tickValues(self, minVal, maxVal, size):
+        lo, hi = sorted((minVal, maxVal))
+        if not (hi > lo) or size <= 0:
+            return []
+        fm = QtGui.QFontMetrics(self.style.get("tickFont") or self.font())
+        across = self.orientation in ("left", "right")
+        e = int(np.floor(np.log10((hi - lo) * 10 / size)))     # a step of about 10 px
+        for k in range(e, e + 12):
+            for m in (1, 2, 5):
+                step = m * 10.0 ** k
+                px = step / (hi - lo) * size
+                if px < 10:
+                    continue
+                first = np.ceil(lo / step - 1e-9) * step
+                values = [round(float(v), 12) for v in np.arange(first, hi + step * 1e-9, step)]
+                if across:
+                    need = float(fm.height() + self.GAP[0])
+                else:
+                    w = [fm.horizontalAdvance(t) for t in self.fmt(values, step)]
+                    need = max(((a + b) / 2 for a, b in zip(w, w[1:], strict=False)), default=0) + self.GAP[1]
+                if px >= need:
+                    self.finest = step
+                    return [(step, values)]
+        return []
+
+    def tickStrings(self, values, scale, spacing):
+        return self.fmt(values, self.finest if self.finest else spacing)
+
 
 class VelocityAxis(SignedAxis):
-    """Doppler velocity over a delta-lambda [Å] axis: ticks at round velocities. k: km/s per Å."""
+    """Doppler velocity over a delta-lambda [Å] axis: ticks at round velocities. k: km/s per Å.
+
+    No grid of its own: with showGrid(x=True) the top axis drew its lines too, at the velocities' places, beside the
+    bottom axis's at the delta-lambdas', so the grid came in near pairs (+10 by +0.2, +20 by +0.4). Its ticks take
+    the pen's alpha: pyqtgraph draws them at 255 unless told, and under the glass look's frame (white at alpha 60)
+    they stood out bright white. bare: the box's edge only, no ticks (a lower row's top, under the row that has
+    the labels)."""
 
     def __init__(self, orientation, k):
         super().__init__(orientation, plus=True)
         self.k = k
+        self.bare = False
+
+    def setGrid(self, grid):
+        super().setGrid(False)
+
+    def setPen(self, *args, **kwargs):
+        super().setPen(*args, **kwargs)
+        if hasattr(self, "style"):                      # AxisItem's __init__ sets its pen before its style
+            self.setStyle(tickAlpha=self.pen().color().alpha())
 
     def tickValues(self, minVal, maxVal, size):
+        if self.bare:
+            return []
         return [(sp / self.k, [v / self.k for v in vs])
                 for sp, vs in super().tickValues(minVal * self.k, maxVal * self.k, size)]
 
     def tickStrings(self, values, scale, spacing):
-        nd = decimals(spacing * self.k)
-        return [fmt_signed(v * self.k, nd) if abs(v * self.k) > 1e-9 else "0" for v in values]
+        return self.fmt([v * self.k for v in values], self.finest if self.finest else spacing * self.k)
+
+
+class FrameAxis(pg.AxisItem):
+    """A side of the plot's box with nothing on it: no values, no ticks, no grid. The box was open on the right; a
+    plain AxisItem there drew its own grid too, at pyqtgraph's tick places, between the left axis's lines, and ticks
+    of length 0 still drew as dots of the pen's width."""
+
+    def __init__(self, orientation, **kw):
+        super().__init__(orientation, **kw)
+        self.setStyle(showValues=False, tickLength=0)
+
+    def setGrid(self, grid):
+        super().setGrid(False)
+
+    def tickValues(self, minVal, maxVal, size):
+        return []
 
 
 class ResizeFreezer(QtCore.QObject):
@@ -115,11 +191,13 @@ class SpectraPanel:
         self.plots: list = []
         self.curves: list = []
         self.lines: list = []
+        self.rings: list = []                           # the point read at this lambda, on each profile
+        self._y: dict[int, np.ndarray] = {}             # Stokes -> the profile shown
+        self._l = 0
         ncol = 2 if ns == 4 else 1
         for k in range(ns):
-            axis_items = {"bottom": SignedAxis("bottom", plus=self.physical), "left": SignedAxis("left")}
-            if vk:
-                axis_items["top"] = VelocityAxis("top", vk)
+            axis_items = {"bottom": SignedAxis("bottom", plus=self.physical), "left": SignedAxis("left"),
+                          "right": FrameAxis("right"), "top": VelocityAxis("top", vk) if vk else FrameAxis("top")}
             p = self.w.addPlot(row=k // ncol, col=k % ncol, axisItems=axis_items)
             p.showGrid(x=True, y=True, alpha=GRID)
             p.getAxis("left").setWidth(AXIS_W)
@@ -132,23 +210,50 @@ class SpectraPanel:
             p.vb.setMenuEnabled(False)
             if not self.physical:
                 p.getAxis("bottom").setTickSpacing(major=max(1, -(-nl // 7)), minor=1)
-            c = p.plot(pen=pg.mkPen((30, 30, 34) if light else "w", width=1.5), symbol="o", symbolSize=3)
-            ln = pg.InfiniteLine(angle=90, pen=CURSOR_PEN)
+            # antialiased (a 1.5-px line drew stairs at dpr 1 and over X11: greys only, so grey tiles still), each
+            # measured point a dot of the line's own ink
+            ink = QtGui.QColor(30, 30, 34) if light else QtGui.QColor(255, 255, 255)
+            dot = QtGui.QColor(ink)
+            dot.setAlpha(225)
+            c = p.plot(pen=pg.mkPen(ink, width=1.5), symbol="o", symbolSize=DOT, symbolPen=None, symbolBrush=dot,
+                       antialias=True)
+            ln = pg.InfiniteLine(angle=90, pen=LAMBDA_PEN)
             p.addItem(ln)
-            for side in ("left", "bottom", "top"):      # a range change re-renders only the axes that moved
+            # the point read at this lambda, ringed in the markers' colour: the line says where, the ring which value
+            ring = pg.ScatterPlotItem(size=RING, pen=pg.mkPen(LAMBDA_PEN.color(), width=1.5), brush=None,
+                                      antialias=True)
+            ring.setZValue(20)
+            p.addItem(ring, ignoreBounds=True)
+            for side in ("left", "bottom", "top", "right"):     # a range change re-renders only the axes that moved
                 p.getAxis(side).setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
             self.plots.append(p)
             self.curves.append(c)
             self.lines.append(ln)
+            self.rings.append(ring)
         # the classic look's curves, to come back to after the modern marks
         self._classic = [(c.opts["pen"], c.opts["symbolPen"], c.opts["symbolBrush"]) for c in self.curves]
         self._zeros: list = []
+        # the x axes are linked: their values once, on the outer edges (delta-lambda under the bottom row, v over the
+        # top one), as two rows of the same numbers between the plots read as a third axis. Inner axes keep their
+        # line, the box's edge. The velocity ticks point out, to their labels: it has no grid, and inward they hung
+        # into the data. The box closed on the right and, without velocities, on top
+        for k, p in enumerate(self.plots):
+            p.showAxis("right")
+            p.showAxis("top")
+            if k + ncol < ns:
+                p.getAxis("bottom").setStyle(showValues=False)
+            if vk:
+                top = p.getAxis("top")
+                top.setStyle(showValues=k < ncol, tickLength=4 if k < ncol else 0)
+                top.bare = k >= ncol
+        # the padlock (ui.padlock, put on by the shell) in its own strip on the right: over the plots it covered the
+        # last velocity label and the top-right axis title
+        self.w.ci.setContentsMargins(9, 9, PanelLock.SIZE + PanelLock.MARGIN, 9)
         for p in self.plots[-ncol:]:
             p.setLabel("bottom", "Δλ [Å]" if self.physical else "λ index")
         if vk:
             for p in self.plots[:ncol]:
-                p.showAxis("top")
-                p.setLabel("top", "v [km s<sup>−1</sup>]")
+                p.setLabel("top", "v [km s⁻¹]")      # Unicode, as every other unit: <sup> drew thinner digits
         self.label_stokes()
         self.freezer = ResizeFreezer(self.w)
         self.widget = self.freezer.stack
@@ -166,19 +271,20 @@ class SpectraPanel:
             else:
                 p.setLabel("left", f"{name}/I<sub>c</sub> [%]")
 
-    def set_marks(self, colour, light: bool, width: float = 1.2) -> None:
-        """The modern look's marks: the lambda markers in colour (width px; the glass look's 2), quieter curves and
-        grid, and a dashed zero line on Q U V, where zero is at a glance."""
-        from PySide6 import QtGui
-
+    def set_marks(self, colour, light: bool, width: float = MARK_W) -> None:
+        """The modern look's marks: the lambda markers and rings in colour (width px; the glass look's 2), quieter
+        curves, and a dashed zero line on Q U V, where zero is at a glance."""
         mark = pg.mkPen(colour, width=width)
         for ln in self.lines:
             ln.setPen(mark)
+        for ring in self.rings:
+            ring.setPen(pg.mkPen(colour, width=1.5))
         ink = QtGui.QColor(30, 30, 34) if light else QtGui.QColor(235, 235, 240)
         dot = QtGui.QColor(ink)
-        dot.setAlpha(190)
+        dot.setAlpha(225)
         for c in self.curves:
-            c.setPen(pg.mkPen(ink, width=1.4))
+            c.setPen(pg.mkPen(ink, width=1.5))
+            c.setSymbolSize(DOT)
             c.setSymbolPen(None)
             c.setSymbolBrush(dot)
         if not self._zeros:
@@ -194,7 +300,9 @@ class SpectraPanel:
     def clear_marks(self) -> None:
         """The classic look's marks again: red lambda markers, the curves as built, no zero lines."""
         for ln in self.lines:
-            ln.setPen(CURSOR_PEN)
+            ln.setPen(LAMBDA_PEN)
+        for ring in self.rings:
+            ring.setPen(pg.mkPen(CURSOR_PEN.color(), width=1.5))
         for c, (pen, spen, sbrush) in zip(self.curves, self._classic, strict=True):
             c.setPen(pen)
             c.setSymbolPen(spen)
@@ -212,20 +320,37 @@ class SpectraPanel:
             y = spec[k]
             if not np.isfinite(y).any():
                 self.curves[k].setData([], [])
-                continue
-            self.curves[k].setData(self.xl, y, skipFiniteCheck=True)
+                self._y.pop(k, None)
+            else:
+                self.curves[k].setData(self.xl, y, skipFiniteCheck=True)
+                self._y[k] = y
+            self._ring(k)
 
     def clear(self) -> None:
         for c in self.curves:
             c.setData([], [])
+        self._y.clear()
+        for k in range(self.ns):
+            self._ring(k)
+
+    def _ring(self, k: int) -> None:
+        """Stokes k's ring on its profile at this lambda; none on padding or a NaN."""
+        y, ring, l = self._y.get(k), self.rings[k], self._l  # noqa: E741
+        if y is None or not 0 <= l < len(y) or not np.isfinite(y[l]):
+            ring.setData([], [])
+        else:
+            ring.setData([float(self.xl[l])], [float(y[l])])
 
     def set_range(self, k: int, r) -> None:
         self.plots[k].setYRange(*r, padding=0)
 
     def set_lambda(self, l: int) -> None:  # noqa: E741
         x = float(self.xl[l])
+        self._l = l
         for ln in self.lines:
             ln.setValue(x)
+        for k in range(self.ns):
+            self._ring(k)
 
     def reset_view(self) -> None:
         self.plots[0].setXRange(*self.x_range, padding=0)      # the others are x-linked to it
