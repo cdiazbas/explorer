@@ -117,6 +117,30 @@ def test_plot_lines_keep_their_width_on_a_retina_screen(qapp, panel):
     assert held2 == tuple(2 * w for w in held1) and back == held1
 
 
+def test_a_pen_made_after_the_ratio_is_known_is_scaled_once(qapp):
+    """The theme sets the ratio before the views make their pens (ui.style.apply_theme, then the imports of
+    ui.imageview and ui.spectra): such a pen comes out of mkPen scaled already, and keep() must not scale it again
+    (it did: on Retina the spectra's lambda line was 8 device px for 4)."""
+    import pyqtgraph as pg
+
+    from explorer.ui import pens
+
+    pens.set_ratio(2.0)
+    try:
+        pen = pg.mkPen((255, 0, 0), width=1.5)
+        made = pen.widthF()
+        pens.keep(pen)
+        kept = pen.widthF()
+        pens.set_ratio(1.0)
+        back = pen.widthF()
+    finally:
+        pens.set_ratio(1.0)
+        if pen in pens._kept:
+            pens._kept.remove(pen)
+    print(f"width 1.5 made at ratio 2: {made}, after keep(): {kept}, back at ratio 1: {back}")
+    assert (made, kept, back) == (3.0, 3.0, 1.5)
+
+
 def test_the_velocity_axis_draws_no_grid(panel):
     tops = [p.getAxis("top") for p in panel.plots]
     print("grid of the top axes:", [a.grid for a in tops], "bottom:", [p.getAxis("bottom").grid for p in panel.plots])

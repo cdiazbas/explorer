@@ -36,11 +36,9 @@ fn.mkPen = pg.mkPen = _mkPen
 
 
 def keep(*pens: QtGui.QPen) -> None:
-    """Pens made at import, before the screen is known: scaled with every later change of ratio."""
-    for p in pens:
-        if p.isCosmetic() and RATIO != 1:
-            p.setWidthF(p.widthF() * RATIO)
-        _kept.append(p)
+    """Pens kept as module constants: scaled with every later change of ratio. Not scaled here: one made after the
+    ratio was set came out of mkPen scaled already (on Retina, a lambda line of 8 device px for 4)."""
+    _kept.extend(pens)
 
 
 def _scaled(pen, f: float):
