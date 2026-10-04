@@ -2536,3 +2536,28 @@ usuario tendría que venir de lo que la emulación no tiene: el XQuartz real (qu
 bloqueos como los de la incidencia #499) o su enlace real. Sin medir en XQuartz: XTEST está apagado allí
 salvo que se active. Que el panel arrastrado quede debajo de la λ-t, en los dos programas, no es
 concluyente: el gestor de pega no sube la ventana al hacer clic, y quartz-wm sí.
+
+### 2026-10-04 (10): las paradas de los paneles al arrastrar por ssh -Y
+
+El registro de la última prueba del usuario (`geometry-1075661.log`, classic, dos monitores, XQuartz por
+`ssh -Y`) no tiene ningún movimiento de los paneles venido de avisos del puente: los arreglos de (6) y (7)
+aguantan. Arrastró mucho, sobre todo la λ-t (598×776), también de un monitor al otro. Qt recibe del orden
+de 85–150 posiciones por segundo, con huecos típicos de 6–12 ms. Pero casi la mitad de los arrastres
+tienen **paradas de 145 a 290 ms**: el panel se queda quieto mientras el ratón sigue. En esos huecos el
+registro no muestra nada más.
+
+No se han reproducido:
+- bellatrix, Xvfb con el quartz-wm de pega, cubo real del 6173, enlace sin límite y limitado a 48 MB/s (la
+  medida del enlace del usuario): explorer, retraso máximo 11–13 ms, quietud máxima 29–30 ms, ningún
+  movimiento por encima de 100 ms; el prototipo, máximo 17–51 ms;
+- el XQuartz del usuario en el Mac (XTEST activado con
+  `defaults write org.xquartz.X11 enable_test_extensions -boolean true` y XQuartz reiniciado, con
+  permiso), cubo sintético, paneles 560×420: explorer muestra las 40 posiciones, retraso mediano 6.9 ms,
+  máximo 15.8 ms, quietud máxima 31 ms, acaba donde debe y por encima de la λ-t.
+
+En XQuartz el primer clic sobre una ventana inactiva solo la activa (la preferencia «click-through» está
+apagada por defecto), así que el banco hace ahora un clic de activación antes de arrastrar. Aun así, el
+banco no consigue arrastrar el panel del prototipo en XQuartz, ni el de explorer cuando lo agranda a
+598×776: queda por arreglar antes de comparar ahí. Falta también lo que tienen los arrastres del usuario y
+ninguna prueba: el enlace ssh real hacia XQuartz y el cubo real a la vez, y los paneles grandes cruzando de
+un monitor a otro.
