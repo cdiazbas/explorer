@@ -3197,3 +3197,21 @@ paneles en x = 791 y ningún `setGeometry` de la principal.
 - En bellatrix, `tests/xvfb` pasa entero dos veces y `tests/unit` no tiene fallos nuevos.
 
 **Sin probar:** GNOME y KDE maximizando por xcb, y el Mac de punta a punta, que lo mira el usuario.
+
+### 2026-10-04 (30): la higiene lee los binarios (ROADMAP X.11)
+
+**El hueco:** `scripts/hygiene.py` se saltaba todo fichero binario. numpy guarda las cadenas en UTF-32, así que la
+ruta personal de una referencia golden no la veían ni la higiene ni el grep de la historia.
+
+**Ahora** los binarios versionados o preparados para commit se leen como Latin-1, UTF-16 y UTF-32 en todas las
+alineaciones, cada miembro de un zip por separado (un `.npz` lo es).
+
+**Comprobado:**
+- La referencia vieja, sacada de la historia, da «Mac home path»; la actual sale limpia.
+- El árbol: 0 hallazgos.
+- Las dos pruebas nuevas (un `.npz` con la ruta, normal y comprimido) fallan con la higiene anterior.
+
+**La exportación** de referencias guarda ya la ruta del prototipo relativa a explorer.
+
+**Queda (X.11, parte 3):** la historia sigue teniendo esa ruta en `b93c4a3`. Mirar los binarios de la historia
+fallaría hasta que el usuario decida si se reescribe.
