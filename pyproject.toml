@@ -83,7 +83,8 @@ python_version = "3.12"
 mypy_path = "src"
 packages = ["explorer"]
 check_untyped_defs = true
-warn_unused_ignores = true
+warn_unused_ignores = true                # numba's ignores also say unused-ignore: numba 0.67 is typed (py.typed)
+                                          # and lacks config/prange, the Intel Mac's 0.62.1 is untyped (Any)
 ignore_missing_imports = true           # numba, Xlib and parts of astropy ship no type information
 
 # Layer contracts (docs/plan.md §3.1), checked by `lint-imports` in scripts/check.sh. Contracts for data, core, ui

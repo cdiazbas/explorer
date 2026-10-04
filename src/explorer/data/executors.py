@@ -62,7 +62,7 @@ class ShownGate:
 class Executors:
     def __init__(self, gather_threads: int = 16, io_threads: int = 16, strips: int | None = None):
         self.numba = ThreadPoolExecutor(1, thread_name_prefix="numba")
-        n = max(1, min(int(gather_threads), numba.config.NUMBA_NUM_THREADS))  # type: ignore[attr-defined]
+        n = max(1, min(int(gather_threads), numba.config.NUMBA_NUM_THREADS))  # type: ignore[attr-defined, unused-ignore]
         self.numba_threads = self.numba.submit(_set_threads, n).result()
         self.io = ThreadPoolExecutor(max(1, io_threads), thread_name_prefix="io")
         strips = min(8, os.cpu_count() or 1) if strips is None else strips

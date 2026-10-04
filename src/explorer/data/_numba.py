@@ -24,6 +24,6 @@ import numba  # noqa: E402
 from .._paths import cache_dir  # noqa: E402
 
 if not os.environ.get("NUMBA_CACHE_DIR"):
-    numba.config.CACHE_DIR = str(cache_dir() / "numba")  # type: ignore[attr-defined]
+    numba.config.CACHE_DIR = str(cache_dir() / "numba")  # type: ignore[attr-defined, unused-ignore]
 
 __all__ = ["numba"]

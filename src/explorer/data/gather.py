@@ -18,7 +18,7 @@ def gather(fd, offsets, itemsize, out_bytes):
     reads that came back short."""
     n = offsets.shape[0]
     bad = 0
-    for k in nb.prange(n):  # type: ignore[attr-defined]
+    for k in nb.prange(n):  # type: ignore[attr-defined, unused-ignore]
         r = _pread(fd, out_bytes[k * itemsize:].ctypes.data, itemsize, offsets[k])
         if r != itemsize:
             bad += 1
@@ -31,5 +31,5 @@ def gather_limited(fd, offsets, itemsize, out_bytes, max_threads=None):
     More threads than requests only wake threads with nothing to read; on data already in the system's cache
     they cost more than they save (a lambda-t from the cache: 41 ms with 32 threads, 55 ms with 64)."""
     if max_threads:
-        nb.set_num_threads(max(1, min(int(max_threads), int(offsets.shape[0]), nb.config.NUMBA_NUM_THREADS)))  # type: ignore[attr-defined]
+        nb.set_num_threads(max(1, min(int(max_threads), int(offsets.shape[0]), nb.config.NUMBA_NUM_THREADS)))  # type: ignore[attr-defined, unused-ignore]
     return gather(fd, offsets, itemsize, out_bytes)
