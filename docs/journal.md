@@ -3093,3 +3093,27 @@ una copia sin entorno). `tests/xvfb`: 26 pasan y 2 se omiten.
 minimizar pasa al Dock solo la ventana y su título. El servidor (`hw/xquartz`) tampoco lo menciona. Esto se ha
 leído en el código, sin probarlo en el Mac: en el Mac del usuario, el Dock sigue mostrando el icono de XQuartz. Sirve
 para los gestores de Linux y para xprop.
+
+### 2026-10-04 (27): la vista 2×2 sin la clave de color de un solo Stokes (ROADMAP E5.30)
+
+**El fallo:** en la vista 2×2 (tecla 5, «All»), cada panel I Q U V lleva su propio mapa y sus propios niveles.
+Aun así, la clave de color del último Stokes quedaba encima, porque `set_grid` la subía a propósito, y describía un
+solo mapa y un solo rango.
+
+**El prototipo** nunca la mostraba ahí: crea la rejilla después de la clave, sobre el mismo widget, y la sube por
+encima (`app/look.py:327`, `app/look_glass.py:928-945`).
+
+**Ahora** `ColourKey.show_with` la oculta mientras la vista 2×2 está activa.
+- Da igual por dónde se entre (5, «All») y lo que pase dentro: clic en un panel, C, M, T, la barra de glass.
+- Al salir (1–4, un Stokes en el control, 5), vuelve la del Stokes de la imagen, con su mapa y su rango.
+
+**Un segundo fallo, también arreglado:** C en la 2×2 solo cambiaba el mapa de la vista simple oculta. Ahora el
+panel del Stokes de la sesión cambia al instante.
+
+**Pruebas:** 15 nuevas (`tests/unit/test_grid_colour_key.py`). Con el código anterior fallaban 14 (la decimoquinta
+solo existe en glass); con solo la mitad del arreglo, 2.
+
+**Propuesta pendiente, sin construir:** una clave por cuadrante, con la etiqueta del Stokes dentro.
+
+**Visto una vez y sin explicar:** en la batería del agente, `test_theme::…[light-dark-glass-False]` falló con un
+~14 % de píxeles distintos, y pasó sola y al repetirla. Se abre X.12.
