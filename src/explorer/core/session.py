@@ -106,6 +106,18 @@ class Session:
     def lock(self, on: bool = True) -> None:
         self.store.set(locked=bool(on))
 
+    def set_path(self, points) -> None:
+        """The slit: the points clicked, (x, y) in the main cube's view coordinates (pixel centres at .5), two at
+        least, each clipped to the image; None removes it. Straight through two points, a curve through more
+        (data.slits.slit_path); the prototype's Viewer.slit (app/viewer.py:1228, set in _slit_finish 1571)."""
+        if points is None:
+            self.store.set(path=None)
+            return
+        pts = tuple((float(np.clip(x, 0, self.main.nx)), float(np.clip(y, 0, self.main.ny))) for x, y in points)
+        if len(pts) < 2:
+            raise ValueError(f"a slit needs two points at least, not {len(pts)}")
+        self.store.set(path=pts)
+
     def show(self, panel: str, on: bool = True) -> None:
         """A panel shown or hidden: nothing is read for a hidden one (the prototype's skipped_hidden)."""
         panels = set(self.store.state.panels)

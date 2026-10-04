@@ -11,7 +11,7 @@ From the prototype's app/viewer.py: _Gestures (574), _install_gestures (1790), _
 (1270-1317). The button is seen on the panel itself: QApplication.mouseButtons() depends on how each platform (xcb,
 the X11 bridge, offscreen) delivers its input.
 """
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui
 
 DRAG_PX = 3                                             # a press on the image that moves farther is a pan
 
@@ -24,6 +24,8 @@ class Gestures(QtCore.QObject):
         self.picks, self.image = picks, image
         self.held: set = set()
         self.press: dict = {}
+        # the image's pointer at rest, back after a pan: a cross, or the pencil while a slit is drawn (ui.slit)
+        self.rest = QtGui.QCursor(QtCore.Qt.CursorShape.CrossCursor)
 
     def eventFilter(self, obj, e):
         E = QtCore.QEvent.Type
@@ -39,7 +41,7 @@ class Gestures(QtCore.QObject):
                     obj.setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
             elif t == E.MouseButtonRelease and left:
                 self.press.pop(obj, None)
-                obj.setCursor(QtCore.Qt.CursorShape.CrossCursor)
+                obj.setCursor(self.rest)
             return False
         pick = self.picks.get(obj)
         if pick is None:

@@ -1,6 +1,6 @@
 """The navigation toolbar (ROADMAP E4.5): t and lambda sliders with their labels, the Stokes combo, play with its
-rate (playback itself: E4.9), the Panels menu and the reset button, right-aligned. The sliders give way first when
-the window narrows, so the whole toolbar stays visible.
+rate (playback itself: E4.9), the slit button (E7.1), the Panels menu and the reset button, right-aligned. The
+sliders give way first when the window narrows, so the whole toolbar stays visible.
 
 From the prototype's app/viewer.py: the toolbar (913-960), JumpSlider (364), _slider_text (1106), _fit_toolbar
 (2323), set_index's keeping of sliders, labels and combo in step (1843-1848).
@@ -205,6 +205,17 @@ class NavBar:
         self.fps.setSuffix(" fps")
         tb.addWidget(self.fps)
         tb.addSeparator()
+        # the slit (S, ui.slit), with the controls; the prototype's slit_btn (app/viewer.py:1114-1126)
+        self.slit = QtWidgets.QToolButton()
+        self.slit.setObjectName("slit")
+        self.slit.setIcon(icons.glyph_icon("slit", self.slit))
+        self.slit.setCheckable(True)
+        self.slit.setAutoRaise(True)
+        self.slit.setToolTip("Draw a slit on the image (S): click adds a point, double click finishes, right click "
+                             "removes the last point, Esc cancels. Two points: a straight slit; more: a path through "
+                             "them. \u232b removes it")
+        self.slit.toggled.connect(lambda on: shell.set_slit_mode(on))
+        tb.addWidget(self.slit)
         self.panels = MenuButton()
         self.panels.setObjectName("panels")
         self.panels.setText("Panels")

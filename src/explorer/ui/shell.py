@@ -8,7 +8,9 @@ image again. The keys, from the prototype's _key_table, in one table (ui.actions
 - Left / Right: lambda, previous / next tuning; Down / Up: t, previous / next frame (each arrow moves its line the
   way it points: lambda is horizontal on the spectra and lambda-t, t vertical on lambda-t);
 - 1..ns: that Stokes, whenever the cube has Stokes (the prototype registered them only when it also had t);
-- L: lock or release the cursor; Esc: release it;
+- L: lock or release the cursor; Esc: release it (while a slit is drawn: drop it);
+- S: the slit mode on and off, ⌫ or Delete: the slit removed (ui.slit; a click in the mode adds a point to the slit
+  instead of locking the cursor);
 - Ctrl+W close, Ctrl+M minimise, Ctrl+Q quit (Qt reads Ctrl as Cmd on a Mac, where Cmd+Q is the application menu's).
 """
 import math
@@ -36,6 +38,7 @@ from .lambda_t import LambdaTPanel
 from .loop import QtLoop
 from .overlays import ColourKey
 from .padlock import PanelLock
+from .slit import SlitHint, SlitTool
 from .spectra import AxisDrag, SpectraPanel
 from .status import diagnostics_text, pixel_text
 from .stokesgrid import StokesGrid
@@ -49,6 +52,7 @@ if TYPE_CHECKING:
 
 MEMORY_S = 1.0                                          # the caches' budget follows the machine's memory (Dataset)
 STATUS_INSET = 8            # px each side of the status line: half the rounded corners' 16, its text clear of the curve
+GRID_LABEL = 30             # px from the top: the slit's hint below the 2x2 view's Stokes label (stokesgrid, at 6)
 
 
 class _Follow(QtCore.QObject):
@@ -130,6 +134,10 @@ class Shell(QtWidgets.QMainWindow):
         self.look = look if look is not None else get_look()
         self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light)
         self.setCentralWidget(docks.gutter(self.view.widget))
+        # the slit (S): drawn on the image, the finished one the session's path (ui.slit)
+        self.slit_hint = SlitHint(self.view.widget, light=light)
+        self.slit_tool = SlitTool(self.session, self.view, self.slit_hint, CURSOR_PEN.color())
+        self.slit_tool.modeChanged.connect(self._slit_mode_changed)
         r = dataset.roles
         # a cube without lambda has no spectra: that dock stays empty and hidden
         self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, dataset.axes, light=light) \
@@ -265,6 +273,9 @@ class Shell(QtWidgets.QMainWindow):
         if L.has("glass") and self.glass is None:       # its own parts last, over the modern look's (ui.glass)
             self.glass = glass.GlassChrome(self)
             self.glass.apply()
+        # the slit in the markers' colour: the cursor's in the classic look (the prototype's _slit_style, 1733)
+        self.slit_tool.set_colour(acc if L.has("marks") or L.has("glass") else CURSOR_PEN.color())
+        self._place_slit_hint()
 
     # ---------------------------------------------------------------- the theme (ui.style), while the window runs
     def set_theme(self, theme: str) -> None:
@@ -280,6 +291,7 @@ class Shell(QtWidgets.QMainWindow):
         style.separators(self)
         light = style.is_light()
         self.view.set_light(light)
+        self.slit_tool.set_light(light)
         if self.grid is not None:
             self.grid.set_light(light)
         for lock in (self.image_lock, self.spec_lock):
@@ -328,6 +340,8 @@ class Shell(QtWidgets.QMainWindow):
                 self.grid.set_reticle(self.look.has("reticle"))
                 self._reticle_colours()
                 self._grid_follow = _Follow(self.view.widget, self.grid)
+                for v in self.grid.views:               # the slit on the four, drawn on any of them
+                    self.slit_tool.attach(v)
             self.grid.setGeometry(self.view.widget.rect())
             self.grid.set_region(self.view.vb.viewRect())
             st = self.session.state
@@ -336,7 +350,7 @@ class Shell(QtWidgets.QMainWindow):
             self._grid_luts()
             self.grid.show()
             self.grid.raise_()
-            for w in (self.image_lock, self.colour_key):  # the padlock and the colour key stay on top
+            for w in (self.image_lock, self.colour_key, self.slit_hint):  # the padlock, key and hint stay on top
                 if w is not None:
                     w.raise_()
             self.scheduler.set_grid(True)
@@ -347,6 +361,7 @@ class Shell(QtWidgets.QMainWindow):
             self.scheduler.set_grid(False)
             self.view.set_paused(False)
         self.nav.set_all(on)
+        self._place_slit_hint()
         if self.glass is not None:
             self.glass.grid_changed(on)
 
@@ -368,7 +383,7 @@ class Shell(QtWidgets.QMainWindow):
     def _grid_click(self, s: int, ev) -> None:
         """A click on panel s: the cursor locked there and that Stokes the session's, so lambda-t shows it; right
         click: released; double click: the whole image."""
-        if self.grid is None:
+        if self.grid is None or self.slit_tool.click(ev, self.grid.views[s].vb):
             return
         if ev.button() == QtCore.Qt.MouseButton.RightButton:
             self.session.lock(False)
@@ -636,8 +651,11 @@ class Shell(QtWidgets.QMainWindow):
     # ---------------------------------------------------------------- input
     def _hover(self, y: float, x: float) -> None:
         self.session.hover(math.floor(y), math.floor(x))
+        self.slit_tool.hover(y, x)
 
     def _click(self, ev) -> None:
+        if self.slit_tool.click(ev, self.view.vb):     # drawing a slit: the click adds or removes a point
+            return
         if ev.button() == QtCore.Qt.MouseButton.RightButton:
             self.session.lock(False)
             return
@@ -673,6 +691,9 @@ class Shell(QtWidgets.QMainWindow):
         if s.present["t"] and s.sizes["t"] > 1:
             rows.append(("Space", "play, pause t", ((K.Key_Space, lambda: self.nav.play.toggle()),)))
         rows.append(("L", "lock, release the cursor", ((K.Key_L, lambda: s.lock(not s.state.locked)),)))
+        # S draws a slit; A and D stay free for walking along it (the prototype's F75)
+        rows += [("S", "draw a slit on the image (again: cancel)", ((K.Key_S, self.toggle_slit_mode),)),
+                 ("\u232b", "remove the slit", ((K.Key_Backspace, self.clear_slit), (K.Key_Delete, self.clear_slit)))]
         if self.spectra is not None:
             rows += [("F", "spectra: fit y to this pixel, and keep it", ((K.Key_F, self.fit_spectra),)),
                      ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
@@ -683,7 +704,8 @@ class Shell(QtWidgets.QMainWindow):
                  ("I", "panels: hide all, show again (glass look)", ((K.Key_I, self.toggle_panels),)),
                  ("C  \u21e7C", "colours: next, previous map for the Stokes shown (modern look)",
                   (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1))))]
-        rows += [("Esc", "release the cursor (first closes this sheet)", ((K.Key_Escape, self._escape),)),
+        rows += [("Esc", "release the cursor; while a slit is drawn, cancel it (first closes this sheet)",
+                  ((K.Key_Escape, self._escape),)),
                  (mod + "W", "close the window", (("Ctrl+W", self.close),)),
                  (mod + "M", "minimise", (("Ctrl+M", self.showMinimized),)),
                  # on a Mac the application menu's own, which closes through closeEvent and keeps the layout
@@ -696,7 +718,9 @@ class Shell(QtWidgets.QMainWindow):
 
     def mouse_table(self):
         """(gesture, what it does) for the ? sheet; the handlers are ui.gestures and _click."""
-        rows = [("click on the image", "lock the cursor there"), ("right click on the image", "release it")]
+        rows = [("click on the image", "lock the cursor there"), ("right click on the image", "release it"),
+                ("S, then click on the image", "slit: a point per click; double click ends it, right click removes "
+                                               "the last point, Esc cancels")]
         if self.spectra is not None:
             rows += [("click on a spectrum", "pick λ"),
                      ("drag on a spectrum's y axis", "move its range; right drag or wheel: stretch it; "
@@ -719,11 +743,48 @@ class Shell(QtWidgets.QMainWindow):
         self.sheet.toggle()
 
     def _escape(self) -> None:
-        """Esc closes the ? sheet if it is open, and only that; otherwise it releases the cursor."""
+        """Esc closes the ? sheet if it is open, and only that; otherwise it leaves the slit mode, dropping the slit
+        being drawn (a finished one stays), or else releases the cursor."""
         if self.sheet.isVisible():
             self.sheet.set_shown(False)
+        elif self.slit_tool.mode:
+            self.set_slit_mode(False)
         else:
             self.session.lock(False)
+
+    # ---------------------------------------------------------------- the slit (ui.slit, ROADMAP E7)
+    def set_slit_mode(self, on: bool) -> None:
+        """S or the toolbar's slit button: the image's click adds points of a slit until a double click ends it; Esc
+        (or S again) leaves without it. Drag still pans and the wheel still zooms."""
+        self.slit_tool.set_mode(on)
+
+    def toggle_slit_mode(self) -> None:
+        self.set_slit_mode(not self.slit_tool.mode)
+
+    def clear_slit(self) -> None:
+        """⌫: the finished slit removed, from the image and from the session."""
+        self.slit_tool.clear()
+
+    def _slit_mode_changed(self, on: bool) -> None:
+        """The button and the image's pointer at rest (ui.gestures puts it back after a pan) follow the mode, however
+        it changed: a key, the button, a double click, a right click with no point left."""
+        b = self.nav.slit
+        if b.isChecked() != on:
+            b.blockSignals(True)
+            b.setChecked(on)
+            b.blockSignals(False)
+        self._gestures.rest = self.slit_tool.pointer()
+
+    def _place_slit_hint(self) -> None:
+        """The slit's hint at the image's top left; in glass below the colour key, which glass moves there (the
+        prototype's app/look_glass.py:1015-1021); in the 2x2 view below the panel's Stokes label."""
+        x = y = SlitHint.MARGIN
+        key = self.colour_key
+        if self.glass is not None and key is not None and key.isVisibleTo(self.view.widget):
+            x, y = glass.MARGIN, key.y() + key.height() + 8
+        if self.grid is not None and self.grid.isVisibleTo(self.view.widget):
+            y = max(y, GRID_LABEL)
+        self.slit_hint.move(x, y)
 
     # ---------------------------------------------------------------- state
     def _on_state(self, st: ViewState, changed: frozenset) -> None:
@@ -732,6 +793,8 @@ class Shell(QtWidgets.QMainWindow):
             self.view.set_crosshair(*st.cursor)
             if self.grid is not None:
                 self.grid.set_crosshair(*st.cursor)
+        if "path" in changed:
+            self.slit_tool.show_path(st.path)
         if "locked" in changed:
             self.view.set_locked(st.locked)
             if self.grid is not None:

@@ -9,7 +9,8 @@ nothing is scaled: each request paints its own pixmap, strokes a whole number of
 edges on pixel boundaries. The colour is the palette's text colour at paint time, so a change of system appearance
 repaints it right. SF-Symbols-like: rounded caps and joins, one stroke weight, no fills.
 
-From the prototype's app/icons.py (the glyph compared and chosen there: the counterclockwise arrow alone).
+From the prototype's app/icons.py (the glyph compared and chosen there: the counterclockwise arrow alone; the slit's,
+_slit 111).
 """
 import math
 
@@ -59,6 +60,10 @@ class Pen:
         """A closed outline through grid points, its corners rounded by the pen's round join."""
         self.p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(self.x(x), self.x(y)) for x, y in pts]))
 
+    def ring(self, cx, cy, r):
+        """A small open circle (a point of a slit)."""
+        self.p.drawEllipse(QtCore.QPointF(self.x(cx), self.x(cy)), r * self.u, r * self.u)
+
 
 def _arrow(g):
     g.arrow(9, 10, 6.8)
@@ -73,9 +78,15 @@ def _pause(g):                                          # two bars
     g.line(11.5, 4, 11.5, 14)
 
 
+def _slit(g):                                           # the slit tool: two points and the line between them
+    g.ring(4, 14, 1.9)
+    g.ring(14, 4, 1.9)
+    g.line(5.4, 12.6, 12.6, 5.4)
+
+
 # name: (grid width, grid height, draw(Pen)). Play and pause drawn as the others: the font's ▶ and ⏸ were another
 # style beside them, and over X11 another font's
-GLYPHS = {"arrow": (18, 18, _arrow), "play": (18, 18, _play), "pause": (18, 18, _pause)}
+GLYPHS = {"arrow": (18, 18, _arrow), "play": (18, 18, _play), "pause": (18, 18, _pause), "slit": (18, 18, _slit)}
 RESET = "arrow"                                         # the usual sign for "back to how it was"
 
 
