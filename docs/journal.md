@@ -2382,3 +2382,12 @@ Ahora la prueba no depende de lo que tenga la máquina:
 Con un conda en el `PATH`, las dos pruebas pasan. Con el `setup_env.sh` de antes de X.4, la del entorno al
 día falla en el uv de pega, sin tocar nada. En el Mac y en bellatrix ya pasaban, porque allí no había
 conda en ese `PATH`.
+
+### 2026-10-04 (2): mypy en el Mac Intel (ROADMAP X.10)
+
+La primera ejecución en `macos-15-intel` falló en mypy: 6 `type: ignore` sin usar, todos sobre numba
+(`config`, `prange`). Mi primera explicación, que numba 0.62 declarara esos atributos, era falsa. La
+rueda 0.62.1 para Mac Intel no trae `py.typed` (comprobado listando la rueda de PyPI), así que, con
+`ignore_missing_imports`, mypy toma numba como `Any` y no hay nada que ignorar. La 0.67.0 sí lo trae, y
+en ella esos atributos no existen. Reproducido aquí con una configuración de mypy que no sigue los tipos
+de numba: los mismos 6 errores. Con `unused-ignore` añadido a esos `ignore`, ninguno en los dos casos.
