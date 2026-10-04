@@ -296,14 +296,21 @@ class Transport:
                 if check and not new:
                     self.stats["check_hits"] += 1
         t1 = time.perf_counter()
+        # the grey mask, once for the whole update, as large as its largest window that has grey pieces: grown for a
+        # later window, the mask the earlier ones were encoded for was freed before they were sent, and their grey
+        # tiles never reached X (the image of a glass panel black on the first update of a start, ROADMAP E5.25)
+        mask = None
+        grey = [b.size for b, _x, _y, _a, rects in work if (rects[:, 0] == 1).any()]
+        if self.grey is not None and grey:
+            mask = self.grey.mask_for(max(s[0] for s in grey), max(s[1] for s in grey))
         bufs: list = []
         touched: dict[int, tuple] = {}
         nbytes = npieces = 0
         for b, x, y, a, rects in work:
             ids = np.zeros(9, np.int64)
             ids[k.BACK], ids[k.BACK_GC], ids[k.DEPTH] = b.pixmap, b.gc, self.depth
-            if self.grey is not None and (rects[:, 0] == 1).any():
-                pm, gc, pic, _, _ = self.grey.mask_for(*b.size)
+            if self.grey is not None and mask is not None and (rects[:, 0] == 1).any():
+                pm, gc, pic, _, _ = mask
                 ids[k.MASK], ids[k.MASK_GC], ids[k.MASK_PIC] = pm, gc, pic
                 ids[k.WHITE_PIC], ids[k.BACK_PIC], ids[k.RENDER_OP] = self.grey.white, b.picture, self.grey.op
             size, nreq = k.encode_size(rects, self.maxb)
