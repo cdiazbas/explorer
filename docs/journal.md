@@ -3058,3 +3058,38 @@ prototipo. Las dos copias tienen ya la misma huella, `956a5a1e…`; las referenc
   pasa a `../prototype`; el resto de la meta y las 41 claves se comprobaron iguales.
 - La referencia anterior, versionada desde `b93c4a3` (2026-09-29) y ya subida, lleva la ruta personal del Mac.
   Ni `hygiene.py` ni el grep de la historia la ven, porque numpy guarda las cadenas en UTF-32. Se abre X.11.
+
+### 2026-10-04 (26): el icono por el puente X11 (ROADMAP E5.29)
+
+Por el puente, las ventanas X no tenían `_NET_WM_ICON`; en xcb lo publica Qt.
+
+**Qué hace:**
+- **Dónde está la conversión:** pasa del QIcon a ARGB en `platform/xbridge/icon.py` (solo usa Qt, y `platform` no
+  puede importar `ui`); `ui.appicon` la importa de allí.
+- **Cuándo se publica:** cada ventana gestionada lleva `_NET_WM_ICON` desde que se crea, con su icono efectivo (el
+  suyo, si no el de su dueña o el de la aplicación), y otra vez con `WindowIconChange`. Sin icono, la propiedad se
+  borra.
+- **Tamaño:** 16 + 32 + 48 + 128 px son una ChangeProperty de 79 928 B. Sin BIG-REQUESTS una petición tiene como
+  mucho 262 140 B, y un servidor puede admitir menos: entonces se quitan los tamaños mayores hasta que quepa.
+
+**Qt sí avisa** a las ventanas ya mostradas tras `QApplication.setWindowIcon`: dos veces a cada una, a la QWindow
+y al widget, medido offscreen. Por eso no se vuelve a enviar un icono que X ya tiene, y la traza muestra una línea
+ICON por ventana e icono.
+
+**Coste** (bellatrix, nodo 1, 7 ejecuciones): 2.2 ms la primera ventana y 0.02 ms cada una de las demás.
+Empaquetar valor a valor con `struct.pack` costaba 3 ms por ventana; ahora se empaqueta una vez.
+
+**Comprobado en Xvfb,** leyendo las propiedades con python-xlib:
+- La ventana principal y los dos paneles flotantes, hechos antes del icono, lo tienen después a 16, 32, 48 y
+  128 px, igual que `net_wm_icon`.
+- Una ventana hecha después lo tiene desde que se crea.
+- Con un icono propio cambia solo el de esa ventana.
+- Sin icono de la aplicación, la propiedad se borra.
+
+**Pruebas:** las 8 nuevas fallan sin el cambio. `tests/unit`: 542 pasan (falla la conocida de `test_doctor`, en
+una copia sin entorno). `tests/xvfb`: 26 pasan y 2 se omiten.
+
+**XQuartz no lo usa:** quartz-wm (3570364) no lee `_NET_WM_ICON` ni lo anuncia en `_NET_SUPPORTED`, y al
+minimizar pasa al Dock solo la ventana y su título. El servidor (`hw/xquartz`) tampoco lo menciona. Esto se ha
+leído en el código, sin probarlo en el Mac: en el Mac del usuario, el Dock sigue mostrando el icono de XQuartz. Sirve
+para los gestores de Linux y para xprop.
