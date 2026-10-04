@@ -1,11 +1,10 @@
 """The application icon (ui.appicon, ROADMAP E5.28): drawn from its SVG at every size asked, the tile and the slice
-where the geometry puts them, on the application once the first image is up, the value of X11's _NET_WM_ICON, and
+where the geometry puts them, on the application as soon as it exists, the value of X11's _NET_WM_ICON, and
 the files tools/icons/export.py writes for the operating systems."""
 import os
 import struct
 import subprocess
 import sys
-import time
 
 import pytest
 
@@ -71,23 +70,29 @@ def test_the_glyph_without_its_tile_is_a_valid_svg(qapp):
     assert "currentColor" in appicon.GLYPH_SVG.read_text()
 
 
-def test_start_puts_the_icon_on_the_application_after_the_first_image(qapp, monkeypatch, tmp_path):
+def test_start_puts_the_icon_on_the_application_before_the_cube_is_opened(qapp, monkeypatch, tmp_path):
+    """Right after the application: on a Mac the Dock shows a blank icon until it is set."""
     from PySide6 import QtGui
 
+    from explorer.data.dataset import Dataset
     from explorer.ui.app import start
 
     monkeypatch.delenv("DISPLAY", raising=False)
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     cube = synth.write_dataset(tmp_path / "d", "c", shape=(2, 4, 3, 32, 24), icube=False)["im"]
+    seen = []
+    opened = Dataset.open
+
+    def open_(*a, **k):
+        seen.append(not qapp.windowIcon().isNull())     # when the cube is opened
+        return opened(*a, **k)
+
+    monkeypatch.setattr(Dataset, "open", staticmethod(open_))
     qapp.setWindowIcon(QtGui.QIcon())
     s = start(cube, saved_layout=False)
     assert s is not None
     try:
-        end = time.perf_counter() + 30
-        while (s.shell.first_image_s is None or qapp.windowIcon().isNull()) and time.perf_counter() < end:
-            qapp.processEvents()
-        assert s.shell.first_image_s is not None
-        assert not qapp.windowIcon().isNull()
+        assert seen == [True]
         assert not s.shell.windowIcon().isNull()                         # a window without its own takes it
     finally:
         s.shell.close()
