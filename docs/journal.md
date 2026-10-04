@@ -2444,3 +2444,26 @@ Para separarlos, el registro de geometría (E6.7) anota ahora:
 `scripts/demo.sh` lo guarda por defecto (`EXPLORER_GEOMETRY_TRACE=0` para no hacerlo), y al cerrar dice
 dónde está el fichero. Lanzado por el puente en bellatrix escribió `SCREENS` y `PLACE`, con la ventana
 ajustada a 891 px y el espectro en su borde derecho más `GAP`. Falta el registro del caso real.
+
+### 2026-10-04 (6): el espectro fuera de sitio en glass, desde bellatrix: la causa
+
+El registro de la sesión del usuario (`demo.sh` por `ssh -Y`, dos monitores que explorer ve bien, sin
+reset: M de classic a glass) lo explicó:
+1. glass coloca los paneles bien, el espectro en (2757, 55);
+2. 230 ms después llegan los avisos de quartz-wm con la geometría con que se creó la ventana X del panel,
+   (2703, 87) con 598×423, y el puente los aplica como nuevos (`windows.py:265`);
+3. el espectro vuelve allí, 42 px encima de la ventana principal.
+
+El puente descarta los avisos de una geometría que pidió antes de su última petición (`rec.asked`), pero
+la geometría de creación no estaba entre ellas. En Xvfb, sin latencia, ese aviso llega antes que la
+colocación de glass, y por eso no se reproducía.
+
+Reproducido con el arranque real (`ui.app.start`, puente) y el gestor de pega con `--late 300`: el
+espectro acaba en (725, 32) frente a (584, 0); sin retraso queda en su sitio. Una primera versión de la
+prueba con `bridge_app` fallaba también sin retraso: ese atajo no pasa por el arranque real. La prueba
+usa ahora `glass_switch_app.py`. Con la geometría de creación anotada como pedida, la prueba pasa;
+`tests/xvfb` 22 pasan y `check.sh` solo falla en las 2 de E0.13.
+
+Por confirmar en el caso real: si quartz-wm, además, devuelve de verdad la ventana a su tamaño de
+creación. En el registro hubo cambios de tamaño posteriores por la rama de «ventana dentro de un marco»
+(7.2–7.3 s), que con el lado de Qt solo no se pueden distinguir de un eco.
