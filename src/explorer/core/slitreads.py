@@ -25,9 +25,12 @@ Without one:
 
 Threads: the blocks are read on the slab pool; the slices and their levels are made on the slit thread
 (Executors.slit), where the reads without a per-pixel file run too. Latest wins: a job is skipped if a newer request
-came before it started, and a result is shown unless a newer one already is, never one made for another slit. The
-UI thread computes the path's pixels (a few hundred points) and draws. Nothing is read while the panel's tab is
-behind ("slit" not in ViewState.panels).
+came before it started, and a result is shown unless a newer one already is. A result made for another slit is
+dropped, except one for an earlier stage of the slit being drawn while it is still drawn: the pointer gives a new
+slit every pixel, and each result came after the next one (6173 on bellatrix, 60 moves 16 ms apart: 31 of 50 shown,
+the prototype's synchronous paint 75), the panels frozen as the cursor's were before ShownGate. The UI thread
+computes the path's pixels (a few hundred points) and draws. Nothing is read while the panel's tab is behind
+("slit" not in ViewState.panels).
 """
 import threading
 import time
@@ -47,6 +50,7 @@ SLIT_BLOCKS = 8000          # pixel blocks kept (the prototype's SLITC_BLOCKS: 6
                             # only the shown slit's stay
 REST_S = 0.25               # without a per-pixel file, a slit being drawn is read once the pointer rests this long
 BANDS = 64                  # slices kept per slit without a per-pixel file (the prototype kept every one)
+DRAFTS = 64                 # stages of the slit being drawn whose late results may still be shown
 
 
 class SlitReads:
@@ -62,6 +66,7 @@ class SlitReads:
         self.pts = None                                 # the points of the slit shown, (x, y)
         self.pix: tuple[np.ndarray, np.ndarray] | None = None   # its pixels (iy, ix), one per sample
         self.path_id = 0                                # changes with the pixels: a result for another slit is dropped
+        self._drafts: set[int] = set()                  # the path_ids that were stages of a slit being drawn
         self.blocks: dict = {}                          # (y, x) -> (s, t, lambda) float32, per-pixel file only
         self._version = 0                               # of blocks: a slice made from as many blocks is reused
         self._keep: set = set()                         # the shown slit's pixels: never dropped from blocks
@@ -114,6 +119,8 @@ class SlitReads:
     def _set_path(self, st: ViewState) -> bool:
         """The slit shown, from the state; True when its pixels changed (the sink then has them)."""
         pts = st.draft if self._drawing(st) else st.path
+        if not self._drawing(st):
+            self._drafts = set()                        # drawn or given up: no late result of its stages any more
         if pts == self.pts:
             return False
         self.pts = pts
@@ -126,6 +133,8 @@ class SlitReads:
             return False
         self.pix = pix
         self.path_id += 1
+        if pix is not None and self._drawing(st):
+            self._drafts = {p for p in self._drafts if p > self.path_id - DRAFTS} | {self.path_id}
         self.gens.new("slit")                           # a job for the slit before is skipped
         with self._lock:
             self._keep = set(zip(pix[0].tolist(), pix[1].tolist(), strict=True)) if pix is not None else set()
@@ -259,7 +268,7 @@ class SlitReads:
     def _show(self, g: int, pid: int, s: int, ts=None, sl=None) -> None:
         if self._closed:
             return
-        if pid != self.path_id:
+        if pid != self.path_id and not (pid in self._drafts and self.path_id in self._drafts):
             counter("core.slit.dropped_other_slit")
             return
         ts = ts if ts is not None and self.shown.accept("slit_ts", g) else None

@@ -309,3 +309,57 @@ def test_the_blocks_kept_are_bounded_and_the_shown_slits_stay(cube, monkeypatch)
         assert set(d.scheduler.slit.blocks) == set(zip(iy.tolist(), ix.tolist(), strict=True))
         st = d.state()
         np.testing.assert_array_equal(d.shown.slit_ts, want(cube[1], B, st.t, st.s, st.l)[0])
+
+
+def test_while_drawn_a_late_result_for_its_previous_stage_is_shown_once_drawn_not(cube, monkeypatch):
+    """The pointer gives a new slit every pixel: a result for the stage before, arriving after the next stage was
+    asked for, is still shown while drawing (newer than what is shown); once the slit is finished elsewhere, not."""
+    from explorer.core.slitreads import SlitReads
+
+    ds = Dataset.open(cube[0])
+    try:
+        gate, started, hold = threading.Event(), threading.Event(), [True]
+        orig = SlitReads._from_blocks
+
+        def held(self, *a):
+            if hold[0]:
+                hold[0] = False
+                started.set()
+                assert gate.wait(10)
+            return orig(self, *a)
+        monkeypatch.setattr(SlitReads, "_from_blocks", held)
+        rec, loop = Recorder(), ManualLoop()
+        session = Session(loop, ds)
+        sched = Scheduler(session, rec)
+        settle(sched)
+        session.show("slit")
+        moved = (A[0], (A[1][0] + 3, A[1][1]))
+        nA, nM = len(pixels(A)[0]), len(pixels(moved)[0])
+        assert nA != nM
+        session.set_draft(A)
+        loop.pump()
+        assert started.wait(10)                         # A's slices are being made
+        session.set_draft(moved)
+        loop.pump()
+        gate.set()
+        settle(sched)
+        shapes = [c[1][1] for c in rec.calls if c[0] == "slit"]
+        assert shapes[0] == nA and shapes[-1] == nM     # A's came late and was shown, then the pointer's
+
+        rec.calls.clear()
+        gate.clear()
+        started.clear()
+        hold[0] = True
+        session.set_draft(B)
+        loop.pump()
+        assert started.wait(10)
+        session.set_path(A)                             # finished on another slit before B's slices came
+        session.set_draft(None)
+        loop.pump()
+        gate.set()
+        settle(sched)
+        shapes = [c[1][1] for c in rec.calls if c[0] == "slit"]
+        assert shapes and all(n == nA for n in shapes), rec.calls
+        sched.close()
+    finally:
+        ds.close()
