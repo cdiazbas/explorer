@@ -7,11 +7,17 @@ made before their window placed by the manager. This one does what quartz-wm was
 - a utility window gets a frame with a 16-px strip, even when it asks for no decorations (_MOTIF_WM_HINTS);
 - so does a window that does not ask for none; a normal window that asks for none is left unframed;
 - the frame goes where the window asked to be, whatever its gravity: the window lands 16 px lower, and a synthetic
-  ConfigureNotify (ICCCM 4.1.5, root coordinates) says so, at the map and after every move asked.
+  ConfigureNotify (ICCCM 4.1.5, root coordinates) says so, at the map and after every move asked;
+- --late MS: the synthetic notice of the geometry a window had when it was mapped comes MS ms later, for framed and
+  unframed windows alike, as through ssh -Y to a Mac (2026-10-04: 230 ms after the glass look had placed a panel,
+  the notice of its first geometry came and the bridge took it).
 
-    python tests/xvfb/fake_quartzwm.py        (DISPLAY: the X server; prints "ready", or exits 3 if a manager runs)
+    python tests/xvfb/fake_quartzwm.py [--late MS]   (DISPLAY: the X server; prints "ready", or exits 3 if a manager
+                                                       runs)
 """
+import select
 import sys
+import time
 
 from Xlib import X, Xatom, display, error
 from Xlib.protocol import event
@@ -20,6 +26,8 @@ STRIP = 16
 
 
 def main() -> int:
+    late = float(sys.argv[sys.argv.index("--late") + 1]) / 1e3 if "--late" in sys.argv else 0.0
+    later: list = []                                    # (when, window, x, y, w, h): notices still to send
     d = display.Display()
     root = d.screen().root
     caught = []
@@ -48,11 +56,26 @@ def main() -> int:
         w.send_event(ev, event_mask=X.StructureNotifyMask)
 
     while True:
+        now = time.monotonic()
+        for item in [it for it in later if it[0] <= now]:
+            later.remove(item)
+            try:
+                tell(*item[1:])
+            except error.XError:
+                pass
+        d.flush()
+        if not d.pending_events():
+            wait = min((it[0] for it in later), default=now + 1.0) - now
+            select.select([d.fileno()], [], [], max(0.0, wait))
+            if not d.pending_events():
+                continue
         e = d.next_event()
         try:
             if e.type == X.MapRequest:
                 w = e.window
                 g = w.get_geometry()
+                if late:                                # the notice of this geometry, late
+                    later.append((time.monotonic() + late, w, g.x, g.y, g.width, g.height))
                 if w.id in frames:                      # shown again: its frame again
                     fg = frames[w.id].get_geometry()
                     frames[w.id].map()

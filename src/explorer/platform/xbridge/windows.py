@@ -136,6 +136,9 @@ class Windows:
         pw = w.parentWidget()
         owner = self.by_widget.get(pw.window()) if pw is not None else None
         rec = XWin(w, xid, popup, owner)
+        # the geometry it is created with is asked for too: a manager's late notice of it (quartz-wm through ssh -Y,
+        # 230 ms after the glass look had placed a panel elsewhere) is an echo once newer geometry is asked
+        rec.asked.append((g.x(), g.y(), g.width(), g.height()))
         if not popup:
             self._properties(rec)
         c.map_window(xid)
