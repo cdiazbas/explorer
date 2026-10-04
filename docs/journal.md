@@ -2561,3 +2561,33 @@ banco no consigue arrastrar el panel del prototipo en XQuartz, ni el de explorer
 598×776: queda por arreglar antes de comparar ahí. Falta también lo que tienen los arrastres del usuario y
 ninguna prueba: el enlace ssh real hacia XQuartz y el cubo real a la vez, y los paneles grandes cruzando de
 un monitor a otro.
+
+### 2026-10-04 (11): ráfagas cada medio segundo al arrastrar, y lo que se repinta
+
+En el registro `geometry-1124805.log` (classic, XQuartz por `ssh -Y`) el espectro se movió a ráfagas: de
+10 a 17 posiciones en unos 0.1 s y luego nada durante **510–514 ms**, una y otra vez (26 huecos de más de
+100 ms en 24 s). Un periodo tan regular apunta a un temporizador o a un tope. La cola de eventos del puente
+despierta a Qt en el primer evento de cada lote, y no hay en explorer un temporizador de 0.5 s que encaje.
+La incidencia #499 de XQuartz describe bloqueos en `xp_lock_window` / `SLSLockWindowRectBits` al mover y
+redimensionar ventanas en macOS 26. Sin verificar.
+
+Para separar los dos casos, el registro anota ahora cada evento de ratón que toma el puente (`XIN`) con la
+hora del servidor X. Si esas horas vienen ya separadas 0.5 s, el retraso nace en XQuartz o en el Mac; si
+vienen juntas y se procesan a golpes, en el enlace o en explorer. En bellatrix, un arrastre por el puente
+escribió 45 líneas `XIN`.
+
+Aparte, en el XQuartz del usuario (XTEST activado), un arrastre del espectro por encima de la ventana
+principal envía 6.8 MB en 5 envíos. No es el panel arrastrado: es la ventana principal, que se repinta bajo
+el aviso de acople de Qt (`QRubberBand`). `Hairline`, el filo de las esquinas, se repinta 9 veces, pero
+solo sobre lo que ya se repinta debajo. El prototipo envía lo mismo (5.6–7.1 MB). No explica las ráfagas
+del usuario: en esa sesión arrastró por el otro monitor, lejos de la ventana principal.
+
+El arrastre por XTEST en XQuartz solo prende si XQuartz es la aplicación activa de macOS. Si no, el primer
+clic activa la aplicación y el segundo la ventana. Las ejecuciones buenas se hicieron con XQuartz al
+frente.
+
+Un error mío al hacer los commits: el del registro `XIN` lo rechazó el hook (asunto largo). Una cadena de
+`&&` saltó los pasos siguientes, y un commit de documentación posterior se llevó el código preparado, con
+el mensaje «[DOC] journal: …» y sin `Behaviour:` ni `Tests:`. Con permiso del usuario, la historia subida
+se reescribió para darle su mensaje (`247808d`, contenido idéntico) y se subió forzando, con
+`--force-with-lease`. Desde entonces, cada commit se comprueba antes del siguiente.
