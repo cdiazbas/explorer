@@ -6,11 +6,12 @@
 #   scripts/setup_env.sh --venv DIR   # build it in DIR instead
 #   scripts/setup_env.sh --force      # delete the environment first
 #   scripts/setup_env.sh --link       # also the `explorer` command on the PATH, from any folder: a link
-#                                     # ~/.local/bin/explorer (or $XDG_BIN_HOME/explorer) to scripts/run.sh,
-#                                     # which picks this machine's environment, so a home shared by macOS
-#                                     # and Linux serves both. If that folder is not on the PATH, it asks
-#                                     # to add it to the shell's startup file (~/.bashrc, ~/.zshrc)
-#   scripts/setup_env.sh --link --update-shell   # add it without asking (a marked block, added once)
+#                                     # to scripts/run.sh, which picks this machine's environment, so a home
+#                                     # shared by macOS and Linux serves both. In the first of $XDG_BIN_HOME,
+#                                     # ~/.local/bin, ~/bin that a new terminal has on its PATH; else in
+#                                     # ~/.local/bin, put on the PATH by the shell's startup file (a marked
+#                                     # block, added once). Then a new terminal is asked to find it and run it
+#   scripts/setup_env.sh --link --no-update-shell   # never write a startup file (says what to add)
 #
 # One directory on shared storage serves Linux and Macs: each builds its own .venv-<OS>-<arch>.
 # Tools, as in the prototype's setup_env.sh: uv (on PATH, or its per-platform copy in
@@ -27,13 +28,14 @@ qtlibs="$root/.qtlibs"
 cd "$root"
 unset LD_LIBRARY_PATH                               # another env's Qt on this path breaks PySide6
 
-venv="$root/.venv-$plat" dev=0 force=0 link=0 update_shell=0
+venv="$root/.venv-$plat" dev=0 force=0 link=0 update_shell=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --dev) dev=1 ;;
     --force) force=1 ;;
     --link) link=1 ;;
-    --update-shell) update_shell=1 ;;
+    --update-shell) update_shell=1 ;;               # the default; kept for the commands written with it
+    --no-update-shell) update_shell=0 ;;
     --venv) venv="$2"; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -42,8 +44,43 @@ done
 pyhome="$(dirname "$venv")/.python-$plat"
 [ "$force" = 1 ] && rm -rf "$venv"
 
+# What a new terminal of the user's shell sees: run through ssh or from a script, this process's PATH is not the one
+# the user will have. A clean environment, the shell interactive (its rc file) or interactive and login (ssh, macOS's
+# Terminal: bash then reads ~/.bash_profile, which need not read ~/.bashrc). $1: -ic or -lic; $2: the command
+in_new_shell() {
+  env -i HOME="$HOME" USER="${USER:-}" LOGNAME="${LOGNAME:-}" SHELL="$sh" TERM=dumb PATH=/usr/bin:/bin \
+    "$sh" "$1" "printf '\\n@@explorer@@%s\\n' \"\$($2)\"" </dev/null 2>/dev/null | sed -n 's/^@@explorer@@//p' | tail -n 1
+}
+on_path() { case ":$2:" in *":$1:"*) return 0 ;; esac; return 1; }
+
+add_block() {                                       # $1: a startup file; the block once, between its marks
+  shown="$bin"                                      # under the home as $HOME/...: the same line serves a home
+  case "$bin" in "$HOME"/*) shown="\$HOME/${bin#"$HOME"/}" ;; esac     # mounted elsewhere on another machine
+  mark="# >>> explorer: $shown on the PATH >>>"
+  [ -f "$1" ] && grep -qF "$mark" "$1" && return 0
+  {
+    printf '\n%s\n' "$mark"
+    printf 'case ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH" ;; esac\n' "$shown" "$shown"
+    printf '%s\n' "# <<< explorer <<<"
+  } >> "$1"
+  echo "[setup_env] $1: $shown added to the PATH (the block between the explorer marks)"
+}
+
 link_command() {                                    # the command on the PATH: a link to run.sh, never a copy
-  bin="${XDG_BIN_HOME:-$HOME/.local/bin}"
+  sh="${SHELL:-/bin/bash}"
+  [ -x "$sh" ] || sh=/bin/bash
+  kind="$(basename "$sh")"
+  case "$kind" in bash|zsh|sh|dash|ksh) ;; *) kind=other ;; esac
+  bin=""
+  if [ "$kind" != other ]; then
+    lpath="$(in_new_shell -lic 'printf %s "$PATH"')"
+    ipath="$(in_new_shell -ic 'printf %s "$PATH"')"
+    for d in ${XDG_BIN_HOME:+"$XDG_BIN_HOME"} "$HOME/.local/bin" "$HOME/bin"; do
+      if on_path "$d" "$lpath" && on_path "$d" "$ipath"; then bin="$d"; break; fi
+    done
+  fi
+  reachable=1
+  [ -n "$bin" ] || { bin="${XDG_BIN_HOME:-$HOME/.local/bin}"; reachable=0; }
   cmd="$bin/explorer"
   if [ -e "$cmd" ] && [ ! -L "$cmd" ]; then
     echo "[setup_env] $cmd exists and is not a link: left alone" >&2
@@ -52,34 +89,44 @@ link_command() {                                    # the command on the PATH: a
   mkdir -p "$bin"
   ln -sfn "$here/run.sh" "$cmd"
   echo "[setup_env] $cmd -> $here/run.sh"
-  case ":$PATH:" in
-    *":$bin:"*) ;;
-    *)
-      # not on the PATH: many shells' startup files add ~/.local/bin, many do not (bellatrix's did not). The line
-      # goes into the startup file of the user's shell, in a marked block, once, and only when asked
-      case "$(basename "${SHELL:-bash}")" in zsh) rc="$HOME/.zshrc" ;; *) rc="$HOME/.bashrc" ;; esac
-      mark="# >>> explorer: ~/.local/bin on the PATH >>>"
-      if [ -f "$rc" ] && grep -qF "$mark" "$rc"; then
-        echo "[setup_env] $rc already puts $bin on the PATH: open a new terminal to use 'explorer'"
+  if [ "$reachable" = 0 ]; then
+    if [ "$kind" = other ] || [ "$update_shell" = 0 ]; then
+      echo "[setup_env] $bin is not on the PATH of a new terminal: add it in your shell's startup file" >&2
+      return 1
+    fi
+    case "$kind" in
+      zsh) add_block "$HOME/.zshrc" ;;
+      bash)
+        add_block "$HOME/.bashrc"
+        # a login shell reads the first of these, and not always ~/.bashrc
+        if ! on_path "$bin" "$(in_new_shell -lic 'printf %s "$PATH"')"; then
+          login="$HOME/.profile"
+          for f in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+            [ -f "$f" ] && { login="$f"; break; }
+          done
+          add_block "$login"
+        fi
+        ;;
+      *) add_block "$HOME/.profile" ;;
+    esac
+  fi
+  # the check: a new terminal, login or not, finds this link first, and it runs
+  for how in -lic -ic; do
+    found="$(in_new_shell "$how" 'command -v explorer')"
+    if [ "$found" != "$cmd" ]; then
+      if [ -z "$found" ]; then
+        echo "[setup_env] a new terminal ($kind $how) does not find explorer" >&2
       else
-        if [ "$update_shell" = 0 ] && [ -t 0 ]; then
-          printf "[setup_env] %s is not on your PATH. Add it in %s? [y/N] " "$bin" "$rc"
-          read -r ans || ans=""
-          case "$ans" in y|Y|yes|YES) update_shell=1 ;; esac
-        fi
-        if [ "$update_shell" = 1 ]; then
-          {
-            printf '\n%s\n' "$mark"
-            printf 'case ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH" ;; esac\n' "$bin" "$bin"
-            printf '%s\n' "# <<< explorer <<<"
-          } >> "$rc"
-          echo "[setup_env] added $bin to the PATH in $rc (the block between the explorer marks): open a new terminal"
-        else
-          echo "[setup_env] $bin is not on your PATH: run again with --link --update-shell, or add it yourself" >&2
-        fi
+        echo "[setup_env] a new terminal ($kind $how) finds another explorer first: $found" >&2
       fi
-      ;;
-  esac
+      return 1
+    fi
+  done
+  if ! version="$(EXPLORER_VENV="$venv" "$cmd" --version 2>&1)"; then
+    echo "[setup_env] $cmd --version failed: $version" >&2
+    return 1
+  fi
+  echo "[setup_env] a new terminal finds and runs it: explorer --version -> $version"
 }
 
 # --link on an environment already up to date (uv.lock unchanged since it was built, as run.sh checks, and of the
