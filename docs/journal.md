@@ -2591,3 +2591,19 @@ Un error mío al hacer los commits: el del registro `XIN` lo rechazó el hook (a
 el mensaje «[DOC] journal: …» y sin `Behaviour:` ni `Tests:`. Con permiso del usuario, la historia subida
 se reescribió para darle su mensaje (`247808d`, contenido idéntico) y se subió forzando, con
 `--force-with-lease`. Desde entonces, cada commit se comprueba antes del siguiente.
+
+### 2026-10-04 (12): las paradas al arrastrar nacen en XQuartz
+
+Nueva sesión del usuario (`geometry-1182770.log`, classic, XQuartz por `ssh -Y`, después de que XQuartz
+se reiniciara para activar XTEST). El usuario la nota «mucho mejor». La mayoría de los arrastres van
+fluidos (110–290 posiciones/s, huecos máximos de 15–28 ms); quedan algunas paradas de unos 500 ms.
+
+Las 3191 líneas `XIN` dan la hora del servidor de cada movimiento. Cuando hay un hueco nuestro de más de
+100 ms, la hora del servidor tiene casi el mismo hueco: 546 frente a 545 ms, 526/525, 830/828, 507/505,
+504/502. XQuartz, es decir el Mac, deja de producir o entregar movimientos del ratón durante medio segundo,
+y ni el enlace ni explorer los retienen. Solo en un caso el retraso fue nuestro: 502 ms con 7 ms de
+servidor.
+
+Que vaya mejor tras reiniciar XQuartz encaja con un XQuartz que se degrada con el uso. La incidencia #499
+describe un bloqueo que crece con el número de redimensionados. **Hipótesis, sin medir.** En el Mac, 30
+arrastres del contorno (1200 redimensionados) no mostraron crecimiento de las idas y vueltas.
