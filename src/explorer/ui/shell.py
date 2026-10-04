@@ -217,6 +217,14 @@ class Shell(QtWidgets.QMainWindow):
         self.view.widget.scene().sigMouseClicked.connect(self._click)
         self._keys()
         self._install_gestures()
+        # what the sink reads, before the scheduler: an image already in the cache (a second window on the same
+        # Dataset) is shown inside Scheduler()
+        self.colours: ColormapRegistry | None = None    # made the first time the look has colour
+        self.colour_key: ColourKey | None = None
+        self.grid: StokesGrid | None = None             # the 2x2 view (ui.stokesgrid), made the first time it is asked
+        self.glass: glass.GlassChrome | None = None     # the glass look's chrome (ui.glass), while worn
+        self._seams: MacSeams | None = None
+        self._shown_lut = object()
         self._off = self.session.store.subscribe(self._on_state)
         self.scheduler = Scheduler(self.session, _Sink(self))
         st = self.session.state
@@ -241,12 +249,6 @@ class Shell(QtWidgets.QMainWindow):
         style.separators(self)                          # 8 px to grab between the docked panels, with the theme
         panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel, self.slit_panel.w) if p is not None]
         self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
-        self.colours: ColormapRegistry | None = None    # made the first time the look has colour
-        self.colour_key: ColourKey | None = None
-        self.grid: StokesGrid | None = None             # the 2x2 view (ui.stokesgrid), made the first time it is asked
-        self.glass: glass.GlassChrome | None = None     # the glass look's chrome (ui.glass), while worn
-        self._seams: MacSeams | None = None
-        self._shown_lut = object()
         self.set_look(self.look)
 
     # ---------------------------------------------------------------- the look (look.Look; the prototype's app/look.py)

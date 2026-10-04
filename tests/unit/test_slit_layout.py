@@ -285,6 +285,36 @@ def test_a_layout_saved_with_the_slit_open_starts_without_its_panel(qapp, monkey
         _restore_app(qapp, name, pal)
 
 
+def test_a_second_window_on_the_same_cube_after_one_closed_with_a_slit(qapp, cube):
+    """As the prototype's smoke reopens its window (persist: close, reopen) after drawing a slit: the second window's
+    first image is in the Dataset's cache and is shown inside Scheduler(), before the window had the attributes its
+    sink reads (AttributeError: 'Shell' object has no attribute 'glass'). It opens, without the slit's panel."""
+    from PySide6 import QtGui
+
+    from explorer.data.dataset import Dataset
+    from explorer.ui import style
+    from explorer.ui.shell import Shell
+
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    style.apply_theme(qapp, "dark")
+    ds = Dataset.open(cube[0])
+    try:
+        w = Shell(ds, title="c_im.fits")
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        make(qapp, w, A)
+        w.close()
+        spin(qapp, timeout=0.1)
+        w2 = Shell(ds, title="c_im.fits")
+        w2.show()
+        assert spin(qapp, lambda: w2.first_image_s is not None and w2.view._full is not None)
+        assert w2.slit_dock.isHidden() and w2.session.state.path is None
+        w2.close()
+    finally:
+        ds.close()
+        _restore_app(qapp, name, pal)
+
+
 # ---------------------------------------------------------------- the native macOS style (F59)
 def test_the_macos_seams_on_the_slits_dock_too_and_off_with_the_style(qapp, monkeypatch, cube):
     """Under a Mac's native style the main window and its three docks wear MacSeams (ui.cards); a change of theme
