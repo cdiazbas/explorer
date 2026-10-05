@@ -150,3 +150,36 @@ def test_the_sheet_is_a_rounded_translucent_card(qapp, shell):
     inside = at(sh.width() - 30, sh.height() - 8)
     assert inside != base or base.alpha() < 255 or sh.OPACITY == 1  # blended with what is behind it
     fire(shell, "?")
+
+
+def test_a_failing_action_is_said_in_the_log_and_the_status_bar_not_lost(qapp):
+    """Qt only prints what a shortcut's slot raises: the key seemed to do nothing (M on someone's cube). The shortcut
+    and the terminal's keys (both from binds()) now leave the error in explorer's log and a line in the status bar."""
+    import logging
+
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.ui.actions import ActionRegistry
+
+    def broken():
+        raise RuntimeError("no glass here")
+
+    seen = []
+    handler = logging.Handler()
+    handler.emit = seen.append
+    logger = logging.getLogger("explorer.ui.actions")
+    logger.addHandler(handler)
+    win = QtWidgets.QMainWindow()
+    try:
+        reg = ActionRegistry([("M", "look", (("M", broken),))])
+        shortcuts = reg.install(win)
+        shortcuts[0].activated.emit()                   # the shortcut's own path: nothing escapes
+        assert "M: failed (RuntimeError: no glass here)" in win.statusBar().currentMessage()
+        assert seen and seen[-1].exc_info and "the key M failed" in seen[-1].getMessage()
+        for _seq, fn in reg.binds():                    # the terminal's keys take these
+            fn()
+        assert len(seen) == 2
+        assert isinstance(shortcuts[0], QtGui.QShortcut)
+    finally:
+        logger.removeHandler(handler)
+        win.close()
