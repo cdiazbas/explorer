@@ -4,9 +4,9 @@ left, the mode ends), Esc or S again leave the mode and the unfinished slit with
 finished one. Two points give a straight slit, more a curve through every point (data.slits.slit_path). Drag still
 pans and the wheel still zooms: only the click changes. The mode shows that it is on three ways: the button on, a
 pencil for the pointer and a line inside the image saying how to draw; with a slit drawn, that line says how to
-remove it. The finished slit is the session's (ViewState.path, the points clicked); the slit being drawn is too, with
-the pixel under the pointer as its free end (ViewState.draft, once per pixel the pointer enters), and the slit panel
-(ui.slitpanel, core.slitreads) shows its slices while it is drawn.
+walk along it (A/D) and remove it. The finished slit is the session's (ViewState.path, the points clicked); the
+slit being drawn is too, with the pixel under the pointer as its free end (ViewState.draft, once per pixel the
+pointer enters), and the slit panel (ui.slitpanel, core.slitreads) shows its slices while it is drawn.
 
 This is the prototype's variant D (its audit's F74): A's drawing and erasing, with C's live slices while drawing. From
 the prototype's app/viewer.py: SlitHint (836), the class comment on the variants (869-875), the slit's items
@@ -178,15 +178,16 @@ class SlitTool(QtCore.QObject):
         self.modeChanged.emit(on)
 
     def hint_text(self, extra: str = "") -> None:
-        """The line inside the image: how to draw while the mode is on; with a slit drawn, how to remove it. The key's
-        name as the system writes it: ⌫ on a Mac, Backspace on Linux."""
+        """The line inside the image: how to draw while the mode is on; with a slit drawn, how to walk along it and
+        remove it (the prototype's _slit_hint_text, app/viewer.py:1536). The key's name as the system writes it: ⌫ on a
+        Mac, Backspace on Linux."""
         if self.mode:
             n = len(self.pts)
             text = extra or ("Slit: click adds a point · double click ends it · right click removes the last "
                              "· Esc cancels" + (f"   ({n} point{'s' * (n != 1)})" if n else ""))
         elif self.path is not None:
             key = QtGui.QKeySequence(QtCore.Qt.Key.Key_Backspace).toString(QtGui.QKeySequence.SequenceFormat.NativeText)
-            text = f"{key} remove · S new slit"
+            text = f"A/D walk the slit · {key} remove · S new slit"
         else:
             text = ""
         if text:

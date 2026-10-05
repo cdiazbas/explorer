@@ -1,9 +1,9 @@
 """Drawing the slit (ROADMAP E7.1, the prototype's variant D), offscreen: S or the toolbar's button turns the mode on,
 shown by the button, a pencil and a hint over the image; a click adds a point on the pixel's centre, a double click
 finishes the slit, a right click removes the last point and with none left ends the mode, Esc or S cancel the slit
-being drawn and keep a finished one, ⌫ or Delete remove it; the finished slit is the session's path. The keys are in
-the one table (A and D left free); the slit takes the look's colour and the theme; it is drawn and drawn on in the
-2x2 view, and in glass its hint goes below the colour key."""
+being drawn and keep a finished one, ⌫ or Delete remove it; the finished slit is the session's path, and the hint
+then says that A/D walk it. The keys are in the one table; the slit takes the look's colour and the theme; it is
+drawn and drawn on in the 2x2 view, and in glass its hint goes below the colour key."""
 import time
 
 import numpy as np
@@ -154,7 +154,8 @@ def test_clicks_add_points_and_a_double_click_finishes_the_slit_into_the_session
     xy = line_xy(m.line)
     assert np.allclose(xy[0], (12.5, 10.5)) and np.allclose(xy[-1], (25.5, 30.5)) and len(xy) > 20
     assert len(line_xy(m.band)) == 0 and np.allclose(dots_xy(m.dots), [(12.5, 10.5), (25.5, 30.5)])
-    assert w.slit_hint.isVisible() and "S new slit" in w.slit_hint.text
+    assert w.slit_hint.isVisible() and w.slit_hint.text.startswith("A/D walk the slit · ")
+    assert w.slit_hint.text.endswith(" remove · S new slit")
     assert w.view.widget.viewport().cursor().shape() == C.CrossCursor
 
 
