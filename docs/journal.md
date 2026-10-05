@@ -3389,3 +3389,31 @@ traza en `explorer.log` y una línea en la barra de estado.
 - `test_geomtrace` y `test_xbridge_trace`: solo cuando se piden, con `--log` de punta a punta, las sondas aparte y
   la rotación. Fallan antes.
 - `test_demo` comprueba que `--log` llega hasta `run`.
+
+### 2026-10-05 (6): la ventana negra de Mats: el tamaño va y viene tras cada cambio por el borde
+
+**El caso:** Mats K. vio la ventana volverse negra al hacerla grande. Mandó la traza de geometría de esa sesión
+(`geometry-477441.log`, 1748 líneas, de ellas 1094 de movimientos del puntero), leída con scripts y no entera.
+
+**La sesión** (52 s): explorer en un Linux, por el puente, hasta el XQuartz de un Mac con tres monitores unidos en
+una pantalla X de 5568×1084. La ventana estuvo siempre dentro del tercer monitor (desde x = 3648, de 1920×1047).
+Mats la agrandó cuatro veces por el borde con la barra de título de explorer: 1336×835 → 1452×873 → 1452×848 →
+1748×1013 → 1716×1003. Además la arrastró: 283 movimientos.
+
+**Descartado:** que la ventana cruzara de un monitor a otro o los superara. Su tamaño máximo, 1748×1013, cabe en el
+tercero.
+
+**Encontrado:** tras cada uno de los cuatro cambios por el borde, el tamaño de la ventana va y viene de 2 a 4 veces,
+en 30-160 ms, entre el nuevo y el viejo:
+1. El puente aplica un aviso atrasado del gestor (quartz-wm) con el tamaño anterior (`windows.py:346 configured`).
+2. Luego vuelve a imponer el nuevo (`bridge.py:380 _run_call`).
+
+Al final queda el tamaño correcto. Es de la familia de E6.14: avisos atrasados del gestor tomados por nuevos.
+
+**Hipótesis, sin medir:** cada cambio de tamaño crea un pixmap nuevo en el servidor y reenvía la ventana entera
+(hasta ~7 MB sin comprimir a 1748×1013), varias veces seguidas, por dos saltos de ssh. Mientras no llega, XQuartz
+pinta de negro, y cuanto más grande la ventana, más tiempo. La sesión no tenía la traza del puente, que diría cuánto
+duró el negro y si el servidor rechazó algo; ahora se activa con `explorer --log`.
+
+**Siguiente paso:** reproducirlo en Xvfb con el gestor tipo quartz-wm y un enlace lento emulado, medir el tiempo en
+negro y los reenvíos, y que un cambio de tamaño dé un solo cambio y un solo reenvío (E6.15).
