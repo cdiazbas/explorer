@@ -1,8 +1,9 @@
-"""The glass look on a zoomed window through the bridge, under the quartz-like manager (fake_quartzwm.py, ROADMAP
-E5.27): in glass the window leaves its zoom and keeps the monitor's height at its left edge, the panels beside it,
-nothing overlapping, all inside the monitor, on the X server as in Qt; out of glass it is zoomed again. Maximised (a
-window manager's maximise, which the bridge follows; a Mac's green button gives Qt the same state), the window kept
-the monitor's width in glass and the panels landed on it. A module of its own: one manager at a time.
+"""The glass look on a zoomed window through the bridge, under each quartz-like manager (fake_quartzwm.py and
+fake_quartzwm_frames.py, ROADMAP E5.27): in glass the window leaves its zoom and keeps the monitor's height at its
+left edge, the panels beside it, nothing overlapping, all inside the monitor, on the X server as in Qt; out of glass
+it is zoomed again. Maximised (a window manager's maximise, which the bridge follows; a Mac's green button gives Qt
+the same state), the window kept the monitor's width in glass and the panels landed on it. A module of its own: one
+manager at a time.
 
     EXPLORER_TEST_XDISPLAY=:99 XAUTHORITY=<cookie> pytest tests/xvfb/test_bridge_glass_zoomed.py
 """
@@ -25,10 +26,13 @@ def cube(tmp_path_factory):
     return synth.write_dataset(tmp_path_factory.mktemp("xbzoom"), "c", shape=(3, 4, 5, 96, 80), icube=False)["im"]
 
 
-@pytest.fixture(scope="module")
-def wm():
+@pytest.fixture(scope="module", params=["fake_quartzwm.py", "fake_quartzwm_frames.py"], ids=["strip", "frames"])
+def wm(request):
+    """The manager with quartz-wm's strips, and the one with its record of the frame: they answer the zoom, the
+    glass look's new geometry and the way back differently (a synthetic notice of each request, against quartz-wm's
+    notice of its record and real notices of the sizes)."""
     env = dict(os.environ, DISPLAY=XDISP)
-    p = subprocess.Popen([sys.executable, os.path.join(HERE, "fake_quartzwm.py")], stdout=subprocess.PIPE,
+    p = subprocess.Popen([sys.executable, os.path.join(HERE, request.param)], stdout=subprocess.PIPE,
                          env=env, text=True)
     line = p.stdout.readline().strip()
     if line != "ready":
