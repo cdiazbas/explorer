@@ -3246,3 +3246,106 @@ las dos historias, emparejadas commit a commit, con los 332 asuntos iguales.
 
 **Queda:** GitHub puede servir un commit antiguo a quien conozca su identificador exacto hasta que limpie su caché.
 El repositorio es privado; para borrarlo de inmediato habría que pedírselo a su soporte.
+
+### 2026-10-05 (2): `setup_env.sh --link` con cualquier shell, y lo que necesita esta terminal (ROADMAP X.3)
+
+El usuario: no debería hacer falta `source ~/.bashrc` a mano, y no todo el mundo usa bash.
+
+**Lo que no se puede hacer:** un programa no cambia el PATH de la terminal que lo lanzó. Por eso los instaladores
+piden abrir una terminal nueva o leer un fichero.
+
+**Lo que se hace ahora:**
+- **Una carpeta que la terminal actual ya tiene:** entre las carpetas habituales que una terminal nueva tendrá en el
+  PATH, se prefiere una que ya esté en la actual; entonces `explorer` funciona al momento.
+- **El final del script dice lo que necesita esta terminal:**
+  - nada («ready in this terminal too»);
+  - la orden de su shell (`source ~/.bashrc`, `source ~/.zshrc`, `. ~/.profile`, `source ~/.cshrc`);
+  - `rehash` en tcsh y csh, que guardan la tabla de órdenes que encontraron al arrancar.
+- **Cada familia de shell, con su sintaxis:**
+  - tcsh y csh: su bloque en `~/.tcshrc` o `~/.cshrc`; una terminal de login se imita leyendo `~/.login` tras
+    el fichero de arranque.
+  - fish y las demás: se dice la línea que hay que añadir y no se escribe nada. fish no está probada: no está
+    instalada en el Mac ni en bellatrix.
+- **El README** ya no da una orden fija de bash.
+
+**Pruebas:** `test_setup_env.py`, 12; las 4 nuevas fallan antes. Pasan en macOS y en bellatrix.
+
+### 2026-10-05 (3): E7.4, la rendija en glass, en la disposición y con A/D
+
+**Portado del prototipo:**
+- **Glass con tres paneles (F84):**
+  - El panel de la rendija es el tercer panel flotante, con la piel de glass.
+  - Los tres se apilan 40/30/30 junto a la ventana (`look_glass.py:572`). Con S, el panel va debajo de λ–t si el
+    monitor tiene sitio (320 px); si no, se apilan de nuevo los tres (`look_glass.py:607-618`).
+  - I y ↺ lo conocen; sin rendija nunca se muestra.
+  - El botón de la rendija va en la barra de glass, antes de Panels (`look_glass.py:729-731`). Con él, la fila de t
+    pedía 454 px de los 448 de una ventana de 480; tras ceder los deslizadores, los huecos pasan de 8 a 4 px.
+- **A y D (F75):** llevan el cursor al píxel anterior o siguiente de la rendija, fijado; desde fuera, al punto más
+  cercano; mantenidas, la recorren. Sin rendija, la línea de estado dice para qué son.
+- **La disposición (F21, F70a, F70b):** probada en cada camino: disposición guardada en classic y en glass, I, ↺, y
+  la salida de glass, que devuelve la pestaña de λ–t. ↺ mientras se dibuja ya no quita la pestaña.
+- **`MacSeams` (F59)** en el panel de la rendija, con prueba.
+- **F71a no aplica:** solo existe la variante D, y las opciones llegan por un único `argparse`.
+- **La rendija en el menú Panels** (`viewer.py:1131`), activa solo con rendija.
+
+**Encontrado al traducir los nombres de la rendija para la prueba de humo del prototipo** (`bench/protoface.py`):
+- La prueba de humo no arrancaba desde E7.1.
+- Una segunda ventana sobre el mismo cubo daba `AttributeError: glass`. Su primera imagen ya estaba en la caché, y
+  el planificador la mostraba dentro de su constructor, antes de que la ventana tuviera los atributos que lee.
+  Corregido.
+
+**La prueba de humo** (cubo 6173, offscreen, con y sin `_sp`), en las 19 comprobaciones de rendija y persistencia:
+13 pasan, 2 fallan solo por la pista (ya corregida en E7.5), 2 por diseño (S pone la pestaña delante; sin rendija
+no hay panel), 1 queda NO AÚN (la variante C) y 1 se salta (solo X).
+
+**Pruebas:** `test_slit_glass` (6) y `test_slit_layout` (13), que fallan en el código anterior salvo 6 guardas.
+Suites completas en bellatrix: `tests/unit` y `tests/golden` 654, `tests/xvfb` 28, sin fallos.
+
+### 2026-10-05 (4): E7.5, la rendija al dibujar: lo que llega a la pantalla, y la rendija terminada
+
+**Medida:** bellatrix, cubo 6173 con fichero por píxel, nodo 0, bajo el cerrojo, offscreen, ABBA con el código
+anterior y el prototipo en las mismas rondas.
+
+**Al dibujar:**
+- Cada movimiento llega: 60 de 60, por `_Moves`.
+- El hilo de la interfaz pinta una vez por pasada del bucle. Las pasadas duran 35-41 ms (el prototipo, 51-56); el
+  banco se queda atrás y los movimientos de una misma pasada se juntan en un solo aviso: 24 avisos para 60
+  movimientos.
+- **Las 76 «actualizaciones» del prototipo eran llamadas a setImage.** Las hace dentro de cada movimiento, pero
+  pinta 19-28 cortes; explorer pinta 35-46. `bench/slit_read.py` cuenta ahora los cortes pintados. La regla: una
+  petición por aviso del Store, es decir, por pasada.
+
+**Rendija terminada:**
+- La lectura esperaba al aviso de los paneles, una pasada después: 23.5 ms, y 66 ms en la primera rendija. Ahora
+  empieza en su propio aviso.
+- El planificador volvía a leer y mostrar los espectros al cambiar los paneles (3.5-17 ms del hilo de la interfaz);
+  ahora solo llena el panel que aparece.
+
+**Tiempo propio al terminar** (total menos E/S), rendijas tras la primera:
+
+| tanda | antes | después | prototipo |
+|---|---|---|---|
+| 4 rondas, carga 1.3-4.5 | 31.8 ms | 14.9 ms | 13.7 ms |
+| 8 rondas, carga 1.8-8.4 | 32.4 ms | 27.3 ms | 14.0 ms |
+
+Primera rendija: 98 → 45 ms y 74 → 61 ms (prototipo, 23 y 27).
+
+**La primera rendija:** su panel aparecía primero como tercer panel; los espectros pasaban de 373 a 215 px y vuelta,
+y su ResizeFreezer hacía un `grab()` de 79 ms. El prototipo crea el panel ya como pestaña de λ–t (`viewer.py:1047`).
+Con ese cambio en `shell.py`, la primera rendija bajó de 63.8 a 24.2 ms (prototipo, 30.7), medido por el agente
+sobre su rama. El cambio está en `main`, pero no se ha vuelto a medir tras integrarlo.
+
+**La caché de bloques** cuenta ya en `Dataset.nbytes` y en el presupuesto: el 0.2 del presupuesto y como mucho 8000
+bloques. 8000 bloques del 6173 son 333.3 MB; el proceso creció 331 MiB.
+
+**La pista** dice «A/D walk the slit · ⌫ remove · S new slit», como el prototipo (`viewer.py:1536`).
+
+**Negativo:**
+- Hacer los cortes en el hilo que lee bajó los pintados de 46 a 33: descartado.
+- Suscribir el planificador antes que el shell no dio nada; fue una tanda A/A por un `rsync` fallido.
+- El tiempo de asentarse no mejoró.
+- El tiempo propio al terminar sigue por encima del prototipo en 3 de las 4 tandas finales. El del prototipo varía
+  entre ~14 y ~37 ms según la tanda, y dos tandas A/A ponen el ruido en ±4 ms.
+
+**Pruebas:** 4 nuevas o cambiadas, que fallan antes. `tests/unit` y `tests/golden` en la copia del agente: 633
+pasan; falla la de `test_doctor`, por la copia sin entorno.
