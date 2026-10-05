@@ -352,3 +352,13 @@ def test_the_macos_seams_on_the_slits_dock_too_and_off_with_the_style(qapp, monk
         w.close()
         ds.close()
         _restore_app(qapp, name, pal)
+
+
+def test_the_panels_menu_lists_the_slit_enabled_only_with_one(qapp, shell):
+    """The prototype's Panels menu has the slit too (app/viewer.py:1131); without a slit its entry cannot be used."""
+    w = shell
+    acts = w.nav.panels.menu().actions()
+    assert w.slit_dock.toggleViewAction() in acts and len(acts) == 3
+    assert not w.slit_dock.toggleViewAction().isEnabled()
+    make(qapp, w, [(10, 10), (40, 30)])
+    assert spin(qapp, lambda: w.slit_dock.toggleViewAction().isEnabled())

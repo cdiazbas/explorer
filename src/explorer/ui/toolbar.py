@@ -222,8 +222,8 @@ class NavBar:
         self.panels.setToolTip("Show or hide the panels")
         self.panels.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
         menu = QtWidgets.QMenu(self.panels)
-        for d in (shell.spec_dock, shell.lt_dock):
-            menu.addAction(d.toggleViewAction())
+        for d in (shell.spec_dock, shell.lt_dock, shell.slit_dock):     # the slit's: enabled with a slit
+            menu.addAction(d.toggleViewAction())                       # (the prototype's viewer.py:1131)
         self.panels.setMenu(menu)
         tb.addWidget(self.panels)
         gap = QtWidgets.QWidget()

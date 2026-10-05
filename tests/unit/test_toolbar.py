@@ -72,7 +72,8 @@ def test_a_click_on_the_track_jumps_there(qapp, shell):
 def test_the_panels_menu_and_reset(qapp, shell):
     nav = shell.nav
     acts = nav.panels.menu().actions()
-    assert [a.text() for a in acts] == ["Spectrum", "λ–t"]
+    assert [a.text() for a in acts] == ["Spectrum", "λ–t", "Slit"]
+    assert not acts[2].isEnabled()                      # the slit's: only with a slit (the prototype's 1131)
     acts[1].trigger()                                   # hide lambda-t
     assert spin(qapp, lambda: shell.lt_dock.isHidden())
     nav.reset.click()
