@@ -7,7 +7,8 @@ requests and notices, the window's full resends, the bytes, its moves. Driven ov
     -> {"ready": ...}            the window shown and settled, its X id and geometry
     <- go DX DY                  the corner dragged DX right and DY up, released there
     -> {"released": ...}         (again: the report is of the last command)
-    <- split DX DY               the same geometry asked as move() and then resize()
+    <- split DX DY [GAP [resize]] the same geometry asked as move() and then resize(): in one turn, or GAP ms apart;
+                                 resize: the resize first
     <- drag N STEP               N moves of STEP px to the right, 15 ms apart
     <- report                    -> {"sizes": ..., ...} and the application quits
 """
@@ -100,16 +101,30 @@ def main() -> int:
         rz.mouse(E.MouseButtonRelease, local + QtCore.QPoint(dx, -dy), end_g, Qt.MouseButton.NoButton)
         say(released=rect(w.geometry()), t_ms=round((time.perf_counter() - t_go[0]) * 1e3, 1))
 
-    def split(dx, dy):
-        """The same geometry as go, asked by the program as a move and then a resize, apart."""
+    def split(dx, dy, gap_ms=0, first="move"):
+        """The same geometry as go, asked by the program as a move and a resize, apart: in one turn of the event loop,
+        or gap_ms apart; first: which of the two comes first."""
         g = w.geometry()
         before.update(counters())
         del sizes[:], fresh[:], shots[:], moves[:]
         shots.append(w.grab().toImage())
         t_go[0] = time.perf_counter()
-        w.move(g.x(), g.y() - dy)
-        w.resize(g.width() + dx, g.height() + dy)
-        say(released=rect(w.geometry()), t_ms=round((time.perf_counter() - t_go[0]) * 1e3, 1))
+
+        def mv():
+            w.move(g.x(), g.y() - dy)
+
+        def rs():
+            w.resize(g.width() + dx, g.height() + dy)
+
+        def done():
+            say(released=rect(w.geometry()), t_ms=round((time.perf_counter() - t_go[0]) * 1e3, 1))
+        a, b = (mv, rs) if first == "move" else (rs, mv)
+        a()
+        if gap_ms:
+            QtCore.QTimer.singleShot(gap_ms, lambda: (b(), done()))
+        else:
+            b()
+            done()
 
     def drag(n, step):
         """n moves of step px to the right, 15 ms apart, as the title bar moves the window while dragged."""
@@ -139,12 +154,15 @@ def main() -> int:
 
     def on_command(line):
         parts = line.split()
+        if bridge.trace is not None:                    # where each command starts in the bridge's trace
+            bridge.trace.write("MARK", None, line)
         if parts and parts[0] == "go":
             go(int(parts[1]), int(parts[2]))
         elif parts and parts[0] == "drag":
             drag(int(parts[1]), int(parts[2]))
         elif parts and parts[0] == "split":
-            split(int(parts[1]), int(parts[2]))
+            split(int(parts[1]), int(parts[2]), int(parts[3]) if len(parts) > 3 else 0,
+                  parts[4] if len(parts) > 4 else "move")
         elif parts and parts[0] == "report":
             report()
     cmds.got.connect(on_command, Qt.ConnectionType.QueuedConnection)
