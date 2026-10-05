@@ -5,7 +5,8 @@ the Store:
 - t, Stokes or lambda changed: the image at the new index, and frames ahead along the axis that moved (the
   probe's read-ahead). The cursor's panels are evaluated when that image arrives, since it tells whether the
   cursor is on padding.
-- the cursor moved (or a panel was shown): the cursor's panels, at once.
+- the cursor moved (or a panel was shown): the cursor's panels, at once; for a panel shown, only that one: a tab
+  brought in front (the slit's, beside lambda-t) or a panel closed leaves the others as they are.
 What each change asks of the panels: the cursor -> spectra and lambda-t; t -> spectra (the lambda-t already holds
 every t); Stokes -> lambda-t; lambda -> nothing (the markers are the UI's). Nothing is read for a hidden panel,
 nor on padding (the image NaN at the cursor, or exactly 0 in Stokes I): the panels are cleared once, and after
@@ -88,6 +89,7 @@ class Scheduler:
         self._pending: set[str] = set()                 # cursor work waiting for the latest image
         self._cleared = False
         self._futures: set[Future] = set()
+        self._panels = session.state.panels             # the panels shown at the last notice
         self._flock = threading.Lock()
         self.slit = SlitReads(session, sink, self._track, self._when_read)
         self._off = session.store.subscribe(self._on_change)
@@ -147,20 +149,20 @@ class Scheduler:
     # ---------------------------------------------------------------- changes of state
     def _on_change(self, st: ViewState, changed: frozenset) -> None:
         self.slit.on_change(st, changed)
+        came, self._panels = st.panels - self._panels, st.panels
         moved = changed & {"t", "s", "l"}
         if moved:
-            self._pending |= moved | (changed & {"cursor"})
+            self._pending |= moved | (changed & {"cursor"}) | {f"show:{p}" for p in came}
             self._request_image(st)
             if self.grid and moved & {"t", "l"}:        # a change of Stokes alone: the same frames
                 self._request_grid(st)
             # on the loop's next pass, after this frame is painted: started here, the reads ahead slowed the paint
             # (step in t, real cube, bellatrix: median 17.9-19.3 ms -> 13.8-15.0, the prototype 15.8)
             self.loop.call_soon(lambda: self._prefetch(st, moved))
-        elif changed & {"cursor", "panels"}:
-            kinds = set(changed & {"cursor"})
-            if "panels" in changed:
-                kinds |= {f"show:{p}" for p in st.panels}
-            self._evaluate(st, kinds)
+        elif "cursor" in changed or came:
+            # only the panels that came: the spectra shown again when the slit's tab came in front cost 3.5-17 ms of
+            # the UI thread between a finished slit and its slices (6173, bellatrix)
+            self._evaluate(st, set(changed & {"cursor"}) | {f"show:{p}" for p in came})
 
     def _request_image(self, st: ViewState) -> None:
         g = self.gens.new("image")

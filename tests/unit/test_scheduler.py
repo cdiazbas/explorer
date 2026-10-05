@@ -122,6 +122,23 @@ def test_hidden_panels_read_nothing_and_come_back_when_shown(setup):
     assert rec.kinds() == ["lambda_t"]
 
 
+def test_a_panel_shown_reads_for_itself_only(setup):
+    """The slit's tab in front of lambda-t: lambda-t hidden, the spectra untouched; lambda-t back: lambda-t only."""
+    sess, sched, rec, _ = setup
+    rec.calls.clear()
+    before = counters().get("core.cursor.reads", 0)
+    sess.show("slit")
+    sess.show("lambda_t", False)
+    sess.store.loop.pump()
+    settle(sched)
+    assert rec.calls == [] and counters().get("core.cursor.reads", 0) == before
+    sess.show("slit", False)
+    sess.show("lambda_t")
+    sess.store.loop.pump()
+    settle(sched)
+    assert rec.kinds() == ["lambda_t"]
+
+
 def test_padding_clears_once_reads_nothing_and_the_next_valid_pixel_fills_both(setup):
     sess, sched, rec, _ = setup
     rec.calls.clear()
