@@ -1123,7 +1123,7 @@ comparación de verdad es E3.7.
 
 ### 2026-09-30: el puente X11 traído tal cual (ROADMAP E6, opción A de P4)
 
-**Implementado** (commit `5575cb0`): el puente del prototipo (`app/xbridge.py`, `xconn.py`,
+**Implementado** (commit `0411db0`): el puente del prototipo (`app/xbridge.py`, `xconn.py`,
 `xrender.py`) en `platform/xbridge/`, partido por temas y con sus decisiones medidas y sus mandos:
 - `bridge.py`: la conexión del hilo de la interfaz, el tic de 4 ms y el filtro de eventos de Qt;
 - `wm.py`: ventanas X, ICCCM y EWMH, paneles transitorios, formas, cursores, iconos, activación;
@@ -1162,7 +1162,7 @@ comparación de verdad es E3.7.
   `EXPLORER_XVFB_DISPLAY=:N`.
 - `scripts/check.sh` pasa en el Mac (las pruebas X se saltan) y en bellatrix.
 
-**Medida** (commit `bb614f0`):
+**Medida** (commit `eb77c6f`):
 - bellatrix, 2026-09-30 13:00–13:08; Xvfb privado `:98` (3840×1080, sin gestor de ventanas);
   cubo de Stokes 6173 (StorNext).
 - Fijado al nodo NUMA 0 (16 CPU), con el cerrojo de medidas. Carga 3.3 al empezar la primera tanda
@@ -1325,7 +1325,7 @@ del usuario por `ssh -Y`.
 ### 2026-09-30: medidas de E3.7, los dos puentes comparados y P4 decidido (ROADMAP E3.7, E6, E6.1)
 
 **E3.7, la autoprueba frente a la del prototipo** (`bench/selftest_vs_prototype.py`, commit
-`448f060`). bellatrix, 2026-09-30 12:39–12:44, cubo de Stokes 6173, 4 rondas ABBA; offscreen y xcb
+`7ac47e8`). bellatrix, 2026-09-30 12:39–12:44, cubo de Stokes 6173, 4 rondas ABBA; offscreen y xcb
 sobre el Xvfb privado `:97`; el panel de imagen de explorer al tamaño del del prototipo (772×803:
 antes tenía el doble de píxeles que dibujar). Razón pareada explorer / prototipo (rondas en que
 explorer es más rápido):
@@ -1341,7 +1341,7 @@ Con `_sp`, igual o mejor en todo. Sin `_sp`, los pasos más lentos: sigue en E3.
 lo descartado.
 
 **El demo por `ssh -Y`.** Abre el visor primero y deja las comprobaciones de `doctor` para
-después (`79e47c0`): 4 s menos, según el usuario. La línea de la primera imagen cuenta desde que
+después (`8372c99`): 4 s menos, según el usuario. La línea de la primera imagen cuenta desde que
 arranca la orden y reparte el tiempo (importaciones, Qt, cubo, ventana, imagen).
 
 **Los dos puentes (P4).** A, el del prototipo traído tal cual, y B, el reescrito, se escribieron
@@ -1354,7 +1354,7 @@ elige A, B, xcb nativo o el prototipo con la primera palabra. Medidas y conformi
   2 pasos de 147; B, en 51 al empezar y en 2 tras seis correcciones, cada una con su causa trazada
   y una prueba que falla antes y pasa después.
 
-El usuario eligió B. A queda en el historial (merge `736099e`, quitado en `594d371`).
+El usuario eligió B. A queda en el historial (merge `a81c4ce`, quitado en `2f4bb2c`).
 
 **Cómo se buscó cada causa** (herramientas fuera del repositorio, en la carpeta de trabajo):
 - `show_step.py`: un paso de la suite en xcb, A y B, campo por campo y evento a evento;
@@ -1398,9 +1398,9 @@ ventana. Las teclas van a la aplicación del frente (la terminal), y el foco X n
 
 **Las pruebas X de B en Linux.** Al pasar `tests/xvfb` en bellatrix salieron dos fallos:
 - `bridge_app.py` guardaba sus capturas en una carpeta de `/tmp` con nombre de usuario, borrada
-  al limpiar (`27cc7b7`);
+  al limpiar (`f8f68b4`);
 - con un popup abierto, Qt en Linux deja la ventana padre activa sin ventana con foco
-  (`89a7ee6`).
+  (`be8564b`).
 
 Tras los dos arreglos: 247 pasan y 3 se saltan (necesitan gestor de ventanas).
 
@@ -1462,10 +1462,10 @@ dibujen.
 
 ### 2026-09-30: los paneles (ROADMAP E4.1–E4.9) y sus medidas
 
-**Implementado:** docks (`180a830`); espectros, λ–t, barra de herramientas y de estado
-(`8008558`, con `e9f41f0` para el orden de los paneles); candados y F / Mayús+F (`f8d1c34`);
-clics en los paneles (`7a7786c`); reproducción y la sonda del enlace sobre el cliente X del
-puente (`ca1c0ce`); el rango y de un espectro a mano, en la franja de su eje (`b0af22f`).
+**Implementado:** docks (`7578992`); espectros, λ–t, barra de herramientas y de estado
+(`1efabad`, con `21ba16b` para el orden de los paneles); candados y F / Mayús+F (`a51db83`);
+clics en los paneles (`2da71d7`); reproducción y la sonda del enlace sobre el cliente X del
+puente (`d3e0b2a`); el rango y de un espectro a mano, en la franja de su eje (`fec692f`).
 
 **Velocidad frente al prototipo** (`bench/selftest_vs_prototype.py`: la autoprueba de cada
 programa, 10 pasos por acción tras su fase del cursor). bellatrix, offscreen, fijado al nodo
@@ -1545,7 +1545,7 @@ carga baja (`scratch_focus/e38/st2.log`, `e48c.log`; la conexión se cortó ante
 **Por qué:** repetir los casos del prototipo con su mismo software, primero las funciones y
 después la velocidad, en vez de pruebas nuevas escritas para explorer.
 
-**Cómo** (`c836c86`, `72293bc`): `bench/protoface.py` pone los nombres del prototipo
+**Cómo** (`63d0739`, `e509680`): `bench/protoface.py` pone los nombres del prototipo
 (`v.spec_dock`, `v.idx`, `v._yr`, `v.stats`...) sobre la `Shell`, mezclados en su clase, así que
 la ventana que manejan las pruebas es la de explorer, también para las comparaciones de
 identidad. `bench/proto_smoke.py` sustituye `app/startup.py` y `app/viewer.py` y deja fuera
@@ -1564,7 +1564,7 @@ silencioso escondería el hueco.
 Igual con y sin `_sp`. En xcb, los saltos de explorer son los del prototipo.
 
 **Fallos encontrados y su causa:**
-- **Menús contextuales** (corregido, `d8383c0`): el clic derecho abría el menú de pyqtgraph sobre
+- **Menús contextuales** (corregido, `f48efa3`): el clic derecho abría el menú de pyqtgraph sobre
   la imagen y el de `QMainWindow` sobre la barra, los títulos de los paneles y los deslizadores.
   El prototipo los quita (`app/viewer.py:1018-1028`). Con un menú abierto, además, las teclas
   siguientes no llegaban: con los dos quitados, las 5 comprobaciones de teclas pasan. Mi primera
@@ -1587,18 +1587,18 @@ leer la segunda comparación, ya hecha en bellatrix (`scratch_focus/pconf/run_xc
 ### 2026-10-01: el aspecto, la barra de título, la disposición y la hoja `?` (ROADMAP E5.1–E5.5)
 
 **Implementado, probado en el Mac (offscreen); falta Linux** (la conexión a bellatrix se cortó):
-- **Temas** (`1ad83fc`): el estilo del prototipo (`app/style.py`) sobre Fusion, oscuro y claro;
+- **Temas** (`72d8620`): el estilo del prototipo (`app/style.py`) sobre Fusion, oscuro y claro;
   `--theme auto|dark|light|native`. La prueba de humo del prototipo comprueba ya el estilo de
   explorer, no el suyo.
-- **Barra de título propia, esquinas y bordes** (`9a514bb`): `app/titlebar.py` entero. `WindowOps`
+- **Barra de título propia, esquinas y bordes** (`e9f6cd9`): `app/titlebar.py` entero. `WindowOps`
   es ahora el `Mover` del prototipo: el zoom llena el monitor por geometría (sin gestor de ventanas
   también), y existen antes de mostrar la ventana. `platform/screens.py` porta `monitor_rect`
   (cabezas Xinerama por el cliente X propio; el Dock del Mac fuera por XQuartz).
-- **La disposición entre sesiones** (`ad7f472`): geometría y paneles por tipo de pantalla, esquema
+- **La disposición entre sesiones** (`b53bd64`): geometría y paneles por tipo de pantalla, esquema
   con versión en el nombre del grupo (`app/v1.<tipo>/`), `--reset-layout`.
-- **La hoja `?`** (`adc50e7`): una sola tabla de teclas y ratón para los atajos, la terminal y la
+- **La hoja `?`** (`ae389ce`): una sola tabla de teclas y ratón para los atajos, la terminal y la
   hoja.
-- **Los aspectos `classic` y `modern`** (`e7ca500`), como datos que toman la ventana y sus vistas;
+- **Los aspectos `classic` y `modern`** (`3584774`), como datos que toman la ventana y sus vistas;
   nada se sustituye sobre ellas, al contrario que en `app/look.py`. Por defecto `classic`.
 
 **Encontrado al portar, del prototipo:** dos cosas de su ventana de todos los días que explorer no
@@ -1611,7 +1611,7 @@ tenía. Los deslizadores de t y λ van rellenos del rojo de los marcadores que m
   `setStyle` por el estilo en Python costaba 0.82 s. Al borrarlas, la suite pasó de 40 a 18 s.
 - Borrarlas sacó un fallo real: lo pendiente en el bucle (`call_soon`, `call_later`) se ejecutaba
   después de borrada su ventana. El reajuste del rango y en reposo fallaba con un error en el
-  registro. Corregido con el bucle como contexto de los temporizadores (`81a4134`), con una prueba
+  registro. Corregido con el bucle como contexto de los temporizadores (`903b0a2`), con una prueba
   que fallaba antes.
 - Un segfault al borrar ventanas venía de mi accesorio, no de explorer: borraba antes que su gráfico
   los menús de pyqtgraph, que no tienen padre en Qt. Ahora solo borra ventanas principales.
@@ -1629,9 +1629,9 @@ Python) frente al prototipo; y que el usuario mire las dos apariencias y elija l
 5–7 s: la copia remota era anterior al puente y usaba el X11 nativo. Sincronizada, vuelve a lo de
 antes. Decía además `explorer 0.0.0`: la versión sale de git al instalar (hatch-vcs) y la copia
 remota no tiene git. `scripts/sync.py` escribe ahora `src/explorer/_version.py` en cada push, aquí y
-allí (`97ad195`).
+allí (`f2d24e0`).
 
-**El aspecto** (`8c5b1fd`, `a26becb`, `6e293e3`):
+**El aspecto** (`e4b4aca`, `329d4c8`, `f117f5b`):
 - M cambia entre `classic` y `modern` mientras corre. Vuelve exactamente al clásico, y los mapas
   elegidos con C se conservan. El aspecto de la última sesión es el de la siguiente, salvo que
   `--look` diga otro.
@@ -1647,9 +1647,9 @@ allí (`97ad195`).
 **En Linux (bellatrix, Xvfb :97):**
 - Pruebas unitarias offscreen: 335 pasan, 1 se salta.
 - Pruebas X: 9 pasan y 2 se saltan (necesitan gestor de ventanas). Una prueba esperaba aún el menú
-  de pyqtgraph al hacer clic derecho, que `d8383c0` quitó como en el prototipo; corregida
-  (`5048f74`).
-- Una prueba nueva maneja el desplegable de Stokes con clics XTEST a través del puente (`337291f`).
+  de pyqtgraph al hacer clic derecho, que `f48efa3` quitó como en el prototipo; corregida
+  (`3c49cc0`).
+- Una prueba nueva maneja el desplegable de Stokes con clics XTEST a través del puente (`354ca4a`).
 
 **Encontrado con la suite de conformidad del prototipo (xcb):** λ–t reacoplado con su botón de
 flotar quedaba en (590, 466) de una ventana de 1200 px. Es decir, donde había flotado, ahora como
@@ -1658,7 +1658,7 @@ desplazados.
 - Qt 6.11 hace lo mismo con una `QMainWindow` desnuda, en xcb y offscreen: el sitio del dock en el
   layout no ha cambiado, así que Qt no lo vuelve a colocar. Ni `invalidate()` ni repetir la
   geometría del layout lo mueven.
-- El arreglo (`8a49a62`): cada dock recuerda dónde estuvo acoplado y vuelve allí cuando Qt lo deja
+- El arreglo (`74953e2`): cada dock recuerda dónde estuvo acoplado y vuelve allí cuando Qt lo deja
   donde flotaba.
 - Desplazar todo el layout un píxel y volver también funcionaba, pero repintaba la ventana entera:
   1.26 Mpx frente a 0.51 por reacople (offscreen). El arreglo elegido mueve solo el dock: 0.51.
@@ -1682,7 +1682,7 @@ idénticos. Las diferencias nuevas son de dos clases:
 
 ### 2026-10-01 (3): el título de Stokes I desde el principio (ROADMAP E4.14) y el hover del adaptador
 
-**E4.14, corregido (`af840a2`).** Con fichero por píxel, el prototipo lee el primer espectro al
+**E4.14, corregido (`918c797`).** Con fichero por píxel, el prototipo lee el primer espectro al
 construir la ventana (`app/viewer.py` `_set_spectra`, 1927). Explorer lo leía en su pool de E/S,
 así que el título de I salía sin su 10ⁿ y el eje se ensanchaba al llegar el espectro.
 - Ahora el scheduler lee el bloque del cursor al construirse. El bloque queda en la caché, así que
@@ -1701,17 +1701,17 @@ síncrona.
   - sin él: el título falla 4/4.
 - Una primera espera en el adaptador no hizo nada: la lectura del cursor se pide en la siguiente
   vuelta del bucle, no dentro de `hover()`.
-- Corregida (`fa1b2c5`): con el arreglo, 0 FAIL en 4/4; sin él, el título falla 4/4.
+- Corregida (`b078c60`): con el arreglo, 0 FAIL en 4/4; sin él, el título falla 4/4.
 - La comprobación de tiempo del cursor cuenta ahora la lectura, como en el prototipo: mediana de
   12–15 ms (límite 60).
 
-**El hook de los mensajes** (`372ea30`): ahora exige la línea en blanco tras el asunto y, en
+**El hook de los mensajes** (`08736c5`): ahora exige la línea en blanco tras el asunto y, en
 `[ADD]`, `[DEV]`, `[FIX]` y `[PERF]`, las líneas `Behaviour:` y `Tests:` de la ADR 0005. Los últimos
 40 mensajes lo pasan.
 
 ### 2026-10-01 (4): la ventana por X11 hacia un Mac (ROADMAP E5.7–E5.9), y el paso en t (E4.13)
 
-**E4.13, la causa del paso en t lento** (`10dfa83`). El paso en t de explorer era bimodal: la mitad
+**E4.13, la causa del paso en t lento** (`c608e38`). El paso en t de explorer era bimodal: la mitad
 de los pasos en ~15 ms, como el prototipo, y la otra mitad en 18–20 ms.
 - Descartadas: la muestra del rango y en segundo plano (16.5 frente a 17.1 ms) y el recolector de
   basura (igual de bimodal con `gc.disable()`).
@@ -1722,14 +1722,14 @@ de los pasos en ~15 ms, como el prototipo, y la otra mitad en 18–20 ms.
   - sin `_sp`: 1.100 → 0.933, explorer más rápido 8/8;
   - con `_sp`: 1.109 → 1.022, 3/8. Pendiente de repetir con carga baja.
 
-**El techo** (`0c81d16`, E5.7): arrastrada por su barra, la ventana subía por encima de la pantalla.
+**El techo** (`6e794a8`, E5.7): arrastrada por su barra, la ventana subía por encima de la pantalla.
 Solo por X11: con quartz-wm la barra mueve la ventana por sí misma, sin límite (heredado del
 prototipo). Ahora no sube del borde superior de su monitor. El usuario lo confirma en XQuartz.
 
-**La barra de estado** (`c0f4e16`): el texto empezaba a 2 px del borde, dentro de la esquina
+**La barra de estado** (`5ad42b6`): el texto empezaba a 2 px del borde, dentro de la esquina
 redondeada de 16 px. Ahora hay 8 px a cada lado. El usuario lo confirma.
 
-**El redimensionado por los bordes** (`b254675`, `5c8059e`, E5.8):
+**El redimensionado por los bordes** (`1ad53a3`, `fb3f6c1`, E5.8):
 - En vivo, cada paso redimensionaba la ventana entera. Por un enlace emulado (8 ms, 20 MB/s,
   puente), un arrastre de 200 px en 1 s mandaba 17.7 MB, con el enlace lleno.
 - Con un contorno de cuatro tiras dibujadas por Qt: 0.7–0.9 MB. Pero en XQuartz el contorno salía
@@ -1763,7 +1763,7 @@ Con `QT_XCB_NO_MITSHM=1` funciona; por un `ssh -Y` real nunca la usa.
 
 ### 2026-10-01 (5): el Dock de macOS por X11 (ROADMAP E5.10) y Panels por el puente
 
-**Panels colgaba el visor por el puente** (`46b49e0`), como F45 en el prototipo:
+**Panels colgaba el visor por el puente** (`90ea38c`), como F45 en el prototipo:
 - gdb en el proceso del usuario: el hilo principal dentro del bucle anidado del menú
   (`QMenu::exec` desde `QToolButton::mousePressEvent`), en `poll`.
 - Causa: la liberación del botón llegó cuando ya corría el bucle del menú, y la cola de eventos
@@ -1838,7 +1838,7 @@ resolución de pantalla, con sus límites y su mapa de color; tecla 5 o «All»;
 ese Stokes.
 - **Origen:** el prototipo la tenía en su aspecto "glass" (tecla G; `app/look_glass.py`,
   StokesGrid 221-315).
-- **Implementación** (`97ffefa`): explorer la monta sobre su `ImageView`, cuatro veces, con los
+- **Implementación** (`7360cdc`): explorer la monta sobre su `ImageView`, cuatro veces, con los
   ViewBox enlazados. El scheduler lee el cuadro de cada Stokes en cada cambio de t o λ y los lee
   por adelantado.
 
@@ -1865,7 +1865,7 @@ los pasos de redimensionado se comparen como con como:
   errática. El doble clic recibió 56 eventos, el paso siguiente ninguno, otro 120; lo normal son 9–25.
   Salieron 107 pasos distintos.
 - **Repetida esperando a carga < 2:** 77 idénticos y 67 distintos. `--compare` los clasifica ya solo
-  (`5330879`):
+  (`735ee95`):
   - 2 solo en el orden de los eventos;
   - 28 solo en la barra de pestañas que el prototipo acumula;
   - 37 por leer, todos explicados:
@@ -1874,7 +1874,7 @@ los pasos de redimensionado se comparen como con como:
 |---|---|
 | cambios de la barra hechos a propósito: sliders al 0.95, `?`, «All» ensancha el combo (el clic cae 3 px más a la derecha) | 17 |
 | margen de 8 px de la línea de estado | 1 |
-| reacople del prototipo con su tamaño de flotante, que explorer corrige (`8a49a62`) | 15 |
+| reacople del prototipo con su tamaño de flotante, que explorer corrige (`74953e2`) | 15 |
 | tiempos: repetición automática, tooltips, 1 px de redondeo en `resize_top` (2 de 6 ejecuciones), orden de activación | 4 |
 
 **E4.13, cerrada.** Cinco series de 8 rondas, y en todas la carga de otro usuario subió durante la
@@ -1937,14 +1937,14 @@ de la ventana y los paneles, con quién lo pide (pila de Qt o aviso de X), lo ex
   pone a una *utility* su tira de título de 16 px aunque pida sin decoración: el título doble.
   Cada posición confirmada llegaba 16 px más abajo y el puente se la daba a Qt: lambda-t en 353,
   369, 379, 395, 411, 427. El prototipo lo había medido y resuelto (`xbridge.py:660-690`,
-  auditoría F23c), y no se portó; una prueba de X exigía *utility*. Corregido en `a4935d4`.
+  auditoría F23c), y no se portó; una prueba de X exigía *utility*. Corregido en `5ec4214`.
 - **Respuestas viejas.** Sin deriva, los paneles aún saltaban 1.2 s: el puente preguntaba a X
   dónde estaba una ventana enmarcada sin esperar, y aplicaba la respuesta aunque Qt hubiera pedido
-  otra posición después. Ahora se descarta (`dfb2577`).
+  otra posición después. Ahora se descarta (`dcf0353`).
 - **Paneles antes que su ventana.** Al arrancar en glass con su disposición guardada, los paneles
-  flotan antes de que exista la ventana X principal: nacían sin dueño (`e707da0`).
+  flotan antes de que exista la ventana X principal: nacían sin dueño (`d404c2b`).
 - **Títulos pisados.** Al arrancar en glass en Linux, el marco de app.py ponía los títulos de panel
-  después del aspecto; el prototipo los pone antes (`startup.py:145`). `12992a0`.
+  después del aspecto; el prototipo los pone antes (`startup.py:145`). `e55f9af`.
 
 **Por qué se escapó:** las pruebas de X corren en un Xvfb sin gestor de ventanas, y los tres
 fallos del puente solo existen con uno; ninguna prueba arrancaba en glass con disposición
@@ -2091,7 +2091,7 @@ píxel no dan las esquinas del campo.
 ### 2026-10-03 (6): el último de dos movimientos rápidos se perdía (ROADMAP E6.13)
 
 `test_the_pointer_moves_the_cursor_and_a_click_locks_it` volvió a fallar en la integración continua, esta
-vez con lo que la prueba dice desde `d8e2307`. El segundo movimiento: el cursor sigue en [54, 66]. X tiene
+vez con lo que la prueba dice desde `8d111ae`. El segundo movimiento: el cursor sigue en [54, 66]. X tiene
 el puntero en (430, 320), en la ventana principal (justo el destino), sin bloqueo ni menú. El puente cuenta
 `mouse: 2`. Un Enter solo mueve el cursor de Qt con `setPos` y no suma a esa cuenta, así que los dos
 movimientos llegaron a la ventana Qt.
@@ -2237,7 +2237,7 @@ gravedad estática quartz-wm no desplaza: puede ser solo del gestor de las prueb
 ### 2026-10-03 (11): las size hints en XQuartz (ROADMAP E6.5, E6.14)
 
 Lo que faltaba de E6.5: comprobar en XQuartz el efecto del arreglo del tipo de `WM_NORMAL_HINTS`
-(`ee39ad2`). Medido en el Mac: XQuartz 2.8.6 con quartz-wm, display `:3`, 3067×1513, explorer por el
+(`822e4db`). Medido en el Mac: XQuartz 2.8.6 con quartz-wm, display `:3`, 3067×1513, explorer por el
 puente, cubo sintético (3, 4, 5, 96, 80). La ventana principal y el panel flotante se mueven por la API
 6 veces cada uno (20, 12 px por paso, 0.5 s entre pasos, como un arrastre). Tras cada paso se anotan la
 posición pedida, la de Qt y la de X. Las hints de antes del arreglo se recrearon con un monkeypatch del
@@ -2589,7 +2589,7 @@ frente.
 Un error mío al hacer los commits: el del registro `XIN` lo rechazó el hook (asunto largo). Una cadena de
 `&&` saltó los pasos siguientes, y un commit de documentación posterior se llevó el código preparado, con
 el mensaje «[DOC] journal: …» y sin `Behaviour:` ni `Tests:`. Con permiso del usuario, la historia subida
-se reescribió para darle su mensaje (`247808d`, contenido idéntico) y se subió forzando, con
+se reescribió para darle su mensaje (`1c523dd`, contenido idéntico) y se subió forzando, con
 `--force-with-lease`. Desde entonces, cada commit se comprueba antes del siguiente.
 
 ### 2026-10-04 (12): las paradas al arrastrar nacen en XQuartz
@@ -2838,9 +2838,9 @@ sobrevive al clic.
 - A y D quedan libres (F75); la pista no las nombra hasta que existan.
 
 **Pruebas:** en bellatrix, offscreen, nodo 1.
-- `test_slit_draw`: 15/15 en 3 de 3 ejecuciones. Las 15 fallan en `248db13`. Con solo `gestures.py` revertido
+- `test_slit_draw`: 15/15 en 3 de 3 ejecuciones. Las 15 fallan en `3860a0a`. Con solo `gestures.py` revertido
   falla 1, porque vuelve la cruz.
-- `tests/unit` en la copia del agente: 509 pasan y fallan 2, las mismas que en `248db13`, donde pasan 494:
+- `tests/unit` en la copia del agente: 509 pasan y fallan 2, las mismas que en `3860a0a`, donde pasan 494:
   - la de `run.sh` del doctor, porque esa copia no tenía entorno;
   - el tool tip del puente, que solo falla en la suite completa.
 
@@ -2965,8 +2965,8 @@ puede atender antes a la segunda. La traza lo diría con un XERR BadDrawable en 
 **El síntoma:** `test_xbridge_input::test_tool_tip_after_a_rest` fallaba en la suite completa y pasaba sola (3 de
 3).
 
-**No era un commit:** en bellatrix (nodo 1, cuatro suites en paralelo), falló en `d0cd960`, que es anterior a los
-cambios de glass del día, y en `8d25d3e`, pero no en `0c93104` ni en `33b8ffd`.
+**No era un commit:** en bellatrix (nodo 1, cuatro suites en paralelo), falló en `f639e74`, que es anterior a los
+cambios de glass del día, y en `b5a5deb`, pero no en `a2abd97` ni en `ddaefc3`.
 
 **Lo que se vio con una sonda (plugin de pytest):**
 - En el momento del fallo, la ventana de la prueba estaba activa, no había emergentes ni modales, y el tooltip no
@@ -3056,7 +3056,7 @@ prototipo. Las dos copias tienen ya la misma huella, `956a5a1e…`; las referenc
 **La ruta del prototipo, dentro de la referencia versionada:**
 - La exportación guarda en `meta["prototype"]` la ruta absoluta del prototipo. En la referencia nueva ese campo
   pasa a `../prototype`; el resto de la meta y las 41 claves se comprobaron iguales.
-- La referencia anterior, versionada desde `b93c4a3` (2026-09-29) y ya subida, lleva la ruta personal del Mac.
+- La referencia anterior, versionada desde `328bcc5` (2026-09-29) y ya subida, lleva la ruta personal del Mac.
   Ni `hygiene.py` ni el grep de la historia la ven, porque numpy guarda las cadenas en UTF-32. Se abre X.11.
 
 ### 2026-10-04 (26): el icono por el puente X11 (ROADMAP E5.29)
@@ -3152,13 +3152,13 @@ con carga 5.2-19.6, 217 frente a 381 ms; confundido por la caché de páginas y 
 
 **Negativo** (queda como E7.5):
 - **Menos actualizaciones al dibujar.** Al principio eran 31, porque el resultado de cada paso llegaba tras el
-  siguiente y se descartaba; ahora se muestra mientras se dibuja (`434cf1e`). Aún quedan 49 peticiones para 60
+  siguiente y se descartaba; ahora se muestra mientras se dibuja (`2e99840`). Aún quedan 49 peticiones para 60
   movimientos y 25 llegadas de bloques. La causa no está medida: la hipótesis es que el hilo de la interfaz se
   queda atrás.
 - **Al terminar, 9 ms más que el prototipo.** La primera rendija de cada proceso tiene ~75 ms de más tras la
   lectura.
 
-**Pruebas:** 43 nuevas, que pasan en 3 de 3 ejecuciones; las del panel fallan en `e578f6d`. Una de ellas pasa por
+**Pruebas:** 43 nuevas, que pasan en 3 de 3 ejecuciones; las del panel fallan en `ad645ab`. Una de ellas pasa por
 `ui.app.start` y dibuja la rendija con el ratón en los tres aspectos. `tests/unit` y `tests/golden` en la copia
 del agente: 604 pasan y falla la de `test_doctor`, por la copia sin entorno.
 
@@ -3213,5 +3213,36 @@ alineaciones, cada miembro de un zip por separado (un `.npz` lo es).
 
 **La exportación** de referencias guarda ya la ruta del prototipo relativa a explorer.
 
-**Queda (X.11, parte 3):** la historia sigue teniendo esa ruta en `b93c4a3`. Mirar los binarios de la historia
+**Queda (X.11, parte 3):** la historia sigue teniendo esa ruta en `328bcc5`. Mirar los binarios de la historia
 fallaría hasta que el usuario decida si se reescribe.
+
+### 2026-10-05 (1): la historia limpia de la ruta personal (ROADMAP X.11)
+
+El usuario decidió limpiar la historia y ejecutó él mismo los comandos preparados:
+- Copia de seguridad: `git bundle --all`, fuera del repositorio.
+- `git filter-branch` solo sobre `main` desde `b93c4a3`. Sustituye la única versión con la ruta (blob `e13dd22`)
+  por la misma con `meta.prototype = ../prototype` (blob `5d0fca2`; las 41 claves y el resto de la meta, iguales).
+  Un filtro traduce los identificadores citados en los mensajes.
+- Subida forzada (`--force-with-lease`).
+
+**Comprobado después:**
+
+| comprobación | resultado |
+|---|---|
+| commits | los mismos 332 |
+| contenido actual | sin diferencias con el de antes |
+| los 25 commits anteriores | intactos |
+| `b93c4a3` | pasa a ser `328bcc5` |
+| la versión con la ruta en la historia de `main` | ninguna |
+| los 5 binarios de la historia | limpios |
+| las 10 citas de los mensajes | apuntan a commits existentes |
+| GitHub | tiene el mismo `main` |
+
+**Citas en los documentos:** las 178 citas de commits reescritos de `docs/` se tradujeron con la correspondencia de
+las dos historias, emparejadas commit a commit, con los 332 asuntos iguales.
+
+**La higiene** lee ya los binarios de toda la historia (1.8 s en el repositorio entero): la historia antigua daba
+«Mac home path», la nueva nada.
+
+**Queda:** GitHub puede servir un commit antiguo a quien conozca su identificador exacto hasta que limpie su caché.
+El repositorio es privado; para borrarlo de inmediato habría que pedírselo a su soporte.

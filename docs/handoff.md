@@ -32,7 +32,7 @@ cada sesión; no crece.
   con su propio código. La línea base del Mac se repitió con el v2 (`9a341fb`).
 - **Regla (memoria del usuario):** nada del prototipo de memoria; se lee su código y se cita.
 - **E0.7 hecha:** referencias del prototipo (caso sintético versionado; caso real del 6173 en
-  bellatrix, en `tests/golden/real/`), exportador y comparador (`b93c4a3`).
+  bellatrix, en `tests/golden/real/`), exportador y comparador (`328bcc5`).
 - **Regla (memoria del usuario):** comentarios del código neutros, sin "el usuario dijo" ni
   historias con fecha; la historia, a la documentación.
 - **Siguiente:** E1 (`explorer.data`), comparándose con esas referencias desde el primer día.
