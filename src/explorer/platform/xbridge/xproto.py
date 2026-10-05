@@ -663,6 +663,10 @@ class Connection:
     def query_pointer(self, wid) -> Cookie:
         return self.request(38, 0, struct.pack("<I", wid), reply=True)  # type: ignore[return-value]
 
+    def get_geometry(self, drawable) -> Cookie:
+        """GetGeometry: the reply has x, y (in the parent), width, height at 12, 14, 16, 18."""
+        return self.request(14, 0, struct.pack("<I", drawable), reply=True)  # type: ignore[return-value]
+
     def translate_coordinates(self, src, dst, x=0, y=0) -> Cookie:
         return self.request(40, 0, struct.pack("<IIhh", src, dst, x, y), reply=True)  # type: ignore[return-value]
 

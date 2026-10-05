@@ -9,6 +9,7 @@ requests and notices, the window's full resends, the bytes, its moves. Driven ov
     -> {"released": ...}         (again: the report is of the last command)
     <- split DX DY [GAP [resize]] the same geometry asked as move() and then resize(): in one turn, or GAP ms apart;
                                  resize: the resize first
+    <- set X Y W H               one setGeometry
     <- drag N STEP               N moves of STEP px to the right, 15 ms apart
     <- report                    -> {"sizes": ..., ...} and the application quits
 """
@@ -126,6 +127,15 @@ def main() -> int:
             b()
             done()
 
+    def setg(x, y, width, height):
+        """One setGeometry, as the title bar's edge resize ends."""
+        before.update(counters())
+        del sizes[:], fresh[:], shots[:], moves[:]
+        shots.append(w.grab().toImage())
+        t_go[0] = time.perf_counter()
+        w.setGeometry(x, y, width, height)
+        say(released=rect(w.geometry()), t_ms=round((time.perf_counter() - t_go[0]) * 1e3, 1))
+
     def drag(n, step):
         """n moves of step px to the right, 15 ms apart, as the title bar moves the window while dragged."""
         before.update(counters())
@@ -163,6 +173,8 @@ def main() -> int:
         elif parts and parts[0] == "split":
             split(int(parts[1]), int(parts[2]), int(parts[3]) if len(parts) > 3 else 0,
                   parts[4] if len(parts) > 4 else "move")
+        elif parts and parts[0] == "set":
+            setg(*(int(v) for v in parts[1:5]))
         elif parts and parts[0] == "report":
             report()
     cmds.got.connect(on_command, Qt.ConnectionType.QueuedConnection)

@@ -131,3 +131,47 @@ def test_a_move_and_a_resize_asked_apart_end_where_asked_through_a_slow_link(cub
     finally:
         app.close()
     assert dict(seen, qt=qt) == dict(want, qt=want["resize"]), (seen, want, qt)
+
+
+@pytest.fixture
+def validating_wm():
+    """The same manager, cutting each frame to the screen as quartz-wm does (--validate)."""
+    p = subprocess.Popen([sys.executable, os.path.join(HERE, "fake_quartzwm_frames.py"), "--validate"],
+                         stdout=subprocess.PIPE, env=dict(os.environ, DISPLAY=XDISP), text=True)
+    line = p.stdout.readline().strip()
+    if line != "ready":
+        p.wait(5)
+        pytest.skip(f"the quartz-like manager did not start: {line!r} (exit {p.poll()})")
+    yield p
+    p.terminate()
+    p.wait(5)
+
+
+def test_a_size_over_the_screen_ends_as_the_manager_keeps_it(cube, validating_wm):
+    """quartz-wm keeps a frame within the X screen (x-window.m validate_window_size). A window as tall as the screen
+    asked to grow is cut back to the size it has: the frame does not change, and quartz-wm's only answer is a notice
+    of its record, a geometry the bridge asked before, which it took for an echo. Qt kept the size refused, 70 px
+    taller than the window on X, its bottom never shown. Qt now ends with what X has."""
+    import time
+
+    from Xlib import display
+
+    d = display.Display(XDISP)
+    H = d.screen().height_in_pixels
+    d.close()
+    app = ResizeApp(cube)
+    try:
+        hello = app.read()
+        assert hello.get("ready"), hello
+        app.say(f"set 100 0 1200 {H}")
+        fits = app.read()["released"]
+        time.sleep(1.5)
+        app.say(f"set 100 0 1200 {H + 70}")
+        app.read()
+        time.sleep(2.5)                                 # the manager's notice, then the bridge's check after 1 s
+        x = on_x(hello["xid"])
+        app.say("report")
+        qt = app.read()["final"]
+    finally:
+        app.close()
+    assert dict(qt=qt, x=x) == dict(qt=fits, x=fits)

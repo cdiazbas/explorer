@@ -55,6 +55,8 @@ CURSORS = {Qt.CursorShape.ArrowCursor: 68, Qt.CursorShape.UpArrowCursor: 22, Qt.
            Qt.CursorShape.WhatsThisCursor: 92, Qt.CursorShape.BusyCursor: 150, Qt.CursorShape.OpenHandCursor: 58,
            Qt.CursorShape.ClosedHandCursor: 52, Qt.CursorShape.BitmapCursor: 86}
 WIDGET_SIZE_MAX = (1 << 24) - 1
+CHECK_MS = 1000                                         # a request still unanswered this long after a notice taken
+#                                                         for an echo: its geometry is asked of X
 
 
 def who(w: QtWidgets.QWidget) -> str:
@@ -350,6 +352,7 @@ class Windows:
         if rec.cfg_seq is not None and 0 < ((rec.cfg_seq - e.seq) & 0xFFFF) < 0x8000:
             self.stats["echoes"] += 1
             say("an echo, older than the last request")
+            self._check_later(rec, apply)
             return                                      # generated before our last request reached the server
         got = (e.x, e.y, e.width, e.height)
         if e.sent and rec.asked and got == rec.asked[-1]:
@@ -358,6 +361,7 @@ class Windows:
         elif e.sent and got in rec.asked:
             self.stats["echoes"] += 1                   # the notice of an older request: X moved on since
             say("an echo, asked before the last")
+            self._check_later(rec, apply)
         elif e.sent or rec.popup or not rec.reparented:
             say("applied")
             apply(rec, e.x, e.y, e.width, e.height)
@@ -382,6 +386,35 @@ class Windows:
                     tr.write("WHERE", rec.xid, f"({x}, {y}): applied")
                 apply(rec, x, y, w, h, True)
             self.c.translate_coordinates(rec.xid, self.scr.root).then(where)
+
+    def _check_later(self, rec: XWin, apply) -> None:
+        """An echo leaves the last request to its own notice, which a manager does not send when it refuses the
+        request: quartz-wm answers a frame it keeps as it is (a size over the screen's, cut back to the size of before)
+        with its record only, a geometry asked before. Taken for an echo, Qt kept the size refused, larger than the
+        window on X. If no notice is taken CHECK_MS after, X is asked where the window is and Qt takes that."""
+        seq = rec.cfg_seq
+        QtCore.QTimer.singleShot(CHECK_MS, lambda: self._ask_where(rec, seq, apply))
+
+    def _ask_where(self, rec: XWin, seq: int | None, apply) -> None:
+        if self.by_xid.get(rec.xid) is not rec or rec.cfg_seq != seq or rec.xg is not None:
+            return                                      # gone, asked again since, or a notice was taken
+        size: list = []
+
+        def got_size(r, err):
+            if err is None:
+                size.extend(struct.unpack_from("<HH", r, 16))
+
+        def got_place(r, err):
+            if err is not None or not size or rec.cfg_seq != seq or rec.xg is not None:
+                return
+            x, y = struct.unpack_from("<hh", r, 12)
+            if self.trace is not None:
+                self.trace.write("CHECK", rec.xid, f"no notice taken {CHECK_MS} ms after the last request: X has "
+                                                   f"{rect(x, y, *size)}, applied")
+            apply(rec, x, y, size[0], size[1], True)
+        self.c.get_geometry(rec.xid).then(got_size)
+        self.c.translate_coordinates(rec.xid, self.scr.root).then(got_place)
+        self.c.flush()
 
     # ---- state
     def minimize(self, rec: XWin) -> None:

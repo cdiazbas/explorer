@@ -5,9 +5,22 @@ A trace through XQuartz (2026-10-05): an edge resize to 1748x1013 was asked as a
 answered the move with its record of the frame, the old place and size (3696, 168, 1452, 848); the bridge took it,
 and resizing Qt before moving it asked X for the old size again; the window went 1748, 1452, 1748 wide, sent whole
 three times in 104 ms."""
+import struct
+import time
 from types import SimpleNamespace
 
 import pytest
+
+
+class Answer:
+    """A reply that has come: then() calls back at once, as a Cookie whose reply is in."""
+
+    def __init__(self, reply: bytes):
+        self.reply = reply
+
+    def then(self, fn):
+        fn(self.reply, None)
+        return self
 
 
 class FakeX:
@@ -15,11 +28,21 @@ class FakeX:
         self.screen = SimpleNamespace(root=1)
         self.seq = 100
         self.asked: list[dict] = []
+        self.queries: list[str] = []
+        self.has = (100, 200, 640, 480)                 # where X has the window, for GetGeometry and Translate
 
     def configure_window(self, xid, **kw):
         self.seq += 1
         self.asked.append(kw)
         return self.seq
+
+    def get_geometry(self, xid):
+        self.queries.append("geometry")
+        return Answer(struct.pack("<12xhhHH12x", 0, 0, *self.has[2:]))
+
+    def translate_coordinates(self, src, dst, x=0, y=0):
+        self.queries.append("translate")
+        return Answer(struct.pack("<12xhh16x", *self.has[:2]))
 
     def flush(self):
         pass
@@ -127,3 +150,36 @@ def test_the_managers_old_record_after_a_resize_is_an_echo(setup):
     s.ws.configured(s.rec, notice(s.c.seq, 100, 200, 640, 480), s.apply)
     seen = dict(applied=s.applied, echoes=s.ws.stats["echoes"] - echoes, asked=len(s.c.asked))
     assert seen == dict(applied=[], echoes=1, asked=1), seen
+
+
+def test_a_size_the_manager_refuses_is_taken_from_x_when_no_notice_follows(qapp, setup, monkeypatch):
+    """quartz-wm cuts a size over the screen's to the size of before and, the frame unchanged, answers with its
+    record alone: a geometry asked before the last, an echo. No notice of the last request follows, so after
+    CHECK_MS X is asked where the window is, and Qt takes it."""
+    from explorer.platform.xbridge import windows as wmod
+
+    monkeypatch.setattr(wmod, "CHECK_MS", 20)
+    s = setup
+    s.rec.xg = s.w.geometry()
+    s.w.resize(640, 1150)                               # over the screen: the manager keeps 640x480
+    s.ws.configured(s.rec, notice(s.c.seq, 100, 200, 640, 480), s.apply)
+    assert s.applied == []                              # an echo, as it should be taken at first
+    end = time.perf_counter() + 2.0
+    while not s.applied and time.perf_counter() < end:
+        qapp.processEvents()
+        time.sleep(0.005)
+    assert dict(applied=s.applied, queries=s.c.queries) == dict(applied=[(s.rec, 100, 200, 640, 480)],
+                                                               queries=["geometry", "translate"])
+
+
+def test_x_is_not_asked_when_a_notice_was_taken_or_another_request_went(setup):
+    s = setup
+    s.rec.xg = s.w.geometry()
+    s.w.resize(700, 500)
+    seq = s.rec.cfg_seq
+    s.rec.xg = s.w.geometry()                           # the notice of the request, taken
+    s.ws._ask_where(s.rec, seq, s.apply)
+    s.rec.xg = None
+    s.w.resize(720, 520)                                # another request since the echo
+    s.ws._ask_where(s.rec, seq, s.apply)
+    assert dict(applied=s.applied, queries=s.c.queries) == dict(applied=[], queries=[])
