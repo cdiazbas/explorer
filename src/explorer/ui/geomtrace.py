@@ -2,7 +2,10 @@
 watched again (through ssh -Y on someone's Mac). On 2026-10-02 such a trace found in minutes why lambda-t crept down
 through XQuartz: each move came from the bridge applying the manager's notices, none from explorer's own code.
 
-    EXPLORER_GEOMETRY_TRACE=1 explorer cube_im.fits   ->  ~/.cache/explorer/logs/geometry-<pid>.log
+    explorer --log cube_im.fits   ->  ~/.cache/explorer/logs/geometry-<pid>.log   (or EXPLORER_GEOMETRY_TRACE=1)
+
+Asked for, not on by default: on every start it cost 3 % per cursor move offscreen and 7 % through the bridge
+(bellatrix, ABBA). The newest sessions are kept (_paths.KEEP_LOGS).
 
 One line per event, milliseconds since the trace began:
 
@@ -34,7 +37,7 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import ENV_PREFIX
-from .._paths import cache_dir
+from .._paths import trace_log
 from .shell import Shell
 
 ENV = f"{ENV_PREFIX}GEOMETRY_TRACE"            # not EXPLORER_TRACE: that is the spans' Perfetto file
@@ -45,16 +48,14 @@ E = QtCore.QEvent.Type
 
 
 def wanted(env=None) -> bool:
-    """EXPLORER_GEOMETRY_TRACE set, and not to 0."""
+    """EXPLORER_GEOMETRY_TRACE set, and not to 0 (explorer --log sets it)."""
     return (env if env is not None else os.environ).get(ENV, "").strip() not in ("", "0")
 
 
 def install_from_env(env=None) -> "Tracer | None":
     if not wanted(env):
         return None
-    d = cache_dir() / "logs"
-    d.mkdir(parents=True, exist_ok=True)
-    t = Tracer(d / f"geometry-{os.getpid()}.log")
+    t = Tracer(trace_log("geometry"))
     print(f"[geometry] tracing moves and resizes to {t.path}", file=sys.stderr)
     return t
 

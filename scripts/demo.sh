@@ -11,9 +11,8 @@
 # The test cube is chosen by storage, not by OS: CRISP 6173 Stokes when the project's data/ link
 # resolves (bellatrix, a Mac on StorNext); otherwise the synthetic cube, written once to ~/.cache/explorer/demo/
 # (a Mac on its local disk: no big cubes there).
-# The demo keeps a geometry trace (every move and resize of the window and its panels, the monitors seen, who asked:
-# ui/geomtrace.py), named when the window closes; EXPLORER_GEOMETRY_TRACE=0 scripts/demo.sh ... goes without it.
-export EXPLORER_GEOMETRY_TRACE="${EXPLORER_GEOMETRY_TRACE:-1}"
+# scripts/demo.sh --log keeps the traces of the session (ui/geomtrace.py; through the bridge, platform/xbridge/trace.py),
+# named when the window closes, as `explorer --log` does.
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(dirname "$here")"
 cube="$root/../data/stokes_6173_im.fits"

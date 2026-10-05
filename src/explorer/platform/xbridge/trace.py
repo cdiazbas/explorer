@@ -3,7 +3,11 @@ E5.25). The geometry trace (ui/geomtrace.py) sees Qt's side of the windows; this
 made, mapped, shaped and moved, the pixels sent and copied, the server's notices and errors, and what the server
 holds in each window, read back.
 
-    EXPLORER_BRIDGE_TRACE=1 explorer cube_im.fits  ->  ~/.cache/explorer/logs/bridge-<pid>.log  and  bridge-<pid>/
+    explorer --log cube_im.fits  ->  ~/.cache/explorer/logs/bridge-<pid>.log   (or EXPLORER_BRIDGE_TRACE=1)
+
+Asked for, not on by default; the newest sessions are kept (_paths.KEEP_LOGS). The probes read each window back from
+the server, its whole image over the link, so they run only when they are asked for too: EXPLORER_BRIDGE_PROBE=2,6
+(seconds after a window shows), images in bridge-<pid>/.
 
 One line per step, milliseconds since the trace began, the window by name (main, a panel's name, else its title) and
 X id:
@@ -42,7 +46,7 @@ import time
 from pathlib import Path
 
 from ..._name import ENV_PREFIX
-from ..._paths import cache_dir
+from ..._paths import trace_log
 
 ENV = f"{ENV_PREFIX}BRIDGE_TRACE"
 PROBE_ENV = f"{ENV_PREFIX}BRIDGE_PROBE"
@@ -53,14 +57,16 @@ REQUESTS = {1: "CreateWindow", 2: "ChangeWindowAttributes", 4: "DestroyWindow", 
 
 
 def wanted(env=None) -> bool:
-    """EXPLORER_BRIDGE_TRACE set, and not to 0."""
+    """EXPLORER_BRIDGE_TRACE set, and not to 0 (explorer --log sets it)."""
     return (env if env is not None else os.environ).get(ENV, "").strip() not in ("", "0")
 
 
 def probe_times(env=None) -> tuple[float, ...]:
+    """When the probes read the windows back: EXPLORER_BRIDGE_PROBE's seconds, none without it (each probe brings a
+    whole window over the link); a value it cannot read gives PROBE_S."""
     raw = (env if env is not None else os.environ).get(PROBE_ENV, "").strip()
     if not raw:
-        return PROBE_S
+        return ()
     try:
         return tuple(float(v) for v in raw.split(",") if v.strip())
     except ValueError:
@@ -70,9 +76,7 @@ def probe_times(env=None) -> tuple[float, ...]:
 def from_env(env=None) -> "Trace | None":
     if not wanted(env):
         return None
-    d = cache_dir() / "logs"
-    d.mkdir(parents=True, exist_ok=True)
-    t = Trace(d / f"bridge-{os.getpid()}.log", probe_times(env))
+    t = Trace(trace_log("bridge"), probe_times(env))
     print(f"[xbridge] tracing what the bridge sends to {t.path}", file=sys.stderr)
     return t
 

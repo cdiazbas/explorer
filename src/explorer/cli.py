@@ -90,4 +90,4 @@ def main(argv: list[str] | None = None) -> int:
     from .ui.app import run
 
     return run(a.cube, sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11, theme=a.theme,
-               look=a.look, reset_layout=a.reset_layout, quit_after=a.quit_after)
+               look=a.look, reset_layout=a.reset_layout, traces=a.log, quit_after=a.quit_after)

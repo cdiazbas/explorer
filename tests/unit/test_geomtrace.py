@@ -35,7 +35,9 @@ def wrapped(QtWidgets, geomtrace) -> list[str]:
             if hasattr(c, n) and inspect.isfunction(getattr(c, n))]
 
 
-def test_off_unless_asked_and_then_nothing_is_wrapped(qapp):
+def test_off_unless_asked_and_then_nothing_is_wrapped(qapp, monkeypatch, tmp_path):
+    """Asked for (the variable, or explorer --log), never on by default: on every start it cost 3 % per cursor move
+    offscreen and 7 % through the bridge."""
     from PySide6 import QtWidgets
 
     from explorer.ui import geomtrace
@@ -45,6 +47,13 @@ def test_off_unless_asked_and_then_nothing_is_wrapped(qapp):
     assert not geomtrace.wanted({}) and not geomtrace.wanted({geomtrace.ENV: "0"})
     assert not geomtrace.wanted({"EXPLORER_TRACE": "t.json"})
     assert geomtrace.install_from_env({}) is None
+    assert not wrapped(QtWidgets, geomtrace), wrapped(QtWidgets, geomtrace)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    t = geomtrace.install_from_env({geomtrace.ENV: "1"})
+    try:
+        assert t is not None and t.path.parent == tmp_path / "explorer" / "logs"
+    finally:
+        t.stop()
     assert not wrapped(QtWidgets, geomtrace), wrapped(QtWidgets, geomtrace)
 
 
@@ -89,13 +98,19 @@ def test_on_it_says_who_moved_what(qapp, cube, tmp_path):
     assert "set_look" not in vars(Shell) or Shell.set_look.__qualname__ == "Shell.set_look", Shell.set_look
 
 
-def test_a_start_with_the_variable_writes_the_trace(cube, tmp_path):
-    env = dict(os.environ, EXPLORER_GEOMETRY_TRACE="1", XDG_CACHE_HOME=str(tmp_path / "cache"),
-               EXPLORER_LAYOUT=str(tmp_path / "layout.ini"), QT_QPA_PLATFORM="offscreen", EXPLORER_TERMINAL_KEYS="0")
+@pytest.mark.parametrize("how", ["--log", "variable"])
+def test_a_start_asked_for_it_writes_the_trace(cube, tmp_path, how):
+    """explorer --log cube.fits (or the variable): the trace a problem is sent with."""
+    env = dict(os.environ, XDG_CACHE_HOME=str(tmp_path / "cache"), EXPLORER_LAYOUT=str(tmp_path / "layout.ini"),
+               QT_QPA_PLATFORM="offscreen", EXPLORER_TERMINAL_KEYS="0")
+    env.pop("EXPLORER_GEOMETRY_TRACE", None)
+    if how == "variable":
+        env["EXPLORER_GEOMETRY_TRACE"] = "1"
     env.pop("DISPLAY", None)
     env.pop("EXPLORER_TRACE", None)
-    p = subprocess.run([sys.executable, "-m", "explorer", str(cube), "--look", "glass", "--quit-after", "0.5"],
-                       capture_output=True, text=True, env=env, timeout=120, cwd=tmp_path)
+    args = [sys.executable, "-m", "explorer", str(cube), "--look", "glass", "--quit-after", "0.5"]
+    p = subprocess.run(args + (["--log"] if how == "--log" else []), capture_output=True, text=True, env=env,
+                       timeout=120, cwd=tmp_path)
     logs = list((tmp_path / "cache").rglob("geometry-*.log"))
     assert p.returncode == 0 and len(logs) == 1, dict(exit=p.returncode, logs=logs, stderr=p.stderr[-3000:])
     text = logs[0].read_text()

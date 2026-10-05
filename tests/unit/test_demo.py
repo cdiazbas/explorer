@@ -61,3 +61,4 @@ def test_the_demo_takes_a_look_and_a_theme(headless, monkeypatch):
     assert demo.main([str(cube), "--look", "glass", "--theme", "light"]) == 0
     assert seen["look"] == "glass" and seen["theme"] == "light"
     assert demo.main([str(cube)]) == 0 and seen["look"] is None and seen["theme"] is None     # as `explorer`
+    assert seen["traces"] is False and demo.main([str(cube), "--log"]) == 0 and seen["traces"] is True

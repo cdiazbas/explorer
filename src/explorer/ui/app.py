@@ -56,7 +56,7 @@ def app_icon(app) -> None:
 
 
 def window_options(ap) -> None:
-    """--theme, --look and --reset-layout on an argparse parser: the window's options, for `explorer` and
+    """--theme, --look, --reset-layout and --log on an argparse parser: the window's options, for `explorer` and
     `explorer demo` alike (run() takes them by these names)."""
     ap.add_argument("--theme", choices=("auto", "dark", "light", "native"), default=None,
                     help="dark or light everywhere; native: the system's (macOS); auto: native on a Mac, else dark. "
@@ -70,6 +70,10 @@ def window_options(ap) -> None:
                          "without --look, the one worn at the last close")
     ap.add_argument("--reset-layout", action="store_true",
                     help="start with the first window's size and panels (the saved layout of this display is dropped)")
+    ap.add_argument("--log", action="store_true",
+                    help="keep traces of this session, to send with a problem: every move and resize of the window "
+                         "and its panels and, through the X11 bridge, what goes to the X server and its errors "
+                         "(~/.cache/explorer/logs, named at the close; the newest 30 of each kind kept)")
 
 
 class Started:
@@ -89,15 +93,22 @@ class Started:
         self.disp.close()
 
 
-def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False,
+TRACES = ("EXPLORER_GEOMETRY_TRACE", "EXPLORER_BRIDGE_TRACE")      # what --log turns on (ui.geomtrace, xbridge.trace)
+
+
+def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False, traces=False,
           saved_layout=True) -> Started | None:
     """Everything `explorer cube` does before its event loop: the display plan, the themed application, the cube,
     the Shell with its title bar, its saved layout, the display's attachment, the terminal's keys and the link probe.
     The self-test (bench/explorer_selftest.py) goes through it too, so it measures the window as it is shown (as the
     prototype's app/startup.py, audit F4). saved_layout False: the user's saved layout is neither read, nor written
     at the close, nor dropped. theme None: the one in use at the last close on this way of displaying, else auto.
+    traces: the session's traces (TRACES: the geometry's and, through the bridge, the bridge's), as --log asks.
     None (and why, on stderr) when there is no display or the cube cannot be read."""
     t0 = time.perf_counter()
+    if traces:                                          # before the bridge and the window, which read them once
+        for name in TRACES:
+            os.environ[name] = "1"
     before = process_age()                              # Python's start and the imports up to here
     phases: dict[str, float] = {}
     from ..platform.display import NoDisplay, for_plan
@@ -172,11 +183,12 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         raise
 
 
-def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False,
+def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False, traces=False,
         quit_after: float | None = None) -> int:
     """Open path and run the event loop until the window closes; returns the exit code. quit_after: seconds after the
     first image, then quit (measurements, as the prototype's --quit-after)."""
-    s = start(path, sp=sp, no_sp=no_sp, axes=axes, x11=x11, theme=theme, look=look, reset_layout=reset_layout)
+    s = start(path, sp=sp, no_sp=no_sp, axes=axes, x11=x11, theme=theme, look=look, reset_layout=reset_layout,
+              traces=traces)
     if s is None:
         return 1
     try:

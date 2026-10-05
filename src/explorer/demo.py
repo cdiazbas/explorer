@@ -133,7 +133,7 @@ def main(argv=None) -> int:
         from .ui.app import run  # (numba, Qt in its own process) cost 4.1 s over ssh -Y
 
         rc = run(cube, sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11, theme=a.theme, look=a.look,
-                 reset_layout=a.reset_layout)
+                 reset_layout=a.reset_layout, traces=a.log)
         if rc or a.doctor:                              # the window could not open: say why
             rc = doctor.main([cube]) or rc
         return rc
