@@ -3,9 +3,10 @@
 # The Intel Mac is the third (roadmap X.10).
 name: ci
 
+# Paused: by hand only (Actions, "Run workflow"), the account has no CI minutes left. To run it on every push again,
+# put back `push:` and `pull_request:` under `on:` (roadmap X.9). Meanwhile scripts/check.sh runs the same checks
+# locally, and the git hooks (scripts/install_hooks.sh) keep the hygiene on every commit.
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 jobs:
