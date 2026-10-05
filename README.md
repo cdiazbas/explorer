@@ -34,6 +34,11 @@ explorer doctor                  # if something does not work: the environment, 
 
 `explorer --help` lists the options (theme, look, layout). Inside the window, `?` shows the keys.
 
+**Reporting a problem:** run it again with `--log` (`explorer --log cube_im.fits`, or `explorer demo --log`). The
+session then keeps traces of the window (every move and resize) and, over ssh, of what goes to the X server. When the
+window closes, the terminal names the files (in `~/.cache/explorer/logs/`): send them with what you saw. Without
+`--log` explorer still writes its general log there (`explorer.log`), which records any key that failed.
+
 ### Notes
 
 - **Shared storage:** one checkout can serve Linux and Macs at once (e.g. on a shared disk). Run `setup_env.sh`

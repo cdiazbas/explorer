@@ -3349,3 +3349,43 @@ bloques. 8000 bloques del 6173 son 333.3 MB; el proceso creció 331 MiB.
 
 **Pruebas:** 4 nuevas o cambiadas, que fallan antes. `tests/unit` y `tests/golden` en la copia del agente: 633
 pasan; falla la de `test_doctor`, por la copia sin entorno.
+
+### 2026-10-05 (5): las trazas con `--log`, y una tecla que falla lo dice
+
+**El caso:** la ventana se volvió negra en una máquina a la que no se puede volver: un Mac, ssh a un Linux y de ahí
+a un Mac, con XQuartz en una pantalla grande. Sin traza no hay forma de saber si fue el enlace o el servidor. Hasta
+ahora solo `scripts/demo.sh` activaba la traza de geometría; `explorer algo.fits` arrancaba sin ella.
+
+**Primer intento, medido y descartado: las dos trazas activas por defecto.** ABBA del autotest en bellatrix (nodo 0,
+cerrojo, cubo sintético de 20×4×15×256×256, 4 rondas, carga 0.4-1.4):
+
+| | trazas apagadas | trazas activas |
+|---|---|---|
+| mover el cursor, offscreen | 15.7-16.2 ms | 16.3-16.6 ms (+3 %, sin solapar) |
+| mover el cursor, puente (rondas 2-4) | 19.9-21.1 ms | 22.1-22.4 ms (+7 %, sin solapar) |
+| primera imagen, puente (rondas 2-4) | 1600-1620 ms | 1680-1860 ms |
+| paso en t | 19.1-20.1 y 23.9-24.5 ms | 20.0-20.7 y 24.8-25.2 ms |
+
+Un coste pequeño pero real en todas las sesiones, para servir a unas pocas. La causa no está medida: la hipótesis es
+la línea por cada movimiento del puntero y la instalación de las trazas al arrancar.
+
+**Lo que queda, a propuesta del usuario:**
+- **`--log`** (en `explorer` y en `explorer demo`) activa las dos trazas: la de geometría y, por el puente, la del
+  puente. Sin `--log`, ninguna, también en el demo, para que los dos caminos sean iguales. Las variables
+  (`EXPLORER_GEOMETRY_TRACE=1`, `EXPLORER_BRIDGE_TRACE=1`) siguen sirviendo.
+- **Las sondas del puente,** que leen cada ventana de vuelta (la imagen entera por el enlace), solo con
+  `EXPLORER_BRIDGE_PROBE`.
+- **Se guardan las 30 sesiones más recientes** de cada traza; las más viejas se borran solas.
+- **El README** dice cómo informar de un problema.
+
+**Una tecla que falla lo dice.** Qt solo imprime en la terminal lo que lanza la acción de un atajo, así que una
+tecla que fallaba parecía no hacer nada. Es el caso de M en el cubo [nt, ny, nx] de ALMA de un compañero, que no se
+reproduce aquí: en offscreen y en una ventana real del Mac, con o sin cabecera, M pasa por los tres aspectos. Ahora
+todas las teclas (los atajos y las de la terminal, por `ActionRegistry.binds`) pasan por una guarda: el error con su
+traza en `explorer.log` y una línea en la barra de estado.
+
+**Pruebas:**
+- `test_actions`: una acción que falla, por su atajo y por `binds()`. Falla antes.
+- `test_geomtrace` y `test_xbridge_trace`: solo cuando se piden, con `--log` de punta a punta, las sondas aparte y
+  la rotación. Fallan antes.
+- `test_demo` comprueba que `--log` llega hasta `run`.
