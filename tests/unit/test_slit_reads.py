@@ -88,15 +88,26 @@ def test_removing_the_slit_empties_the_panel(drv):
     assert drv.shown.slit_pix is None and drv.shown.slit_ts is None and drv.shown.slit_sl is None
 
 
-def test_nothing_is_read_while_the_panel_is_behind_then_it_fills(drv, cube):
+def test_behind_the_panel_only_a_finished_slits_blocks_are_read_then_it_fills(drv, cube):
+    """A slit being drawn is not read while the panel is behind; a finished one, with the per-pixel file, has its
+    blocks read at once (its tab comes in front with it), and its slices are made only once the panel is in front."""
+    drv.draw_slit(B)
+    drv.wait_idle()
+    assert drv.shown.slit_pix is not None and drv.scheduler.slit.reads == []
+    drv.draw_slit(None)
     drv.set_slit(A)
     drv.wait_idle()
     assert drv.shown.slit_pix is not None                # its pixels are known: the markers can follow
-    assert drv.shown.counts.get("slit", 0) == 0 and drv.scheduler.slit.reads == []
+    assert drv.shown.counts.get("slit", 0) == 0
+    per_pixel = drv.session.main.pixel is not None
+    iy, ix = pixels(A)
+    assert [r["pixels"] for r in drv.scheduler.slit.reads] == (
+        [len(set(zip(iy.tolist(), ix.tolist(), strict=True)))] if per_pixel else [])
     drv.show("slit")
     drv.wait_idle()
     st = drv.state()
     np.testing.assert_array_equal(drv.shown.slit_ts, want(cube[1], A, st.t, st.s, st.l)[0])
+    assert len(drv.scheduler.slit.reads) == (1 if per_pixel else 2)     # nothing read again for the blocks
 
 
 def test_nothing_is_read_on_the_ui_thread(drv, monkeypatch):

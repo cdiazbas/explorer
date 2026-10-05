@@ -29,9 +29,14 @@ Threads: the blocks are read on the slab pool; the slices and their levels are m
 came before it started, and a result is shown unless a newer one already is. A result made for another slit is
 dropped, except one for an earlier stage of the slit being drawn while it is still drawn: the pointer gives a new
 slit every pixel, and each result came after the next one (6173 on bellatrix, 60 moves 16 ms apart: 31 of 50 shown,
-the prototype's synchronous paint 75), the panels frozen as the cursor's were before ShownGate. The UI thread
+the prototype's synchronous paint 75), the panels frozen as the cursor's were before ShownGate. While it is drawn,
+one request per notice of the Store, that is per pass of the event loop: the moves that come within one pass give
+the latest pixel's, as no paint comes between them (6173 on bellatrix, offscreen, 60 moves 16 ms apart: passes of
+35-41 ms, 24 notices; the prototype handles each move inside it and gave the time slice 72-81 images, of which
+24-28 were painted, explorer 37-46, bench/slit_read.py). The UI thread
 computes the path's pixels (a few hundred points) and draws. Nothing is read while the panel's tab is behind
-("slit" not in ViewState.panels).
+("slit" not in ViewState.panels), except the blocks of a slit just finished: its tab comes in front with it (the
+shell's _slit_shown, as the prototype's _slit_changed, 1745), a notice later, and the read no longer waits for it.
 """
 import time
 from collections import OrderedDict
@@ -93,7 +98,12 @@ class SlitReads:
         came, self._front = front and not self._front, front
         if changed & {"path", "draft"} and self._set_path(st):
             self._rest += 1                             # a rest timer for an older slit does nothing
-            if self.pix is None or not front:
+            if self.pix is None:
+                return
+            if not front:
+                if self.per_pixel and not self._drawing(st):
+                    self._want = self.pix               # its tab comes in front with it: the read starts a pass early
+                    self._kick()
                 return
             if not self.per_pixel and self._drawing(st):
                 token = self._rest
