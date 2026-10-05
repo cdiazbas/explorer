@@ -3417,3 +3417,72 @@ duró el negro y si el servidor rechazó algo; ahora se activa con `explorer --l
 
 **Siguiente paso:** reproducirlo en Xvfb con el gestor tipo quartz-wm y un enlace lento emulado, medir el tiempo en
 negro y los reenvíos, y que un cambio de tamaño dé un solo cambio y un solo reenvío (E6.15).
+
+### 2026-10-05 (7): por qué el tamaño iba y venía, y el arreglo (ROADMAP E6.15)
+
+Mats redimensionó cuatro veces la ventana principal por su borde, por el puente y XQuartz (tres monitores en una
+pantalla X de 5568×1084). Las dos trazas de la sesión (geometría y puente, pid 477441) dicen lo mismo en las cuatro:
+el tamaño va y viene 2-4 veces en 30-160 ms entre el nuevo y el viejo, y cada tamaño se envía entero (a 1748×1013,
+tres `SEND ... new back` en 104 ms, 5.7 MB). Además la ventana se queda en su sitio viejo: pedida en y = 3, 12, 75 y
+18, acaba en y = 168, 50, 50 y 8.
+
+**El mecanismo**, leído en el código de quartz-wm (`x-input.m`, `x-window.m`) y visto en la traza del puente:
+1. Qt hace `setGeometry` como un `move` y luego un `resize`, y el puente pedía a X cada uno aparte.
+2. quartz-wm responde al `move` con su registro del marco, que solo cambia cuando X confirma el marco: un aviso
+   sintético con el sitio y el tamaño viejos. El `resize` lo arma con ese mismo registro: el marco nuevo va al sitio
+   viejo. Por eso el sitio se perdía.
+3. El puente aplicaba ese aviso a Qt con `resize` y luego `move`. Entre los dos, Qt tenía el tamaño viejo en el sitio
+   nuevo, distinto de lo que X había dicho, y eso salía como petición nueva: en la traza, `CONF width=1452
+   height=848` 0.3 ms después del aviso. X volvía al tamaño viejo y después al nuevo.
+4. Lo que el puente creía haber pedido quedaba con el tamaño equivocado, y en los arrastres siguientes los avisos del
+   gestor ya no se reconocían como ecos: 69 aplicados en un arrastre, la ventana tirada atrás.
+
+**Reproducido en Xvfb** (bellatrix) con un gestor nuevo, `tests/xvfb/fake_quartzwm_frames.py`, que lleva el
+registro del marco como quartz-wm, y `tests/xvfb/resize_app.py`, que redimensiona por la esquina de la barra de
+título (pulsar, mover, soltar en el `EdgeResizer`). Dos redimensionados seguidos; se mide el segundo. Antes:
+- Qt pasa por 1630×1133 y vuelve a 1480×1033;
+- 4 peticiones, y el redimensionado se deshace (sitio y tamaño viejos), en 3 de 3 repeticiones;
+- la misma `CONF width=1480 height=1033` justo después del aviso viejo que en la traza de Mats.
+
+En Xvfb el final es el tamaño viejo y en XQuartz el nuevo: el orden en que el gestor atiende las peticiones cambia;
+el mecanismo es el mismo.
+
+**Arreglo** (`windows.py`, `bridge.py`):
+- una geometría de Qt es una sola petición con lo que difiere de lo que X dijo (o de lo último pedido);
+- mientras Qt toma la geometría de X, sus `Move` y `Resize` no piden nada; lo que Qt no acepte (su tamaño mínimo) se
+  pide una vez, después.
+
+Después, en 3 de 3: un cambio de tamaño, una petición, una ventana entera enviada (2.24 MB), en el sitio pedido.
+Con `glass_switch_app` y `glass_zoom_app` bajo ese gestor, mismo resultado y menos peticiones (2 → 1, 6 → 3).
+
+**El negro.** En Xvfb, con el arreglo, la parte nueva de la ventana se ve negra desde que X cambia de tamaño hasta que
+llegan los píxeles: 123-136 ms sin enlace, 246-257 ms con `bench/xlink.py` a 8 ms y 20 MB/s, 590-609 ms a 25 ms y
+5 MB/s (3 repeticiones cada uno; el 27 % de la ventana). Es el puente esperando píxeles, no X perdiéndolos. En la
+sesión de Mats, en cambio, la traza dice que el puente lo había enviado todo y no hubo XERR; si vio negro después,
+puede ser el dibujo de XQuartz (cf. #499). Sin las sondas (`EXPLORER_BRIDGE_PROBE`) no se puede saber.
+
+**Medido y descartado:**
+- Una regla de eco por tamaño (un aviso con un tamaño pedido antes del último, antes de que llegue el último), con
+  una comprobación a X 1 s después: con el arreglo no se disparó ni una vez en redimensionado, `move` + `resize`
+  aparte, arrastre, cambio a glass ni zoom. No entra.
+- Basar la geometría pedida en la última de X en vez de en la última pedida: sin diferencia medible (0 retrocesos en
+  un arrastre tras un redimensionado del gestor, con y sin el cambio). No entra.
+- Conservar el contenido del pixmap viejo en la parte común: solo el 17-20 % de los cuadros de 32×32 de la ventana
+  nueva son iguales (la imagen se reescala). No compensa.
+
+**Sin probar en XQuartz real.** Mats: `git pull`, luego `explorer --log cubo.fits` por `ssh -Y`, redimensionar por el
+borde, y mandar las dos trazas que se nombran al cerrar (`geometry-<pid>.log` y `bridge-<pid>.log`).
+
+**Pruebas:** `tests/xvfb/test_bridge_resize.py` falla antes (2 cambios de tamaño, 4 peticiones, geometría final
+vieja) y pasa después; `tests/unit/test_xbridge_resize.py` (5). En bellatrix, con todo integrado: `tests/unit` y
+`tests/golden` 666 pasan, `tests/xvfb` 29 pasan y 2 se omiten.
+
+**Probado también en el Mac del usuario,** sin ssh, contra su XQuartz con tres pantallas (dos 4K a 1920×1080 y la
+del portátil, que XQuartz ve como 1147×719 y debajo de las otras). Normal, grande (1748×1050) y vuelta, en la de la
+derecha y en la del portátil, con las sondas del puente:
+- X tuvo la imagen correcta en los seis casos (0 px distintos donde se ve).
+- Un reenvío por cambio de tamaño y ningún error.
+- El usuario, mirando la pantalla, no vio negro en ninguno.
+
+Lo que el caso de Mats tiene distinto es el enlace (dos saltos de ssh), el vaivén (ya arreglado) y su Mac y su
+XQuartz. Queda pendiente su prueba con sondas (`EXPLORER_BRIDGE_PROBE`).
