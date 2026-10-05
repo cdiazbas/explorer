@@ -3486,3 +3486,88 @@ derecha y en la del portátil, con las sondas del puente:
 
 Lo que el caso de Mats tiene distinto es el enlace (dos saltos de ssh), el vaivén (ya arreglado) y su Mac y su
 XQuartz. Queda pendiente su prueba con sondas (`EXPLORER_BRIDGE_PROBE`).
+
+### 2026-10-05 (8): el puente frente a quartz-wm, petición a petición; las pruebas X con enlace (ROADMAP E6.14, E6.16-E6.20)
+
+Tras E6.15, buscar los siguientes fallos de la misma familia antes que los usuarios: el orden en que el gestor y el
+puente ven las peticiones del otro cambia con el enlace, y las pruebas X solo conocían un enlace de cero.
+
+**Las pruebas X a través de un enlace emulado** (`EXPLORER_TEST_XLINK=RETARDO,MBPS`, `tests/xvfb/xlinkenv.py`): la
+aplicación bajo prueba va por `bench/xlink.py`; el gestor y las miradas de la prueba al servidor, directas, como
+quartz-wm y la pantalla en el Mac. Sin la variable no cambia nada. `tests/xvfb` entero en bellatrix (Xvfb 1920×1080,
+nodo 1): sin enlace 29 pasan y 2 se omiten (166 s); a 8 ms/20 MB/s y a 25 ms/5 MB/s falla una, la del portapapeles
+(164 y 172 s). Mecanismo: la aplicación contesta «copy» cuando Qt tiene el texto y su `SetSelectionOwner` llega al
+servidor un retardo después; la petición de la prueba no encontraba dueño. Es de la prueba (nadie pega 16 ms después
+de copiar): ahora espera al dueño. Ningún otro comportamiento cambió con el enlace.
+
+**El puente frente a quartz-wm** (github.com/XQuartz/quartz-wm, `3570364`):
+
+| Petición del puente | Qué hace quartz-wm | Qué espera el puente | Riesgo |
+|---|---|---|---|
+| ConfigureWindow x/y (`windows.py:315-341`, `configure` 298-313) | Mezcla lo no pedido con su registro `_xattr` (`x-input.m:653-670`); `resize_client` (`x-window.m:733-767`) valida (`validate_frame_rect` 2563-2571: entre 72×16 y la pantalla X; `validate_window_position`, `x-screen.m:655-802`: un marco en ningún monitor va a uno). Sin cambio pendiente, `do_resize` mueve el marco (582-627) y, sin cambio de tamaño, manda **en el acto** un aviso sintético con su registro: sitio y tamaño de antes (763-765). Cuando X confirma el marco, `report_frame_size` manda otro con el sitio nuevo (708-709). Con un cambio pendiente del mismo tamaño, `XMoveWindow` encadenado sin aviso inmediato (646-660); si no, a la cola, la última gana (664-666), con aviso inmediato | Aviso sintético = dónde está (ICCCM 4.1.5): lo último pedido se aplica, lo pedido antes es eco, lo no pedido se aplica (`windows.py:357-367`) | El aviso inmediato es posterior a la petición (no lo filtra `cfg_seq`) pero viejo: si el registro no lo pidió el puente (colocado o validado por el gestor), Qt salta atrás un viaje de ida y vuelta y vuelve con la confirmación. Si el gestor rechaza la última petición y se queda en algo pedido antes, ese aviso es su única respuesta (E6.17) |
+| ConfigureWindow w/h | La misma mezcla: x/y del registro, que solo cambia al confirmar X el marco. Con cambio de tamaño, sin aviso inmediato (621-624); al confirmar, `XResizeWindow` del cliente (696-700): aviso **real**, en coordenadas del marco; sin sintético si además se movió (708) | Real y enmarcada → `TranslateCoordinates`, aplicado si no hubo otra petición (`windows.py:368-388`) | Con un `move` aún sin confirmar, el tamaño va al sitio viejo (E6.15 en un `setGeometry`; E6.16 en un `move()` y un `resize()`) |
+| ConfigureWindow x/y/w/h | Sin mezcla: un `XMoveResizeWindow` del marco y aviso real al confirmar | Ídem | Ninguno: la forma segura |
+| ConfigureWindow stack_mode (`windows.py:461-467`) | Al marco, no al cliente (`x-input.m:643-651, 673-676`); ningún aviso | Nada | — |
+| MapWindow (`windows.py:171`) | `init_with_id` (`x-window.m:487-580`): marco (`reparent_in` 166-211); `place_window` (312-420) respeta PPosition/USPosition y si no coloca (transitoria centrada en su dueña, o en cascada desde la esquina del monitor principal) y valida; mapea; aviso con el registro **anterior** a la colocación (556); foco (564) | ReparentNotify → `rec.reparented` (`bridge.py:442`); el aviso de la geometría creada = `asked[-1]`, aplicado | Si coloca o valida, dos avisos: lo pedido y lo colocado (no pedido → aplicado). Correcto: E6.14 |
+| WM_NORMAL_HINTS (`windows.py:266-279`, solo al crear) | `property_changed` → `update_frame` (1703-1739, 1570-1650): relee tamaño, Motif, tipo y `_NET_WM_STATE`; si cambia la decoración, vuelve a enmarcar | Gravedad estática; PPosition si Qt la movió | — |
+| _MOTIF_WM_HINTS (`windows.py:209`) | Solo en `update_frame`; `property_changed` no la mira | Antes del mapeo: entra | Cambiarla después no haría nada |
+| _NET_WM_WINDOW_TYPE | `update_net_wm_type_hints` (1175-1370), después de Motif: UTILITY pone la tira aunque Motif diga ninguna | NORMAL; UTILITY solo con `EXPLORER_TITLEBAR=wm` | Ya conocido (F23c) |
+| WM_TRANSIENT_FOR (`windows.py:211, 218`) | `update_parent`, `update_group`, `update_frame` (1652-1691); `XAppleWMAttachTransient` del marco al de la dueña (1688) | Panel encima de su dueña | Sin medir: en Cocoa un hijo adjunto se mueve con su padre |
+| _NET_WM_STATE (`windows.py:425-433`) | Por átomo (`x-input.m:455-460`, `x-window.m:1442-1491`): `do_maximize` (2335-2352) al `zoomed_rect` (`x-screen.m:836-873`); quitar → `do_zoom` (2314-2333); reescribe `_NET_WM_STATE` en cada cambio de marco (1411-1440) | Sigue `_NET_WM_STATE` (`bridge.py:502-512`) | Un marco igual al `zoomed_rect` sale como maximizado (`is_maximized`, 2308-2312) |
+| _NET_ACTIVE_WINDOW (`windows.py:435-448`) | `focus:` (`x-input.m:451-452`, `x-window.m:1876-1924`): sube, `XSetInputFocus`, `WM_TAKE_FOCUS` | Contesta `WM_TAKE_FOCUS` (`windows.py:450-453`) | — |
+| WM_CHANGE_STATE (`windows.py:420-423`) | `do_collapse` (`x-input.m:449-450`) | `WM_STATE` (`bridge.py:587-604`) | — |
+| SHAPE (`windows.py:470-497`) | `ShapeNotify` → `update_shape` (`x-input.m:683-695`) | — | — |
+| _NET_WM_ICON | quartz-wm no lo lee | Uno por ventana e icono | — |
+| El aviso sintético de quartz-wm | `send_configure` (`x-window.m:276-298`): sitio del registro, tamaño de `_xattr`: (a) al adoptar; (b) en el acto ante una petición que no cambia ya el tamaño del marco; (c) al confirmar X un movimiento sin cambio de tamaño. Nunca tras un cambio de tamaño | Fresco si es posterior a la última petición | (b) es el registro de antes de la petición |
+
+**Encontrado y arreglado:**
+1. **E6.16, un `move()` y un `resize()`, dos peticiones.** `15221d3` hizo de un `setGeometry` una petición; un
+   `move()` y un `resize()` siguen siendo dos. quartz-wm rellena la segunda (solo el tamaño) con el sitio de su
+   registro y la encola: la ventana acaba en el sitio viejo con el tamaño nuevo, en X y en Qt. Bajo
+   `fake_quartzwm_frames.py`, Xvfb 3840×2160: 3 de 3 a 25 ms/5 MB/s y 3 de 3 sin enlace (0 de 1 en una tanda
+   anterior); primero el tamaño, 0 de 3. Arreglo: mientras X no haya dicho la geometría desde la última petición, la
+   petición la lleva entera. Después, 3 de 3 bien en los dos órdenes y enlaces; el arrastre igual (40 peticiones, 0
+   retrocesos); el negro igual (601-655 ms a 25 ms/5 MB/s).
+2. **E6.17, un tamaño que quartz-wm rechaza.** Una ventana tan alta como la pantalla X a la que se pide crecer se
+   queda como está (`x-window.m:640-644`) y la única respuesta es el aviso de su registro, algo pedido antes: el puente
+   lo tomaba por eco. Con `--validate`, Xvfb 1920×1080: X 1200×1080 y Qt 1200×1150, 1150 filas enviadas a una ventana
+   de 1080. Arreglo: si 1 s después de un eco no se ha aplicado ningún aviso ni se ha pedido otra cosa, el puente
+   pregunta a X (`GetGeometry`, `TranslateCoordinates`) y Qt lo toma. En unas 40 ejecuciones de arrastres,
+   redimensionados y glass no se disparó. Riesgo sin medir: si la última petición tarda en llegar más de 1 s (detrás
+   de una imagen grande a 5 MB/s), Qt tomaría la geometría de antes un momento y volvería con el aviso.
+
+**E6.14 explicada, no es del puente.** `validate_window_position` lleva a un monitor un marco que no toca ninguno, al
+mapear y en cada petición. Con la disposición deducida de la pantalla X de entonces (3067×1513; el portátil, 1147×719,
+abajo a la izquierda; deducida, no leída del Mac) una ventana de 900 px a la izquierda de x = 247 no toca ninguno:
+(200, 150), (220, 160) y (240, 172) se recolocaron, (260, 184) y siguientes se quedaron; la sonda ya daba Qt = X en
+cada paso. Reproducido con `--validate --heads` y ese agujero, sin enlace y a 25 ms, con el puente de antes de
+`15221d3` y el de ahora. Sin explicar: el (240, 790) del segundo paso.
+
+**El arrastre de la traza de Mats.** 156 avisos en 1.37 s para 78 peticiones: dos por petición, el inmediato del
+registro (`x-window.m:763-765`) y el de la confirmación (708-709); 69 aplicados porque lo pedido guardaba el tamaño
+equivocado (arreglado en `15221d3`). Ahora, 40 movimientos tras un redimensionado, 3 repeticiones: sin enlace 40 ecos y
+40 «applied (the last asked)» alternados, sin efecto; a 25 ms/5 MB/s, 78 ecos anteriores a la última petición, 1 eco y
+1 aplicado; 0 retrocesos de Qt. Nada que arreglar.
+
+**El gestor con el registro en más escenarios** (sin enlace, 8/20, 25/5; 2 repeticiones, 1 con el puente anterior):
+cambio a glass, ampliada a glass y vuelta (las dos formas), arranque en el glass guardado, paneles colocados, la
+rendija y un panel arrastrado. Con los dos gestores, antes y después: la misma geometría final en X y Qt, las mismas
+peticiones, ningún error de X. Cambian los avisos (el arrastre: 30 reales aplicados con el gestor viejo, ecos con el
+del registro), no lo que se hace con ellos. Negro tras la primera imagen, igual en los dos: zoom 640-845 ms a 25/5,
+zoom por la barra 237-260 ms a 8/20; panel arrastrado 179-218 ms en dos exposiciones a 25/5, 0 a 8/20.
+
+**Medido, sin arreglar:**
+- Gestor viejo, ventana sin marco: con `move()` + `resize()` Qt pasa una vez por el tamaño viejo (el aviso real del
+  movimiento se genera con las dos peticiones ya en el servidor). X acaba bien.
+- Una exposición se contesta copiando del pixmap del puente: a 25 ms el trozo expuesto se ve negro un viaje de ida y
+  vuelta. Idea **sin probar**: el pixmap de cada ventana como su fondo (`CWBackPixmap`).
+- Con la caché de numba vacía, la primera imagen llega 3-4 s después del mapeo (el emisor compila sus núcleos). Sin
+  medir con la caché caliente.
+
+**Sin probar en XQuartz real.**
+
+**Pruebas:** nuevas `test_bridge_first_moves.py`, `test_bridge_panels.py`, dos en `test_bridge_resize.py`, tres en
+`tests/unit/test_xbridge_resize.py`; `test_bridge_glass_zoomed.py` bajo los dos gestores. En bellatrix, con la venv
+(unit y golden en el nodo 1, Xvfb 1920×1080): `tests/unit` + `tests/golden` 669 pasan y 2 se omiten (945 s);
+`tests/xvfb` 35 pasan y 2 se omiten (227 s). En una copia sin venv, `tests/xvfb` igual a 8/20 (230 s) y a 25/5 (242 s). Las pruebas nuevas suman
+unos 62 s a `tests/xvfb` sin enlace (166 → 228 s).
