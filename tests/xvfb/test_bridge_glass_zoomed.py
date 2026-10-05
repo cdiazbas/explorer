@@ -13,6 +13,7 @@ import sys
 
 import pytest
 from test_bridge_quartzwm import HERE, XDISP
+from xlinkenv import app_display
 
 pytestmark = pytest.mark.skipif(not XDISP, reason="needs EXPLORER_TEST_XDISPLAY (a private Xvfb)")
 
@@ -40,7 +41,7 @@ def wm():
 
 def run(cube, case):
     env = {k: v for k, v in os.environ.items() if k not in ("QT_QPA_PLATFORM", "EXPLORER_X11")}
-    env.update(DISPLAY=XDISP, EXPLORER_TERMINAL_KEYS="0")
+    env.update(DISPLAY=app_display(XDISP), EXPLORER_TERMINAL_KEYS="0")
     p = subprocess.run([sys.executable, os.path.join(HERE, "glass_zoom_app.py"), str(cube), case], env=env,
                        capture_output=True, text=True, timeout=120)
     steps = {s["step"]: s for s in (json.loads(x) for x in p.stdout.splitlines() if x.startswith("{"))}

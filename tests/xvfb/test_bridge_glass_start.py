@@ -23,6 +23,7 @@ import sys
 import numpy as np
 import pytest
 from test_bridge_quartzwm import HERE, XDISP
+from xlinkenv import app_display
 
 pytestmark = pytest.mark.skipif(not XDISP, reason="needs EXPLORER_TEST_XDISPLAY (a private Xvfb)")
 
@@ -62,7 +63,7 @@ def test_one_update_draws_the_grey_pieces_of_every_window_in_it(x):
 
     sizes = {"panel": (560, 408), "main": (825, 863)}
     wins = {n: _window(x, (40 + 900 * i, 20), s, 0xFF0000) for i, (n, s) in enumerate(sizes.items())}
-    t = Transport(XDISP, on_ready=lambda: None)
+    t = Transport(app_display(XDISP), on_ready=lambda: None)
     try:
         assert t.started.wait(30) and t.failed is None, t.failed
         if t.grey is None:
@@ -111,7 +112,7 @@ def late_wm():
 
 def _start(cube, home, look, quit_s, trace=False):
     env = {k: v for k, v in os.environ.items() if k not in ("QT_QPA_PLATFORM", "EXPLORER_X11", "EXPLORER_LAYOUT")}
-    env.update(DISPLAY=XDISP, EXPLORER_TERMINAL_KEYS="0", XDG_CONFIG_HOME=str(home / "config"),
+    env.update(DISPLAY=app_display(XDISP), EXPLORER_TERMINAL_KEYS="0", XDG_CONFIG_HOME=str(home / "config"),
                XDG_CACHE_HOME=str(home / "cache"))
     if trace:
         env.update(EXPLORER_BRIDGE_TRACE="1", EXPLORER_BRIDGE_PROBE="3.2")

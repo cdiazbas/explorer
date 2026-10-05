@@ -17,6 +17,7 @@ import threading
 
 import pytest
 from test_bridge_quartzwm import HERE, XDISP
+from xlinkenv import app_display
 
 pytestmark = pytest.mark.skipif(not XDISP, reason="needs EXPLORER_TEST_XDISPLAY (a private Xvfb)")
 
@@ -45,7 +46,7 @@ def wm():
 class ResizeApp:
     def __init__(self, cube):
         env = {k: v for k, v in os.environ.items() if k not in ("QT_QPA_PLATFORM", "EXPLORER_X11")}
-        env.update(DISPLAY=XDISP, EXPLORER_TERMINAL_KEYS="0")
+        env.update(DISPLAY=app_display(XDISP), EXPLORER_TERMINAL_KEYS="0")
         self.p = subprocess.Popen([sys.executable, os.path.join(HERE, "resize_app.py"), str(cube)],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
                                   text=True)

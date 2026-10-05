@@ -21,7 +21,7 @@ def main() -> int:
     if s is None:
         return 1
     w = s.shell
-    x = display.Display(os.environ["DISPLAY"])
+    x = display.Display(os.environ.get("EXPLORER_TEST_XDISPLAY") or os.environ["DISPLAY"])  # the server
 
     def where(widget):
         rec = next(r for r in s.disp.bridge.windows if r.w is widget)

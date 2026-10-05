@@ -30,7 +30,7 @@ def main() -> int:
     w = s.shell
     ops = w.window_ops
     assert ops is not None
-    x = display.Display(os.environ["DISPLAY"])
+    x = display.Display(os.environ.get("EXPLORER_TEST_XDISPLAY") or os.environ["DISPLAY"])  # the server
 
     def rect(r):
         return [r.x(), r.y(), r.width(), r.height()]

@@ -17,6 +17,7 @@ import time
 
 import numpy as np
 import pytest
+from xlinkenv import app_display
 
 from explorer.testing import synth
 
@@ -28,7 +29,7 @@ SHAPE = (3, 4, 5, 96, 80)
 
 class App:
     def __init__(self, cube, size="800x600", *extra):
-        env = dict(os.environ, DISPLAY=XDISP)
+        env = dict(os.environ, DISPLAY=app_display(XDISP))
         env.pop("QT_QPA_PLATFORM", None)
         env.pop("EXPLORER_X11", None)
         self.p = subprocess.Popen([sys.executable, os.path.join(HERE, "bridge_app.py"), str(cube), "--size", size,
@@ -267,6 +268,11 @@ class ClipboardClient:
                                                       event_mask=X.PropertyChangeMask)
         self.A = {n: self.d.intern_atom(n) for n in ("CLIPBOARD", "UTF8_STRING", "INCR", "TARGETS", "OUT")}
 
+    def owned(self) -> bool:
+        """Someone owns CLIPBOARD on the server."""
+        o = self.d.get_selection_owner(self.A["CLIPBOARD"])
+        return getattr(o, "id", o) != self.X.NONE
+
     def read(self, timeout=10.0):
         X, d, A = self.X, self.d, self.A
         self.win.convert_selection(A["CLIPBOARD"], A["UTF8_STRING"], A["OUT"], X.CurrentTime)
@@ -388,6 +394,9 @@ def test_clipboard_both_ways_with_incr(app):
     cc = ClipboardClient()
     try:
         app("copy hello from explorer ñ")
+        # the application answers when Qt has the text; through a link (EXPLORER_TEST_XLINK) its claim on CLIPBOARD
+        # reaches the server a delay later, and a request before that finds no owner
+        assert wait(cc.owned)
         assert cc.read() == ("hello from explorer ñ", False)
         app("bigcopy 600000")                            # larger than one request: INCR
         text, incr = cc.read()
@@ -434,7 +443,7 @@ def test_the_link_probe_measures_the_display():
     """The default playback rate over ssh comes from linkprobe.measure, on the bridge's own X11 client."""
     from explorer.platform import linkprobe
 
-    r = linkprobe.measure(mb=1, display=XDISP)
+    r = linkprobe.measure(mb=1, display=app_display(XDISP))
     assert r["MBps"] > 0 and r["rtt_ms"] >= 0
     assert 2 <= linkprobe.suggest_fps(r["MBps"], 1.3 * 772 * 803) <= 30
 

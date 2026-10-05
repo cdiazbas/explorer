@@ -17,6 +17,7 @@ import sys
 import numpy as np
 import pytest
 from test_bridge_xvfb import App, wait
+from xlinkenv import app_display
 
 XDISP = os.environ.get("EXPLORER_TEST_XDISPLAY")
 pytestmark = pytest.mark.skipif(not XDISP, reason="needs EXPLORER_TEST_XDISPLAY (a private Xvfb)")
@@ -27,7 +28,7 @@ BEFORE = ("icon test", "Spectrum", "λ–t")              # the windows made bef
 
 class IconApp(App):
     def __init__(self, cube):
-        env = dict(os.environ, DISPLAY=XDISP, EXPLORER_BRIDGE_TRACE="1")
+        env = dict(os.environ, DISPLAY=app_display(XDISP), EXPLORER_BRIDGE_TRACE="1")
         env.pop("QT_QPA_PLATFORM", None)
         env.pop("EXPLORER_X11", None)
         self.p = subprocess.Popen([sys.executable, os.path.join(HERE, "icon_app.py"), str(cube)],
