@@ -99,3 +99,27 @@ def test_a_path_in_a_numpy_file_is_found(tmp_path, compressed):
     assert [k for _w, k, _e in found] == ["Mac home path"], found
     save(tmp_path / "clean.npz", meta=np.array(json.dumps({"prototype": "../prototype"})), a=np.arange(4.0))
     assert hygiene.scan_binary("clean.npz", (tmp_path / "clean.npz").read_bytes()) == []
+
+
+def test_a_path_in_a_numpy_file_anywhere_in_the_history_is_found(tmp_path, monkeypatch):
+    """A version committed once and removed later is still in the history: it is read too."""
+    import json
+    import subprocess
+
+    import numpy as np
+
+    def git(*a):
+        subprocess.run(["git", *a], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    meta = json.dumps({"prototype": "/" + "Users/someone/prototype"})
+    np.savez_compressed(tmp_path / "ref.npz", meta=np.array(meta))
+    git("add", "ref.npz")
+    git("commit", "-q", "-m", "add")
+    git("rm", "-q", "ref.npz")
+    git("commit", "-q", "-m", "remove")
+    monkeypatch.setattr(hygiene, "ROOT", tmp_path)
+    found = hygiene.check_history_binaries()
+    assert [k for _w, k, _e in found] == ["Mac home path"] and "ref.npz" in found[0][0], found

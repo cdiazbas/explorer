@@ -13,9 +13,9 @@ Fails (exit 1) on:
   links of data/; which file each link is lives in docs/data.local.md, which git ignores;
 - mentions of AI assistants, or co-author trailers, in commit messages; mentions of AI assistants in any diff.
 
-Binary files (a .npz reference, an image) are read too: their bytes, and each member of a zip (a .npz is one), as
-Latin-1, UTF-16 and UTF-32 at every alignment. numpy writes its strings in UTF-32, which a plain grep never sees: a
-golden reference carried a Mac home path in its metadata that way.
+Binary files (a .npz reference, an image) are read too, tracked, staged and every version in the history: their
+bytes, and each member of a zip (a .npz is one), as Latin-1, UTF-16 and UTF-32 at every alignment. numpy writes its
+strings in UTF-32, which a plain grep never sees: a golden reference carried a Mac home path in its metadata that way.
 
 The words it looks for are composed from pieces, never written whole, so that this file and its tests do not
 match themselves in the history. Standard library only.
@@ -133,6 +133,38 @@ def check_history():
     return out
 
 
+def history_binaries():
+    """(path, blob id, bytes) for every binary version in the history, each blob once."""
+    paths: dict[str, str] = {}
+    for line in git("rev-list", "--objects", "HEAD").splitlines():
+        sha, _, path = line.partition(" ")
+        if path:
+            paths.setdefault(sha, path)
+    check = subprocess.run(["git", "cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
+                           cwd=ROOT, input="\n".join(paths), capture_output=True, text=True).stdout
+    blobs = [sha for sha, kind, size in (ln.split() for ln in check.splitlines())
+             if kind == "blob" and int(size) <= BINARY_MAX]
+    out = subprocess.run(["git", "cat-file", "--batch"], cwd=ROOT, input="\n".join(blobs).encode(),
+                         capture_output=True).stdout
+    at = 0
+    for sha in blobs:
+        head_end = out.index(b"\n", at)
+        size = int(out[at:head_end].split()[2])
+        data = out[head_end + 1:head_end + 1 + size]
+        at = head_end + 1 + size + 1
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            yield paths[sha], sha, data
+
+
+def check_history_binaries():
+    out = []
+    for path, sha, data in history_binaries():
+        out += scan_binary(f"{path} at blob {sha[:7]}", data)
+    return out
+
+
 def check_staged():
     names = [n for n in git("diff", "--cached", "--name-only", "--diff-filter=ACMR").splitlines() if n]
     out = [(n, "audit file staged", n) for n in names if _AUDIT_NAME.search(n)]
@@ -190,7 +222,7 @@ def main() -> int:
         what = f"{len(names)} staged files"
     else:
         tracked = [n for n in git("ls-files", "-z").split("\0") if n]
-        findings = check_files(tracked) + check_history()
+        findings = check_files(tracked) + check_history() + check_history_binaries()
         what = f"{len(tracked)} tracked files and {len(git('log', '--format=%h').split())} commits"
     for where, kind, excerpt in findings:
         print(f"  FAIL  {kind:32s} {where}  {excerpt}")
