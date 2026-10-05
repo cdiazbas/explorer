@@ -7,9 +7,10 @@
   round trip, audit F23c), WM_PROTOCOLS (delete, take focus, ping), _NET_WM_PID, _NET_WM_ICON (the window's icon,
   set again when Qt changes it), a window type, the Motif hints of a frameless window, WM_TRANSIENT_FOR of a window
   owned by another (a panel or a dialog stays above its owner).
-- Geometry: Qt's global coordinates are X root coordinates. A move or resize from Qt is asked of X; the notices of
-  X are taken by Qt, except echoes of a request of ours older than the last one (unzooming through ssh met the late
-  notice of the zoom and X and Qt ended with swapped sizes, audit F20i) and notices of older requests.
+- Geometry: Qt's global coordinates are X root coordinates. A move or resize from Qt is asked of X, in one request
+  (a setGeometry too); the notices of X are taken by Qt, which asks nothing back, except echoes of a request of
+  ours older than the last one (unzooming through ssh met the late notice of the zoom and X and Qt ended with
+  swapped sizes, audit F20i) and notices of older requests.
 - The keyboard: with a manager, activation is asked through _NET_ACTIVE_WINDOW with a server time; without one
   (Xvfb), the X focus is set directly once the window is viewable. WM_TAKE_FOCUS is answered.
 """
@@ -77,6 +78,7 @@ class XWin:
         self.want = QtCore.QRect(w.geometry())          # the whole geometry last asked for
         self.asked: collections.deque = collections.deque(maxlen=64)
         self.xg: QtCore.QRect | None = None             # the geometry X last told us (Qt taking it asks nothing)
+        self.taking = False                             # Qt is taking X's geometry: its Move and Resize ask nothing
         self.reparented = False
         self.viewable = False                           # mapped at least once (focus can be set)
         self.iconic = False
@@ -307,17 +309,26 @@ class Windows:
         if self.trace is not None:
             self.trace.write("CONF", rec.xid, " ".join(f"{k}={v}" for k, v in kw.items()))
 
-    def qt_geometry(self, rec: XWin, resized: bool) -> None:
-        """Qt moved or resized a top-level: ask X, unless X told Qt this geometry."""
+    def qt_geometry(self, rec: XWin) -> None:
+        """Qt moved or resized a top-level: ask X for what differs from what X told (else from what was last asked),
+        in one request. Qt's setGeometry moves, then resizes: asked apart, quartz-wm answered the move with its
+        record of the frame, the old place and size, and quartz-wm made the size request from that record, back at
+        the old place. Nothing is asked while Qt takes X's geometry, nor when Qt has the geometry X told."""
         g = rec.w.geometry()
-        if g == rec.xg:
+        if rec.taking or g == rec.xg:
             return
         if rec.popup:
             self.configure(rec, x=g.x(), y=g.y(), width=max(1, g.width()), height=max(1, g.height()))
-        elif resized:
-            self.configure(rec, width=max(1, g.width()), height=max(1, g.height()))
         else:
-            self.configure(rec, x=g.x(), y=g.y())
+            ref = rec.xg if rec.xg is not None else rec.want
+            kw: dict[str, int] = {}
+            if g.topLeft() != ref.topLeft():
+                kw.update(x=g.x(), y=g.y())
+            if g.size() != ref.size():
+                kw.update(width=max(1, g.width()), height=max(1, g.height()))
+            if not kw:
+                return
+            self.configure(rec, **kw)
         self.c.flush()
 
     # ---- notices from X

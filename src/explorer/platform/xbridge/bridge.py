@@ -241,7 +241,7 @@ class Bridge(QtCore.QObject):
         elif rec is None:
             pass
         elif t in (E.Type.Resize, E.Type.Move):
-            self.windows.qt_geometry(rec, t == E.Type.Resize)
+            self.windows.qt_geometry(rec)
             if t == E.Type.Resize:
                 rec.dirty = QtGui.QRegion(obj.rect())
                 self._schedule()
@@ -560,10 +560,19 @@ class Bridge(QtCore.QObject):
         # Qt back, and Qt's resize asked X for that old size again: audit F23c)
         rec.xg = QtCore.QRect(x, y, w, h)
         g = rec.w.geometry()
-        if (w, h) != (g.width(), g.height()):
-            rec.w.resize(w, h)
-        if (x, y) != (g.x(), g.y()) and not rec.popup:
-            rec.w.move(x, y)
+        # Qt's resize and move, one after the other, ask X nothing: between the two Qt had X's new size at its old
+        # place, which was asked of X as a new request (after an edge resize through XQuartz, the old size asked
+        # again while the new one was on its way: the window went back and forth between the two, each size sent
+        # whole). What Qt would not take (its minimum size, a popup's own place) is asked once, after
+        rec.taking = True
+        try:
+            if (w, h) != (g.width(), g.height()):
+                rec.w.resize(w, h)
+            if (x, y) != (g.x(), g.y()) and not rec.popup:
+                rec.w.move(x, y)
+        finally:
+            rec.taking = False
+        self.windows.qt_geometry(rec)
 
     def _mapped(self, rec: XWin, mapped: bool) -> None:
         """Mapped: the window can take the focus, and the one shown first asks for it. Map and unmap do not say
