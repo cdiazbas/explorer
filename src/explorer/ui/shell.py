@@ -167,6 +167,9 @@ class Shell(QtWidgets.QMainWindow):
         slit_dock = docks.dock(self, "Slit", self.slit_panel.widget, "slit", cls=docks.GatedDock)
         assert isinstance(slit_dock, docks.GatedDock)
         self.slit_dock = slit_dock
+        # lambda-t's tab from the start, as the prototype makes it (1047): its first show as a third panel resized
+        # the spectra and back, and their ResizeFreezer's grab cost the first slit ~40 ms
+        self.tabifyDockWidget(self.lt_dock, self.slit_dock)
         self.slit_dock.hide()
         self.slit_dock.allowed = lambda: self.session.state.path is not None or self.slit_tool.mode
         self.slit_dock.toggleViewAction().setEnabled(False)
