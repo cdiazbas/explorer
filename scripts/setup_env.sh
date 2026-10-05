@@ -27,6 +27,7 @@ plat="$(uname -s)-$(uname -m)"
 qtlibs="$root/.qtlibs"
 cd "$root"
 unset LD_LIBRARY_PATH                               # another env's Qt on this path breaks PySide6
+caller_path="$PATH"                                 # the terminal that runs this: can it use the link at once?
 
 venv="$root/.venv-$plat" dev=0 force=0 link=0 update_shell=1
 while [ $# -gt 0 ]; do
@@ -45,24 +46,45 @@ pyhome="$(dirname "$venv")/.python-$plat"
 [ "$force" = 1 ] && rm -rf "$venv"
 
 # What a new terminal of the user's shell sees: run through ssh or from a script, this process's PATH is not the one
-# the user will have. A clean environment, the shell interactive (its rc file) or interactive and login (ssh, macOS's
-# Terminal: bash then reads ~/.bash_profile, which need not read ~/.bashrc). $1: -ic or -lic; $2: the command
-in_new_shell() {
+# the user will have. A clean environment, the shell interactive (its startup file) or interactive and login (ssh,
+# macOS's Terminal: bash then reads ~/.bash_profile, which need not read ~/.bashrc). Each family in its own syntax:
+# sh-like (bash, zsh, sh, dash, ksh), csh-like (tcsh, csh: no login with -c, so ~/.login is read after the rc file,
+# as a login does). $1: -ic or -lic. Prints that terminal's PATH
+new_path() {
+  case "$family" in
+    posix) probe='printf "\n@@explorer@@%s\n" "$PATH"' ; flags="$1" ;;
+    csh)
+      probe='echo ""; echo "@@explorer@@$PATH"'
+      [ "$1" = -lic ] && probe='if ( -r ~/.login ) source ~/.login; '"$probe"
+      flags=-ic ;;
+  esac
   env -i HOME="$HOME" USER="${USER:-}" LOGNAME="${LOGNAME:-}" SHELL="$sh" TERM=dumb PATH=/usr/bin:/bin \
-    "$sh" "$1" "printf '\\n@@explorer@@%s\\n' \"\$($2)\"" </dev/null 2>/dev/null | sed -n 's/^@@explorer@@//p' | tail -n 1
+    "$sh" "$flags" "$probe" </dev/null 2>/dev/null | sed -n 's/^@@explorer@@//p' | tail -n 1
 }
 on_path() { case ":$2:" in *":$1:"*) return 0 ;; esac; return 1; }
+first_on() {                                        # $1: a PATH; the explorer it finds first, as a shell would
+  rest="$1:"
+  while [ -n "$rest" ]; do
+    d="${rest%%:*}"; rest="${rest#*:}"
+    [ -n "$d" ] && [ -x "$d/explorer" ] && { echo "$d/explorer"; return; }
+  done
+}
 
 add_block() {                                       # $1: a startup file; the block once, between its marks
   shown="$bin"                                      # under the home as $HOME/...: the same line serves a home
   case "$bin" in "$HOME"/*) shown="\$HOME/${bin#"$HOME"/}" ;; esac     # mounted elsewhere on another machine
   mark="# >>> explorer: $shown on the PATH >>>"
   [ -f "$1" ] && grep -qF "$mark" "$1" && return 0
+  mkdir -p "$(dirname "$1")"
   {
     printf '\n%s\n' "$mark"
-    printf 'case ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH" ;; esac\n' "$shown" "$shown"
+    case "$family" in
+      posix) printf 'case ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH" ;; esac\n' "$shown" "$shown" ;;
+      csh) printf 'echo ":${PATH}:" | grep -q ":%s:" || setenv PATH "%s:${PATH}"\n' "$shown" "$shown" ;;
+    esac
     printf '%s\n' "# <<< explorer <<<"
   } >> "$1"
+  written="$1"
   echo "[setup_env] $1: $shown added to the PATH (the block between the explorer marks)"
 }
 
@@ -70,13 +92,21 @@ link_command() {                                    # the command on the PATH: a
   sh="${SHELL:-/bin/bash}"
   [ -x "$sh" ] || sh=/bin/bash
   kind="$(basename "$sh")"
-  case "$kind" in bash|zsh|sh|dash|ksh) ;; *) kind=other ;; esac
-  bin=""
-  if [ "$kind" != other ]; then
-    lpath="$(in_new_shell -lic 'printf %s "$PATH"')"
-    ipath="$(in_new_shell -ic 'printf %s "$PATH"')"
-    for d in ${XDG_BIN_HOME:+"$XDG_BIN_HOME"} "$HOME/.local/bin" "$HOME/bin"; do
-      if on_path "$d" "$lpath" && on_path "$d" "$ipath"; then bin="$d"; break; fi
+  case "$kind" in
+    bash|zsh|sh|dash|ksh) family=posix ;;
+    tcsh|csh) family=csh ;;
+    *) family=other ;;                              # fish and the rest: said what to add, nothing written (untested)
+  esac
+  bin="" written=""
+  if [ "$family" != other ]; then
+    lpath="$(new_path -lic)"
+    ipath="$(new_path -ic)"
+    # a folder a new terminal has; one this terminal has too first, so that the command works here at once
+    for here_too in 1 0; do
+      for d in ${XDG_BIN_HOME:+"$XDG_BIN_HOME"} "$HOME/.local/bin" "$HOME/bin"; do
+        if on_path "$d" "$lpath" && on_path "$d" "$ipath" && { [ "$here_too" = 0 ] || on_path "$d" "$caller_path"; }
+        then bin="$d"; break 2; fi
+      done
     done
   fi
   reachable=1
@@ -90,8 +120,13 @@ link_command() {                                    # the command on the PATH: a
   ln -sfn "$here/run.sh" "$cmd"
   echo "[setup_env] $cmd -> $here/run.sh"
   if [ "$reachable" = 0 ]; then
-    if [ "$kind" = other ] || [ "$update_shell" = 0 ]; then
-      echo "[setup_env] $bin is not on the PATH of a new terminal: add it in your shell's startup file" >&2
+    if [ "$family" = other ] || [ "$update_shell" = 0 ]; then
+      echo "[setup_env] $bin is not on the PATH of a new terminal; add it in your shell's startup file:" >&2
+      case "$kind" in
+        fish) echo "  fish_add_path $bin      (in ~/.config/fish/config.fish)" >&2 ;;
+        tcsh|csh) echo "  setenv PATH \"$bin:\${PATH}\"      (in ~/.tcshrc or ~/.cshrc)" >&2 ;;
+        *) echo "  export PATH=\"$bin:\$PATH\"      (in your shell's startup file)" >&2 ;;
+      esac
       return 1
     fi
     case "$kind" in
@@ -99,20 +134,26 @@ link_command() {                                    # the command on the PATH: a
       bash)
         add_block "$HOME/.bashrc"
         # a login shell reads the first of these, and not always ~/.bashrc
-        if ! on_path "$bin" "$(in_new_shell -lic 'printf %s "$PATH"')"; then
+        if ! on_path "$bin" "$(new_path -lic)"; then
           login="$HOME/.profile"
           for f in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
             [ -f "$f" ] && { login="$f"; break; }
           done
           add_block "$login"
+          written="$HOME/.bashrc"                   # the one an open terminal reads again
         fi
+        ;;
+      tcsh|csh)                                     # tcsh reads ~/.tcshrc, else ~/.cshrc; csh ~/.cshrc
+        rc="$HOME/.cshrc"
+        [ "$kind" = tcsh ] && [ -f "$HOME/.tcshrc" ] && rc="$HOME/.tcshrc"
+        add_block "$rc"
         ;;
       *) add_block "$HOME/.profile" ;;
     esac
   fi
   # the check: a new terminal, login or not, finds this link first, and it runs
   for how in -lic -ic; do
-    found="$(in_new_shell "$how" 'command -v explorer')"
+    found="$(first_on "$(new_path "$how")")"
     if [ "$found" != "$cmd" ]; then
       if [ -z "$found" ]; then
         echo "[setup_env] a new terminal ($kind $how) does not find explorer" >&2
@@ -127,6 +168,22 @@ link_command() {                                    # the command on the PATH: a
     return 1
   fi
   echo "[setup_env] a new terminal finds and runs it: explorer --version -> $version"
+  # this terminal: a program cannot change the PATH of the shell that started it, so say what it needs, if anything
+  if on_path "$bin" "$caller_path"; then
+    if [ "$family" = csh ]; then                    # csh keeps a table of the commands it found at start
+      echo "[setup_env] in this terminal, run once:  rehash   (or open a new terminal)"
+    else
+      echo "[setup_env] ready in this terminal too: explorer"
+    fi
+  else
+    case "$family" in
+      posix) again=". ${written:-$HOME/.profile}"
+             case "$kind" in bash) again="source ${written:-$HOME/.bashrc}" ;; zsh) again="source ${written:-$HOME/.zshrc}" ;; esac ;;
+      csh) again="source ${written:-$HOME/.cshrc}" ;;
+    esac
+    case "$again" in "source $HOME"/*|". $HOME"/*) again="${again%% *} ~/${again#* "$HOME"/}" ;; esac
+    echo "[setup_env] in this terminal, run once:  $again   (or open a new terminal)"
+  fi
 }
 
 # --link on an environment already up to date (uv.lock unchanged since it was built, as run.sh checks, and of the

@@ -17,10 +17,13 @@ scripts/setup_env.sh --link
 
 `setup_env.sh` builds this machine's environment next to the code (`.venv-<OS>-<arch>`), with the exact versions
 the project pins, and checks it. It is safe to run again. `--link` also puts the `explorer` command on your PATH.
-If a new terminal would not find it, the script adds one marked line to your shell's startup file
-(`~/.bashrc`, `~/.zshrc`). It then checks that a new terminal finds the command and runs it.
+If a new terminal would not find it, the script adds one marked line to your shell's own startup file (bash, zsh,
+sh, ksh, tcsh and csh are handled; for any other shell it prints the line to add). It then checks that a new
+terminal finds the command and runs it.
 
-Open a new terminal (or `source ~/.bashrc`) and try it:
+A program cannot change the PATH of the terminal that started it, so the script ends by telling you what this
+terminal needs: nothing ("ready in this terminal"), or the one command for your shell, which it prints. Or open a
+new terminal. Then try it:
 
 ```bash
 explorer --version

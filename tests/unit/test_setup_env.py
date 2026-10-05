@@ -25,7 +25,7 @@ exit 3
 """
 
 
-def _run(tmp_path, venv, *args, shell="/bin/bash"):
+def _run(tmp_path, venv, *args, shell="/bin/bash", caller=()):
     tools = tmp_path / "tools"
     tools.mkdir(exist_ok=True)
     for name in ("uv", "conda"):                        # a conda too, as GitHub's runners have one
@@ -34,8 +34,9 @@ def _run(tmp_path, venv, *args, shell="/bin/bash"):
         f.chmod(0o755)
     home = tmp_path / "home"
     home.mkdir(exist_ok=True)
-    env = {"HOME": str(home), "PATH": f"{tools}:/usr/bin:/bin", "XDG_CACHE_HOME": str(tmp_path / "cache"),
-           "SHELL": shell}
+    # caller: folders (under the temporary home) on the PATH of the terminal that runs the script
+    path = ":".join([str(tools), *(str(home / c) for c in caller), "/usr/bin", "/bin"])
+    env = {"HOME": str(home), "PATH": path, "XDG_CACHE_HOME": str(tmp_path / "cache"), "SHELL": shell}
     return subprocess.run(["/bin/bash", SCRIPT, "--venv", str(venv), *args], env=env, capture_output=True, text=True,
                           timeout=120, stdin=subprocess.DEVNULL)
 
@@ -149,3 +150,55 @@ def test_another_explorer_first_on_the_path_is_reported(tmp_path):
                        ".bash_profile": ". ~/.bashrc\n"})
     p = _run(tmp_path, _stand_in(tmp_path), "--link")
     assert p.returncode != 0 and f"finds another explorer first: {other}/explorer" in p.stderr, p.stderr
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a bash script")
+def test_it_says_what_this_terminal_needs(tmp_path):
+    """A program cannot change the PATH of the shell that started it: without the folder there, the script says the
+    one command for this terminal; with it, that the command is ready here."""
+    _home(tmp_path)
+    p = _run(tmp_path, _stand_in(tmp_path), "--link")
+    assert p.returncode == 0 and "in this terminal, run once:  source ~/.bashrc" in p.stdout, p.stdout + p.stderr
+    p = _run(tmp_path, tmp_path / "venv", "--link", caller=(".local/bin",))
+    assert p.returncode == 0 and "ready in this terminal too" in p.stdout, p.stdout + p.stderr
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a bash script")
+def test_a_folder_this_terminal_has_is_preferred(tmp_path):
+    """~/.local/bin and ~/bin both on a new terminal's PATH, only ~/bin on this one: the link goes to ~/bin, so the
+    command works here at once."""
+    rc = 'PATH="$HOME/.local/bin:$HOME/bin:$PATH"\n'
+    home = _home(tmp_path, **{".bashrc": rc, ".bash_profile": ". ~/.bashrc\n"})
+    p = _run(tmp_path, _stand_in(tmp_path), "--link", caller=("bin",))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert os.path.islink(home / "bin" / "explorer") and not (home / ".local" / "bin" / "explorer").exists()
+    assert "ready in this terminal too" in p.stdout
+
+
+TCSH = next((s for s in ("/bin/tcsh", "/usr/bin/tcsh") if os.path.exists(s)), None)
+
+
+@pytest.mark.skipif(sys.platform == "win32" or TCSH is None, reason="needs tcsh")
+def test_tcsh_gets_its_own_block_once_and_is_told_what_to_run(tmp_path):
+    """csh-like shells have their own syntax and startup file (tcsh reads ~/.tcshrc, else ~/.cshrc), and keep a table
+    of the commands they found: with the folder already on this terminal's PATH, `rehash` is what it needs."""
+    home = _home(tmp_path)
+    p = _run(tmp_path, _stand_in(tmp_path), "--link", shell=TCSH)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert set(_files(home)) == {".cshrc"} and "setenv PATH" in (home / ".cshrc").read_text()
+    assert "a new terminal finds and runs it" in p.stdout and "run once:  source ~/.cshrc" in p.stdout
+    p = _run(tmp_path, tmp_path / "venv", "--link", shell=TCSH, caller=(".local/bin",))
+    assert p.returncode == 0 and "run once:  rehash" in p.stdout, p.stdout + p.stderr
+    assert (home / ".cshrc").read_text().count(">>> explorer:") == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a bash script")
+def test_a_shell_it_cannot_write_for_is_told_the_line(tmp_path):
+    """fish (untested: not installed where this runs) and other shells: nothing written, the line to add said."""
+    fake = tmp_path / "fish"
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(0o755)
+    home = _home(tmp_path)
+    p = _run(tmp_path, _stand_in(tmp_path), "--link", shell=str(fake))
+    assert p.returncode != 0 and "fish_add_path" in p.stderr, p.stderr
+    assert _files(home) == {}
