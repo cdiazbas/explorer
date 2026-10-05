@@ -17,7 +17,7 @@ import threading
 
 import pytest
 from test_bridge_quartzwm import HERE, XDISP
-from xlinkenv import app_display
+from xlinkenv import app_display, own_link
 
 pytestmark = pytest.mark.skipif(not XDISP, reason="needs EXPLORER_TEST_XDISPLAY (a private Xvfb)")
 
@@ -44,9 +44,9 @@ def wm():
 
 
 class ResizeApp:
-    def __init__(self, cube):
+    def __init__(self, cube, display=None):
         env = {k: v for k, v in os.environ.items() if k not in ("QT_QPA_PLATFORM", "EXPLORER_X11")}
-        env.update(DISPLAY=app_display(XDISP), EXPLORER_TERMINAL_KEYS="0")
+        env.update(DISPLAY=display or app_display(XDISP), EXPLORER_TERMINAL_KEYS="0")
         self.p = subprocess.Popen([sys.executable, os.path.join(HERE, "resize_app.py"), str(cube)],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
                                   text=True)
@@ -106,3 +106,28 @@ def test_an_edge_resize_is_one_size_change_and_one_whole_window(cube, wm):
                 requests=r["delta"]["configures"])
     want = dict(sizes=[asked[2:]], whole=[asked[2:]], qt=asked, x=asked, requests=1)
     assert seen == want, seen
+
+
+def test_a_move_and_a_resize_asked_apart_end_where_asked_through_a_slow_link(cube, wm):
+    """A move() and a resize() of the window in one turn of Qt's event loop are two requests, and through a link
+    they reach the manager together. quartz-wm fills what a request leaves out from its record of the frame, which
+    changes only when X confirms the frame: the size asked without the place went to the place of before, and the
+    window ended there (25 ms each way, 3 of 3 runs). Either way round, the window ends where it was asked, on X and
+    in Qt."""
+    import time
+
+    app = ResizeApp(cube, own_link(XDISP, 25, 5))
+    seen, want = {}, {}
+    try:
+        hello = app.read(90)
+        assert hello.get("ready"), hello
+        for k, first in enumerate(("move", "resize")):
+            app.say(f"split {(-1) ** k * 120} {(-1) ** k * 80} 0 {first}")
+            want[first] = app.read()["released"]
+            time.sleep(1.5)
+            seen[first] = on_x(hello["xid"])
+        app.say("report")
+        qt = app.read()["final"]
+    finally:
+        app.close()
+    assert dict(seen, qt=qt) == dict(want, qt=want["resize"]), (seen, want, qt)

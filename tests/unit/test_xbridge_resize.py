@@ -69,8 +69,27 @@ def test_a_set_geometry_is_one_request(setup):
 
 
 def test_a_move_alone_asks_the_place_alone(setup):
+    setup.rec.xg = setup.w.geometry()                   # X told it (the manager's notice at the map)
     setup.w.move(120, 210)
     assert setup.c.asked == [dict(x=120, y=210)]
+
+
+def test_a_move_and_a_resize_before_x_answers_ask_the_whole_geometry(setup):
+    """quartz-wm fills what a request leaves out from its record of the frame, which changes when X confirms it:
+    a size asked after a move it had not confirmed went to the old place (through a link of 25 ms, the move lost).
+    The second request carries the place too, either way round."""
+    s = setup
+    s.rec.xg = s.w.geometry()
+    s.w.move(120, 210)
+    s.w.resize(700, 500)
+    s.w.resize(720, 520)                                # X has still not answered
+    assert s.c.asked == [dict(x=120, y=210), dict(x=120, y=210, width=700, height=500),
+                         dict(x=120, y=210, width=720, height=520)]
+    s.c.asked.clear()
+    s.rec.xg = s.w.geometry()                           # X told the last one: what differs alone again
+    s.w.resize(640, 480)
+    s.w.move(100, 200)
+    assert s.c.asked == [dict(width=640, height=480), dict(x=100, y=200, width=640, height=480)]
 
 
 def test_taking_xs_geometry_asks_nothing(qapp, setup):

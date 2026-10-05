@@ -8,7 +8,8 @@
   set again when Qt changes it), a window type, the Motif hints of a frameless window, WM_TRANSIENT_FOR of a window
   owned by another (a panel or a dialog stays above its owner).
 - Geometry: Qt's global coordinates are X root coordinates. A move or resize from Qt is asked of X, in one request
-  (a setGeometry too); the notices of X are taken by Qt, which asks nothing back, except echoes of a request of
+  (a setGeometry too), whole while an earlier one is unanswered (a manager fills what a request leaves out from its
+  own record); the notices of X are taken by Qt, which asks nothing back, except echoes of a request of
   ours older than the last one (unzooming through ssh met the late notice of the zoom and X and Qt ended with
   swapped sizes, audit F20i) and notices of older requests.
 - The keyboard: with a manager, activation is asked through _NET_ACTIVE_WINDOW with a server time; without one
@@ -310,10 +311,13 @@ class Windows:
             self.trace.write("CONF", rec.xid, " ".join(f"{k}={v}" for k, v in kw.items()))
 
     def qt_geometry(self, rec: XWin) -> None:
-        """Qt moved or resized a top-level: ask X for what differs from what X told (else from what was last asked),
-        in one request. Qt's setGeometry moves, then resizes: asked apart, quartz-wm answered the move with its
-        record of the frame, the old place and size, and quartz-wm made the size request from that record, back at
-        the old place. Nothing is asked while Qt takes X's geometry, nor when Qt has the geometry X told."""
+        """Qt moved or resized a top-level: ask X for what differs from what X told, in one request; the whole
+        geometry while X has not told it since the last request. Qt's setGeometry moves, then resizes: asked apart,
+        quartz-wm answered the move with its record of the frame, the old place and size, and quartz-wm made the size
+        request from that record, back at the old place. A manager fills what a request leaves out from its record,
+        which a request still on its way has not changed: a move() and a resize() of one window, two requests,
+        lost the move through a link of 25 ms. Nothing is asked while Qt takes X's geometry, nor when Qt has the
+        geometry X told."""
         g = rec.w.geometry()
         if rec.taking or g == rec.xg:
             return
@@ -328,6 +332,8 @@ class Windows:
                 kw.update(width=max(1, g.width()), height=max(1, g.height()))
             if not kw:
                 return
+            if rec.xg is None:
+                kw = dict(x=g.x(), y=g.y(), width=max(1, g.width()), height=max(1, g.height()))
             self.configure(rec, **kw)
         self.c.flush()
 
