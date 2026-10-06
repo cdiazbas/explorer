@@ -116,6 +116,28 @@ class MemoryGuard:
         return f"cache budget {self.budget / 2**30:.2f} GB" + (f" (shrunk {len(self.events)}x)" if self.events else "")
 
 
+class GuardShare:
+    """One cube's part of a MemoryGuard that n cubes share (linked cubes, ROADMAP E8.1): 1/n of its budget and of
+    the room it sees, so that the n hold what one cube alone would. update() re-reads the machine for all of them."""
+
+    def __init__(self, guard: MemoryGuard, n: int):
+        self.guard, self.n = guard, max(1, int(n))
+
+    @property
+    def budget(self) -> int:
+        return self.guard.budget // self.n
+
+    def update(self) -> int:
+        self.guard.update()
+        return self.budget
+
+    def room(self) -> int:
+        return self.guard.room() // self.n
+
+    def describe(self) -> str:
+        return f"{self.guard.describe()}, 1/{self.n} for this cube"
+
+
 @dataclass(frozen=True)
 class Budgets:
     images: int                      # bytes for the image cache

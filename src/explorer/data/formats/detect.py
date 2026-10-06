@@ -5,6 +5,7 @@ from .layout import Layout
 from .lp import HEADER_BYTES
 
 log = get_logger("data")
+_said: set[str] = set()     # files whose counts were reported: linking reads a layout up to three times (data.link)
 
 
 def detect(path) -> str:
@@ -33,7 +34,8 @@ def open_layout(path) -> Layout:
     layout = lp_pair_layouts(path, sp)[0] if sp is not None else lp_single_layout(path)
     side = lp_sidecar(path)
     if side is None:
-        if layout.dtype.kind in "iu":                   # nothing says what the counts are: shown as they are
+        if layout.dtype.kind in "iu" and str(path) not in _said:    # nothing says what the counts are: shown
+            _said.add(str(path))                                        # as they are; said once per file
             log.warning("%s: values in counts, padding as data: no <stem>_im_times+wvl.idlsave beside it or the "
                         "file it links to", path)
         return layout

@@ -2,6 +2,7 @@
 nothing; the order tests: stale work is skipped before it reads, and an old result never replaces a newer one."""
 import concurrent.futures as cf
 import threading
+import time
 import types
 
 import numpy as np
@@ -339,3 +340,31 @@ def test_nothing_runs_after_closing_not_even_the_sample_due_later(cube, caplog):
     loop.pump()
     assert len(rec.calls) == n
     assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+def test_a_linked_cube_leaves_the_main_cubes_threads_open(cube):
+    d, _ = cube
+    with Dataset.open(d["im"], no_sp=True) as ds:
+        ex = ds.executors
+        with Dataset.open(d["im"], no_sp=True, executors=ex) as o:
+            assert o.executors is ex
+        assert ex.numba.submit(lambda: 7).result(5) == 7    # still running
+
+
+def test_closing_a_linked_cube_waits_for_its_reads_on_the_shared_threads(cube):
+    """A linked cube's reads queued on the main cube's numba thread ran after its files were closed: ShortRead (or,
+    with the descriptor reused, another file's bytes). Its close waits for what is queued there."""
+    d, data = cube
+    with Dataset.open(d["im"], no_sp=True) as ds:
+        o = Dataset.open(d["im"], no_sp=True, executors=ds.executors)
+        gate = threading.Event()
+        ds.executors.numba.submit(gate.wait, 5)         # the shared thread busy
+        fut = o.series(3, 4, (0, 0, 0), [2])            # queued behind it
+        closer = threading.Thread(target=o.close)
+        closer.start()
+        time.sleep(0.2)                                 # the close under way while the read waits
+        gate.set()
+        closer.join(5)
+        print("read after close:", fut.exception(5) or "ok")
+        assert fut.exception(5) is None
+        np.testing.assert_array_equal(fut.result(), data[0, 0, :, 3, 4])

@@ -84,6 +84,20 @@ def test_guard_on_linux_never_grows_and_honours_the_cgroup():
     assert g.update() == GB                               # does not grow back
 
 
+def test_linked_cubes_share_one_budget():
+    """Linked cubes (ROADMAP E8.1): each its 1/n of the one budget, following it as it shrinks; each cube with a
+    guard of its own held n budgets."""
+    from explorer.data.policy import GuardShare
+
+    snaps = _Snaps()
+    g = MemoryGuard(snaps, mac=True)
+    a, b = GuardShare(g, 2), GuardShare(g, 2)
+    print("alone", g.budget, "each of two", a.budget, a.describe())
+    assert a.budget + b.budget <= g.budget and a.budget == g.budget // 2 and a.room() == g.room() // 2
+    snaps.s["swap_used"] += 300 << 20
+    assert a.update() == g.budget // 2 == int(0.15 * 8 * GB) // 4
+
+
 def test_budget_split():
     frame = 16 << 20
     whole = plan_budgets(budget=4 * GB, room=40 * GB, frame_bytes=frame, nt=186, read_ahead=4)

@@ -43,13 +43,16 @@ def _done(value) -> Future:
 
 
 class Dataset:
-    def __init__(self, path, *, sp=None, no_sp=False, probe=None, guard=None, axes=None):
+    def __init__(self, path, *, sp=None, no_sp=False, probe=None, guard=None, axes=None, executors=None):
         """Open the cube at path; sp: a per-pixel file to use instead of the companions next to it; no_sp: none;
         axes: what the leading axes are when the header does not say it right (--axes, axes.roles), e.g. "s,l".
-        probe and guard: given instead of measured (tests, or a second cube on the same storage)."""
+        probe and guard: given instead of measured (tests, or a second cube on the same storage). executors: another
+        cube's, for a cube linked to it: one thread runs parallel numba for both (two at once abort the process,
+        executors.py); they stay that cube's, and are not closed with this one."""
         self.path = str(path)
         self.layout = formats.open_layout(path)
         self.executors: Executors | None = None
+        self._own_executors = executors is None
         self._io = ThreadPoolExecutor(IO_THREADS, thread_name_prefix="io")
         self.frames = FrameReader(self.layout, pool=self._io)
         try:
@@ -61,7 +64,8 @@ class Dataset:
                 self.probe = probe if probe is not None else StorageProbe(self.frames)
             self.guard = guard if guard is not None else MemoryGuard()
             self.frames.gather_threads = self.probe.gather_threads
-            self.executors = Executors(gather_threads=self.probe.gather_threads, io_threads=1)
+            self.executors = (Executors(gather_threads=self.probe.gather_threads, io_threads=1) if executors is None
+                              else executors)
             self._images = ThreadPoolExecutor(max(1, self.probe.readers), thread_name_prefix="images")
             self._slab_pool: ThreadPoolExecutor | None = None
             self.budgets: Budgets = self._plan()
@@ -240,7 +244,15 @@ class Dataset:
                 p.shutdown(wait=True, cancel_futures=True)
                 setattr(self, name, None)
         if self.executors is not None:
-            self.executors.close()
+            if self._own_executors:
+                self.executors.close()
+            else:                                       # another cube's: what this one queued there runs first,
+                ex = self.executors                     # while its files are open (closed under it: ShortRead)
+                for p in (ex.numba, ex.background, ex.slit):
+                    try:
+                        p.submit(lambda: None).result()
+                    except RuntimeError:                # already shut down: nothing left to run
+                        pass
             self.executors = None
         if getattr(self, "slit_cache", None) is not None:
             self.slit_cache.clear()
