@@ -239,3 +239,22 @@ def test_after_the_window_changes_size_the_images_are_one_width(window):
         print("window", width, "image widths", sizes)
         assert max(sizes) - min(sizes) <= 2
 
+
+def test_the_titles_are_thin_and_in_glass_on_the_image_s_colour(window):
+    """The image titles thin in every look (the user, 2026-10-06: they took a zoomed image's height), and in glass on
+    its title bar's colour (black in the dark theme), their own again out of it."""
+    from explorer.look import get_look
+    from explorer.ui import glass
+
+    w, qapp = window
+    titles = [w.image_title] + [c.title for c in w.linked]
+    print("title heights", [t.height() for t in titles], "font px", w.image_title.fontMetrics().height())
+    assert len({t.height() for t in titles}) == 1 and titles[0].height() <= 20
+    w.set_look(get_look("glass"))
+    spin(qapp, lambda: False, timeout=0.5)
+    backs = [t.back.name() if t.back is not None else None for t in titles]
+    print("in glass", backs)
+    assert backs == [glass.TITLE[glass._mode()].name()] * 3
+    w.set_look(get_look("classic"))
+    spin(qapp, lambda: False, timeout=0.3)
+    assert all(t.back is None for t in titles)

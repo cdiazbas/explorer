@@ -17,6 +17,7 @@ image again. The keys, from the prototype's _key_table, in one table (ui.actions
 - Ctrl+W close, Ctrl+M minimise, Ctrl+Q quit (Qt reads Ctrl as Cmd on a Mac, where Cmd+Q is the application menu's).
 """
 import math
+import os
 import sys
 import time
 from typing import TYPE_CHECKING
@@ -30,6 +31,7 @@ from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
 from ..data.axes import STOKES, unit_text
+from ..data.names import cube_names
 from ..look import LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
 from . import docks, glass, icons, pens, style
@@ -38,7 +40,7 @@ from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
 from .gestures import Gestures
 from .imageview import CURSOR_PEN, ImageView
 from .lambda_t import LambdaTPanel
-from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync, cube_names
+from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync
 from .loop import QtLoop
 from .overlays import ColourKey
 from .padlock import PanelLock
@@ -198,6 +200,7 @@ class Shell(QtWidgets.QMainWindow):
             lay = box.layout()
             assert isinstance(lay, QtWidgets.QVBoxLayout)      # docks.gutter's
             self.image_title = ImageTitle(names[0], parent=box)
+            self.image_title.setToolTip(os.path.basename(str(getattr(dataset, "path", ""))))
             lay.insertWidget(0, self.image_title)
             # as a panel's: the title at the top, then the gutter, then the image (inside the gutter the name sat
             # 5 px lower than the linked images' titles)
@@ -538,8 +541,13 @@ class Shell(QtWidgets.QMainWindow):
         others = [(c.name, getattr(c, key).widget, f"{key}:{c.k}") for c in self.linked if getattr(c, key) is not None]
         if not others:
             return None
-        return PanelTabs(self.session, ([(name, widget, key)] if own is not None else []) + others,
+        tabs = PanelTabs(self.session, ([(name, widget, key)] if own is not None else []) + others,
                          closing=lambda: self._closing)
+        files = ([self.dataset] if own is not None else []) + [c.dataset for c in self.linked
+                                                                 if getattr(c, key) is not None]
+        for i, ds in enumerate(files):                 # the whole file name, under a short tab name
+            tabs.setTabToolTip(i, os.path.basename(str(getattr(ds, "path", ""))))
+        return tabs
 
     def resizeEvent(self, ev) -> None:
         super().resizeEvent(ev)

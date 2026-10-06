@@ -521,11 +521,20 @@ class GlassChrome:
             s.titles_changed()
         self._hud_title()
 
+    def _image_titles(self, colour) -> None:
+        """The images' titles (linked cubes, ui.linked.ImageTitle) on the image's colour, as the window's title bar;
+        None: their own again."""
+        titles = [getattr(self.w, "image_title", None)] + [c.title for c in getattr(self.w, "linked", ())]
+        for t in titles:
+            if t is not None:
+                t.set_back(colour)
+
     def _hud_title(self) -> None:
         """The window's title bar in the image's colour with the panels' light, and its edge with their rim and accent
         line; given back by remove(). None where the window manager draws the title (a local Mac). Only its window
         colour is its own: the rest it takes from the application, so it follows a change of theme (T); a whole
         palette copied here kept the old theme's text and, given back, the old theme's colours."""
+        self._image_titles(TITLE[_mode()])
         tb = getattr(self.w, "title_bar", None)
         if tb is None:
             return
@@ -662,6 +671,8 @@ class GlassChrome:
             sk.retheme()
         if "title_bar" in self._was:                # the title bar in the new theme's image colour and accent
             self._hud_title()
+        else:
+            self._image_titles(TITLE[_mode()])
         self.bar.invalidate()
 
     def _fit_sliders(self, room: int) -> None:
@@ -964,6 +975,7 @@ class GlassChrome:
             c.dock.widget().layout().setContentsMargins(g, g, g, g)
         w.statusBar().setVisible(self._was["statusbar"])
         w.setWindowTitle(self._was["title"])
+        self._image_titles(None)
         if "title_bar" in self._was:
             tb = self._was["title_bar"]
             tb.setPalette(QtGui.QPalette())         # nothing of its own: the application's, in the theme of now

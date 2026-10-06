@@ -8,9 +8,9 @@ follow as the main cube's do. Its reads are a scheduler of its own (core.schedul
 threads (data.dataset: one thread runs parallel numba for all). The slit and the 2x2 view are the main cube's; the
 slit is drawn on every image, and can be drawn on any of them (ui.slit attaches each).
 
-Each image carries its cube's name above it (the line, else the file; ImageTitle): a linked image is a panel of
-its own, between the main image and the spectra, that floats and docks as the others do; closed, it reads nothing.
-The panels' tabs carry the names too.
+Each image carries its cube's name above it (data.names: the line, and the quantity of a map; ImageTitle; the file
+in its tooltip): a linked image is a panel of its own, between the main image and the spectra, that floats and docks
+as the others do; closed, it reads nothing. The panels' tabs carry the names too.
 """
 import math
 import os
@@ -28,25 +28,8 @@ from .lambda_t import LambdaTPanel
 from .padlock import PanelLock
 from .spectra import AxisDrag, SpectraPanel
 
-SUFFIXES = (".fits", ".icube", ".fcube")
-TITLE_PAD = 4               # px above and below an image's name
-
-
-def stem(path) -> str:
-    """The file's name without its cube suffix: Blos.6173_map for Blos.6173_map.fcube."""
-    name = os.path.basename(str(path))
-    for suf in SUFFIXES:
-        if name.endswith(suf):
-            return name[:-len(suf)]
-    return name
-
-
-def cube_names(datasets) -> list[str]:
-    """A short name for each cube, as the tags and the panels' titles show it: its line (WAVEBAND, data.axes), or
-    its file when it has none or another cube has the same line (a field map of the same line, a second
-    observation of it)."""
-    lines = [getattr(getattr(ds, "axes", None), "line", None) for ds in datasets]
-    return [ln if ln and lines.count(ln) == 1 else stem(ds.path) for ds, ln in zip(datasets, lines, strict=True)]
+TITLE_PAD = 1               # px above and below an image's name: thin, it takes little of the image's height
+TITLE_SMALLER = 1.5         # pt below the window's font (4 px and the full font took 28 px of a zoomed image's 844)
 
 
 class _TitleButton(QtWidgets.QAbstractButton):
@@ -56,6 +39,7 @@ class _TitleButton(QtWidgets.QAbstractButton):
     def __init__(self, kind: str, parent, tip: str):
         super().__init__(parent)
         self.kind = kind
+        self.back: QtGui.QColor | None = None           # the title's background, under the float mark's front square
         self.setToolTip(tip)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
@@ -85,7 +69,7 @@ class _TitleButton(QtWidgets.QAbstractButton):
         else:                                           # a window over another: one behind, one in front
             k = side * 0.7
             p.drawRect(QtCore.QRectF(r.right() - k, r.top(), k, k))
-            p.setBrush(self.palette().color(QtGui.QPalette.ColorRole.Window))
+            p.setBrush(self.back if self.back is not None else self.palette().color(QtGui.QPalette.ColorRole.Window))
             p.drawRect(QtCore.QRectF(r.left(), r.bottom() - k, k, k))
 
 
@@ -100,6 +84,7 @@ class ImageTitle(QtWidgets.QWidget):
     def __init__(self, text: str, dock: QtWidgets.QDockWidget | None = None, parent=None):
         super().__init__(parent if parent is not None else dock)
         self.text, self.dock = text, dock
+        self.back: QtGui.QColor | None = None           # its background (glass: the image's colour); None: the window's
         self.buttons: list[_TitleButton] = []
         self.setFixedHeight(self.height_for(self))
         if dock is None:
@@ -121,7 +106,18 @@ class ImageTitle(QtWidgets.QWidget):
     def font_of(w: QtWidgets.QWidget) -> QtGui.QFont:
         f = QtGui.QFont(w.font())
         f.setWeight(QtGui.QFont.Weight.DemiBold)
+        if f.pointSizeF() > 0:
+            f.setPointSizeF(max(7.0, f.pointSizeF() - TITLE_SMALLER))
+        else:                                           # a font set in pixels
+            f.setPixelSize(max(9, f.pixelSize() - 2))
         return f
+
+    def set_back(self, colour: QtGui.QColor | None) -> None:
+        self.back = colour
+        for b in self.buttons:
+            b.back = colour
+            b.update()
+        self.update()
 
     @classmethod
     def height_for(cls, w: QtWidgets.QWidget) -> int:
@@ -143,7 +139,7 @@ class ImageTitle(QtWidgets.QWidget):
     def paintEvent(self, e):
         p = QtGui.QPainter(self)
         R = QtGui.QPalette.ColorRole
-        p.fillRect(self.rect(), self.palette().color(R.Window))
+        p.fillRect(self.rect(), self.back if self.back is not None else self.palette().color(R.Window))
         p.setFont(self.font_of(self))
         p.setPen(self.palette().color(R.WindowText))
         # room for the marks on both sides, shown or not: the name stays put (a never-shown button's width is Qt's
@@ -270,6 +266,7 @@ class LinkedCube:
         # its image a panel of its own (the shell places it beside the main image), titled with its name
         self.dock = docks.dock(shell, name, self.view.widget, f"image:{k}")
         self.title = ImageTitle(name, self.dock)
+        self.title.setToolTip(os.path.basename(str(ds.path)))
         self.dock.setTitleBarWidget(self.title)
         self.dock.visibilityChanged.connect(self._image_shown)
         r = ds.roles
