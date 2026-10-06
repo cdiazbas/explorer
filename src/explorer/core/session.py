@@ -2,10 +2,12 @@
 cube its lambda and Stokes, linked to the main cube's or not.
 
 From the prototype's Viewer (set_index, _step, _on_hover, set_locked, the start in __init__) and the plan of linked
-windows (docs/PLAN_VENTANAS_ENLAZADAS.md in the project, §3.2). One cube for now; the members, the master and the
-links are here from the start so that several cubes (ROADMAP E8) do not reorganise it. Mapping pixels and times
-between cubes of different grids and cadences is E8's; until then add() refuses a second cube.
+windows (docs/PLAN_VENTANAS_ENLAZADAS.md in the project, §3.2). Linked cubes (ROADMAP E8.1) are members on the main
+cube's grid with its times, or a single frame (data.link decides): the cursor, the lock and t are the same state
+for all; each member's lambda and Stokes are the main's when linked, else its own, in the state too (ViewState.own),
+so that a change of either notifies as any other. Other grids and cadences (mapping pixels and times) come later.
 """
+import dataclasses
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -29,13 +31,11 @@ class Cube(Protocol):
 
 @dataclass
 class Member:
-    """A cube in the session, with what is its own: its lambda and Stokes when they are not linked to the main cube's
-    (decision D3 of the linked-windows plan)."""
+    """A cube in the session; link_l, link_s: its lambda and Stokes are the main cube's (decision D3 of the
+    linked-windows plan), else its own (ViewState.own)."""
     dataset: Cube
     link_l: bool = True
     link_s: bool = True
-    l: int = 0  # noqa: E741
-    s: int = 0
 
 
 class Session:
@@ -58,15 +58,64 @@ class Session:
     def state(self) -> ViewState:
         return self.store.state
 
-    def add(self, dataset, link_l=True, link_s=True):
-        raise NotImplementedError("a second cube needs the pixel and time mapping of ROADMAP E8")
+    def add(self, dataset, link_l: bool = False, link_s: bool | None = None) -> int:
+        """A linked cube on the main cube's grid (data.link has checked its times); returns its member number. Its
+        lambda is its own by default (another line: lambda by index means nothing across lines); its Stokes are the
+        main cube's when both have the same number, else its own."""
+        if (dataset.ny, dataset.nx) != (self.main.ny, self.main.nx):
+            raise ValueError(f"{dataset.nx}x{dataset.ny} pixels against {self.main.nx}x{self.main.ny}: only cubes on "
+                             f"the main cube's grid are linked yet")
+        r, main = dataset.roles, self.main.roles
+        if link_s is None:
+            link_s = r.s is not None and main.s is not None and r.ns == main.ns
+        self.members.append(Member(dataset, link_l=bool(link_l) and r.nl == main.nl, link_s=bool(link_s)))
+        own = (r.nl // 2 if r.l is not None else 0, 0)
+        self.store.set(own=self.store.state.own + (own,))
+        return len(self.members) - 1
+
+    def member_state(self, member: int, state: ViewState | None = None) -> ViewState:
+        """The state as member k reads it: t within its times (a single frame at every t), its lambda and Stokes (the
+        main's when linked), its panels ("spectra:k" as "spectra"), no slit (the slit is the main cube's). The main
+        cube's state as it is."""
+        st = state or self.store.state
+        if member == 0:
+            return st
+        m = self.members[member]
+        own_l, own_s = st.own[member - 1]
+        mine = frozenset(p.split(":")[0] for p in st.panels if p.endswith(f":{member}"))
+        r = m.dataset.roles
+        return dataclasses.replace(st, t=min(st.t, r.nt - 1), l=min(st.l if m.link_l else own_l, r.nl - 1),
+                                   s=min(st.s if m.link_s else own_s, r.ns - 1), panels=mine, path=None, draft=None)
+
+    def set_member_index(self, member: int, axis: str, v: int) -> None:
+        """lambda or Stokes of member k to v, clipped to its axis: the main cube's when linked (t is everyone's)."""
+        if member == 0 or axis == "t":
+            self.set_index(axis, v)
+            return
+        if axis not in ("l", "s"):
+            raise ValueError(f"axis must be one of {AXES}, not {axis!r}")
+        m = self.members[member]
+        if (m.link_l if axis == "l" else m.link_s):
+            self.set_index(axis, v)
+            return
+        r = m.dataset.roles
+        if (r.l if axis == "l" else r.s) is None:
+            return
+        n = r.nl if axis == "l" else r.ns
+        own = list(self.store.state.own)
+        l, s = own[member - 1]  # noqa: E741
+        own[member - 1] = (int(np.clip(int(v), 0, n - 1)), s) if axis == "l" else (l, int(np.clip(int(v), 0, n - 1)))
+        self.store.set(own=tuple(own))
 
     def index(self, member: int = 0, state: ViewState | None = None) -> tuple:
         """The leading-axes index of a member's frame for the state (by default the current one), for its reads."""
-        st = state or self.store.state
+        return self.index_of(member, self.member_state(member, state))
+
+    def index_of(self, member: int, st: ViewState) -> tuple:
+        """The leading-axes index of member k's frame for a state already its own (member_state)."""
         m = self.members[member]
         r = m.dataset.roles
-        vals = {"t": st.t, "s": st.s if m.link_s else m.s, "l": st.l if m.link_l else m.l}
+        vals = {"t": st.t, "s": st.s, "l": st.l}
         idx = [0] * len(m.dataset.shape[:-2])
         for name, pos in (("t", r.t), ("s", r.s), ("l", r.l)):
             if pos is not None:

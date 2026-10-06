@@ -30,7 +30,10 @@ class ViewState:
     path: Path2D | None = None                          # the slit, when there is one
     draft: Path2D | None = None                         # the slit being drawn, to the pointer; None: not drawing
     playing: bool = False
-    panels: frozenset[str] = field(default=PANELS)      # shown: nothing is read for a hidden panel
+    panels: frozenset[str] = field(default=PANELS)      # shown: nothing is read for a hidden panel ("spectra:k":
+                                                        # linked cube k's)
+    own: tuple[tuple[int, int], ...] = ()               # (lambda, Stokes) of each linked cube (members 1, 2...),
+                                                        # its own when not linked to the main cube's
 
 
 FIELDS = frozenset(f.name for f in dataclasses.fields(ViewState))

@@ -342,6 +342,52 @@ def test_nothing_runs_after_closing_not_even_the_sample_due_later(cube, caplog):
     assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
 
+def test_a_linked_cube_reads_its_frame_when_it_changes_and_only_then(cube, tmp_path):
+    """ROADMAP E8.1: a linked cube with another lambda axis follows t and the cursor; the main cube's lambda is not
+    its own; a single frame is read once, whatever t."""
+    d, _ = cube
+    other = synth.write_dataset(tmp_path, "o", shape=(SHAPE[0], SHAPE[1], 7, SHAPE[3], SHAPE[4]), seed=5,
+                                icube=False, sp=False)["im"]
+    still = tmp_path / "still.fcube"
+    with open(still, "wb") as f:                          # an LP map of one frame
+        f.write(f"datatype=4 (float), dims=3, nx={SHAPE[4]}, ny={SHAPE[3]}, nt=1, endian=l".encode().ljust(512, b"\0"))
+        f.write(np.ones((SHAPE[3], SHAPE[4]), "<f4").tobytes())
+    # the main cube's executors: with a numba thread of its own, the linked cube's spectra aborted the process
+    # ("Numba workqueue threading layer is terminating: Concurrent access has been detected", Mac)
+    with Dataset.open(d["im"], no_sp=True) as ds, Dataset.open(other, executors=ds.executors) as o, \
+            Dataset.open(still, axes="t", executors=ds.executors) as m:
+        sess = Session(ManualLoop(), ds)
+        ko, km = sess.add(o), sess.add(m)
+        sess.show(f"spectra:{ko}")
+        sess.show(f"lambda_t:{ko}")
+        main, rec_o, rec_m = Recorder(), Recorder(), Recorder()
+        scheds = [Scheduler(sess, main), Scheduler(sess, rec_o, member=ko), Scheduler(sess, rec_m, member=km)]
+        try:
+            for s in scheds:
+                settle(s)
+            print("start: linked", rec_o.calls, "still", rec_m.calls)
+            assert rec_o.calls[0] == ("image", (0, 0, 3)) and rec_o.kinds() == ["image", "spectra", "lambda_t"]
+            assert rec_m.kinds() == ["image"]                # no panels for a map
+            steps = [("t", lambda: sess.set_index("t", 2), ["image", "spectra"], ["image", "spectra"], []),
+                     ("main l", lambda: sess.set_index("l", 0), ["image"], [], []),
+                     ("own l", lambda: sess.set_member_index(ko, "l", 6), [], ["image"], []),
+                     ("s", lambda: sess.set_index("s", 1), ["image", "lambda_t"], ["image", "lambda_t"], []),
+                     ("cursor", lambda: sess.hover(10, 11), ["spectra", "lambda_t"], ["spectra", "lambda_t"], [])]
+            for name, act, want_main, want_o, want_m in steps:
+                for r in (main, rec_o, rec_m):
+                    r.calls.clear()
+                act()
+                sess.store.loop.pump()
+                for s in scheds:
+                    settle(s)
+                print(f"{name}: main {main.kinds()} linked {rec_o.kinds()} still {rec_m.kinds()}")
+                assert (main.kinds(), rec_o.kinds(), rec_m.kinds()) == (want_main, want_o, want_m), name
+            assert sess.index(ko) == (2, 1, 6) and rec_o.calls[0][1] == (10, 11)
+        finally:
+            for s in scheds:
+                s.close()
+
+
 def test_a_linked_cube_leaves_the_main_cubes_threads_open(cube):
     d, _ = cube
     with Dataset.open(d["im"], no_sp=True) as ds:

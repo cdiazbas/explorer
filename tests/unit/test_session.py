@@ -70,13 +70,48 @@ def test_a_cube_without_stokes_ignores_it():
     assert s.state.s == 0 and s.index() == (3, 2)        # (lambda, t) order of this cube
 
 
-def test_panels_and_a_second_cube(session):
+def test_panels(session):
     session.show("lambda_t", False)
     assert session.state.panels == {"spectra"}
     session.show("lambda_t")
     assert session.state.panels == {"spectra", "lambda_t"}
-    with pytest.raises(NotImplementedError):
-        session.add(cube())
+
+
+def test_a_linked_cube_follows_t_and_the_cursor_with_its_own_lambda(session):
+    k = session.add(cube(shape=(5, 4, 9, 30, 20)))       # another line: 9 tunings
+    m = session.members[k]
+    print("member", k, "link_l", m.link_l, "link_s", m.link_s, "own", session.state.own)
+    assert (k, m.link_l, m.link_s, session.state.own) == (1, False, True, ((4, 0),))
+    session.set_index("t", 3)
+    session.set_index("s", 2)
+    session.set_index("l", 6)                            # the main cube's lambda: not the linked one's
+    session.set_member_index(k, "l", 99)                 # its own, clipped to its 9
+    st = session.member_state(k)
+    print("main", session.index(), "linked", session.index(k))
+    assert (st.t, st.s, st.l) == (3, 2, 8) and session.index(k) == (3, 2, 8) and session.index() == (3, 2, 6)
+    session.set_member_index(k, "s", 1)                  # linked Stokes: the main cube's
+    assert session.state.s == 1 and session.index(k) == (3, 1, 8)
+
+
+def test_a_linked_cube_reads_its_own_panels_and_no_slit(session):
+    k = session.add(cube())
+    session.show("spectra:1")
+    session.store.set(path=((1.0, 1.0), (5.0, 5.0)))
+    st = session.member_state(k)
+    print("main panels", sorted(session.state.panels), "linked", sorted(st.panels))
+    assert st.panels == {"spectra"} and st.path is None and session.state.path is not None
+
+
+def test_a_single_frame_is_shown_at_every_t(session):
+    k = session.add(cube(("HPLT", "HPLN"), (30, 20)))     # a map: no leading axes
+    session.set_index("t", 4)
+    st = session.member_state(k)
+    assert st.t == 0 and session.index(k) == ()
+
+
+def test_another_grid_is_refused(session):
+    with pytest.raises(ValueError, match="pixels"):
+        session.add(cube(shape=(5, 4, 7, 31, 20)))
 
 
 def test_with_a_real_dataset(tmp_path):

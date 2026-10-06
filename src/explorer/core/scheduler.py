@@ -20,6 +20,9 @@ lambda-t, Mac 18-23 -> 3-5 ms, StorNext ~165 -> ~40 ms). A result is shown unles
 (executors.ShownGate): showing only the latest request's froze the panels while the mouse moved.
 Results come back from other threads through Loop.post, and the Sink is called on the main thread only.
 The slit panel's reads and slices are SlitReads' (core.slitreads), which sees every notice first.
+A linked cube (ROADMAP E8.1) has a scheduler of its own (member=k): it reads the state as its cube does
+(Session.member_state: its lambda and Stokes, its panels), and a change reaches it only when its frame or its
+cursor changes (a single frame does not move with t). No slit and no 2x2 view: those are the main cube's.
 The image's levels are computed on the thread that read the frame, before its result is posted, and on the threads
 that read frames ahead (Levels.ahead): the UI thread finds them cached. Never for a read already stale, nor on the
 main thread: a future that completed before its callback was added runs it there, and the levels are then computed
@@ -29,7 +32,7 @@ import dataclasses
 import functools
 import threading
 from concurrent.futures import Future
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -71,15 +74,16 @@ class Sink(Protocol):
 
 
 class Scheduler:
-    def __init__(self, session: Session, sink: Sink):
-        self.session, self.sink = session, sink
-        self.ds = session.main
+    def __init__(self, session: Session, sink: Sink, member: int = 0):
+        self.session, self.sink, self.member = session, sink, member
+        self.ds: Any = session.members[member].dataset   # a Dataset: the session types only what it needs of one
         self.loop = session.store.loop
         self.gens, self.shown = Generations(), ShownGate()
         self.img: np.ndarray | None = None              # the image on screen
         self.img_idx: tuple | None = None
         self.levels = Levels()
         r = self.ds.roles
+        self.sizes = {"t": r.nt, "s": r.ns, "l": r.nl}
         self.yrange = YRange(self.loop, r.ns, self._cont(), sink.y_range, sink.units,
                              self._start_quv, quv_ok=r.s is not None)
         self._sampled = False
@@ -89,13 +93,20 @@ class Scheduler:
         self._pending: set[str] = set()                 # cursor work waiting for the latest image
         self._cleared = False
         self._futures: set[Future] = set()
-        self._panels = session.state.panels             # the panels shown at the last notice
+        st = self.state
+        self._panels = st.panels                        # the panels shown at the last notice
+        self._seen = st                                 # a linked cube's state at the last notice
         self._flock = threading.Lock()
-        self.slit = SlitReads(session, sink, self._track, self._when_read)
+        self.slit = SlitReads(session, sink, self._track, self._when_read) if member == 0 else None
         self._off = session.store.subscribe(self._on_change)
-        self._first_units(session.state)
+        self._first_units(st)
         self._pending.add("cursor")                     # the first image brings the first cursor
-        self._request_image(session.state)
+        self._request_image(st)
+
+    @property
+    def state(self) -> ViewState:
+        """The session's state as this scheduler's cube reads it (Session.member_state)."""
+        return self.session.member_state(self.member)
 
     def _first_units(self, st: ViewState) -> None:
         """With a per-pixel file, the cursor's block read now, as the window is built (the prototype's first
@@ -114,7 +125,8 @@ class Scheduler:
     def close(self) -> None:
         """No more work: what is due later (the y-range sample) or still on its way is dropped."""
         self._closed = True
-        self.slit.close()
+        if self.slit is not None:
+            self.slit.close()
         self._off()
 
     # ---------------------------------------------------------------- bookkeeping for tests and idle checks
@@ -148,7 +160,12 @@ class Scheduler:
 
     # ---------------------------------------------------------------- changes of state
     def _on_change(self, st: ViewState, changed: frozenset) -> None:
-        self.slit.on_change(st, changed)
+        if self.member:
+            st, changed = self._as_member(st)
+            if not changed:
+                return
+        if self.slit is not None:
+            self.slit.on_change(st, changed)
         came, self._panels = st.panels - self._panels, st.panels
         moved = changed & {"t", "s", "l"}
         if moved:
@@ -164,9 +181,17 @@ class Scheduler:
             # the UI thread between a finished slit and its slices (6173, bellatrix)
             self._evaluate(st, set(changed & {"cursor"}) | {f"show:{p}" for p in came})
 
+    def _as_member(self, st: ViewState) -> tuple[ViewState, frozenset]:
+        """The notice as the linked cube reads it: its state, and what changed of it since its last notice (a t
+        beyond a single frame's is no change)."""
+        mine, seen = self.session.member_state(self.member, st), self._seen
+        self._seen = mine
+        fields = ("t", "s", "l", "cursor", "panels", "locked", "playing")
+        return mine, frozenset(f for f in fields if getattr(mine, f) != getattr(seen, f))
+
     def _request_image(self, st: ViewState) -> None:
         g = self.gens.new("image")
-        idx = self.session.index(state=st)
+        idx = self.session.index_of(self.member, st)
         fut = self.ds.image(idx)
         if fut.done():
             self._image_ready(g, idx, fut)
@@ -181,15 +206,15 @@ class Scheduler:
             return
         n_ahead = getattr(getattr(self.ds, "probe", None), "read_ahead", 0)
         for axis in moved:
-            n = self.session.sizes[axis]
+            n = self.sizes[axis]
             # the 2x2 view shows every Stokes: their next frames along t or lambda too
-            stokes = range(self.session.sizes["s"]) if self.grid and axis != "s" else (st.s,)
+            stokes = range(self.sizes["s"]) if self.grid and axis != "s" else (st.s,)
             for d in range(1, n_ahead + 1):
                 for s in stokes:
                     ahead = dataclasses.replace(st, **{axis: (getattr(st, axis) + d) % n})
                     if axis != "s":
                         ahead = dataclasses.replace(ahead, s=s)
-                    idx = self.session.index(state=ahead)
+                    idx = self.session.index_of(self.member, ahead)
                     fut = self.ds.prefetch(idx)
                     if isinstance(fut, Future):         # None: cached, or outside the cube
                         fut.add_done_callback(functools.partial(self._levels_ahead, idx, ahead.s > 0))
@@ -214,13 +239,13 @@ class Scheduler:
         self.grid = bool(on)
         self._grid_gen += 1
         if self.grid:
-            self._request_grid(self.session.state)
+            self._request_grid(self.state)
 
     def _request_grid(self, st: ViewState) -> None:
         self._grid_gen += 1
         g = self._grid_gen
-        for s in range(self.session.sizes["s"]):
-            idx = self.session.index(state=dataclasses.replace(st, s=s))
+        for s in range(self.sizes["s"]):
+            idx = self.session.index_of(self.member, dataclasses.replace(st, s=s))
             fut = self.ds.image(idx)
             if fut.done():
                 self._grid_ready(g, s, idx, fut)
@@ -254,7 +279,7 @@ class Scheduler:
                 self.loop.call_later(SAMPLE_AFTER_S, self._start_sample)
         if not self.gens.stale("image", g) and self._pending:
             kinds, self._pending = self._pending, set()
-            self._evaluate(self.session.state, kinds)
+            self._evaluate(self.state, kinds)
 
     # ---------------------------------------------------------------- the cursor's panels
     def _evaluate(self, st: ViewState, kinds: set) -> None:
@@ -303,7 +328,7 @@ class Scheduler:
     def _show_image(self) -> None:
         if self._closed or self.img is None or self.img_idx is None:
             return
-        lim = self.levels.image(self.img_idx, self.session.state.s > 0, self.img)
+        lim = self.levels.image(self.img_idx, self.state.s > 0, self.img)
         self.sink.image(self.img_idx, self.img, lim)
 
     def fix_levels(self, on: bool, refit: bool = False) -> None:
@@ -311,7 +336,7 @@ class Scheduler:
         lets each image have its own. The image is shown again with them."""
         if self.img is None:
             return
-        sym = self.session.state.s > 0
+        sym = self.state.s > 0
         if not on:
             self.levels.unfix()
         elif refit or not self.levels.fixed(sym):
@@ -358,7 +383,7 @@ class Scheduler:
 
     def _read_series(self, g: int, st: ViewState, want_spec: bool, want_lt: bool) -> None:
         r, (y, x) = self.ds.roles, st.cursor
-        idx = self.session.index(state=st)
+        idx = self.session.index_of(self.member, st)
         spec_axes = sorted(a for a in (r.s, r.l) if a is not None)
         lt_axes = sorted((r.t, r.l)) if r.t is not None and r.l is not None else None
         want_lt = want_lt and lt_axes is not None
@@ -412,7 +437,7 @@ class Scheduler:
     def _start_quv(self) -> None:
         """Q U V's ranges from the whole frames at the t shown, on the background thread (never delaying the cursor's
         reads); asked for once, when the spectra padlock first closes."""
-        r, t = self.ds.roles, self.session.state.t
+        r, t = self.ds.roles, self.state.t
         limit = getattr(getattr(self.ds, "probe", None), "gather_threads", 16)
         threads = quv_threads(self.ds.frames.frame_bytes, limit)
 
