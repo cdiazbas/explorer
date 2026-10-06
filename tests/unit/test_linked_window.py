@@ -224,3 +224,18 @@ def test_the_slit_is_on_every_image_and_can_be_drawn_on_any(window):
     print("points after a click on the linked image:", tool.pts, "locked:", w.session.state.locked)
     assert len(tool.pts) == 1 and not w.session.state.locked
     w.set_slit_mode(False)
+
+
+def test_after_the_window_changes_size_the_images_are_one_width(window):
+    """reset_sizes resized the spectra, then shared the images' widths out from widths Qt had not applied yet: the
+    main image 223 px against 362 for each linked one (real cubes, the start's size, bellatrix)."""
+    w, qapp = window
+    for width in (1000, 1700):
+        w.resize(width, 700)
+        spin(qapp, lambda: False, timeout=0.3)
+        w.reset_sizes()
+        qapp.processEvents()
+        sizes = [w.view.widget.width()] + [c.view.widget.width() for c in w.linked]
+        print("window", width, "image widths", sizes)
+        assert max(sizes) - min(sizes) <= 2
+

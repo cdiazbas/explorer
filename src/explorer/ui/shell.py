@@ -564,7 +564,11 @@ class Shell(QtWidgets.QMainWindow):
         panel's width when the window changes, and the main image took all the change: 80 px against 527 in glass)."""
         imgs = [c.dock for c in self.linked if c.dock.isVisible() and not c.dock.isFloating()]
         cw = self.centralWidget()
-        if imgs and cw is not None:
+        lay = QtWidgets.QMainWindow.layout(self)
+        if imgs and cw is not None and lay is not None:
+            # the widths as Qt has them after the last resizeDocks (the spectra's, in reset_sizes): read before, the
+            # main image came out 223 px against 362 for each linked one
+            lay.activate()
             each = (cw.width() + sum(d.width() for d in imgs)) // (len(imgs) + 1)
             self.resizeDocks(imgs, [each] * len(imgs), QtCore.Qt.Orientation.Horizontal)
 
