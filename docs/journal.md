@@ -3571,3 +3571,75 @@ zoom por la barra 237-260 ms a 8/20; panel arrastrado 179-218 ms en dos exposici
 (unit y golden en el nodo 1, Xvfb 1920×1080): `tests/unit` + `tests/golden` 669 pasan y 2 se omiten (945 s);
 `tests/xvfb` 35 pasan y 2 se omiten (227 s). En una copia sin venv, `tests/xvfb` igual a 8/20 (230 s) y a 25/5 (242 s). Las pruebas nuevas suman
 unos 62 s a `tests/xvfb` sin enlace (166 → 228 s).
+
+### 2026-10-06 (1): E8.1, cubos enlazados, el caso sencillo
+
+**Qué hace.** `explorer a b c`: el primero manda; cada uno de los demás se planifica contra él (`data/link.py`) y, si
+casa, se abre al lado. En la ventana, las imágenes lado a lado con el mismo tamaño y la misma región; en Spectrum y
+λ–t, una pestaña por cubo. El cursor, el bloqueo y t son de todos; λ es la de cada cubo, y Stokes se comparte si
+tienen los mismos. Los que no casan quedan fuera y la terminal dice por qué.
+
+**Planificado contra `stokes_6173_im.icube`** (los 15 cubos de `data/lp` que no son `_sp`): se enlazan Blos y Vlos de
+6173 (17 cuadros sin nombre: los 17 tiempos) y `stokes_6173_im.fits` (tiempos iguales a 2e-11 s). Los otros 12 se
+rechazan: 10 por la rejilla (de 2030×2044 a 2052×2044 frente a 2031×2028; `stokesI_6173_im.icube` es 2032×2025), y
+el 8542 alineado por la cadencia (84 tiempos frente a 17).
+
+**Cambios fuera de la ventana:**
+- **Hilos compartidos.** Con un hilo de numba por cubo, el espectro de un cubo enlazado abortó el proceso: «Numba
+  workqueue threading layer is terminating: Concurrent access has been detected» (Mac, la primera prueba del
+  planificador con dos cubos). Un cubo enlazado usa los `Executors` del primero (`Dataset(executors=)`) y no los
+  cierra.
+- **Lecturas pendientes al cerrar.** Al no cerrar los hilos, sus lecturas en cola corrían con los ficheros ya
+  cerrados: `ShortRead` en la prueba (y, con el descriptor reutilizado, podría leer otro fichero). Ahora su `close()`
+  espera a lo encolado en numba, background y slit.
+- **Memoria.** Cada `Dataset` se daba el 15 % de la memoria del Mac (25 % en Linux): dos cubos, el doble.
+  `GuardShare` reparte un presupuesto entre los n.
+- **El aviso «values in counts»** salía tres veces por fichero (dos al planificar, una al abrir). Ahora una.
+
+**Lo oculto no gasta.** Lecturas contadas por cubo (Mac local, offscreen; cubos sintéticos 5×4×15×120×110 y
+5×4×9×120×110; 40 movimientos del cursor):
+- **Con las pestañas del enlazado detrás,** el principal hace 40 bloques (con `_sp`) u 80 series (sin `_sp`), y el
+  enlazado 0.
+- **Con ellas delante,** al revés.
+- **Cinco pasos en t:** cada cubo lee 4 imágenes y 8 por adelantado.
+- **Excepción, al arrancar:** el enlazado oculto tomaba igual su muestra de rangos y (y, con `_sp`, el primer bloque
+  de unidades). Son 100 perfiles en el hilo de numba, ahora compartido con las lecturas del cursor del principal.
+  Ahora esperan a que su espectro se muestre, en cualquier cubo. El principal lo muestra al empezar y no cambia.
+- **El primer recuento no vio la muestra con `_sp`:** lee con `pixel.strip_read`, que no contaba. La prueba nueva
+  la cuenta en `sample_profiles`.
+
+**La disposición, en dos intentos.**
+- **Primero, docks propios** tabulados con los del principal. En classic y modern bien, pero en glass flotaban
+  cuatro paneles en una columna: el espectro del enlazado quedaba en 120 px. Con dos columnas no caben en una
+  pantalla de portátil: 3 × 480 px de imagen mínima más 2 × 572 de paneles pasan de 1728 px.
+- **Ahora, `PanelTabs`:** pestañas dentro de cada panel, iguales en los tres looks. Solo se lee la pestaña delante.
+- **Glass ajusta la ventana a n imágenes,** con 480 px mínimos entre todas.
+- **Las disposiciones guardadas,** aparte para ventanas con cubos enlazados (`+linked`). El tema y el look se
+  comparten.
+
+**Dos defectos encontrados al mirar los cubos reales** (offscreen 1920×1080 en bellatrix; el cursor fijado en (1100,
+900), tras classic → modern → glass → classic):
+- **El cursor de Blos quedaba 18 filas más abajo**, con la región x 57–1974 frente a 0–2031. Causa: `setXLink` y
+  `setYLink` de pyqtgraph con el aspecto fijo dejan a la deriva vistas de tamaños distintos. Pasaba ya en el 2×2
+  (`stokesgrid._follow`, que no usa esos enlaces). Las imágenes enlazadas siguen ahora la región igual (`ViewSync`).
+  Reproducido en una copia con el código anterior (cursor en y 233.6 frente a 215.7) y arreglado.
+- **De antes de E8, con un solo cubo:** al salir de glass, la imagen volvía 18 px mayor (530×616 → 548×634). Glass
+  guardaba los márgenes del elemento (`ci.getContentsMargins()`, 0) en vez de los del layout (9), y devolvía 0.
+  Corregido; glass trata igual los márgenes de las imágenes enlazadas.
+
+**Medido** (bellatrix, offscreen 1920×1080, sin fijar a nodo; 20 pasos en t; cubo 6173 con Blos y Vlos):
+- **Mediana por paso:** solo, 27.0–28.9 ms; enlazados, 34.1–34.7 ms (dos ejecuciones).
+- **Primer paso:** solo, 47.6–65.7 ms; enlazados, 117.6–221.3 ms, en frío. Los dos mapas son de 17 cuadros y no
+  tienen espectro.
+- **No medido:** dos cubos con espectro, y el enlace X.
+
+**Pruebas:**
+- **Nuevas:** `test_linked_window` (5), en `test_session` (4), en `test_scheduler` (3), y una en cada una de
+  `test_policy` y `test_layout`. `test_glass`, ampliada con el tamaño de la imagen tras la vuelta.
+- **Una más en `test_scheduler`:** el espectro oculto, con y sin `_sp`.
+- **Fallan antes:** la de la región tras glass, la de las lecturas al cerrar, la de los márgenes y la del espectro
+  oculto.
+- **En bellatrix,** copia en `/tmp` con la venv del árbol compartido:
+  - `tests/unit`, `tests/golden` y `tests/real/test_link_real.py`: 684 pasan, 15 se omiten y falla 1 (699 s).
+    Falla `test_doctor` por `run.sh`, como en toda copia en `/tmp`: no encuentra la venv junto al código.
+  - `tests/xvfb` (Xvfb privado, 1920×1080): 35 pasan y 2 se omiten (228 s).

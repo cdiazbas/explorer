@@ -39,6 +39,37 @@ session then keeps traces of the window (every move and resize) and, over ssh, o
 window closes, the terminal names the files (in `~/.cache/explorer/logs/`): send them with what you saw. Without
 `--log` explorer still writes its general log there (`explorer.log`), which records any key that failed.
 
+### Cubes it opens
+
+- **SOLARNET FITS** (`_im.fits`), with its per-pixel file (`_sp.fits`) when it is next to it.
+- **La Palma cubes** (`.icube`, `.fcube`), as SSTRED writes them. Their axes come from the per-pixel file
+  (`_sp.icube`, `_sp.fcube`) or from the scans in the name (`stokes_8542=0-54_im.fcube`); the times, from the
+  `_times+wvl.idlsave` beside it.
+- **Maps** (`Blos.6173_map.fcube`, `Vlos.6173_map.icube`): their frames are named by nothing in the file. Opened on
+  their own they read as a profile; `--axes t` says they are times:
+
+  ```bash
+  explorer Blos.6173_map.fcube --axes t
+  ```
+
+  `--axes` names the leading axes of any cube whose header or name does not, slowest first: `t,s,l`, `s,l`, `t,l`
+  or `t` (`l` is λ).
+
+### Linked cubes
+
+More than one cube on the command line: the first leads, the others are linked to it.
+
+```bash
+explorer stokes_6173_im.icube Blos.6173_map.fcube Vlos.6173_map.icube
+```
+
+Each linked image is shown beside the first, the same size and the same region (zoom and pan are shared). The
+spectrum and λ–t panels have a tab per cube. The cursor, its lock and t are everyone's; λ is each cube's own,
+picked on its own spectrum or λ–t; Stokes is shared when the cubes have as many. For now a cube is linked only when it is on the same pixels and at the same times
+as the first: a map with as many frames as the first cube has times takes them as its times (no `--axes` needed); a
+map of one frame is shown at every t. Any other cube is left out, and the terminal says why (other pixels, other
+times). `--sp` and `--axes` are the first cube's; `--nosp` applies to all.
+
 ### Notes
 
 - **Shared storage:** one checkout can serve Linux and Macs at once (e.g. on a shared disk). Run `setup_env.sh`
