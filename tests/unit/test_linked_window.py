@@ -190,3 +190,37 @@ def test_a_linked_image_is_a_panel_that_floats_docks_and_closes_reading_nothing(
     assert blos.scheduler.img_idx == idx                                # nothing read while closed
     blos.dock.show()
     assert spin(qapp, lambda: blos.scheduler.img_idx == (w.session.state.t,))      # shown: the image of now
+
+
+def test_the_slit_is_on_every_image_and_can_be_drawn_on_any(window):
+    """A slit drawn on the main image showed on it alone (the user, 2026-10-06): it is on every image, as on the 2x2
+    view's panels, and a click on a linked image in the slit mode adds a point there."""
+    from PySide6 import QtCore
+
+    w, qapp = window
+    tool = w.slit_tool
+    w.session.store.set(path=((5.5, 6.5), (30.5, 40.5)))
+    spin(qapp, lambda: False, timeout=0.2)
+    drawn = [m.line.getData()[0] is not None and len(m.line.getData()[0]) > 0 for m in tool.marks]
+    print("slit drawn on", len(tool.marks), "images:", drawn)
+    assert len(tool.marks) == 3 and all(drawn)
+
+    class Click:                                        # pyqtgraph's scene click, as the slit tool reads it
+        def __init__(self, vb, x, y):
+            self._p = vb.mapViewToScene(QtCore.QPointF(x, y))
+
+        def button(self):
+            return QtCore.Qt.MouseButton.LeftButton
+
+        def double(self):
+            return False
+
+        def scenePos(self):
+            return self._p
+
+    w.set_slit_mode(True)
+    other = w.linked[0]
+    other._click(Click(other.view.vb, 10.2, 12.7))
+    print("points after a click on the linked image:", tool.pts, "locked:", w.session.state.locked)
+    assert len(tool.pts) == 1 and not w.session.state.locked
+    w.set_slit_mode(False)

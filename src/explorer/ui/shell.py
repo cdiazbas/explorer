@@ -205,6 +205,8 @@ class Shell(QtWidgets.QMainWindow):
             lay.setContentsMargins(g, 0, g, g)
             lay.setSpacing(g)
             self._view_sync = ViewSync([self.view] + [c.view for c in self.linked], self)
+            for c in self.linked:                       # the slit on every image, drawn on any of them (as the
+                self.slit_tool.attach(c.view)           # 2x2 view's panels)
         self.setAnimated(False)
         self.nav = NavBar(self)
         # playback: t forward at the toolbar's rate, round the end (the prototype's _toggle_play, _play_step)
@@ -930,6 +932,8 @@ class Shell(QtWidgets.QMainWindow):
             b.setChecked(on)
             b.blockSignals(False)
         self._gestures.rest = self.slit_tool.pointer()
+        for c in self.linked:
+            c._gestures.rest = self.slit_tool.pointer()
         self._slit_shown(on or self.session.state.path is not None)
 
     def _slit_shown(self, on: bool) -> None:

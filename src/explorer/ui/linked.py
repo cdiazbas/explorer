@@ -5,7 +5,8 @@ floated four panels in one column, 120 px each, or two columns that left no room
 main cube's cursor, lock and t; its lambda (and its Stokes, when the two cubes do not have the same number) are its
 own (core.session.Member), picked on its own panels and kept in the state, so that its panels' markers and reads
 follow as the main cube's do. Its reads are a scheduler of its own (core.scheduler, member=k) on the main cube's
-threads (data.dataset: one thread runs parallel numba for all). The slit and the 2x2 view are the main cube's.
+threads (data.dataset: one thread runs parallel numba for all). The slit and the 2x2 view are the main cube's; the
+slit is drawn on every image, and can be drawn on any of them (ui.slit attaches each).
 
 Each image carries its cube's name above it (the line, else the file; ImageTitle): a linked image is a panel of
 its own, between the main image and the spectra, that floats and docks as the others do; closed, it reads nothing.
@@ -365,10 +366,13 @@ class LinkedCube:
     # ---------------------------------------------------------------- input
     def _hover(self, y: float, x: float) -> None:
         self.session.hover(math.floor(y), math.floor(x))
+        self.shell.slit_tool.hover(y, x)                # the slit being drawn follows the pointer here too
 
     def _click(self, ev) -> None:
         """As on the main image: a click locks the cursor there, a right click releases it, a double click shows the
-        whole image (in both)."""
+        whole image (in both); while a slit is drawn, the click is the slit's."""
+        if self.shell.slit_tool.click(ev, self.view.vb):
+            return
         if ev.button() == QtCore.Qt.MouseButton.RightButton:
             self.session.lock(False)
             return
