@@ -99,7 +99,7 @@ def test_a_linked_cube_reads_its_own_panels_and_no_slit(session):
     session.store.set(path=((1.0, 1.0), (5.0, 5.0)))
     st = session.member_state(k)
     print("main panels", sorted(session.state.panels), "linked", sorted(st.panels))
-    assert st.panels == {"spectra"} and st.path is None and session.state.path is not None
+    assert st.panels == {"spectra", "image"} and st.path is None and session.state.path is not None
 
 
 def test_a_single_frame_is_shown_at_every_t(session):

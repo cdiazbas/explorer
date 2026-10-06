@@ -22,7 +22,9 @@ Results come back from other threads through Loop.post, and the Sink is called o
 The slit panel's reads and slices are SlitReads' (core.slitreads), which sees every notice first.
 A linked cube (ROADMAP E8.1) has a scheduler of its own (member=k): it reads the state as its cube does
 (Session.member_state: its lambda and Stokes, its panels), and a change reaches it only when its frame or its
-cursor changes (a single frame does not move with t). No slit and no 2x2 view: those are the main cube's.
+cursor changes (a single frame does not move with t). No slit and no 2x2 view: those are the main cube's. Its
+image is a panel that can be closed: then no image is read nor read ahead, and the cursor's panels go on from the
+last image (for the padding under the cursor); shown again, the image of now.
 The spectra's reads that are not the cursor's (the first block for the units, the y-range sample) wait for the
 spectra to be shown: a linked cube's tab behind read 100 profiles at start, on the numba thread the main cube's
 cursor reads share.
@@ -87,6 +89,8 @@ class Scheduler:
         self.levels = Levels()
         r = self.ds.roles
         self.sizes = {"t": r.nt, "s": r.ns, "l": r.nl}
+        # a linked cube's image is a panel that can be closed; the main cube's is always there
+        self._image_shown = (lambda st: True) if member == 0 else (lambda st: "image" in st.panels)
         self.yrange = YRange(self.loop, r.ns, self._cont(), sink.y_range, sink.units,
                              self._start_quv, quv_ok=r.s is not None)
         self._sampled = False
@@ -106,7 +110,8 @@ class Scheduler:
         if "spectra" in st.panels:
             self._first_units(st)
         self._pending.add("cursor")                     # the first image brings the first cursor
-        self._request_image(st)
+        if self._image_shown(st):
+            self._request_image(st)
 
     @property
     def state(self) -> ViewState:
@@ -185,6 +190,14 @@ class Scheduler:
                 self._first_units(st)
             self._start_sample_once()
         moved = changed & {"t", "s", "l"}
+        if not self._image_shown(st):                   # its image closed: the panels only, from the last image
+            if moved or "cursor" in changed or came:
+                self._evaluate(st, set(moved | (changed & {"cursor"})) | {f"show:{p}" for p in came})
+            return
+        if "image" in came and not moved:               # shown again: the image of now, then the panels
+            self._pending |= {"cursor"} | {f"show:{p}" for p in came}
+            self._request_image(st)
+            return
         if moved:
             self._pending |= moved | (changed & {"cursor"}) | {f"show:{p}" for p in came}
             self._request_image(st)

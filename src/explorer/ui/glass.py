@@ -33,7 +33,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..platform.screens import monitor_rect
-from . import style, titlebar
+from . import docks, style, titlebar
 from .status import SEP
 
 FLOAT_W = 560                                      # px: a floating panel's width
@@ -479,9 +479,13 @@ class GlassChrome:
                          unzoomed=w.window_ops.unzoomed if w.window_ops is not None else None)
         # the image to the window's edges (look_glass.py:651-658)
         w.centralWidget().layout().setContentsMargins(0, 0, 0, 0)
+        self._was["spacing"] = w.centralWidget().layout().spacing()     # under a linked image's header (ui.linked)
+        w.centralWidget().layout().setSpacing(0)
         for v in self._images():                    # linked cubes' too: images of one size show one region
             if hasattr(v.widget, "ci"):
                 v.widget.ci.setContentsMargins(0, 0, 0, 0)
+        for c in getattr(w, "linked", ()):          # their panels' margins, as the main image's
+            c.dock.widget().layout().setContentsMargins(0, 0, 0, 0)
         self._bar(nav, view)
         # the readout as the title (look_glass.py:693-724)
         self._watches.append(_Watch(view.widget.viewport(), (QtCore.QEvent.Type.Enter, QtCore.QEvent.Type.Leave),
@@ -758,6 +762,8 @@ class GlassChrome:
         W, H = n * wd + dw, h + dh
         left = max(scr.left(), min(at, scr.right() + 1 - (W + frame_w + room)))
         w.setGeometry(left + (w.geometry().x() - fg.x()), top + (w.geometry().y() - fg.y()), W, H)
+        if getattr(w, "linked", None):              # the images one width again, once the window has its size
+            QtCore.QTimer.singleShot(0, w.same_image_widths)
         return QtCore.QRect(left, top, W + frame_w, H + frame_h)
 
     def place_panels(self) -> None:
@@ -867,7 +873,6 @@ class GlassChrome:
     def _start_afresh(self) -> None:
         """The other looks' own saved layout, as the prototype starts each look from its own; without one, the first
         start's window and panels."""
-        from . import docks
 
         w = self.w
         app = _app()
@@ -950,9 +955,13 @@ class GlassChrome:
             self._restore_panels()
             QtCore.QTimer.singleShot(0, self._restore_panels)
         w.centralWidget().layout().setContentsMargins(self._was["margins"])
+        w.centralWidget().layout().setSpacing(self._was["spacing"])
         if self._was["ci"] is not None:
             for v in self._images():
                 v.widget.ci.setContentsMargins(*self._was["ci"])
+        for c in getattr(w, "linked", ()):
+            g = docks.PANEL_GUTTER
+            c.dock.widget().layout().setContentsMargins(g, g, g, g)
         w.statusBar().setVisible(self._was["statusbar"])
         w.setWindowTitle(self._was["title"])
         if "title_bar" in self._was:

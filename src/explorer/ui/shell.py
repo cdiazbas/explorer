@@ -38,7 +38,7 @@ from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
 from .gestures import Gestures
 from .imageview import CURSOR_PEN, ImageView
 from .lambda_t import LambdaTPanel
-from .linked import LinkedCube, NameTag, PanelTabs, ViewSync, cube_names
+from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync, cube_names
 from .loop import QtLoop
 from .overlays import ColourKey
 from .padlock import PanelLock
@@ -151,13 +151,7 @@ class Shell(QtWidgets.QMainWindow):
         light = style.is_light()                        # the theme the application was given (ui.style)
         self.look = look if look is not None else get_look()
         self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light)
-        self.split: QtWidgets.QSplitter | None = None
-        if linked:                                      # the images side by side, one margin round them all: the
-            self.split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)      # same size each
-            self.split.setChildrenCollapsible(False)
-            self.split.setHandleWidth(2 * docks.PANEL_GUTTER)
-            self.split.addWidget(self.view.widget)
-        self.setCentralWidget(docks.gutter(self.split if self.split is not None else self.view.widget))
+        self.setCentralWidget(docks.gutter(self.view.widget))
         # the slit (S): drawn on the image, the finished one the session's path (ui.slit)
         self.slit_hint = SlitHint(self.view.widget, light=light)
         self.slit_tool = SlitTool(self.session, self.view, self.slit_hint, CURSOR_PEN.color())
@@ -190,15 +184,26 @@ class Shell(QtWidgets.QMainWindow):
         self.slit_dock.hide()
         self.slit_dock.allowed = lambda: self.session.state.path is not None or self.slit_tool.mode
         self.slit_dock.toggleViewAction().setEnabled(False)
-        self.name_tag: NameTag | None = None
+        self.image_title: ImageTitle | None = None
         if self.linked:
-            assert self.split is not None
-            for c in self.linked:
-                self.split.addWidget(c.view.widget)
-            for i in range(self.split.count()):
-                self.split.setStretchFactor(i, 1)
-            self.name_tag = NameTag(self.view.widget, names[0], light=light)
-            self.name_tag.avoid(self.slit_hint)
+            # the linked images as panels between this image and the spectra, in order; this one with the same title
+            # above it (its own name), so that docked they are one size
+            H, V = QtCore.Qt.Orientation.Horizontal, QtCore.Qt.Orientation.Vertical
+            self.splitDockWidget(self.linked[0].dock, self.spec_dock, H)
+            self.splitDockWidget(self.spec_dock, self.lt_dock, V)
+            for a, b in zip(self.linked, self.linked[1:], strict=False):
+                self.splitDockWidget(a.dock, b.dock, H)
+            box = self.centralWidget()
+            assert box is not None
+            lay = box.layout()
+            assert isinstance(lay, QtWidgets.QVBoxLayout)      # docks.gutter's
+            self.image_title = ImageTitle(names[0], parent=box)
+            lay.insertWidget(0, self.image_title)
+            # as a panel's: the title at the top, then the gutter, then the image (inside the gutter the name sat
+            # 5 px lower than the linked images' titles)
+            g = docks.PANEL_GUTTER
+            lay.setContentsMargins(g, 0, g, g)
+            lay.setSpacing(g)
             self._view_sync = ViewSync([self.view] + [c.view for c in self.linked], self)
         self.setAnimated(False)
         self.nav = NavBar(self)
@@ -312,8 +317,6 @@ class Shell(QtWidgets.QMainWindow):
         if L.has("colour") and self.colours is None:
             self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light)
             self.colour_key = ColourKey(self.view.widget, unit_text(getattr(self.dataset.axes, "bunit", None) or ""))
-            if self.name_tag is not None:
-                self.name_tag.avoid(self.colour_key)
         if self.colour_key is not None:
             self.colour_key.show_with(L.has("colour"), grid=self.grid is not None and not self.grid.isHidden())
         self._shown_lut = object()
@@ -372,8 +375,6 @@ class Shell(QtWidgets.QMainWindow):
         self.slit_panel.set_light(light)
         for c in self.linked:
             c.set_light(light)
-        if self.name_tag is not None:
-            self.name_tag.set_light(light)
         if self.colours is not None:
             self.colours.set_light(light)
         self.nav.restyle()
@@ -554,9 +555,16 @@ class Shell(QtWidgets.QMainWindow):
 
     def reset_sizes(self) -> None:
         docks.reset_sizes(self, (self.spec_dock, self.lt_dock), self.images)
-        if self.split is not None:                      # the images the same size
-            n = self.split.count()
-            self.split.setSizes([self.split.width() // n] * n)
+        self.same_image_widths()
+
+    def same_image_widths(self) -> None:
+        """The docked linked images and the main one one width: theirs and the main one's shared out (Qt keeps a
+        panel's width when the window changes, and the main image took all the change: 80 px against 527 in glass)."""
+        imgs = [c.dock for c in self.linked if c.dock.isVisible() and not c.dock.isFloating()]
+        cw = self.centralWidget()
+        if imgs and cw is not None:
+            each = (cw.width() + sum(d.width() for d in imgs)) // (len(imgs) + 1)
+            self.resizeDocks(imgs, [each] * len(imgs), QtCore.Qt.Orientation.Horizontal)
 
     def reset_panels(self) -> None:
         """Every panel docked where it started and shown, and the whole image in view again (the prototype's
@@ -565,10 +573,10 @@ class Shell(QtWidgets.QMainWindow):
             self.glass.reset()
             self.statusBar().showMessage("panels and zoom back to the start", 4000)
             return
-        for d in (self.spec_dock, self.lt_dock, self.slit_dock):
+        for d in (self.spec_dock, self.lt_dock, self.slit_dock, *(c.dock for c in self.linked)):
             d.setFloating(False)
         self.restoreState(self._initial_state)
-        for d in (self.spec_dock, self.lt_dock):
+        for d in (self.spec_dock, self.lt_dock, *(c.dock for c in self.linked)):
             if d.isHidden():
                 d.show()
         if self.slit_dock.allowed():                    # the slit's tab only with a slit, or one being drawn (the

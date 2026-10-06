@@ -549,9 +549,10 @@ class DockTitle(QtWidgets.QWidget):
 
 
 def dock_titles(window) -> None:
-    """Our title bars on every dock of the window."""
+    """Our title bars on every dock of the window, but one with its own (a linked image's: ui.linked.ImageTitle)."""
     for d in window.findChildren(QtWidgets.QDockWidget):
-        d.setTitleBarWidget(DockTitle(d))
+        if not getattr(d.titleBarWidget(), "own", False):
+            d.setTitleBarWidget(DockTitle(d))
 
 
 # ---------------------------------------------------------------- floating panels: the main window's edges

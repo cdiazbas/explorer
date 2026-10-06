@@ -63,7 +63,7 @@ def test_the_images_are_side_by_side_the_same_size_and_region(window):
     w, qapp = window
     views = [w.view] + [c.view for c in w.linked]
     sizes = [(v.widget.width(), v.widget.height()) for v in views]
-    print("image sizes", sizes, "names", [c.name for c in w.linked], "main", w.name_tag.text)
+    print("image sizes", sizes, "names", [c.name for c in w.linked], "main", w.image_title.text)
     assert max(s[0] for s in sizes) - min(s[0] for s in sizes) <= 1 and len({s[1] for s in sizes}) == 1
     w.view.vb.setRange(QtCore.QRectF(5, 6, 10, 10), padding=0)          # zoom the main image
     qapp.processEvents()
@@ -139,10 +139,14 @@ def test_after_glass_and_back_every_image_shows_the_same_region(window):
     w, qapp = window
     w.session.hover(30, 25)
     w.session.lock(True)
+    views = [w.view] + [c.view for c in w.linked]
     for look in ("glass", "classic"):
         w.set_look(get_look(look))
         spin(qapp, lambda: False, timeout=0.5)
-    views = [w.view] + [c.view for c in w.linked]
+        sizes = [(v.widget.width(), v.widget.height()) for v in views]
+        print(look, "image sizes", sizes)
+        # glass fits the window: Qt kept the panels' widths and the main image took the change (80 against 527 px)
+        assert max(s[0] for s in sizes) - min(s[0] for s in sizes) <= 1 and len({s[1] for s in sizes}) == 1
     got = []
     for v in views:
         r = v.vb.viewRect()
@@ -153,3 +157,36 @@ def test_after_glass_and_back_every_image_shows_the_same_region(window):
     assert len({g[2] for g in got}) == 1                                # the same box (margins)
     for g in got[1:]:
         assert abs(g[1][0] - got[0][1][0]) <= 1 and abs(g[1][1] - got[0][1][1]) <= 1
+
+
+def test_a_linked_image_is_a_panel_that_floats_docks_and_closes_reading_nothing(window):
+    """Its image could not be taken out of the window (the user, 2026-10-06): a panel of its own, titled with its
+    name as the main image is; floated it shows the same region; closed, no image is read for it."""
+    from PySide6 import QtCore
+
+    w, qapp = window
+    other, blos = w.linked
+    titles = [w.image_title.text] + [c.title.text for c in w.linked]
+    heights = [w.image_title.height()] + [c.title.height() for c in w.linked]
+    print("titles", titles, "heights", heights, "docks", [c.dock.objectName() for c in w.linked])
+    assert titles == ["main_im", "other_im", "Blos.map"] and len(set(heights)) == 1
+    assert all(not b.isVisible() for c in w.linked for b in c.title.buttons)       # nothing at rest
+    blos.dock.setFloating(True)
+    spin(qapp, lambda: False, timeout=0.3)
+    w.view.vb.setRange(QtCore.QRectF(4, 6, 12, 12), padding=0)
+    spin(qapp, lambda: False, timeout=0.3)
+    r0, r1 = w.view.vb.viewRect(), blos.view.vb.viewRect()
+    print("floating: main", r0.getRect(), "blos", r1.getRect())
+    assert abs(r0.center().x() - r1.center().x()) < 0.5 and abs(r0.center().y() - r1.center().y()) < 0.5
+    blos.dock.setFloating(False)
+    blos.dock.close()
+    spin(qapp, lambda: False, timeout=0.2)
+    assert "image:2" not in w.session.state.panels
+    idx = blos.scheduler.img_idx
+    w.session.set_index("t", (w.session.state.t + 1) % 3)
+    assert spin(qapp, lambda: w.scheduler.img_idx[0] == w.session.state.t)
+    spin(qapp, lambda: False, timeout=0.3)
+    print("closed: blos image", idx, "->", blos.scheduler.img_idx, "main", w.scheduler.img_idx)
+    assert blos.scheduler.img_idx == idx                                # nothing read while closed
+    blos.dock.show()
+    assert spin(qapp, lambda: blos.scheduler.img_idx == (w.session.state.t,))      # shown: the image of now

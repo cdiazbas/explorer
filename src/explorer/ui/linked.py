@@ -7,27 +7,28 @@ own (core.session.Member), picked on its own panels and kept in the state, so th
 follow as the main cube's do. Its reads are a scheduler of its own (core.scheduler, member=k) on the main cube's
 threads (data.dataset: one thread runs parallel numba for all). The slit and the 2x2 view are the main cube's.
 
-A name over each image says which cube it is (the line, else the file); the panels' tabs carry it.
+Each image carries its cube's name above it (the line, else the file; ImageTitle): a linked image is a panel of
+its own, between the main image and the spectra, that floats and docks as the others do; closed, it reads nothing.
+The panels' tabs carry the names too.
 """
 import math
 import os
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.scheduler import Scheduler
-from . import glass, style
+from . import docks, glass, style
 from .cards import CARD, CARD_LIGHT, Rounder
 from .gestures import Gestures
 from .imageview import ImageView
 from .lambda_t import LambdaTPanel
 from .padlock import PanelLock
-from .slit import SlitHint
 from .spectra import AxisDrag, SpectraPanel
 
 SUFFIXES = (".fits", ".icube", ".fcube")
-TAG_TOP = 8                 # px from the image's top: the name, centred (the padlock top right, the hints top left)
+TITLE_PAD = 4               # px above and below an image's name
 
 
 def stem(path) -> str:
@@ -47,40 +48,110 @@ def cube_names(datasets) -> list[str]:
     return [ln if ln and lines.count(ln) == 1 else stem(ds.path) for ds, ln in zip(datasets, lines, strict=True)]
 
 
-class NameTag(SlitHint):
-    """Which cube an image shows, at its top centre, below what it would cover (avoid: in glass the colour key goes
-    top left, and over a narrow image it hid the name); no mouse, light or dark with the theme (the slit's hint)."""
+class _TitleButton(QtWidgets.QAbstractButton):
+    """A mark drawn in the title's ink: "float" (two squares) or "close" (a cross); the style's own icons differ
+    from one platform and theme to the next."""
 
-    def __init__(self, view: QtWidgets.QWidget, text: str, light: bool = False):
-        super().__init__(view, light=light)
-        self.set_text(text)
-        self._avoid: list[QtWidgets.QWidget] = []
-        view.installEventFilter(self)
-        self.place()
-        self.show()
+    def __init__(self, kind: str, parent, tip: str):
+        super().__init__(parent)
+        self.kind = kind
+        self.setToolTip(tip)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
 
-    def avoid(self, *widgets) -> None:
-        """Keep clear of these overlays of the same image, wherever they move."""
-        for w in widgets:
-            if w is not None and w not in self._avoid:
-                self._avoid.append(w)
-                w.installEventFilter(self)
-        self.place()
+    def sizeHint(self):
+        s = self.fontMetrics().height()
+        return QtCore.QSize(s, s)
 
-    def eventFilter(self, obj, e):
-        E = QtCore.QEvent.Type
-        if e.type() in (E.Resize, E.Move, E.Show, E.Hide):
-            self.place()
-        return False
+    def enterEvent(self, e):
+        self.update()
 
-    def place(self) -> None:
-        view = self.parentWidget()
-        assert view is not None
-        r = QtCore.QRect(max(0, (view.width() - self.width()) // 2), TAG_TOP, self.width(), self.height())
-        for w in self._avoid:
-            if w.isVisibleTo(view) and w.geometry().intersects(r):
-                r.moveTop(w.geometry().bottom() + 6)
-        self.move(r.topLeft())
+    def leaveEvent(self, e):
+        self.update()
+
+    def paintEvent(self, e):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        c = self.palette().color(QtGui.QPalette.ColorRole.WindowText)
+        c.setAlphaF(1.0 if self.underMouse() else 0.55)
+        p.setPen(QtGui.QPen(c, 1.2))
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        side = round(min(self.width(), self.height()) * 0.5)
+        r = QtCore.QRectF((self.width() - side) / 2, (self.height() - side) / 2, side, side)
+        if self.kind == "close":
+            p.drawLine(r.topLeft(), r.bottomRight())
+            p.drawLine(r.topRight(), r.bottomLeft())
+        else:                                           # a window over another: one behind, one in front
+            k = side * 0.7
+            p.drawRect(QtCore.QRectF(r.right() - k, r.top(), k, k))
+            p.setBrush(self.palette().color(QtGui.QPalette.ColorRole.Window))
+            p.drawRect(QtCore.QRectF(r.left(), r.bottom() - k, k, k))
+
+
+class ImageTitle(QtWidgets.QWidget):
+    """An image's name above it, the same for every image: the main one's in its place (a header), a linked one's as
+    its panel's title bar. The name centred on the window's colour and nothing else at rest; over a linked image's
+    title its float and close marks show at the right. A drag on the title floats the panel and a double click
+    docks it again (QDockWidget's own, for any title bar widget). One height for all (height()), so the images
+    beside each other are one size."""
+    own = True                                          # titlebar.dock_titles leaves it in place
+
+    def __init__(self, text: str, dock: QtWidgets.QDockWidget | None = None, parent=None):
+        super().__init__(parent if parent is not None else dock)
+        self.text, self.dock = text, dock
+        self.buttons: list[_TitleButton] = []
+        self.setFixedHeight(self.height_for(self))
+        if dock is None:
+            return
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 6, 0)
+        lay.setSpacing(0)
+        lay.addStretch(1)
+        for kind, tip, fn in (("float", "Detach (or drag the title); double click the title: back in place",
+                               lambda: dock.setFloating(not dock.isFloating())),
+                              ("close", "Close (Panels in the toolbar opens it again)", dock.close)):
+            b = _TitleButton(kind, self, tip)
+            b.clicked.connect(fn)
+            b.hide()
+            lay.addWidget(b)
+            self.buttons.append(b)
+
+    @staticmethod
+    def font_of(w: QtWidgets.QWidget) -> QtGui.QFont:
+        f = QtGui.QFont(w.font())
+        f.setWeight(QtGui.QFont.Weight.DemiBold)
+        return f
+
+    @classmethod
+    def height_for(cls, w: QtWidgets.QWidget) -> int:
+        return QtGui.QFontMetrics(cls.font_of(w)).height() + 2 * TITLE_PAD
+
+    def sizeHint(self):
+        return QtCore.QSize(80, self.height_for(self))
+
+    minimumSizeHint = sizeHint
+
+    def enterEvent(self, e):
+        for b in self.buttons:
+            b.show()
+
+    def leaveEvent(self, e):
+        for b in self.buttons:
+            b.hide()
+
+    def paintEvent(self, e):
+        p = QtGui.QPainter(self)
+        R = QtGui.QPalette.ColorRole
+        p.fillRect(self.rect(), self.palette().color(R.Window))
+        p.setFont(self.font_of(self))
+        p.setPen(self.palette().color(R.WindowText))
+        # room for the marks on both sides, shown or not: the name stays put (a never-shown button's width is Qt's
+        # default, ~100 px, and elided the name away)
+        side = sum(b.sizeHint().width() for b in self.buttons) + 8 if self.buttons else 8
+        r = self.rect().adjusted(side, 0, -side, 0)
+        text = QtGui.QFontMetrics(self.font_of(self)).elidedText(self.text, QtCore.Qt.TextElideMode.ElideRight,
+                                                                  max(0, r.width()))
+        p.drawText(r, QtCore.Qt.AlignmentFlag.AlignCenter, text)
 
 
 class PanelTabs(QtWidgets.QTabWidget):
@@ -195,7 +266,11 @@ class LinkedCube:
         self.view.vb.setMenuEnabled(False)              # its region the main image's: ViewSync
         self.view.widget.viewport().setCursor(QtCore.Qt.CursorShape.CrossCursor)
         self.view.widget.scene().sigMouseClicked.connect(self._click)
-        self.tag = NameTag(self.view.widget, name, light=light)
+        # its image a panel of its own (the shell places it beside the main image), titled with its name
+        self.dock = docks.dock(shell, name, self.view.widget, f"image:{k}")
+        self.title = ImageTitle(name, self.dock)
+        self.dock.setTitleBarWidget(self.title)
+        self.dock.visibilityChanged.connect(self._image_shown)
         r = ds.roles
         self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, ds.axes, light=light) \
             if r.l is not None else None
@@ -266,7 +341,6 @@ class LinkedCube:
 
     def set_light(self, light: bool) -> None:
         self.view.set_light(light)
-        self.tag.set_light(light)
         for lock in (self.image_lock, self.spec_lock):
             if lock is not None:
                 lock.set_light(light)
@@ -282,6 +356,11 @@ class LinkedCube:
         self.view.set_lut(cols.image_lut(s) if cols is not None else self.view.base_lut)
         if self.lambda_t is not None:
             self.lambda_t.set_lut(cols.lut(self.last_s) if cols is not None else None)
+
+    def _image_shown(self, on: bool) -> None:
+        """Its panel closed (or behind another): nothing read for its image; shown again, the image of now."""
+        if not self.shell._closing:
+            self.session.show(f"image:{self.k}", on)
 
     # ---------------------------------------------------------------- input
     def _hover(self, y: float, x: float) -> None:

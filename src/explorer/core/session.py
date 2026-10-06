@@ -70,13 +70,14 @@ class Session:
             link_s = r.s is not None and main.s is not None and r.ns == main.ns
         self.members.append(Member(dataset, link_l=bool(link_l) and r.nl == main.nl, link_s=bool(link_s)))
         own = (r.nl // 2 if r.l is not None else 0, 0)
-        self.store.set(own=self.store.state.own + (own,))
-        return len(self.members) - 1
+        k = len(self.members) - 1
+        self.store.set(own=self.store.state.own + (own,), panels=self.store.state.panels | {f"image:{k}"})
+        return k
 
     def member_state(self, member: int, state: ViewState | None = None) -> ViewState:
         """The state as member k reads it: t within its times (a single frame at every t), its lambda and Stokes (the
-        main's when linked), its panels ("spectra:k" as "spectra"), no slit (the slit is the main cube's). The main
-        cube's state as it is."""
+        main's when linked), its panels ("spectra:k" as "spectra"; "image:k" as "image", its image shown), no slit
+        (the slit is the main cube's). The main cube's state as it is."""
         st = state or self.store.state
         if member == 0:
             return st

@@ -224,6 +224,8 @@ class NavBar:
         menu = QtWidgets.QMenu(self.panels)
         for d in (shell.spec_dock, shell.lt_dock, shell.slit_dock):     # the slit's: enabled with a slit
             menu.addAction(d.toggleViewAction())                       # (the prototype's viewer.py:1131)
+        for c in getattr(shell, "linked", ()):                          # linked cubes' images (ui.linked)
+            menu.addAction(c.dock.toggleViewAction())
         self.panels.setMenu(menu)
         tb.addWidget(self.panels)
         gap = QtWidgets.QWidget()
