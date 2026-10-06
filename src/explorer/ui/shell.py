@@ -1,6 +1,7 @@
 """The window: the image panel, the spectra and lambda-t panels in docks on the right (ROADMAP E4.2-E4.4), the
 navigation toolbar (E4.5), a status line and the keys that move through the cube (E3.6). Playback comes in E4.9,
-the look in E5, the slit in E7.
+the look in E5, the slit in E7. Linked cubes (E8.1, ui.linked): their images beside the main one, their panels as
+tabs beside its panels.
 
 It draws what explorer.core decides and turns input into core actions: the mouse over the image moves the cursor, a
 click locks it there and a right click releases it (the prototype's _image_click), a double click shows the whole
@@ -37,6 +38,7 @@ from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
 from .gestures import Gestures
 from .imageview import CURSOR_PEN, ImageView
 from .lambda_t import LambdaTPanel
+from .linked import LinkedCube, NameTag, PanelTabs, ViewSync, cube_names
 from .loop import QtLoop
 from .overlays import ColourKey
 from .padlock import PanelLock
@@ -132,21 +134,30 @@ class _Sink:
 
 
 class Shell(QtWidgets.QMainWindow):
-    def __init__(self, dataset, title: str | None = None, t0: float | None = None, look=None):
-        """t0: perf_counter() when opening started, for the time to the first image."""
+    def __init__(self, dataset, title: str | None = None, t0: float | None = None, look=None, linked=()):
+        """t0: perf_counter() when opening started, for the time to the first image. linked: cubes linked to this
+        one (data.link has checked them; opened with its executors), shown beside it."""
         super().__init__()
         self.dataset = dataset
+        self.images = 1 + len(linked)                   # side by side (ui.docks: the first window's width)
         self.t0 = time.perf_counter() if t0 is None else t0
         self.first_image_s: float | None = None
         self.breakdown: tuple | None = None
         self._after_first: list = []
         self.loop = QtLoop(self)
         self.session = Session(self.loop, dataset)
+        members = [self.session.add(ds) for ds in linked]
         ex = dataset.executors
         light = style.is_light()                        # the theme the application was given (ui.style)
         self.look = look if look is not None else get_look()
         self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light)
-        self.setCentralWidget(docks.gutter(self.view.widget))
+        self.split: QtWidgets.QSplitter | None = None
+        if linked:                                      # the images side by side, one margin round them all: the
+            self.split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)      # same size each
+            self.split.setChildrenCollapsible(False)
+            self.split.setHandleWidth(2 * docks.PANEL_GUTTER)
+            self.split.addWidget(self.view.widget)
+        self.setCentralWidget(docks.gutter(self.split if self.split is not None else self.view.widget))
         # the slit (S): drawn on the image, the finished one the session's path (ui.slit)
         self.slit_hint = SlitHint(self.view.widget, light=light)
         self.slit_tool = SlitTool(self.session, self.view, self.slit_hint, CURSOR_PEN.color())
@@ -159,8 +170,14 @@ class Shell(QtWidgets.QMainWindow):
         # lambda-t needs both t and lambda
         self.lambda_t = LambdaTPanel(r.nt, r.nl, dataset.axes) if r.t is not None and r.l is not None else None
         self.lt_panel = self.lambda_t.widget if self.lambda_t is not None else QtWidgets.QWidget()
-        self.spec_dock = docks.dock(self, "Spectrum", self.spec_panel, "spectrum")
-        self.lt_dock = docks.dock(self, "λ–t", self.lt_panel, "lambda_t")
+        # linked cubes: their images beside this one, their panels a tab each in these (ui.linked)
+        self._closing = False
+        names = cube_names([dataset, *linked])
+        self.linked = [LinkedCube(self, k, name) for k, name in zip(members, names[1:], strict=True)]
+        self.spec_tabs = self._tabs(names[0], "spectra", self.spectra, self.spec_panel)
+        self.lt_tabs = self._tabs(names[0], "lambda_t", self.lambda_t, self.lt_panel)
+        self.spec_dock = docks.dock(self, "Spectrum", self.spec_tabs or self.spec_panel, "spectrum")
+        self.lt_dock = docks.dock(self, "λ–t", self.lt_tabs or self.lt_panel, "lambda_t")
         # the slit's slices: lambda-t's tab, there from the first S on and only with a slit or one being drawn
         # (_slit_tab; the prototype's 1046-1052)
         self.slit_panel = SlitPanel(r.nt, r.nl, dataset.axes)
@@ -173,6 +190,16 @@ class Shell(QtWidgets.QMainWindow):
         self.slit_dock.hide()
         self.slit_dock.allowed = lambda: self.session.state.path is not None or self.slit_tool.mode
         self.slit_dock.toggleViewAction().setEnabled(False)
+        self.name_tag: NameTag | None = None
+        if self.linked:
+            assert self.split is not None
+            for c in self.linked:
+                self.split.addWidget(c.view.widget)
+            for i in range(self.split.count()):
+                self.split.setStretchFactor(i, 1)
+            self.name_tag = NameTag(self.view.widget, names[0], light=light)
+            self.name_tag.avoid(self.slit_hint)
+            self._view_sync = ViewSync([self.view] + [c.view for c in self.linked], self)
         self.setAnimated(False)
         self.nav = NavBar(self)
         # playback: t forward at the toolbar's rate, round the end (the prototype's _toggle_play, _play_step)
@@ -195,7 +222,6 @@ class Shell(QtWidgets.QMainWindow):
                                        "(or F) fixes it to this pixel", light=light, backed=False)
             self.spec_lock.toggled.connect(lambda on: self.scheduler.set_y_fixed(on))
             self.spec_lock.refit.connect(self.fit_spectra)
-        self._closing = False
         # set by whoever shows the window (ui.app): the saved layout (not `layout`: that is QWidget.layout(), which it
         # hid), its WindowOps (zoom state for the layout), our title bar, the keys read from the terminal
         self.layout_store: LayoutStore | None = None
@@ -230,15 +256,17 @@ class Shell(QtWidgets.QMainWindow):
         self._shown_lut = object()
         self._off = self.session.store.subscribe(self._on_state)
         self.scheduler = Scheduler(self.session, _Sink(self))
+        for c in self.linked:
+            c.start()
         st = self.session.state
         self.view.set_crosshair(*st.cursor)
         if self.spectra is not None:
             self.spectra.set_lambda(st.l)
-        else:
+        elif self.spec_tabs is None:
             self.spec_dock.hide()
         if self.lambda_t is not None:
             self.lambda_t.set_markers(st.t, st.l)
-        else:
+        elif self.lt_tabs is None:
             self.lt_dock.hide()
         self.slit_panel.set_markers(st.t, st.l)
         self.slit_panel.set_cursor(*st.cursor)
@@ -284,6 +312,8 @@ class Shell(QtWidgets.QMainWindow):
         if L.has("colour") and self.colours is None:
             self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light)
             self.colour_key = ColourKey(self.view.widget, unit_text(getattr(self.dataset.axes, "bunit", None) or ""))
+            if self.name_tag is not None:
+                self.name_tag.avoid(self.colour_key)
         if self.colour_key is not None:
             self.colour_key.show_with(L.has("colour"), grid=self.grid is not None and not self.grid.isHidden())
         self._shown_lut = object()
@@ -312,6 +342,8 @@ class Shell(QtWidgets.QMainWindow):
         # the slit in the markers' colour: the cursor's in the classic look (the prototype's _slit_style, 1733)
         self.slit_tool.set_colour(acc if L.has("marks") or L.has("glass") else CURSOR_PEN.color())
         self._place_slit_hint()
+        for c in self.linked:
+            c.set_look(L, acc, light)
 
     # ---------------------------------------------------------------- the theme (ui.style), while the window runs
     def set_theme(self, theme: str) -> None:
@@ -338,6 +370,10 @@ class Shell(QtWidgets.QMainWindow):
         if self.lambda_t is not None:
             self.lambda_t.set_light(light)
         self.slit_panel.set_light(light)
+        for c in self.linked:
+            c.set_light(light)
+        if self.name_tag is not None:
+            self.name_tag.set_light(light)
         if self.colours is not None:
             self.colours.set_light(light)
         self.nav.restyle()
@@ -455,6 +491,8 @@ class Shell(QtWidgets.QMainWindow):
         """The image's colour table and the key, for the Stokes shown (the modern look's colour part)."""
         if self.colours is None or not self.look.has("colour"):
             return
+        for c in self.linked:                           # a linked cube with the main cube's Stokes
+            c.paint_colour()
         s = self.session.state.s
         tab = self.colours.image_lut(s)
         if tab is not self._shown_lut:
@@ -484,9 +522,21 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- panels
     def _panel_shown(self, panel: str, on: bool) -> None:
-        """A dock shown, closed or hidden: the core reads nothing for a hidden panel, and fills a shown one."""
-        if not self._closing:
+        """A dock shown, closed or hidden: the core reads nothing for a hidden panel, and fills a shown one; with
+        linked cubes, only for the tab in front (PanelTabs)."""
+        tabs = {"spectra": self.spec_tabs, "lambda_t": self.lt_tabs}.get(panel)
+        if tabs is not None:
+            tabs.set_shown(on)
+        elif not self._closing:
             self.session.show(panel, on)
+
+    def _tabs(self, name: str, key: str, own, widget) -> PanelTabs | None:
+        """A panel's tabs, one per cube that has it (a map has no spectra), when a linked cube has it; else None."""
+        others = [(c.name, getattr(c, key).widget, f"{key}:{c.k}") for c in self.linked if getattr(c, key) is not None]
+        if not others:
+            return None
+        return PanelTabs(self.session, ([(name, widget, key)] if own is not None else []) + others,
+                         closing=lambda: self._closing)
 
     def resizeEvent(self, ev) -> None:
         super().resizeEvent(ev)
@@ -503,7 +553,10 @@ class Shell(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(0, self.reset_sizes)
 
     def reset_sizes(self) -> None:
-        docks.reset_sizes(self, (self.spec_dock, self.lt_dock))
+        docks.reset_sizes(self, (self.spec_dock, self.lt_dock), self.images)
+        if self.split is not None:                      # the images the same size
+            n = self.split.count()
+            self.split.setSizes([self.split.width() // n] * n)
 
     def reset_panels(self) -> None:
         """Every panel docked where it started and shown, and the whole image in view again (the prototype's
@@ -711,6 +764,8 @@ class Shell(QtWidgets.QMainWindow):
             self.scheduler.yrange.reset()
         if self.lambda_t is not None:
             self.lambda_t.reset_view()
+        for c in self.linked:
+            c.reset_view()
 
     # ---------------------------------------------------------------- input
     def _hover(self, y: float, x: float) -> None:
@@ -1027,8 +1082,9 @@ class Shell(QtWidgets.QMainWindow):
             self._after_first.append((seconds, fn))
 
     def _memory(self) -> None:
-        if hasattr(self.dataset, "update_memory"):
-            self.dataset.update_memory()
+        for ds in [self.dataset, *(c.dataset for c in self.linked)]:     # linked: each its share (GuardShare)
+            if hasattr(ds, "update_memory"):
+                ds.update_memory()
         if self.diagnostics:
             self.sys_status.setText(diagnostics_text(self.dataset))
 
@@ -1043,5 +1099,7 @@ class Shell(QtWidgets.QMainWindow):
         self._play.stop()
         self._mem.stop()
         self._off()
+        for c in self.linked:
+            c.close()
         self.scheduler.close()
         super().closeEvent(ev)

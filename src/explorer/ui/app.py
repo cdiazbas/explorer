@@ -79,16 +79,19 @@ def window_options(ap) -> None:
 class Started:
     """A window up as `explorer cube` shows it (start()): the application, the Shell, its Dataset and display.
     t0: when start() began (the Shell's first_image_s counts from it); app_ready: when the application existed (the
-    prototype's self-test counts from there); theme: the one applied. close() lets go of the cube and the display."""
+    prototype's self-test counts from there); theme: the one applied; linked: the cubes linked to it. close() lets go
+    of the cubes and the display."""
 
-    def __init__(self, app, shell, ds, disp, plan, tracer, t0, app_ready, theme):
+    def __init__(self, app, shell, ds, disp, plan, tracer, t0, app_ready, theme, linked=()):
         self.app, self.shell, self.ds, self.disp, self.plan, self.tracer = app, shell, ds, disp, plan, tracer
-        self.t0, self.app_ready, self.theme = t0, app_ready, theme
+        self.t0, self.app_ready, self.theme, self.linked = t0, app_ready, theme, list(linked)
 
     def close(self) -> None:
         if self.tracer is not None:
             self.tracer.stop()
             print(f"[geometry] the trace of this session: {self.tracer.path}", file=sys.stderr)
+        for d in self.linked:                           # first: they run on the main cube's threads
+            d.close()
         self.ds.close()
         self.disp.close()
 
@@ -96,15 +99,34 @@ class Started:
 TRACES = ("EXPLORER_GEOMETRY_TRACE", "EXPLORER_BRIDGE_TRACE")      # what --log turns on (ui.geomtrace, xbridge.trace)
 
 
+def plan_links(path, others, axes=None) -> list:
+    """data.link's plan for each of the other cubes against the first (path, read with axes): the ones that link,
+    in order; each refused one's reason, and how each linked one's axes were read, on stderr."""
+    from ..data.link import describe, plan
+
+    main = describe(path, axes)
+    links = []
+    for p in others:
+        link = plan(main, p)
+        if link.ok:
+            print(f"[{APP_NAME}] linked {os.path.basename(str(p))}: {link.how}", file=sys.stderr)
+            links.append(link)
+        else:
+            print(f"[{APP_NAME}] not linked: {link.why}", file=sys.stderr)
+    return links
+
+
 def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False, traces=False,
-          saved_layout=True) -> Started | None:
+          saved_layout=True, linked=()) -> Started | None:
     """Everything `explorer cube` does before its event loop: the display plan, the themed application, the cube,
     the Shell with its title bar, its saved layout, the display's attachment, the terminal's keys and the link probe.
     The self-test (bench/explorer_selftest.py) goes through it too, so it measures the window as it is shown (as the
     prototype's app/startup.py, audit F4). saved_layout False: the user's saved layout is neither read, nor written
     at the close, nor dropped. theme None: the one in use at the last close on this way of displaying, else auto.
     traces: the session's traces (TRACES: the geometry's and, through the bridge, the bridge's), as --log asks.
-    None (and why, on stderr) when there is no display or the cube cannot be read."""
+    linked: other cubes, linked to this one (ROADMAP E8.1) where data.link finds they can be, each with its own
+    per-pixel file unless no_sp; sp and axes are the first cube's. None (and why, on stderr) when there is no
+    display or the first cube cannot be read."""
     t0 = time.perf_counter()
     if traces:                                          # before the bridge and the window, which read them once
         for name in TRACES:
@@ -121,7 +143,15 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     from .layout import LayoutStore
     from .style import THEMES
 
-    store = LayoutStore(plan.kind) if saved_layout else None
+    q = time.perf_counter()
+    try:
+        links = plan_links(path, linked, axes) if linked else []
+    except (ValueError, OSError) as e:                  # the first cube: reported as below, when opened
+        print(f"[{APP_NAME}] cannot open {path}: {e}", file=sys.stderr)
+        return None
+    if links:
+        phases["links"] = time.perf_counter() - q
+    store = LayoutStore(plan.kind, linked=bool(links)) if saved_layout else None
     if theme is None:                                   # the one in use at the last close, else auto
         kept = store.theme() if store is not None else None
         theme = kept if kept in THEMES else "auto"
@@ -135,13 +165,26 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         print(e, file=sys.stderr)
         return None
     from ..data.dataset import Dataset
+    from ..data.policy import GuardShare, MemoryGuard
     from .shell import Shell
 
     q = time.perf_counter()
+    # linked cubes: one memory budget shared, the first cube's threads (one runs parallel numba for all)
+    guard = GuardShare(MemoryGuard(), 1 + len(links)) if links else None
     try:
-        ds = Dataset.open(path, sp=sp, no_sp=no_sp, axes=axes)
+        ds = Dataset.open(path, sp=sp, no_sp=no_sp, axes=axes, guard=guard)
     except (ValueError, OSError) as e:                  # a file it cannot read as a cube: say so, no traceback
         print(f"[{APP_NAME}] cannot open {path}: {e}", file=sys.stderr)
+        return None
+    others: list = []
+    try:
+        for link in links:
+            others.append(Dataset.open(link.path, no_sp=no_sp, axes=link.axes, guard=guard, executors=ds.executors))
+    except (ValueError, OSError) as e:
+        print(f"[{APP_NAME}] cannot open {link.path}: {e}", file=sys.stderr)
+        for d in others:
+            d.close()
+        ds.close()
         return None
     phases["cube"] = time.perf_counter() - q
     try:
@@ -155,7 +198,8 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         from . import geomtrace
 
         tracer = geomtrace.install_from_env()           # EXPLORER_GEOMETRY_TRACE=1: before the window, to see it all
-        shell = Shell(ds, title=f"{os.path.basename(str(path))} — {APP_NAME}", t0=t0, look=get_look(look))
+        names = " + ".join(os.path.basename(str(p)) for p in [path, *(lk.path for lk in links)])
+        shell = Shell(ds, title=f"{names} — {APP_NAME}", t0=t0, look=get_look(look), linked=others)
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
         shell.breakdown = (before, phases, shown, plan.remote)
@@ -176,19 +220,21 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         if plan.remote and link.bytes_per_px is not None:
             shell.start_link_probe(link)                # the default playback rate from what the link carries
         log.info("%s; %s", ds.describe(), disp.stats())
-        return Started(app, shell, ds, disp, plan, tracer, t0, app_ready, theme)
+        return Started(app, shell, ds, disp, plan, tracer, t0, app_ready, theme, others)
     except BaseException:
+        for d in others:
+            d.close()
         ds.close()
         disp.close()
         raise
 
 
 def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False, traces=False,
-        quit_after: float | None = None) -> int:
-    """Open path and run the event loop until the window closes; returns the exit code. quit_after: seconds after the
-    first image, then quit (measurements, as the prototype's --quit-after)."""
+        quit_after: float | None = None, linked=()) -> int:
+    """Open path (and the cubes linked to it) and run the event loop until the window closes; returns the exit
+    code. quit_after: seconds after the first image, then quit (measurements, as the prototype's --quit-after)."""
     s = start(path, sp=sp, no_sp=no_sp, axes=axes, x11=x11, theme=theme, look=look, reset_layout=reset_layout,
-              traces=traces)
+              traces=traces, linked=linked)
     if s is None:
         return 1
     try:

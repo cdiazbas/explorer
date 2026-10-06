@@ -92,24 +92,27 @@ class DockHome(QtCore.QObject):
             self.d.setGeometry(self.home)
 
 
-def reset_sizes(window: QtWidgets.QMainWindow, docks) -> None:
-    """Explicit sizes, as at a fresh start: the docked panels PANELS_W of the width, equal heights. After
-    restoreState alone Qt kept whatever sizes it had (a closed lambda-t came back 517/311 px instead of 414/414)."""
+def reset_sizes(window: QtWidgets.QMainWindow, docks, images: int = 1) -> None:
+    """Explicit sizes, as at a fresh start: the docked panels PANELS_W of the width, equal heights; beside more
+    than one image (linked cubes) as wide as beside one in a window of this height. After restoreState alone Qt kept
+    whatever sizes it had (a closed lambda-t came back 517/311 px instead of 414/414)."""
     docked = [d for d in docks if d.isVisible() and not d.isFloating()]
     if not docked:
         return
-    window.resizeDocks([docked[0]], [int(window.width() * PANELS_W)], QtCore.Qt.Orientation.Horizontal)
+    w = window.width() * PANELS_W if images < 2 else min(window.width() * PANELS_W, window.height() * ASPECT * PANELS_W)
+    window.resizeDocks([docked[0]], [int(w)], QtCore.Qt.Orientation.Horizontal)
     if len(docked) > 1:
         h = sum(d.height() for d in docked)
         window.resizeDocks(docked, [h // 2, h - h // 2], QtCore.Qt.Orientation.Vertical)
 
 
-def first_geometry(app: QtWidgets.QApplication) -> QtCore.QRect:
+def first_geometry(app: QtWidgets.QApplication, images: int = 1) -> QtCore.QRect:
     """The window at a first start: FILL of the height of the monitor under the pointer, at most ASPECT times as
-    wide as high, centred on it (the prototype's restore without a saved geometry)."""
+    wide as high, centred on it (the prototype's restore without a saved geometry); with more images side by side
+    (linked cubes), as much wider as one image more each."""
     from ..platform.screens import monitor_rect
 
     mon = monitor_rect(app)
     h = int(mon.height() * FILL)
-    w = min(int(mon.width() * FILL), int(h * ASPECT))
+    w = min(int(mon.width() * FILL), int(h * (ASPECT + images - 1)))
     return QtCore.QRect(mon.x() + (mon.width() - w) // 2, mon.y() + (mon.height() - h) // 2, w, h)

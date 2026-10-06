@@ -210,3 +210,21 @@ def test_the_theme_is_kept_per_way_of_displaying(qapp, store):
     store.save(w)                                       # no theme given: the kept one stays
     assert store.theme() == "light"
     w.close()
+
+
+def test_linked_cubes_keep_a_layout_of_their_own_and_share_the_theme(qapp, store):
+    """Images side by side want a wider window (ROADMAP E8.1): a one-cube session never gets it back, nor the other
+    way round; glass apart in both; the theme and the look are the same for all."""
+    from explorer.ui.layout import LayoutStore
+
+    lk = LayoutStore("test", store.path, linked=True)
+    assert lk.kind != store.kind and lk.for_look("glass").linked and lk.for_look("glass").for_look(None).kind == lk.kind
+    a = window(qapp)
+    a.setGeometry(60, 50, 700, 420)                     # within the offscreen screen, else not restored
+    lk.save(a, look="modern", theme="light")
+    a.close()
+    b = window(qapp)
+    assert not store.restore(b, qapp)                   # the one-cube layout: nothing saved
+    assert lk.restore(b, qapp) and (b.width(), b.height()) == (700, 420)
+    assert store.theme() == "light" and store.look() == "modern"
+    b.close()

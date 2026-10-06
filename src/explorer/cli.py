@@ -21,14 +21,31 @@ def _parser() -> argparse.ArgumentParser:
     lines = "\n".join(f"  {n:10s} {h}" for n, (_, h) in SUBCOMMANDS.items())
     ap = argparse.ArgumentParser(
         prog=APP_NAME, formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Viewer for solar spectropolarimetric cubes [t, Stokes, lambda, y, x].",
-        epilog=f"subcommands (explorer <subcommand> --help):\n{lines}\n\nexplorer --demo is explorer demo")
+        description="Viewer for solar spectropolarimetric cubes [t, Stokes, lambda, y, x]: SOLARNET FITS (_im.fits) "
+                    "and La Palma cubes (.icube, .fcube).",
+        epilog=f"""examples:
+  explorer stokes_6173_im.fits                  one cube; its per-pixel file (_sp) is found next to it
+  explorer stokes_6173_im.icube                 a La Palma cube: its axes from its _sp file or the scans in its name
+  explorer Blos.6173_map.fcube --axes t         a map whose frames are times (nothing in the file says so)
+  explorer stokes_6173_im.icube Blos.6173_map.fcube Vlos.6173_map.icube
+                                                linked cubes: the first leads; the others, on its pixels and at its
+                                                times, show beside it and follow its cursor and t, each at its own λ
+                                                (other pixels or times: not linked yet, and said why)
+
+subcommands (explorer <subcommand> --help):
+{lines}
+
+explorer --demo is explorer demo""")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
-    ap.add_argument("cube", nargs="?", help="a cube to open (_im.fits); its per-pixel file is found next to it")
-    ap.add_argument("--sp", help="this per-pixel file instead of the one found next to the cube")
-    ap.add_argument("--nosp", action="store_true", help="read without the per-pixel file")
-    ap.add_argument("--axes", help="what the leading axes are, slowest first, e.g. t,l or s,l (l is lambda), for "
-                                   "cubes whose header does not say it")
+    ap.add_argument("cubes", nargs="*", metavar="cube",
+                    help="a cube to open: _im.fits, or a La Palma .icube / .fcube; its per-pixel file is found next "
+                         "to it. More cubes: linked to the first (the same pixels and times; a map of one frame is "
+                         "shown at every t); a cube that cannot be linked yet is left out, with the reason")
+    ap.add_argument("--sp", help="this per-pixel file instead of the one found next to the (first) cube")
+    ap.add_argument("--nosp", action="store_true", help="read without the per-pixel files")
+    ap.add_argument("--axes", help="what the (first) cube's leading axes are, slowest first: t,s,l, s,l, t,l, or t "
+                                   "for a map whose frames are times (l is lambda), for cubes whose header or name "
+                                   "does not say it")
     ap.add_argument("--x11", choices=("auto", "native", "bridge"), default="auto",
                     help="over ssh -Y: Qt's own X11 (native) or the bridge; auto decides")
     from .ui.app import window_options
@@ -81,13 +98,14 @@ def main(argv: list[str] | None = None) -> int:
         mod = importlib.import_module(f".{SUBCOMMANDS[argv[0]][0]}", __package__)
         return mod.main(argv[1:])
     a = _parser().parse_args(argv)
-    if a.cube is None:
+    if not a.cubes:
         _parser().print_help()
         return 0
-    if not os.path.exists(a.cube):
-        print(f"{APP_NAME}: no such file: {a.cube}", file=sys.stderr)
-        return 2
+    for c in a.cubes:
+        if not os.path.exists(c):
+            print(f"{APP_NAME}: no such file: {c}", file=sys.stderr)
+            return 2
     from .ui.app import run
 
-    return run(a.cube, sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11, theme=a.theme,
-               look=a.look, reset_layout=a.reset_layout, traces=a.log, quit_after=a.quit_after)
+    return run(a.cubes[0], sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11, theme=a.theme, look=a.look,
+               reset_layout=a.reset_layout, traces=a.log, quit_after=a.quit_after, linked=a.cubes[1:])

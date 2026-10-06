@@ -479,8 +479,9 @@ class GlassChrome:
                          unzoomed=w.window_ops.unzoomed if w.window_ops is not None else None)
         # the image to the window's edges (look_glass.py:651-658)
         w.centralWidget().layout().setContentsMargins(0, 0, 0, 0)
-        if hasattr(view.widget, "ci"):
-            view.widget.ci.setContentsMargins(0, 0, 0, 0)
+        for v in self._images():                    # linked cubes' too: images of one size show one region
+            if hasattr(v.widget, "ci"):
+                v.widget.ci.setContentsMargins(0, 0, 0, 0)
         self._bar(nav, view)
         # the readout as the title (look_glass.py:693-724)
         self._watches.append(_Watch(view.widget.viewport(), (QtCore.QEvent.Type.Enter, QtCore.QEvent.Type.Leave),
@@ -533,8 +534,13 @@ class GlassChrome:
         tb.corners.line.update()
         tb.update()
 
+    def _images(self) -> list:
+        """The image views: the main one, and the linked cubes' beside it (ui.linked)."""
+        return [self.w.view] + [c.view for c in getattr(self.w, "linked", ())]
+
     def docks(self) -> list:
-        """The panels glass floats: the slit's too, shown only with a slit (docks.GatedDock; look_glass.py:518-519)."""
+        """The panels glass floats: the slit's too, shown only with a slit (docks.GatedDock; look_glass.py:518-519).
+        Linked cubes' panels are tabs inside these (ui.linked)."""
         return [d for d in (self.w.spec_dock, self.w.lt_dock, self.w.slit_dock) if d is not None]
 
     def _bar(self, nav, view) -> None:
@@ -725,8 +731,11 @@ class GlassChrome:
         if img is None or not (dx > 0 and dy > 0) or vb.height() < 50:
             return w.frameGeometry()
         ny, nx = img.shape
-        # read before the zoom is left: the view follows a resize only once its layout has run
-        dw, dh = w.width() - int(vb.width()), w.height() - int(vb.height())
+        # read before the zoom is left: the view follows a resize only once its layout has run. Linked cubes' images
+        # (ui.linked) are as wide as the main one: n images, the rest of the width the window's own
+        vbs = [vb] + [c.view.vb for c in getattr(w, "linked", ())]
+        n = len(vbs)
+        dw, dh = w.width() - sum(int(v.width()) for v in vbs), w.height() - int(vb.height())
         zoomed = w.windowState() & ZOOMED
         if zoomed:
             w.setWindowState(w.windowState() & ~ZOOMED)
@@ -742,11 +751,11 @@ class GlassChrome:
         else:
             h, top, at = int(vb.height()), fg.top(), fg.left()
         wd = int(round(h * aspect))
-        most = scr.width() - room - frame_w - dw
+        most = (scr.width() - room - frame_w - dw) // n
         if wd > most:
-            wd = max(MIN_VIEW_W, most)
+            wd = max(MIN_VIEW_W // n, most)         # side by side, the least width is theirs together
             h = int(round(wd / aspect))
-        W, H = wd + dw, h + dh
+        W, H = n * wd + dw, h + dh
         left = max(scr.left(), min(at, scr.right() + 1 - (W + frame_w + room)))
         w.setGeometry(left + (w.geometry().x() - fg.x()), top + (w.geometry().y() - fg.y()), W, H)
         return QtCore.QRect(left, top, W + frame_w, H + frame_h)
@@ -866,7 +875,7 @@ class GlassChrome:
         if store is not None and store.restore(w, app):
             return
         if store is None:                           # (restore() sets the first geometry itself)
-            w.setGeometry(docks.first_geometry(app))
+            w.setGeometry(docks.first_geometry(app, getattr(w, "images", 1)))
         w.restoreState(w._initial_state)
         for d in self.docks():
             if d.isHidden():
@@ -942,7 +951,8 @@ class GlassChrome:
             QtCore.QTimer.singleShot(0, self._restore_panels)
         w.centralWidget().layout().setContentsMargins(self._was["margins"])
         if self._was["ci"] is not None:
-            view.widget.ci.setContentsMargins(*self._was["ci"])
+            for v in self._images():
+                v.widget.ci.setContentsMargins(*self._was["ci"])
         w.statusBar().setVisible(self._was["statusbar"])
         w.setWindowTitle(self._was["title"])
         if "title_bar" in self._was:

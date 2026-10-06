@@ -11,6 +11,8 @@ local Mac, Qt's own X11, the bridge, ...), as the prototype keeps them (app/view
 - The theme it was in (dark, light, native), one per way of displaying: through the bridge auto is dark, on a local
   Mac native, and a theme chosen in one is not the other's default.
 - One INI file per user (config_dir()/layout.ini, never next to the code); EXPLORER_LAYOUT names another one.
+- A window with linked cubes (ROADMAP E8.1) keeps its geometry and panels apart: its images side by side want a
+  wider window, and its panels have tabs a one-cube window does not (the look and the theme are shared).
 """
 import os
 
@@ -28,9 +30,9 @@ def layout_path() -> str:
 
 
 class LayoutStore:
-    def __init__(self, kind: str, path: str | None = None):
-        self.base = kind
-        self.kind = f"v{SCHEMA}.{kind}"
+    def __init__(self, kind: str, path: str | None = None, linked: bool = False):
+        self.base, self.linked = kind, linked
+        self.kind = f"v{SCHEMA}.{kind}" + ("+linked" if linked else "")
         self.path = path or layout_path()
         self.geometry_key = f"app/{self.kind}/geometry"
         self.state_key = f"app/{self.kind}/state"
@@ -50,9 +52,9 @@ class LayoutStore:
         """The glass look keeps a layout of its own (its panels float beside the window, its toolbar is hidden):
         the same file, its own group (the prototype's v.kind + "-glass", app/look_glass.py:618)."""
         if look == "glass" and not self.base.endswith("-glass"):
-            return LayoutStore(self.base + "-glass", self.path)
+            return LayoutStore(self.base + "-glass", self.path, self.linked)
         if look != "glass" and self.base.endswith("-glass"):
-            return LayoutStore(self.base[:-len("-glass")], self.path)
+            return LayoutStore(self.base[:-len("-glass")], self.path, self.linked)
         return self
 
     def _theme_key(self) -> str:
@@ -94,7 +96,7 @@ class LayoutStore:
             m = monitor_rect(app, f.center())
             ok = f.width() <= m.width() * FITS and f.height() <= m.height() * FITS
         if not ok:
-            window.setGeometry(docks.first_geometry(app))
+            window.setGeometry(docks.first_geometry(app, getattr(window, "images", 1)))
         restored = bool(s) and window.restoreState(s)
         for d in window.findChildren(QtWidgets.QDockWidget):     # places and sizes, never absences
             if d.isHidden():
