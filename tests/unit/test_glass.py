@@ -215,6 +215,7 @@ def test_out_of_glass_everything_as_it_was(qapp, shell):
     before = dict(actions=shown(), geometry=w.geometry(),
                   titles=[d.titleBarWidget() for d in (w.spec_dock, w.lt_dock)],
                   panels=[d.geometry() for d in (w.spec_dock, w.lt_dock)], image=w.view.widget.size(),
+                  box=(w.view.vb.width(), w.view.vb.height()),
                   margins=w.centralWidget().layout().contentsMargins(), title=w.windowTitle(),
                   widths={a: (s.minimumWidth(), s.maximumWidth()) for a, s in w.nav.sliders.items()})
     wear(qapp, w, "glass")
@@ -234,6 +235,10 @@ def test_out_of_glass_everything_as_it_was(qapp, shell):
     # the panels as they were, not laid out again in glass's narrow window (414x245 where 520x343 had been)
     assert spin(qapp, lambda: [d.geometry() for d in (w.spec_dock, w.lt_dock)] == before["panels"])
     assert w.view.widget.size() == before["image"]
+    # the image's own margin back: glass saved the layout item's (0) for the layout's (9), and the image came back
+    # 18 px larger; beside linked images, on another region
+    print("image box before", before["box"], "after", (w.view.vb.width(), w.view.vb.height()))
+    assert (w.view.vb.width(), w.view.vb.height()) == before["box"]
     assert w.colour_key.pos().y() > w.view.widget.height() // 2            # back at its own corner
 
 

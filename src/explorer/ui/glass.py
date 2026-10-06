@@ -469,7 +469,9 @@ class GlassChrome:
         self._was = dict(state=w.saveState(), geometry=w.geometry(), title=w.windowTitle(),
                          statusbar=w.statusBar().isVisibleTo(w), floating={d: d.isFloating() for d in self.docks()},
                          margins=w.centralWidget().layout().contentsMargins(),
-                         ci=view.widget.ci.getContentsMargins() if hasattr(view.widget, "ci") else None,
+                         # the layout's (9 px), not the layout item's own (0): given back as 0, the image came out
+                         # of glass 18 px larger
+                         ci=view.widget.ci.layout.getContentsMargins() if hasattr(view.widget, "ci") else None,
                          sliders={a: (s.minimumWidth(), s.maximumWidth()) for a, s in nav.sliders.items()},
                          # the zoom to give back: Qt's (a Mac's green button, a window manager's maximise) with the
                          # size under it, and our title bar's
