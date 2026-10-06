@@ -414,3 +414,47 @@ def test_closing_a_linked_cube_waits_for_its_reads_on_the_shared_threads(cube):
         print("read after close:", fut.exception(5) or "ok")
         assert fut.exception(5) is None
         np.testing.assert_array_equal(fut.result(), data[0, 0, :, 3, 4])
+
+
+@pytest.mark.parametrize("nosp", [False, True])
+def test_a_linked_cubes_hidden_spectra_cost_nothing_until_shown(cube, tmp_path, monkeypatch, nosp):
+    """A linked cube's tab behind read its y-range sample at start anyway (100 profiles, on the numba thread the main
+    cube's cursor reads share) and, with a per-pixel file, the first block for the units: both wait for its spectra
+    to be shown. Each cube's sample counted by the reader it went through."""
+    import explorer.core.scheduler as S
+
+    d, _ = cube
+    other = synth.write_dataset(tmp_path, "o", shape=(SHAPE[0], SHAPE[1], 7, SHAPE[3], SHAPE[4]), seed=5,
+                                icube=False)["im"]
+    sampled = []
+    real = S.sample_profiles
+    monkeypatch.setattr(S, "sample_profiles", lambda ys, xs, ts, frames, *a, **k:
+                        sampled.append(frames.layout.path) or real(ys, xs, ts, frames, *a, **k))
+    with Dataset.open(d["im"], no_sp=nosp) as ds, Dataset.open(other, no_sp=nosp, executors=ds.executors) as o:
+        blocks = []
+        if o.pixel is not None:
+            first = o.pixel.block
+            monkeypatch.setattr(o.pixel, "block", lambda *a: blocks.append(a) or first(*a))
+        loop = ManualLoop()
+        sess = Session(loop, ds)
+        k = sess.add(o)                                 # its panels hidden: its tabs behind
+        scheds = [Scheduler(sess, Recorder()), Scheduler(sess, Recorder(), member=k)]
+        try:
+            for s in scheds:
+                settle(s)
+            loop.advance(S.SAMPLE_AFTER_S + 0.1)
+            for s in scheds:
+                settle(s)
+            print("hidden: sampled", [p.split("/")[-1] for p in sampled], "first blocks", len(blocks))
+            assert [p.split("/")[-1] for p in sampled] == ["c_im.fits"] and blocks == []
+            sess.show(f"spectra:{k}")                   # its tab in front
+            loop.pump()
+            loop.advance(S.SAMPLE_AFTER_S + 0.1)
+            for s in scheds:
+                settle(s)
+            print("shown: sampled", [p.split("/")[-1] for p in sampled], "first blocks", len(blocks))
+            assert [p.split("/")[-1] for p in sampled] == ["c_im.fits", "o_im.fits"]
+            assert bool(blocks) == (not nosp)               # the first block, with a per-pixel file
+        finally:
+            for s in scheds:
+                s.close()

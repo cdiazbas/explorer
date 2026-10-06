@@ -23,6 +23,9 @@ The slit panel's reads and slices are SlitReads' (core.slitreads), which sees ev
 A linked cube (ROADMAP E8.1) has a scheduler of its own (member=k): it reads the state as its cube does
 (Session.member_state: its lambda and Stokes, its panels), and a change reaches it only when its frame or its
 cursor changes (a single frame does not move with t). No slit and no 2x2 view: those are the main cube's.
+The spectra's reads that are not the cursor's (the first block for the units, the y-range sample) wait for the
+spectra to be shown: a linked cube's tab behind read 100 profiles at start, on the numba thread the main cube's
+cursor reads share.
 The image's levels are computed on the thread that read the frame, before its result is posted, and on the threads
 that read frames ahead (Levels.ahead): the UI thread finds them cached. Never for a read already stale, nor on the
 main thread: a future that completed before its callback was added runs it there, and the levels are then computed
@@ -99,7 +102,9 @@ class Scheduler:
         self._flock = threading.Lock()
         self.slit = SlitReads(session, sink, self._track, self._when_read) if member == 0 else None
         self._off = session.store.subscribe(self._on_change)
-        self._first_units(st)
+        self._units_read = False
+        if "spectra" in st.panels:
+            self._first_units(st)
         self._pending.add("cursor")                     # the first image brings the first cursor
         self._request_image(st)
 
@@ -108,11 +113,19 @@ class Scheduler:
         """The session's state as this scheduler's cube reads it (Session.member_state)."""
         return self.session.member_state(self.member)
 
+    def _start_sample_once(self) -> None:
+        """The y-range sample, SAMPLE_AFTER_S from now: once, with an image to sample and the spectra shown."""
+        if self._sampled or self.img is None or "spectra" not in self.state.panels:
+            return
+        self._sampled = True
+        self.loop.call_later(SAMPLE_AFTER_S, self._start_sample)
+
     def _first_units(self, st: ViewState) -> None:
         """With a per-pixel file, the cursor's block read now, as the window is built (the prototype's first
         spectrum, app/viewer.py _set_spectra 1927): I's title has its power of ten from the first frame, and the axis
         does not widen once the spectrum comes. One small read (0.1 ms on a synthetic cube), then in the cache: the
         first cursor read finds it there. Without that file the first spectrum brings it, as in the prototype."""
+        self._units_read = True
         if getattr(self.ds, "pixel", None) is None or self.ds.roles.l is None:
             return
         try:
@@ -167,6 +180,10 @@ class Scheduler:
         if self.slit is not None:
             self.slit.on_change(st, changed)
         came, self._panels = st.panels - self._panels, st.panels
+        if "spectra" in came:                           # shown for the first time: what waited for it
+            if not self._units_read:
+                self._first_units(st)
+            self._start_sample_once()
         moved = changed & {"t", "s", "l"}
         if moved:
             self._pending |= moved | (changed & {"cursor"}) | {f"show:{p}" for p in came}
@@ -274,9 +291,7 @@ class Scheduler:
         if self.shown.accept("image", g):
             self.img, self.img_idx = fut.result(), idx
             self._show_image()
-            if not self._sampled:                        # the y-range sample, after the first image and cursor
-                self._sampled = True
-                self.loop.call_later(SAMPLE_AFTER_S, self._start_sample)
+            self._start_sample_once()                   # the y-range sample, after the first image and cursor
         if not self.gens.stale("image", g) and self._pending:
             kinds, self._pending = self._pending, set()
             self._evaluate(self.state, kinds)
