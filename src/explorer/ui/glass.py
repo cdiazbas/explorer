@@ -526,7 +526,9 @@ class GlassChrome:
         """The images' titles (linked cubes, ui.linked.ImageTitle) on the image's colour, as the window's title bar,
         and the window's own colour too: the separators between the images are drawn in it, by any style, and were
         the theme's grey between black images. Only that colour is the window's own (the rest it inherits, so a
-        change of theme reaches it); None: the titles' and the window's own again."""
+        change of theme reaches it); None: the titles' and the window's own again. The linked images' panels too: a
+        cube's window floats, and a window does not take its parent's colour (its spectra and lambda-t, clear over
+        it in glass, showed the theme's grey: lightness 45 against 7-16 of the floating panels)."""
         titles = [getattr(self.w, "image_title", None)] + [c.title for c in getattr(self.w, "linked", ())]
         for t in titles:
             if t is not None:
@@ -537,6 +539,8 @@ class GlassChrome:
         if colour is not None:
             pal.setColor(QtGui.QPalette.ColorRole.Window, colour)
         self.w.setPalette(pal)
+        for c in self.w.linked:
+            c.dock.setPalette(pal)
         self.w.plain_separators = colour is not None    # ui.style: no hairline in them either
         self.w.update()
 

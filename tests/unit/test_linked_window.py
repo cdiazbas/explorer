@@ -511,3 +511,34 @@ def test_a_cube_s_window_shares_its_width_between_image_and_panels_by_hand(windo
     assert split.count() == 2 and split.handle(1).isVisible() and split.sizes()[0] == before[0] + 40
     w.detach_action.setChecked(False)
     spin(qapp, lambda: False, timeout=0.3)
+
+
+def test_in_glass_a_cube_s_window_is_on_the_image_s_colour(window, restore):
+    """Detached in glass, a cube's spectra and lambda-t (clear over their panel in glass) showed the theme's grey:
+    a floating window does not take its parent's colour (the user, 2026-10-07). There, the image's colour (black in
+    the dark theme); out of glass, its own again."""
+    import collections
+
+    from PySide6 import QtCore, QtGui
+
+    from explorer.look import get_look
+    from explorer.ui import glass
+
+    w, qapp = window
+    w.set_theme("dark")
+    w.set_look(get_look("glass"))
+    spin(qapp, lambda: False, timeout=0.6)
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.6)
+    c = w.linked[0]
+    img = c.dock.grab().toImage()
+    r = QtCore.QRect(c.spectra.w.mapTo(c.dock, QtCore.QPoint(0, 0)), c.spectra.w.size())
+    common = collections.Counter(QtGui.QColor(img.pixel(x, y)).lightness() for x in range(r.left(), r.right(), 3)
+                                 for y in range(r.top(), r.bottom(), 3)).most_common(1)[0][0]
+    print("its spectra's background in glass: lightness", common, "window colour",
+          c.dock.palette().window().color().name())
+    assert common <= 20 and c.dock.palette().window().color() == glass.TITLE["dark"]
+    w.detach_action.setChecked(False)
+    w.set_look(get_look("classic"))
+    spin(qapp, lambda: False, timeout=0.4)
+    assert c.dock.palette().window().color() != glass.TITLE["dark"]
