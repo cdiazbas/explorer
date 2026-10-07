@@ -43,13 +43,21 @@ class LinkInfo:
     fps_cap: int | None
 
 
+def _rgb(c) -> int:
+    return (c.red() << 16) | (c.green() << 8) | c.blue()
+
+
 class XOutlineOps:
     """platform.xoutline.XOutline as the title bar's edges use it: show(QRect), close()."""
 
     def __init__(self, colour):
         from .xoutline import XOutline
 
-        self.x = XOutline((colour.red() << 16) | (colour.green() << 8) | colour.blue())
+        self.x = XOutline(_rgb(colour))
+
+    def colours(self, border, inside, ink) -> None:
+        """QColors: the border, the inside and the size's ink from the next drag on."""
+        self.x.colours(_rgb(border), _rgb(inside), _rgb(ink))
 
     def show(self, r) -> None:
         self.x.show(r.x(), r.y(), r.width(), r.height())

@@ -1,5 +1,5 @@
 """The outline the X server draws (ROADMAP E5.8), with a stand-in server: the latest size wins, what the server
-cannot keep up with is skipped and never queued, and the ring is 2 px inside the window."""
+cannot keep up with is skipped and never queued, and the look's colours reach it before the next size."""
 import threading
 import time
 
@@ -51,3 +51,25 @@ def test_the_server_never_waits_for_the_pointer():
     o.close(wait=1.0)
     assert srv.applied[-1] == (0, 0, 890, 500)
     assert sum(t > shown_by for t in srv.at) <= 2       # the one in flight and the last
+
+
+class PaintingServer(SlowServer):
+    def __init__(self):
+        super().__init__()
+        self.painted = []
+
+    def paint(self, border, inside, ink):
+        self.painted.append(((border, inside, ink), len(self.applied)))
+
+
+def test_the_colours_reach_the_server_before_the_next_size():
+    """The look may change between two drags: the colours asked go to the server before the size after them."""
+    srv = PaintingServer()
+    o = xoutline.XOutline(0x0A84FF, server=lambda: srv)
+    o.show(0, 0, 300, 200)
+    time.sleep(0.1)
+    o.colours(0xFF9230, 0x101013, 0xEBEBF0)
+    o.show(0, 0, 320, 210)
+    time.sleep(0.1)
+    o.close(wait=1.0)
+    assert srv.painted == [((0xFF9230, 0x101013, 0xEBEBF0), 1)]   # after the first size, before the second

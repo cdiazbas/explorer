@@ -416,3 +416,22 @@ def test_the_bar_and_hairline_paint_in_both_themes(qapp, win, theme):
         qapp.setProperty("explorer_light", False)
         pg.setConfigOptions(background="k", foreground="d")
     assert errors == []
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_the_x_outline_takes_the_looks_colours_never_white(qapp, theme):
+    """The X server's resize outline is a window filled with the look's colour, its border the accent, the size
+    in its ink. Never white inside: a white window flashing under a blue ring was what the shaped ring showed on
+    XQuartz. Dark: the content's #1e1e1e; light: the window's #ececec (its content is white)."""
+    from PySide6 import QtWidgets
+
+    from explorer.ui import style, titlebar
+
+    w = QtWidgets.QMainWindow()
+    w.setPalette(style.dark_palette() if theme == "dark" else style.light_palette())
+    border, inside, ink = titlebar.outline_colours(w)
+    print(theme, border.name(), inside.name(), ink.name())
+    assert inside.name() == ("#1e1e1e" if theme == "dark" else "#ececec")
+    assert border == style.accent()
+    assert abs(ink.lightness() - inside.lightness()) > 120          # the size readable on it
+    w.close()

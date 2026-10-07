@@ -361,6 +361,23 @@ class Outline:
         self.hide()
 
 
+def outline_colours(w) -> tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor]:
+    """The resize outline's border, inside and ink, in w's look: the accent round the darker of the window's and
+    the content's colours (never white: a white flash was what the shaped ring showed on XQuartz); in glass its
+    accent round its slab."""
+    from . import glass, style
+
+    main = w if isinstance(w, QtWidgets.QMainWindow) else w.parentWidget()
+    g = getattr(main, "glass", None)
+    if g is not None and getattr(g, "on", False):
+        mode = "light" if light(w) else "dark"
+        return glass.accent(), QtGui.QColor(glass.SLAB[mode][0]), QtGui.QColor(glass.INK[mode])
+    pal = w.palette()
+    inside = min(pal.color(QtGui.QPalette.ColorRole.Window), pal.color(QtGui.QPalette.ColorRole.Base),
+                 key=lambda c: c.lightness())
+    return style.accent(), inside, pal.color(QtGui.QPalette.ColorRole.Text)
+
+
 class EdgeResizer(QtCore.QObject):
     """Without the window manager's frame there are no resize borders: a 7-px band inside every edge and 16-px corner
     zones (the corner radius) resize the window, with the matching pointer. The window manager does it when it can
@@ -447,6 +464,9 @@ class EdgeResizer(QtCore.QObject):
                 return False
             if not self.m.begin_resize(edges):
                 self._drag = (edges, QtCore.QPoint(gpos), self.w.geometry())
+                paint = getattr(self.outline, "colours", None)
+                if paint is not None:                       # the X server's: the look as it is now
+                    paint(*outline_colours(self.w))
                 if not self.live and self.outline is None:
                     self.outline = Outline(self.w)      # no X server to draw it: Qt's
             return True
