@@ -3686,3 +3686,53 @@ nueva.
   - `tests/unit`, `tests/golden` y `tests/real/test_link_real.py`: 706 pasan, 15 se omiten y falla 1, la de
     `run.sh` en `test_doctor`, como en toda copia en `/tmp` (720 s).
   - `tests/xvfb`: 35 pasan y 2 se omiten (228 s).
+
+### 2026-10-07 (2): una clase para las vistas de cada cubo; cada cubo en su ventana (mock 3)
+
+**Auditoría de simplificación** (la primera de la regla «cada 10 commits»). Las vistas del cubo principal vivían en
+`Shell` y las de un cubo enlazado en `LinkedCube`: el mismo comportamiento escrito dos veces.
+- **Duplicado:** las selecciones en espectro y en λ–t, los candados, el clic y el paso del ratón por la imagen, los
+  gestos, la cruz y los marcadores, el look, el tema y el reinicio.
+- **Ahora:** una sola clase, `CubeView` (`ui/cube.py`), el miembro k de la sesión. Una selección fija la λ del
+  propio cubo con `Session.set_member_index`, que para el principal es su índice de siempre.
+- **`Shell`** se queda con lo de la ventana (rendija, vista 2×2, escala de color, línea de estado) y con sus nombres
+  de antes para las partes del cubo principal.
+- **Líneas:** `shell.py` + `linked.py` + `cube.py`, de 1649 a 1554.
+- **Verificación, `Behaviour: unchanged`:** 12 escenarios capturados antes y después (un cubo y enlazados; oscuro y
+  claro; classic, modern y glass). Los 36 PNG y JSON salen idénticos píxel a píxel; dos tandas del mismo código ya
+  daban 0 diferencias.
+
+**Cada cubo en su ventana.** Panels → «Each cube in a window of its own», el mock 3 que eligió el usuario.
+- El panel de imagen de cada cubo enlazado flota con su espectro y su λ–t al lado. Sus pestañas salen de la ventana
+  principal (`PanelTabs` las presta y las recupera).
+- **Vuelve por cualquier camino:** desmarcando la entrada, con doble clic en el título, con ↺ o al salir de glass.
+- Arrastrar el título de una imagen sigue sacando la imagen sola.
+
+**Estudiado en dos pantallas** (2560×1440 y 1512×982, la del Mac del usuario), en classic y en glass, de un look
+al otro y con ↺. En cada paso se midieron los solapes, los tamaños y el zoom; las capturas, en
+`CRISPEX/summary_detach_2026-10-07/`, fuera del repositorio. Lo que encontró el estudio, en orden:
+- **Las ventanas tapaban la ventana principal y se tapaban entre sí** (254 y 410 px), porque la principal no cedía
+  sitio. Ahora cede el de las imágenes y lo recupera primero al volver: acopladas en la ventana estrecha, Qt la
+  ensanchaba por su cuenta.
+- **El sitio liberado se lo quedaba el espectro**, en la misma zona de paneles: imagen principal de 80 px. Ahora el
+  espectro guarda su ancho al separar; al volver, las imágenes salían de 647 px en vez de 428.
+- **Glass ajustaba la ventana contando imágenes flotantes, y al volver la cortaba** (845 px por 1092): una imagen
+  recién acoplada conservaba su tamaño de ventana flotante. Ahora ajusta cuando el layout ya las tiene, también con
+  ↺.
+- **Dos ventanas se solapaban 22 px:** un marco es más ancho que el tamaño pedido. Se cuentan 24 px por ventana.
+- **Tamaño de cada ventana:** lo que la imagen principal muestra con su zoom. La imagen entera ocupa 214×252 px;
+  antes se le daba la caja alta y estrecha de la principal, 226×759. La de un cubo, más ancha por sus paneles y de
+  al menos 560 px de alto.
+- **Colocación:** en fila o en columna junto a la ventana (en glass, junto a su columna de paneles), con paneles del
+  ancho de la ventana principal o de 320 px. Se elige lo que menos encoge. La primera opción que cabía dejaba la
+  ventana de un cubo en 743×325, con el espectro ilegible, cuando una columna cabía sin encoger.
+- **Límite conocido:** separados en classic en la pantalla de 1512 px y después pasando a glass, se apilan en
+  cascada. Con el zoom compartido, cada ventana necesita el sitio de la imagen principal, que glass ajusta a la
+  altura de la pantalla. Separados ya en glass, caben.
+
+**Fuera del visor:**
+- **Las instrucciones de trabajo del proyecto, fuera de git, unas para el Mac y bellatrix:** las que había solo en
+  bellatrix, puestas al día (estaban anticuadas: notas de la época del prototipo, `HANDOFF.md` del 25 de
+  septiembre) y con la regla de auditar simplificaciones cada 10 commits.
+- **Cómo se sincroniza:** con `sync.py`, por una lista `also` de ficheros fuera de git en su configuración local, que
+  no está versionada.
