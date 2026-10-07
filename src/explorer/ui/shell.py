@@ -554,6 +554,7 @@ class Shell(QtWidgets.QMainWindow):
         super().resizeEvent(ev)
         if self.glass is None or not self.glass.on:     # the glass bar lays its sliders out itself
             self.nav.fit(self.width())
+        self.same_image_widths()                        # Qt gave the whole change to the main image
 
     def showEvent(self, ev) -> None:
         super().showEvent(ev)

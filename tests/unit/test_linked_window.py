@@ -623,3 +623,15 @@ def test_a_panel_closed_in_a_cube_s_window_comes_back_from_panels_in_its_place(w
     menu.aboutToShow.emit()
     assert not [a for a in menu.actions() if "·" in a.text()]          # back in the tabs: no entries of its own
 
+
+def test_after_a_window_resize_the_images_are_one_width(window):
+    """Qt gives a window's change of size to its centre, the main image, and keeps the panels' widths: at 1200 x 700
+    the main image was 170 px against 306 for each linked one, and at its whole-image fit the others could not show
+    it at its magnification (1.55 against 2.44 px per pixel). The images share the width at every resize."""
+    w, qapp = window
+    for width in (1000, 1300):
+        w.resize(width, 600)
+        spin(qapp, lambda: False, timeout=0.3)
+        sizes = [w.view.widget.width()] + [c.view.widget.width() for c in w.linked]
+        print("window", width, "image widths", sizes)
+        assert max(sizes) - min(sizes) <= 2

@@ -805,8 +805,6 @@ class GlassChrome:
         W, H = n * wd + dw, h + dh
         left = max(scr.left(), min(at, scr.right() + 1 - (W + frame_w + room)))
         w.setGeometry(left + (w.geometry().x() - fg.x()), top + (w.geometry().y() - fg.y()), W, H)
-        if getattr(w, "linked", None):              # the images one width again, once the window has its size
-            QtCore.QTimer.singleShot(0, w.same_image_widths)
         return QtCore.QRect(left, top, W + frame_w, H + frame_h)
 
     def place_panels(self) -> None:
