@@ -63,6 +63,7 @@ CUBE_MIN_H = 560           # px: a cube's window at least this high, for its spe
 CUBE_PANELS_MIN_W = 320    # px: its spectra and lambda-t no narrower, when the screen has no room for wider ones
 DETACHED_MIN_W = 160       # px: a detached image no narrower than this to fit a row; else they cascade
 CASCADE = 28               # px each detached image is moved down and left when there is no room for a row
+WIDTHS_MS = 150            # the images share the window's width this long after its size last changed
 SLIT_FLOAT_H = 320          # px: the slit panel floating below lambda-t in glass (the prototype's look_glass.py:615)
 
 
@@ -554,7 +555,13 @@ class Shell(QtWidgets.QMainWindow):
         super().resizeEvent(ev)
         if self.glass is None or not self.glass.on:     # the glass bar lays its sliders out itself
             self.nav.fit(self.width())
-        self.same_image_widths()                        # Qt gave the whole change to the main image
+        # Qt gave the whole change to the main image: shared out once the window stops changing size. At every step
+        # it laid the window out twice (activate, then resizeDocks): a resize cost 62 ms against 43 (bellatrix)
+        t = getattr(self, "_widths_timer", None)
+        if t is None:
+            t = self._widths_timer = QtCore.QTimer(self, singleShot=True, interval=WIDTHS_MS)
+            t.timeout.connect(self.same_image_widths)
+        t.start()
 
     def showEvent(self, ev) -> None:
         super().showEvent(ev)

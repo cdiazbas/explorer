@@ -679,3 +679,28 @@ def test_after_a_window_resize_the_images_are_one_width(window):
         sizes = [w.view.widget.width()] + [c.view.widget.width() for c in w.linked]
         print("window", width, "image widths", sizes)
         assert max(sizes) - min(sizes) <= 2
+
+
+def test_a_resize_shares_the_widths_once_it_stops_not_at_every_step(window):
+    """Shared at every step, a resize laid the window out twice and cost 62 ms against 43 (bellatrix, offscreen):
+    while the size keeps changing nothing is shared, and once it has stopped the images share it once."""
+    w, qapp = window
+    calls = []
+    share = w.same_image_widths
+    w.same_image_widths = lambda: (calls.append(1), share())     # what resizeEvent and its timer call from here
+    try:
+        if getattr(w, "_widths_timer", None) is not None:          # made by an earlier resize: bound to the method
+            w._widths_timer.timeout.disconnect()
+            w._widths_timer.timeout.connect(w.same_image_widths)
+        for width in (1000, 1050, 1100, 1150, 1200):               # five steps of one drag, 20 ms apart
+            w.resize(width, 600)
+            spin(qapp, lambda: False, timeout=0.02)
+        during = len(calls)
+        spin(qapp, lambda: False, timeout=0.4)
+        sizes = [w.view.widget.width()] + [c.view.widget.width() for c in w.linked]
+        print("shared during the drag", during, "after it", len(calls), "image widths", sizes)
+        assert during == 0
+        assert len(calls) == 1
+        assert max(sizes) - min(sizes) <= 2
+    finally:
+        del w.same_image_widths
