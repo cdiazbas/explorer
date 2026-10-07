@@ -142,3 +142,8 @@ def test_the_last_of_two_quick_moves_moves_the_cursor(shell):
     assert spin(qapp, lambda: w.session.state.cursor == (10, 12))
     move(30, 25)                                        # at once: well within 10 ms of the first
     assert spin(qapp, lambda: w.session.state.cursor == (30, 25), timeout=1.0), w.session.state.cursor
+
+
+def test_one_cube_has_no_entry_to_detach_cubes(shell):
+    w, _ = shell
+    assert w.detach_action is None and not w.linked

@@ -783,7 +783,7 @@ class GlassChrome:
         ny, nx = img.shape
         # read before the zoom is left: the view follows a resize only once its layout has run. Linked cubes' images
         # (ui.linked) are as wide as the main one: n images, the rest of the width the window's own
-        vbs = [vb] + [c.view.vb for c in getattr(w, "linked", ())]
+        vbs = [vb] + [c.view.vb for c in getattr(w, "linked", ()) if c.dock.isVisible() and not c.dock.isFloating()]
         n = len(vbs)
         dw, dh = w.width() - sum(int(v.width()) for v in vbs), w.height() - int(vb.height())
         zoomed = w.windowState() & ZOOMED
@@ -834,6 +834,8 @@ class GlassChrome:
         fg = self.fit_window(scr, GAP + FLOAT_W if shown else 0)
         QtCore.QTimer.singleShot(0, w.view.show_all)
         if not shown:
+            if hasattr(w, "place_detached"):
+                w.place_detached()
             return
         x = min(fg.right() + GAP, scr.right() - FLOAT_W)
         share = {1: [1.0], 2: [0.52, 0.48], 3: [0.40, 0.30, 0.30]}[len(shown)]
@@ -851,6 +853,8 @@ class GlassChrome:
                 d.show()
                 d.setGeometry(x, y, FLOAT_W, h)
             y += h + GAP
+        if hasattr(w, "place_detached"):             # linked images in windows of their own: beside the column
+            w.place_detached()
 
     def toggle_panels(self) -> None:
         """I: every panel hidden, or those shown before back (look_glass.py:622-632); the slit's never without a slit
@@ -870,6 +874,15 @@ class GlassChrome:
         self.w.reset_view()
         for d in self.docks():
             d.show()
+        for c in getattr(self.w, "linked", ()):     # the linked images back in the window, shown
+            c.dock.show()
+            c.dock.setFloating(False)
+        if getattr(self.w, "linked", None):         # fitted once the layout has them (a docked image still had its
+            lay = QtWidgets.QMainWindow.layout(self.w)          # floating size: the window came out 681 px high
+            if lay is not None:                                 # for 734)
+                lay.activate()
+                self.w.same_image_widths()
+                lay.activate()
         self.place_panels()
 
     # ---------------------------------------------------------------- the image moving, the readout

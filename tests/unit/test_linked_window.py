@@ -401,3 +401,75 @@ def test_a_smaller_image_keeps_the_same_zoom_factor(window):
     print(f"after the wheel on the linked image: main {1 / sx0:.2f}, linked {1 / sx1:.2f} px/pixel")
     assert w.view.vb.viewRect() != before and abs(sx1 / sx0 - 1) < 0.02
     other.dock.setFloating(False)
+
+
+
+def test_one_entry_puts_every_cube_in_a_window_of_its_own_and_back(window):
+    """Panels → "Each cube in a window of its own" (the user's mock of a cube apart, 2026-10-07): each linked cube's
+    image floats with its spectra and lambda-t beside it, out of the main window's tabs; the window gives up the
+    images' room; the zoom stays one. Unticked, back in the window as it was, the tabs as they were."""
+    w, qapp = window
+    a = w.detach_action
+    assert a in w.nav.panels.menu().actions() and a.text() == "Each cube in a window of its own"
+    w.resize(min(w.width(), qapp.primaryScreen().geometry().width() - 20), w.height())   # within the screen: given
+    spin(qapp, lambda: False, timeout=0.3)                                                # back, its width again
+    w.reset_sizes()
+    qapp.processEvents()
+    main_w, spec_w, win_w = w.view.widget.width(), w.spec_dock.width(), w.width()
+    tabs_before = [w.spec_tabs.tabText(i) for i in range(w.spec_tabs.count())]
+    other, blos = w.linked
+    a.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.6)
+    views = [w.view] + [c.view for c in w.linked]
+    zoom = [round(v.vb.width() / v.vb.viewRect().width(), 3) for v in views]
+    tabs = [w.spec_tabs.tabText(i) for i in range(w.spec_tabs.count())]
+    print("apart: window", win_w, "->", w.width(), "tabs", tabs_before, "->", tabs, "zoom", zoom,
+          "other's window", other.dock.size().toTuple(), "its panels beside its image", other.side.count())
+    assert all(c.dock.isFloating() and c.dock.isVisible() for c in w.linked) and a.isChecked()
+    assert abs(w.view.widget.width() - main_w) <= 2 and w.width() < win_w and len(set(zoom)) == 1
+    assert tabs == tabs_before[:1] and other.windowed and other.side.isVisible() and other.side.count() == 2
+    assert other.spectra.widget.isVisibleTo(other.dock) and "spectra:1" in w.session.state.panels
+    assert not blos.side.isVisible()                    # a map: an image alone
+    a.setChecked(False)
+    spin(qapp, lambda: False, timeout=0.6)
+    sizes = [v.widget.width() for v in views]
+    tabs = [w.spec_tabs.tabText(i) for i in range(w.spec_tabs.count())]
+    print("back: window", w.width(), "spectra", spec_w, "->", w.spec_dock.width(), "images", sizes, "tabs", tabs)
+    assert not any(c.dock.isFloating() for c in w.linked) and not a.isChecked() and not other.windowed
+    assert w.width() == win_w and abs(w.spec_dock.width() - spec_w) <= 2 and max(sizes) - min(sizes) <= 2
+    assert tabs == tabs_before
+
+
+def test_a_cube_s_window_docked_by_hand_takes_its_panels_back(window):
+    """Back by any way it is docked (a double click on its title, ↺, glass's leaving): its panels in their tabs."""
+    w, qapp = window
+    other = w.linked[0]
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.5)
+    other.dock.setFloating(False)                       # what a double click on its title does
+    spin(qapp, lambda: False, timeout=0.3)
+    print("docked by hand:", other.windowed, w.spec_tabs.count(), "entry ticked", w.detach_action.isChecked())
+    assert not other.windowed and w.spec_tabs.count() == 2 and w.lt_tabs.count() == 2
+    w.reset_panels()
+    spin(qapp, lambda: False, timeout=0.3)
+    assert not w.detach_action.isChecked() and not any(c.dock.isFloating() for c in w.linked)
+
+def test_in_glass_cubes_apart_leave_the_window_fitted_and_reset_docks_them(window):
+    from explorer.look import get_look
+
+    w, qapp = window
+    w.set_look(get_look("glass"))
+    spin(qapp, lambda: False, timeout=0.6)
+    win_w = w.width()
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.6)
+    print("glass: window", win_w, "->", w.width(), "floating", [c.dock.isFloating() for c in w.linked])
+    assert all(c.dock.isFloating() and c.dock.isVisible() for c in w.linked) and w.width() < win_w
+    w.reset_panels()                                    # ↺: back in the window, the entry unticked
+    spin(qapp, lambda: False, timeout=0.6)
+    sizes = [w.view.widget.width()] + [c.view.widget.width() for c in w.linked]
+    print("after reset: window", w.width(), "images", sizes)
+    assert not any(c.dock.isFloating() for c in w.linked) and not w.detach_action.isChecked()
+    assert max(sizes) - min(sizes) <= 2
+    w.set_look(get_look("classic"))
+    spin(qapp, lambda: False, timeout=0.3)

@@ -157,12 +157,34 @@ class PanelTabs(QtWidgets.QTabWidget):
         # never the keyboard's: the keys are the window's, and in glass its focus ring showed in the accent
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.tabBar().setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.setTabBarAutoHide(True)                    # one cube left in it (the others in windows of their own)
         self.keys = []
         for name, widget, key in tabs:
             self.addTab(widget, name)
             self.keys.append(key)
+        self.order = list(self.keys)                    # where each comes back to
+        self._lent: dict = {}                           # key -> (name, tooltip) of a tab taken out
         self.shown = True
         self.currentChanged.connect(lambda _i: self._tell())
+        self._tell()
+
+    def take(self, key: str):
+        """The tab of key taken out (its cube in a window of its own): its widget, no longer told about."""
+        i = self.keys.index(key)
+        w = self.widget(i)
+        self._lent[key] = (self.tabText(i), self.tabToolTip(i))
+        self.removeTab(i)
+        self.keys.pop(i)
+        self._tell()
+        return w
+
+    def give(self, key: str, widget) -> None:
+        """The tab of key back, where it was among the others."""
+        name, tip = self._lent.pop(key)
+        i = sum(1 for k in self.keys if self.order.index(k) < self.order.index(key))
+        self.insertTab(i, widget, name)
+        self.setTabToolTip(i, tip)
+        self.keys.insert(i, key)
         self._tell()
 
     def set_shown(self, on: bool) -> None:
@@ -253,20 +275,66 @@ class ViewSync(QtCore.QObject):
 
 class LinkedCube(CubeView):
     """A linked cube (member k): a CubeView whose image is a panel of its own, titled with its name, between the main
-    image and the spectra; closed (or behind another), nothing is read for it."""
+    image and the spectra; closed (or behind another), nothing is read for it. As a window of its own (the mock the
+    user chose for a cube apart, 2026-10-07: its image, its spectra and its lambda-t), the same panel floats with
+    its spectra and lambda-t beside the image, taken out of the main window's tabs; docked again, from wherever it is
+    docked, they go back."""
 
     def __init__(self, shell, k: int, name: str):
         super().__init__(shell, k, name, style.is_light())
-        # its image a panel of its own (the shell places it beside the main image), titled with its name
-        self.dock = docks.dock(shell, name, self.view.widget, f"image:{k}")
+        # its image a panel of its own (the shell places it beside the main image), titled with its name; beside the
+        # image, room for its spectra and lambda-t while it is a window of its own (hidden till then)
+        self.box = QtWidgets.QWidget()
+        self.row = QtWidgets.QHBoxLayout(self.box)      # the image, then its panels (stretched by Shell.place_detached)
+        self.row.setContentsMargins(0, 0, 0, 0)
+        self.row.setSpacing(docks.PANEL_GUTTER)
+        self.row.addWidget(self.view.widget, 1)
+        self.side = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+        self.side.setChildrenCollapsible(False)
+        self.side.hide()
+        self.row.addWidget(self.side, 1)
+        self.windowed = False                           # its spectra and lambda-t here, not in the main window's tabs
+        self.dock = docks.dock(shell, name, self.box, f"image:{k}")
         self.title = ImageTitle(name, self.dock)
         self.title.setToolTip(os.path.basename(str(self.dataset.path)))
         self.dock.setTitleBarWidget(self.title)
         self.dock.visibilityChanged.connect(self._image_shown)
+        self.dock.topLevelChanged.connect(lambda floating: None if floating else self.as_window(False))
         self._rounders = [Rounder(w) for w in [self.view.widget] + [p.widget for p in (self.spectra, self.lambda_t)
                                                                     if p is not None]]
 
+    def panels(self) -> list:
+        """(key, panel widget, the main window's tabs) of its spectra and lambda-t, those it has."""
+        out = []
+        for key, panel, tabs in (("spectra", self.spectra, self.shell.spec_tabs),
+                                 ("lambda_t", self.lambda_t, self.shell.lt_tabs)):
+            if panel is not None and tabs is not None:
+                out.append((f"{key}:{self.k}", panel.widget, tabs))
+        return out
+
+    def as_window(self, on: bool) -> None:
+        """Its spectra and lambda-t beside its image (on: the panel about to float as the cube's window), or back in
+        the main window's tabs."""
+        if bool(on) == self.windowed:
+            return
+        self.windowed = bool(on)
+        for key, widget, tabs in self.panels():
+            if on:
+                self.side.addWidget(tabs.take(key))
+                widget.show()
+            else:
+                tabs.give(key, widget)
+        self.side.setVisible(self.windowed and bool(self.panels()))
+        self._image_shown(self.dock.isVisible())
+        if not on and not self.dock.isFloating():       # docked by hand with them: the images one width again
+            QtCore.QTimer.singleShot(0, self.shell.same_image_widths)
+
     def _image_shown(self, on: bool) -> None:
-        """Its panel closed (or behind another): nothing read for its image; shown again, the image of now."""
-        if not self.shell._closing:
-            self.session.show(f"image:{self.k}", on)
+        """Its panel closed (or behind another): nothing read for its image (nor, as its window, for its spectra and
+        lambda-t); shown again, the image of now."""
+        if self.shell._closing:
+            return
+        self.session.show(f"image:{self.k}", on)
+        if self.windowed:
+            for key, _w, _t in self.panels():
+                self.session.show(key, on)

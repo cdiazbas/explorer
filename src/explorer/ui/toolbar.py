@@ -226,6 +226,9 @@ class NavBar:
             menu.addAction(d.toggleViewAction())                       # (the prototype's viewer.py:1131)
         for c in getattr(shell, "linked", ()):                          # linked cubes' images (ui.linked)
             menu.addAction(c.dock.toggleViewAction())
+        if getattr(shell, "detach_action", None) is not None:           # all of them apart, or back
+            menu.addSeparator()
+            menu.addAction(shell.detach_action)
         self.panels.setMenu(menu)
         tb.addWidget(self.panels)
         gap = QtWidgets.QWidget()

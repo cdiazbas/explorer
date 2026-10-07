@@ -58,6 +58,11 @@ if TYPE_CHECKING:
 MEMORY_S = 1.0                                          # the caches' budget follows the machine's memory (Dataset)
 STATUS_INSET = 8            # px each side of the status line: half the rounded corners' 16, its text clear of the curve
 GRID_LABEL = 30             # px from the top: the slit's hint below the 2x2 view's Stokes label (stokesgrid, at 6)
+FRAME_ALLOWANCE = 24       # px a floating window's frame may add to the size asked
+CUBE_MIN_H = 560           # px: a cube's window at least this high, for its spectra and lambda-t
+CUBE_PANELS_MIN_W = 320    # px: its spectra and lambda-t no narrower, when the screen has no room for wider ones
+DETACHED_MIN_W = 160       # px: a detached image no narrower than this to fit a row; else they cascade
+CASCADE = 28               # px each detached image is moved down and left when there is no room for a row
 SLIT_FLOAT_H = 320          # px: the slit panel floating below lambda-t in glass (the prototype's look_glass.py:615)
 
 
@@ -207,6 +212,19 @@ class Shell(QtWidgets.QMainWindow):
             for c in self.linked:                       # the slit on every image, drawn on any of them (as the
                 self.slit_tool.attach(c.view)           # 2x2 view's panels)
         self.setAnimated(False)
+        # each linked cube in a window of its own beside this one, or back in it (Panels; detach_cubes)
+        self.detach_action: QtGui.QAction | None = None
+        self._detached_width = 0                        # what the window gave up for them (detach_cubes), and the
+        self._detached_spec_w = 0                       # spectra's width then
+        if self.linked:
+            act = QtGui.QAction("Each cube in a window of its own", self)
+            act.setCheckable(True)
+            act.setToolTip("Every linked cube in a window of its own beside this one: its image, its spectra and its "
+                           "λ–t. Unticked, or a double click on a window's title, back in this window")
+            act.toggled.connect(self.detach_cubes)
+            self.detach_action = act
+            for c in self.linked:
+                c.dock.topLevelChanged.connect(lambda _floating: self._detached_changed())
         self.nav = NavBar(self)
         # playback: t forward at the toolbar's rate, round the end (the prototype's _toggle_play, _play_step)
         self._play = QtCore.QTimer(self)
@@ -545,6 +563,176 @@ class Shell(QtWidgets.QMainWindow):
             lay.activate()
             each = (cw.width() + sum(d.width() for d in imgs)) // (len(imgs) + 1)
             self.resizeDocks(imgs, [each] * len(imgs), QtCore.Qt.Orientation.Horizontal)
+
+    def detach_cubes(self, on: bool) -> None:
+        """Every linked cube in a window of its own (on): its image panel floating with its spectra and lambda-t beside
+        the image (LinkedCube.as_window; the user's mock of a cube apart), the image at the main image's size, in a
+        row beside the window; or back in it (off), one width with the main image, its panels in their tabs again. In
+        classic and modern the window gives up the width the images took and the row goes in that room, the window's
+        place on the screen kept (left as it was, they overlapped it and each other: 254 and 410 px on a 2560-px
+        screen); back in it, the window takes that width again. In glass the window is fitted to the images left in
+        it, and the row goes beside its panels' column."""
+        imgs = [c.dock for c in self.linked if not c.dock.isHidden()]
+        lay = QtWidgets.QMainWindow.layout(self)
+        cw = self.centralWidget()
+        assert cw is not None and lay is not None
+        if on:
+            todo = [d for d in imgs if not d.isFloating()]
+            if not todo:
+                return
+            # the room they take docked, each with its separator (read from the layout once applied, it came out 0)
+            sep = self.style().pixelMetric(QtWidgets.QStyle.PixelMetric.PM_DockWidgetSeparatorExtent, None, self)
+            room = sum(d.width() + sep for d in todo)
+            spec_w = self.spec_dock.width()
+            for c in self.linked:                       # out first, hidden: each window made where it goes
+                if c.dock in todo:
+                    c.dock.hide()
+                    c.as_window(True)
+                    c.dock.setFloating(True)
+            if self.glass is not None:
+                self.glass.place_panels()               # the window fitted to the images left in it
+            else:
+                # their room went to the spectra beside them (one dock area): the spectra as wide as before, the room
+                # the main image's, and then the window's to give up (else the main image shrank to 80 px)
+                lay.activate()
+                if self.spec_dock.isVisible() and not self.spec_dock.isFloating():
+                    self.resizeDocks([self.spec_dock], [spec_w], QtCore.Qt.Orientation.Horizontal)
+                    lay.activate()
+                self._detached_width, self._detached_spec_w = room, spec_w
+                self.resize(max(self.minimumSizeHint().width(), self.width() - room), self.height())
+                lay.activate()
+            self.place_detached(todo)
+        else:
+            # the room they took, given back first: docked into the narrow window, Qt widened it itself
+            if self.glass is None and self._detached_width > 0:
+                from ..platform.screens import monitor_rect
+
+                scr = monitor_rect(QtWidgets.QApplication.instance(), self.frameGeometry().center())
+                frame = self.frameGeometry().width() - self.width()
+                self.resize(min(self.width() + self._detached_width, scr.width() - frame), self.height())
+                self._detached_width = 0
+                lay.activate()
+                restore_spec = True
+            else:
+                restore_spec = False
+            for c in self.linked:                       # its panels back in their tabs first: docked with them, it
+                if c.dock in imgs:                      # came back as wide as its window and the window grew
+                    c.as_window(False)
+                    c.dock.setFloating(False)
+            if self.glass is not None:
+                # fitted once the layout has them: before it, a docked image still had its floating size, and the
+                # window came out 845 px high for 1092
+                lay.activate()
+                self.same_image_widths()
+                lay.activate()
+                self.glass.place_panels()
+            elif restore_spec:                          # the spectra as wide as when the images left (the room came
+                lay.activate()                          # back to them: 647-px images for 428)
+                if self.spec_dock.isVisible() and not self.spec_dock.isFloating():
+                    self.resizeDocks([self.spec_dock], [self._detached_spec_w], QtCore.Qt.Orientation.Horizontal)
+            QtCore.QTimer.singleShot(0, self.same_image_widths)
+        self._detached_changed()
+
+    def detached_size(self, windowed: bool, panels_w: int | None = None) -> QtCore.QSize:
+        """A detached window's size: its image what the main image shows at its zoom (the data in view, with the title
+        and the gutter; as large as the main image's box when zoomed in: the whole image left most of a tall, narrow
+        box empty, 226 x 759 px for 214 x 252 of data), and a cube's window its panels beside it, at least
+        CUBE_MIN_H high for them, panels_w wide (the main window's spectra by default)."""
+        cw = self.centralWidget()
+        assert cw is not None
+        g = docks.PANEL_GUTTER
+        w, h = cw.width(), cw.height()
+        vb, img = self.view.vb, self.view._full
+        r = vb.viewRect()
+        if img is not None and r.width() > 0 and r.height() > 0:
+            ny, nx = img.shape
+            vis = r.intersected(QtCore.QRectF(0, 0, nx, ny))
+            title = self.image_title.height() if self.image_title is not None else 0
+            w = min(w, int(vis.width() * vb.width() / r.width()) + 2 * g)
+            h = min(h, int(vis.height() * vb.height() / r.height()) + title + 2 * g)
+        if windowed:
+            pw = self.spec_dock.width() if panels_w is None else panels_w
+            return QtCore.QSize(w + g + pw, max(h, CUBE_MIN_H))
+        return QtCore.QSize(w, h)
+
+    def place_detached(self, todo=None) -> None:
+        """The floating linked images and cubes (todo: those; by default every one) beside the window, or beside
+        glass's panels' column: in a row; without room for one (each image at least DETACHED_MIN_W wide), in a column
+        in the strip beside it; without room for that either, cascaded over the monitor's right side. Each window
+        placed before it is shown, as glass places its panels (made where it goes, no late notice moves it back
+        through XQuartz); a frame is wider than the size asked (22 px measured: rows that fitted overlapped), so
+        FRAME_ALLOWANCE is counted, and each next window goes from the last one's frame. Sizes: detached_size."""
+        from ..platform.screens import monitor_rect
+
+        if todo is None:
+            todo = [c.dock for c in self.linked if c.dock.isFloating() and not c.dock.isHidden()]
+        if not todo or self.centralWidget() is None:
+            return
+        cubes = {c.dock: c for c in self.linked}
+        windowed = [cubes[d].windowed and bool(cubes[d].panels()) for d in todo]
+        image_w = self.detached_size(False).width()
+        fg = self.frameGeometry()
+        right = fg.right()
+        if self.glass is not None:                      # beside the panels' column
+            for d in self.glass.docks():
+                if d.isVisible() and d.isFloating():
+                    right = max(right, d.frameGeometry().right())
+        scr = monitor_rect(QtWidgets.QApplication.instance(), fg.center())
+        x0, y0, gap = right + 1 + glass.GAP, fg.top(), glass.GAP + FRAME_ALLOWANCE
+        strip_w, strip_h = scr.right() + 1 - x0 - FRAME_ALLOWANCE, scr.bottom() + 1 - y0
+
+        def scaled(ss, k):
+            return [QtCore.QSize(int(q.width() * k), int(q.height() * k)) for q in ss]
+
+        # a row or a column, with the main window's panels' width or narrower ones (CUBE_PANELS_MIN_W): the one that
+        # shrinks the windows least (the first that fitted shrank a cube's window to 743 x 325 px, its spectra
+        # unreadable, where a column with narrower panels fitted unshrunk); none with images DETACHED_MIN_W wide or
+        # more: a cascade
+        row_room = scr.right() + 1 - x0 - gap * len(todo)
+        best = None
+        for pw in (None, CUBE_PANELS_MIN_W):
+            ss = [self.detached_size(wd, pw) for wd in windowed]
+            for plan_, k in (("row", min(1.0, row_room / sum(q.width() for q in ss),
+                                         strip_h / max(q.height() for q in ss))),
+                             ("column", min(1.0, (strip_h - gap * len(todo)) / sum(q.height() for q in ss),
+                                            strip_w / max(q.width() for q in ss)))):
+                if best is None or k > best[0] + 1e-9:
+                    best = (k, plan_, ss)
+        assert best is not None
+        k, plan, sizes = best
+        if k < 1.0 and image_w * k < DETACHED_MIN_W:
+            plan, sizes = "cascade", [self.detached_size(wd) for wd in windowed]
+        else:
+            sizes = scaled(sizes, k)
+        x, y = x0, y0
+        for i, (d, s, wd) in enumerate(zip(todo, sizes, windowed, strict=True)):
+            if wd:                                      # its image as wide as a lone one's, its panels the rest
+                cubes[d].row.setStretch(0, image_w)
+                cubes[d].row.setStretch(1, max(1, sizes[i].width() - image_w))
+            if plan == "row":
+                at = QtCore.QPoint(x, y0)
+            elif plan == "column":
+                at = QtCore.QPoint(x0, y)
+            else:                                       # each no wider than half the monitor
+                if s.width() > scr.width() // 2:
+                    s = scaled([s], (scr.width() // 2) / s.width())[0]
+                at = QtCore.QPoint(max(scr.left(), scr.right() + 1 - s.width() - CASCADE * i), y0 + CASCADE * i)
+            d.setGeometry(QtCore.QRect(at, s))
+            d.show()
+            x = d.frameGeometry().right() + 1 + glass.GAP
+            y = d.frameGeometry().bottom() + 1 + glass.GAP
+
+    def _detached_changed(self) -> None:
+        """The Panels entry ticked while any linked cube is in a window of its own (an image alone, dragged out by
+        its title, too: the entry then docks it)."""
+        a = self.detach_action
+        if a is None:
+            return
+        on = any(c.dock.isFloating() and not c.dock.isHidden() for c in self.linked)
+        if a.isChecked() != on:
+            a.blockSignals(True)
+            a.setChecked(on)
+            a.blockSignals(False)
 
     def reset_panels(self) -> None:
         """Every panel docked where it started and shown, and the whole image in view again (the prototype's
