@@ -360,3 +360,44 @@ def test_a_click_on_a_tab_leaves_the_keys_to_the_window(window):
     print("tab in front", w.lt_tabs.currentIndex(), "focus on the bar", bar.hasFocus(), "lambda", l0, "->",
           w.session.state.l)
     assert w.lt_tabs.currentIndex() == 1 and not bar.hasFocus() and w.session.state.l == l0 + 1
+
+
+def test_a_smaller_image_keeps_the_same_zoom_factor(window):
+    """A linked image made smaller (the user, 2026-10-07: compressed, or floating) showed the same region in fewer
+    pixels, at another magnification: the images keep one centre and one magnification (screen px per data pixel),
+    as ds9's locked frames; the smaller one shows less. Squeezing it moves nothing else; a zoom on it is everyone's."""
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    w, qapp = window
+    other = w.linked[0]
+    other.dock.setFloating(True)
+    other.dock.resize(220, 300)                         # smaller than the main image
+    spin(qapp, lambda: False, timeout=0.4)
+
+    def state(v):
+        r = v.vb.viewRect()
+        return r.width() / v.vb.width(), r.height() / v.vb.height(), r.center()
+
+    w.view.vb.setRange(QtCore.QRectF(6, 8, 16, 16), padding=0)            # zoom on the main image
+    spin(qapp, lambda: False, timeout=0.3)
+    (sx0, sy0, c0), (sx1, sy1, c1) = state(w.view), state(other.view)
+    print(f"main {1 / sx0:.2f} px/pixel at ({c0.x():.1f}, {c0.y():.1f}); smaller linked {1 / sx1:.2f} px/pixel at "
+          f"({c1.x():.1f}, {c1.y():.1f}); boxes {w.view.vb.width():.0f} and {other.view.vb.width():.0f} wide")
+    assert abs(sx1 / sx0 - 1) < 0.02 and abs(sy1 / sy0 - 1) < 0.02
+    assert abs(c1.x() - c0.x()) < 0.5 and abs(c1.y() - c0.y()) < 0.5
+    before = w.view.vb.viewRect()
+    other.dock.resize(180, 260)                         # squeezed again: the main image does not move
+    spin(qapp, lambda: False, timeout=0.3)
+    assert w.view.vb.viewRect() == before
+    # the wheel over the linked image: everyone's zoom
+    vp = other.view.widget.viewport()
+    at = QtCore.QPointF(vp.width() / 2, vp.height() / 2)
+    ev = QtGui.QWheelEvent(at, vp.mapToGlobal(at), QtCore.QPoint(0, 0), QtCore.QPoint(0, 120),
+                           QtCore.Qt.MouseButton.NoButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                           QtCore.Qt.ScrollPhase.NoScrollPhase, False)
+    QtWidgets.QApplication.sendEvent(vp, ev)
+    spin(qapp, lambda: False, timeout=0.3)
+    (sx0, _, c0), (sx1, _, c1) = state(w.view), state(other.view)
+    print(f"after the wheel on the linked image: main {1 / sx0:.2f}, linked {1 / sx1:.2f} px/pixel")
+    assert w.view.vb.viewRect() != before and abs(sx1 / sx0 - 1) < 0.02
+    other.dock.setFloating(False)

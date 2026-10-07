@@ -185,27 +185,76 @@ class PanelTabs(QtWidgets.QTabWidget):
 
 
 class ViewSync(QtCore.QObject):
-    """The images side by side show one region: a zoom or a pan in one, the same region in the others (the 2x2
-    view's _follow, ui.stokesgrid). Not pyqtgraph's setXLink/setYLink: with the aspect locked, views of different
-    sizes drifted apart (after glass and back, its margins taken from the main image only: Blos 57-1974 in x against
-    0-2031, the cursor 18 rows lower)."""
+    """The images side by side at one centre and one magnification (screen px per data pixel), as ds9's locked frames:
+    a smaller image (squeezed, or floating) shows less, at the same zoom. Who leads:
+    - the main image, whatever moved it (a zoom, a pan, its double click, a resize, glass): the others follow;
+    - a linked image moved by the mouse (wheel, drag; pyqtgraph's sigRangeChangedManually): the main one follows it,
+      and with it the others;
+    - a linked image that changed for any other reason (its own resize): it takes the main image's centre and
+      magnification again, and moves nothing else. On the loop's next pass: pyqtgraph tells a wheel's change
+      (sigRangeChanged) before saying it was the mouse's (sigRangeChangedManually), and taken back at once the
+      wheel zoomed nothing on a linked image.
+    Sharing the region instead (the 2x2 view's _follow, whose panels are one size) showed a squeezed image at half
+    the zoom (9.4 px per pixel against 18.4). Not pyqtgraph's setXLink/setYLink: with the aspect locked, views of
+    different sizes drifted apart (after glass and back, Blos 57-1974 in x against 0-2031)."""
 
     def __init__(self, views, parent):
         super().__init__(parent)
-        self.views = list(views)
+        self.main, self.others = views[0], list(views[1:])
         self._following = False
-        for v in self.views:
-            v.vb.sigRangeChanged.connect(lambda *_a, v=v: self._follow(v))
+        self._realigning: list = []                     # linked images to put back on the main one's scale
+        self._timer = QtCore.QTimer(self, singleShot=True, interval=0)
+        self._timer.timeout.connect(self._realign_now)
+        self.main.vb.sigRangeChanged.connect(lambda *_a: self._lead(self.main))
+        for v in self.others:
+            v.vb.sigRangeChangedManually.connect(lambda *_a, v=v: self._lead(v))
+            v.vb.sigRangeChanged.connect(lambda *_a, v=v: self._realign(v))
 
-    def _follow(self, src) -> None:
+    @staticmethod
+    def _place(dst, centre: QtCore.QPointF, sx: float, sy: float) -> None:
+        """dst's view at this centre, sx and sy data pixels per screen px, over its own size."""
+        w, h = dst.vb.width() * sx, dst.vb.height() * sy
+        if w > 0 and h > 0:
+            dst.vb.setRange(QtCore.QRectF(centre.x() - w / 2, centre.y() - h / 2, w, h), padding=0)
+
+    @staticmethod
+    def _scale(v) -> tuple[QtCore.QPointF, float, float] | None:
+        r = v.vb.viewRect()
+        if v.vb.width() < 2 or v.vb.height() < 2 or r.width() <= 0:
+            return None
+        return r.center(), r.width() / v.vb.width(), r.height() / v.vb.height()
+
+    def _lead(self, src) -> None:
         if self._following:
+            return
+        if src in self._realigning:                     # the mouse's after all: it leads
+            self._realigning.remove(src)
+        got = self._scale(src)
+        if got is None:
             return
         self._following = True
         try:
-            r = src.vb.viewRect()
-            for v in self.views:
+            for v in [self.main, *self.others]:
                 if v is not src:
-                    v.vb.setRange(r, padding=0)
+                    self._place(v, *got)
+        finally:
+            self._following = False
+
+    def _realign(self, v) -> None:
+        if self._following or v in self._realigning:
+            return
+        self._realigning.append(v)
+        self._timer.start()
+
+    def _realign_now(self) -> None:
+        views, self._realigning = self._realigning, []
+        got = self._scale(self.main)
+        if got is None:
+            return
+        self._following = True
+        try:
+            for v in views:
+                self._place(v, *got)
         finally:
             self._following = False
 
