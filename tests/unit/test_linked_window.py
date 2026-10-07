@@ -258,3 +258,32 @@ def test_the_titles_are_thin_and_in_glass_on_the_image_s_colour(window):
     w.set_look(get_look("classic"))
     spin(qapp, lambda: False, timeout=0.3)
     assert all(t.back is None for t in titles)
+
+
+def test_in_glass_the_strips_between_the_images_are_the_image_s_colour(window):
+    """The panels' separators between the images were the window's grey in glass (the user, 2026-10-06): there the
+    image's colour, as its titles; grey again out of it. Read from the window as drawn, every pixel of the strip."""
+    from PySide6 import QtGui
+
+    from explorer.look import get_look
+    from explorer.ui import glass
+
+    w, qapp = window
+
+    def strip():
+        img = w.grab().toImage()
+        g = w.centralWidget().geometry()
+        x0, x1 = g.right() + 1, w.linked[0].dock.geometry().left()      # between the main image and the next
+        ys = range(g.top() + 20, g.bottom() - 20, 37)
+        return {QtGui.QColor(img.pixel(x, y)).name() for x in range(x0, x1) for y in ys}, (x0, x1)
+
+    w.set_look(get_look("glass"))
+    spin(qapp, lambda: False, timeout=0.6)
+    seen, span = strip()
+    print("glass: strip", span, "colours", seen)
+    assert span[1] > span[0] and seen == {glass.TITLE[glass._mode()].name()}
+    w.set_look(get_look("classic"))
+    spin(qapp, lambda: False, timeout=0.4)
+    seen, span = strip()
+    print("classic: strip", span, "colours", seen)
+    assert glass.TITLE[glass._mode()].name() not in seen

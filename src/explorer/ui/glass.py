@@ -522,12 +522,22 @@ class GlassChrome:
         self._hud_title()
 
     def _image_titles(self, colour) -> None:
-        """The images' titles (linked cubes, ui.linked.ImageTitle) on the image's colour, as the window's title bar;
-        None: their own again."""
+        """The images' titles (linked cubes, ui.linked.ImageTitle) on the image's colour, as the window's title bar,
+        and the window's own colour too: the separators between the images are drawn in it, by any style, and were
+        the theme's grey between black images. Only that colour is the window's own (the rest it inherits, so a
+        change of theme reaches it); None: the titles' and the window's own again."""
         titles = [getattr(self.w, "image_title", None)] + [c.title for c in getattr(self.w, "linked", ())]
         for t in titles:
             if t is not None:
                 t.set_back(colour)
+        if not getattr(self.w, "linked", None):     # one image: no separator beside it
+            return
+        pal = QtGui.QPalette()
+        if colour is not None:
+            pal.setColor(QtGui.QPalette.ColorRole.Window, colour)
+        self.w.setPalette(pal)
+        self.w.plain_separators = colour is not None    # ui.style: no hairline in them either
+        self.w.update()
 
     def _hud_title(self) -> None:
         """The window's title bar in the image's colour with the panels' light, and its edge with their rim and accent

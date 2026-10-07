@@ -692,6 +692,8 @@ class _MainWindowStyle(MacDarkStyle):
             return super().drawPrimitive(pe, opt, p, w)
         r = opt.rect
         p.fillRect(r, opt.palette.color(QtGui.QPalette.ColorRole.Window))
+        if w is not None and getattr(w.window(), "plain_separators", False):   # glass between images: no hairline
+            return
         if r.width() < r.height():                    # between side-by-side areas: a vertical line
             p.fillRect(QtCore.QRect(r.left() + (r.width() - 1) // 2, r.top(), 1, r.height()), self.SEP)
         else:
