@@ -473,3 +473,24 @@ def test_in_glass_cubes_apart_leave_the_window_fitted_and_reset_docks_them(windo
     assert max(sizes) - min(sizes) <= 2
     w.set_look(get_look("classic"))
     spin(qapp, lambda: False, timeout=0.3)
+
+
+def test_an_image_title_has_close_then_float_at_the_left_as_every_panel(window):
+    """The image titles' marks were at the right, every panel's title (titlebar.DockTitle, glass's) has them at the
+    left, close then float (the user, 2026-10-07)."""
+    from explorer.ui import titlebar
+
+    w, qapp = window
+    t = w.linked[0].title
+    t.enterEvent(None)
+    qapp.processEvents()
+    kinds = [b.kind for b in t.buttons]
+    xs = [b.geometry().left() for b in t.buttons]
+    ref = titlebar.DockTitle(w.spec_dock)
+    ref.resize(300, ref.sizeHint().height())
+    ref.layout().activate()
+    ref_names = [b.objectName() for b in sorted(ref.buttons, key=lambda b: b.geometry().left())]
+    print("image title", kinds, xs, "of", t.width(), "; panel title", ref_names)
+    assert kinds == ["close", "float"] and xs[0] < xs[1] < t.width() // 2
+    assert ref_names == ["qt_dockwidget_closebutton", "qt_dockwidget_floatbutton"]
+    t.leaveEvent(None)

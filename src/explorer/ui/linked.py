@@ -68,9 +68,9 @@ class _TitleButton(QtWidgets.QAbstractButton):
 class ImageTitle(QtWidgets.QWidget):
     """An image's name above it, the same for every image: the main one's in its place (a header), a linked one's as
     its panel's title bar. The name centred on the window's colour and nothing else at rest; over a linked image's
-    title its float and close marks show at the right. A drag on the title floats the panel and a double click
-    docks it again (QDockWidget's own, for any title bar widget). One height for all (height()), so the images
-    beside each other are one size."""
+    title its close and float marks show at the left, as on every panel's title. A drag on the title floats the
+    panel and a double click docks it again (QDockWidget's own, for any title bar widget). One height for all
+    (height()), so the images beside each other are one size."""
     own = True                                          # titlebar.dock_titles leaves it in place
 
     def __init__(self, text: str, dock: QtWidgets.QDockWidget | None = None, parent=None):
@@ -81,18 +81,20 @@ class ImageTitle(QtWidgets.QWidget):
         self.setFixedHeight(self.height_for(self))
         if dock is None:
             return
+        # close, then float, at the left: where every panel's title has them (titlebar.DockTitle, glass's PanelTitle;
+        # at the right they were the one title with its marks on the other side)
         lay = QtWidgets.QHBoxLayout(self)
-        lay.setContentsMargins(0, 0, 6, 0)
+        lay.setContentsMargins(6, 0, 0, 0)
         lay.setSpacing(0)
-        lay.addStretch(1)
-        for kind, tip, fn in (("float", "Detach (or drag the title); double click the title: back in place",
-                               lambda: dock.setFloating(not dock.isFloating())),
-                              ("close", "Close (Panels in the toolbar opens it again)", dock.close)):
+        for kind, tip, fn in (("close", "Close (Panels in the toolbar opens it again)", dock.close),
+                              ("float", "Detach (or drag the title); double click the title: back in place",
+                               lambda: dock.setFloating(not dock.isFloating()))):
             b = _TitleButton(kind, self, tip)
             b.clicked.connect(fn)
             b.hide()
             lay.addWidget(b)
             self.buttons.append(b)
+        lay.addStretch(1)
 
     @staticmethod
     def font_of(w: QtWidgets.QWidget) -> QtGui.QFont:
