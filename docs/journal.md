@@ -3643,3 +3643,46 @@ el 8542 alineado por la cadencia (84 tiempos frente a 17).
   - `tests/unit`, `tests/golden` y `tests/real/test_link_real.py`: 684 pasan, 15 se omiten y falla 1 (699 s).
     Falla `test_doctor` por `run.sh`, como en toda copia en `/tmp`: no encuentra la venv junto al código.
   - `tests/xvfb` (Xvfb privado, 1920×1080): 35 pasan y 2 se omiten (228 s).
+
+### 2026-10-07 (1): E8.1 visto por el usuario: imágenes que se separan, títulos, anchos y glass
+
+Probado en bellatrix por el puente con 6173, Blos y Vlos. Los cambios, uno por petición del usuario:
+
+- **Separar una imagen enlazada** (no se podía; el mock con paneles flotantes sí dejaba). Cada imagen enlazada es un
+  panel entre la imagen principal y los espectros: se arrastra por el título para separarla, el doble clic la acopla,
+  el menú Panels la cierra y la abre. Cerrada no lee nada; al volver, la imagen del momento.
+- **Las tres imágenes iguales y sin símbolos raros en las esquinas.** El mismo título en las tres (la principal, como
+  cabecera en el mismo sitio); las marcas de separar y cerrar, dibujadas en el color del texto, solo con el puntero
+  encima.
+- **La rendija en todas las imágenes,** y se puede dibujar en cualquiera (como los paneles del 2×2).
+- **El título recortaba campo.** Medido con la imagen entera: 0 % de escala perdida en classic y en glass, con 2 y 3
+  imágenes. Con zoom: caja de 807 px sin título, 782 con él (3.2 % menos de filas a la vista). De tres mocks con los
+  cubos reales, el usuario eligió el título fino: 14 px en total. En glass va sobre negro (el color de su barra de
+  título).
+- **Nombres largos** (`aligned_stokes_8542=0-54_=0-28_im.aligned6173`). `data/names.py` da la línea y, en un mapa,
+  la magnitud: "Ca II 854.2", "Blos · Fe I 617.3". Con ninguna de las dos, el nombre del fichero cortado por el medio
+  a 32 caracteres; el fichero entero, en el tooltip. Probado con todos los cubos de `data/lp`.
+- **Glass:**
+  - las franjas entre imágenes salían grises, y ahora toman el color de la imagen;
+  - las pestañas eran botones grises sobre el panel casi negro (luminosidad 67–74 frente a 5–18), y ahora son planas
+    (6, y 34 la de delante);
+  - sobraba un anillo de foco naranja en una pestaña, que ya no sale.
+
+**Encontrado al mirar los mocks:** la imagen principal salía más estrecha que las enlazadas (223 px frente a 362 en
+el arranque real). Las anchuras se repartían antes de que Qt aplicara el ancho nuevo de los espectros. Arreglado;
+la prueba falla con el código anterior (116 frente a 201).
+
+**Una hipótesis descartada:** que una barra de pestañas con el foco se quedara con ← →. Con el código anterior, un
+clic en una pestaña tampoco le daba el foco (offscreen). La prueba queda como guarda.
+
+**La conexión con bellatrix cayó a mitad de un sync** (2026-10-06): el trabajo local siguió sin abrir conexión
+nueva.
+
+**Pruebas:**
+- **Nuevas en `test_linked_window`:** el panel de imagen; el ancho; la rendija; los títulos; las franjas y las
+  pestañas en glass; las teclas tras un clic en una pestaña. También `test_names` (15).
+- **Fallan antes:** todas menos la de las teclas.
+- **En bellatrix,** copia en `/tmp` con la venv del árbol compartido:
+  - `tests/unit`, `tests/golden` y `tests/real/test_link_real.py`: 706 pasan, 15 se omiten y falla 1, la de
+    `run.sh` en `test_doctor`, como en toda copia en `/tmp` (720 s).
+  - `tests/xvfb`: 35 pasan y 2 se omiten (228 s).
