@@ -222,13 +222,8 @@ class NavBar:
         self.panels.setToolTip("Show or hide the panels")
         self.panels.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
         menu = QtWidgets.QMenu(self.panels)
-        for d in (shell.spec_dock, shell.lt_dock, shell.slit_dock):     # the slit's: enabled with a slit
-            menu.addAction(d.toggleViewAction())                       # (the prototype's viewer.py:1131)
-        for c in getattr(shell, "linked", ()):                          # linked cubes' images (ui.linked)
-            menu.addAction(c.dock.toggleViewAction())
-        if getattr(shell, "detach_action", None) is not None:           # all of them apart, or back
-            menu.addSeparator()
-            menu.addAction(shell.detach_action)
+        menu.aboutToShow.connect(lambda: self._panel_entries(menu, shell))
+        self._panel_entries(menu, shell)
         self.panels.setMenu(menu)
         tb.addWidget(self.panels)
         gap = QtWidgets.QWidget()
@@ -319,6 +314,23 @@ class NavBar:
                 self.stokes.blockSignals(False)
         if self.drop is not None:
             self.drop.set(s, self.all)
+
+    @staticmethod
+    def _panel_entries(menu: QtWidgets.QMenu, shell) -> None:
+        """Every panel's entry, made again as the menu opens: the slit's (enabled with a slit; the prototype's
+        viewer.py:1131), each linked cube's image and, while it is a window of its own, its spectra and lambda-t
+        there (ui.linked), and the entry that puts them all apart or back."""
+        menu.clear()
+        for d in (shell.spec_dock, shell.lt_dock, shell.slit_dock):
+            menu.addAction(d.toggleViewAction())
+        for c in getattr(shell, "linked", ()):
+            menu.addAction(c.dock.toggleViewAction())
+            if c.windowed:
+                for pane in c.panes.values():
+                    menu.addAction(pane.toggleViewAction())
+        if getattr(shell, "detach_action", None) is not None:
+            menu.addSeparator()
+            menu.addAction(shell.detach_action)
 
     def restyle(self) -> None:
         """Another theme (Shell.set_theme): the Stokes segments make their sheet again."""

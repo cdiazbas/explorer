@@ -423,13 +423,16 @@ def test_one_entry_puts_every_cube_in_a_window_of_its_own_and_back(window):
     views = [w.view] + [c.view for c in w.linked]
     zoom = [round(v.vb.width() / v.vb.viewRect().width(), 3) for v in views]
     tabs = [w.spec_tabs.tabText(i) for i in range(w.spec_tabs.count())]
+    panes = [p for p in other.panes.values() if p.isVisible()]
     print("apart: window", win_w, "->", w.width(), "tabs", tabs_before, "->", tabs, "zoom", zoom,
-          "other's window", other.dock.size().toTuple(), "its panels beside its image", other.side.count())
+          "other's window", other.dock.size().toTuple(), "its panels docked beside its image",
+          [p.objectName() for p in panes])
     assert all(c.dock.isFloating() and c.dock.isVisible() for c in w.linked) and a.isChecked()
     assert abs(w.view.widget.width() - main_w) <= 2 and w.width() < win_w and len(set(zoom)) == 1
-    assert tabs == tabs_before[:1] and other.windowed and other.side.isVisible() and other.side.count() == 2
+    assert tabs == tabs_before[:1] and other.windowed and [p.objectName() for p in panes] == ["spectra:1", "lambda_t:1"]
+    assert all(p.window() is other.dock and not p.isFloating() for p in panes)
     assert other.spectra.widget.isVisibleTo(other.dock) and "spectra:1" in w.session.state.panels
-    assert not blos.side.isVisible()                    # a map: an image alone
+    assert not blos.panes                               # a map: an image alone
     a.setChecked(False)
     spin(qapp, lambda: False, timeout=0.6)
     sizes = [v.widget.width() for v in views]
@@ -498,17 +501,32 @@ def test_an_image_title_has_close_then_float_at_the_left_as_every_panel(window):
 
 def test_a_cube_s_window_shares_its_width_between_image_and_panels_by_hand(window):
     """In a cube's window the panels' heights could be changed but not the width between them and the image (the
-    user, 2026-10-07): a handle between them, as between the spectra and lambda-t."""
+    user, 2026-10-07): its spectra and lambda-t are docks beside the image in the window's own frame, and a drag of
+    the separator between them shares the width out between the image and the panels, as in the main window."""
+    from PySide6 import QtCore
+    from PySide6.QtTest import QTest
+
     w, qapp = window
     other = w.linked[0]
     w.detach_action.setChecked(True)
     spin(qapp, lambda: False, timeout=0.5)
-    split = other.split
-    before = split.sizes()
-    split.setSizes([before[0] + 40, before[1] - 40])        # what dragging its handle does
+    pane = other.panes["spectra:1"]
+    before = (other.view.widget.width(), pane.width())
+    f = other.frame
+    x = (other.view.widget.mapTo(f, QtCore.QPoint(0, 0)).x() + other.view.widget.width() + pane.x()) // 2
+    # on the separator between the image and the panels, through the window as the mouse is (sent to the frame
+    # itself, the press never reached the main window layout's separator)
+    at = f.mapTo(other.dock, QtCore.QPoint(x, f.height() // 2))
+    win = other.dock.windowHandle()
+    QTest.mousePress(win, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier, at)
+    QTest.mouseMove(win, at + QtCore.QPoint(20, 0))
+    QTest.mouseMove(win, at + QtCore.QPoint(40, 0))
+    QTest.mouseRelease(win, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                       at + QtCore.QPoint(40, 0))
     qapp.processEvents()
-    print("image | panels:", before, "->", split.sizes(), "handle", split.handle(1).isVisible())
-    assert split.count() == 2 and split.handle(1).isVisible() and split.sizes()[0] == before[0] + 40
+    after = (other.view.widget.width(), pane.width())
+    print("image | panels:", before, "->", after, "separator at x", x)
+    assert after[0] - before[0] == 40 and before[1] - after[1] == 40
     w.detach_action.setChecked(False)
     spin(qapp, lambda: False, timeout=0.3)
 
@@ -571,3 +589,37 @@ def test_a_window_of_its_own_is_rounded_with_a_margin_the_corners_do_not_cut(win
         spin(qapp, lambda: False, timeout=0.4)
         assert getattr(c.dock, SHAPE_ATTR).isEmpty()                                  # docked: square
     w.set_look(get_look("classic"))
+
+
+def test_a_panel_closed_in_a_cube_s_window_comes_back_from_panels_in_its_place(window):
+    """A cube's spectra and lambda-t in its window are docks as the main window's: closed by its close mark, nothing
+    is read for it and lambda-t takes its room; Panels lists it while the cube is apart ("name · Spectrum") and shows
+    it again where it was, read again."""
+    from PySide6 import QtWidgets
+
+    w, qapp = window
+    other = w.linked[0]
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.5)
+    pane = other.panes["spectra:1"]
+    lt = other.panes["lambda_t:1"]
+    before = (pane.geometry().getRect(), lt.geometry().getRect(), other.view.widget.width())
+    pane.findChild(QtWidgets.QAbstractButton, "qt_dockwidget_closebutton").click()
+    qapp.processEvents()
+    closed = (pane.isVisible(), lt.height(), sorted(w.session.state.panels))
+    menu = w.nav.panels.menu()
+    menu.aboutToShow.emit()
+    entry = [a for a in menu.actions() if a.text() == "other_im · Spectrum"]
+    print("before", before, "closed: shown, lambda-t's height, read", closed, "entry", [a.text() for a in entry])
+    assert not closed[0] and closed[1] > before[1][3] and "spectra:1" not in closed[2] and "lambda_t:1" in closed[2]
+    assert len(entry) == 1 and not entry[0].isChecked()
+    entry[0].trigger()
+    qapp.processEvents()
+    after = (pane.geometry().getRect(), lt.geometry().getRect(), other.view.widget.width())
+    print("again", after, sorted(w.session.state.panels))
+    assert after == before and "spectra:1" in w.session.state.panels
+    w.detach_action.setChecked(False)
+    spin(qapp, lambda: False, timeout=0.3)
+    menu.aboutToShow.emit()
+    assert not [a for a in menu.actions() if "·" in a.text()]          # back in the tabs: no entries of its own
+

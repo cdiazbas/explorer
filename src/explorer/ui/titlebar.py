@@ -565,10 +565,22 @@ class DockTitle(QtWidgets.QWidget):
 
 
 def dock_titles(window) -> None:
-    """Our title bars on every dock of the window, but one with its own (a linked image's: ui.linked.ImageTitle)."""
+    """Our title bars on every dock of the window, but one with its own (a linked image's: ui.linked.ImageTitle);
+    the window remembers it, for the docks made later (dress)."""
+    window.dock_titles = True
     for d in window.findChildren(QtWidgets.QDockWidget):
         if not getattr(d.titleBarWidget(), "own", False):
             d.setTitleBarWidget(DockTitle(d))
+
+
+def dress(window, dock) -> None:
+    """A dock made after chrome (a cube's spectra and lambda-t in its window, ui.linked) dressed as the window's own:
+    our title and the main window's edges when floating, where chrome put them on."""
+    if getattr(window, "dock_titles", False) and not getattr(dock.titleBarWidget(), "own", False):
+        dock.setTitleBarWidget(DockTitle(dock))
+    ops_for = getattr(window, "panel_ops", None)
+    if ops_for is not None:
+        window._panel_edges.append(PanelEdges(dock, ops_for(dock)))
 
 
 # ---------------------------------------------------------------- floating panels: the main window's edges
@@ -624,5 +636,6 @@ def chrome(app, window, ops, ops_for, bridge: bool = False) -> TitleBar | None:
     # our dock titles on every path with our chrome: the same float button in the same place, so the panel's resize
     # corner behaves the same (Qt's own float button reached into that corner on xcb)
     dock_titles(window)
+    window.panel_ops = ops_for
     window._panel_edges = [PanelEdges(d, ops_for(d)) for d in window.findChildren(QtWidgets.QDockWidget)]
     return install(window, ops)

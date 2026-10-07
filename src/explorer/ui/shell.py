@@ -34,7 +34,7 @@ from ..data.axes import STOKES, unit_text
 from ..data.names import cube_names
 from ..look import LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
-from . import docks, glass, icons, pens, style
+from . import docks, glass, icons, pens, style, titlebar
 from .actions import ActionRegistry, KeySheet, mod_key
 from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
 from .cube import CubeView
@@ -284,7 +284,7 @@ class Shell(QtWidgets.QMainWindow):
         self._initial_state = self.saveState()          # before the first show: reset_panels comes back to it
         self._sized = False
         self._ratio_followed = False
-        style.separators(self)                          # 8 px to grab between the docked panels, with the theme
+        self._separators()
         panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel, self.slit_panel.w) if p is not None]
         self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
         self.set_look(self.look)
@@ -331,7 +331,7 @@ class Shell(QtWidgets.QMainWindow):
         self.slit_panel.set_lut(cols.lut(self.last.get("slit", self.session.state.s)) if cols is not None else None)
         if st.name() == "macos" and self._seams is None:   # the native style's light lines under the panel titles
             self._seams = MacSeams()                    # and on the separators: in the window's colour, in both looks
-            for w in (self, self.spec_dock, self.lt_dock, self.slit_dock):
+            for w in self._seamed():
                 w.setStyle(self._seams)
         card = (CARD_LIGHT if light else CARD) if L.has("cards") else pg.getConfigOption("background")
         if self.glass is None:                          # worn, glass keeps it clear over its slab
@@ -352,11 +352,11 @@ class Shell(QtWidgets.QMainWindow):
         its panels where they are and the image's region kept."""
         app = QtWidgets.QApplication.instance()
         if self._seams is not None:                     # off a Mac's native style: its seams go with it
-            for w in (self, self.spec_dock, self.lt_dock, self.slit_dock):
-                w.setStyle(None)  # type: ignore[arg-type]  # None: the application's style again
+            for w in self._seamed():
+                w.setStyle(None)                        # None: the application's style again
             self._seams = None
         self.theme = style.apply_theme(app, theme)
-        style.separators(self)
+        self._separators()
         light = style.is_light()
         for c in self.cubes:                            # images, panels and padlocks (ui.cube)
             c.set_light(light)
@@ -373,6 +373,23 @@ class Shell(QtWidgets.QMainWindow):
             self.glass.retheme()
         if self.colour_key is not None:
             self.colour_key.update()
+
+    def _separators(self) -> None:
+        """8 px to grab between the docked panels, with the theme: the window's, and in each cube's own window."""
+        for w in (self, *(c.frame for c in self.linked)):
+            style.separators(w)
+
+    def _seamed(self) -> list:
+        """What MacSeams is set on: the window, its panels, and each cube's window's frame and panels."""
+        return [self, self.spec_dock, self.lt_dock, self.slit_dock,
+                *(w for c in self.linked for w in (c.frame, *c.panes.values()))]
+
+    def dress(self, dock: QtWidgets.QDockWidget) -> None:
+        """A panel made after the window (a cube's spectra and lambda-t in its window, ui.linked) dressed as the
+        window's own: our title and edges where the chrome put them on (titlebar.dress), the Mac's seams."""
+        titlebar.dress(self, dock)
+        if self._seams is not None:
+            dock.setStyle(self._seams)
 
     def toggle_theme(self) -> None:
         """T: dark and light in turn; from a Mac's native theme, the other of the two."""
@@ -581,8 +598,7 @@ class Shell(QtWidgets.QMainWindow):
             if not todo:
                 return
             # the room they take docked, each with its separator (read from the layout once applied, it came out 0)
-            sep = self.style().pixelMetric(QtWidgets.QStyle.PixelMetric.PM_DockWidgetSeparatorExtent, None, self)
-            room = sum(d.width() + sep for d in todo)
+            room = sum(d.width() + docks.separator(self) for d in todo)
             spec_w = self.spec_dock.width()
             for c in self.linked:                       # out first, hidden: each window made where it goes
                 if c.dock in todo:
@@ -628,11 +644,10 @@ class Shell(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(0, self.same_image_widths)
         self._detached_changed()
 
-    def detached_size(self, windowed: bool, panels_w: int | None = None) -> QtCore.QSize:
-        """A detached window's size: its image what the main image shows at its zoom (the data in view, with the title
-        and the gutter; as large as the main image's box when zoomed in: the whole image left most of a tall, narrow
-        box empty, 226 x 759 px for 214 x 252 of data), and a cube's window its panels beside it, at least
-        CUBE_MIN_H high for them, panels_w wide (the main window's spectra by default)."""
+    def detached_size(self) -> QtCore.QSize:
+        """A detached image's window: what the main image shows at its zoom (the data in view, with the title and the
+        gutter; as large as the main image's box when zoomed in: the whole image left most of a tall, narrow box
+        empty, 226 x 759 px for 214 x 252 of data). A cube's window adds its panels (place_detached)."""
         cw = self.centralWidget()
         assert cw is not None
         g = docks.PANEL_GUTTER
@@ -645,9 +660,6 @@ class Shell(QtWidgets.QMainWindow):
             title = self.image_title.height() if self.image_title is not None else 0
             w = min(w, int(vis.width() * vb.width() / r.width()) + 2 * g)
             h = min(h, int(vis.height() * vb.height() / r.height()) + title + 2 * g)
-        if windowed:
-            pw = self.spec_dock.width() if panels_w is None else panels_w
-            return QtCore.QSize(w + g + pw, max(h, CUBE_MIN_H))
         return QtCore.QSize(w, h)
 
     def place_detached(self, todo=None) -> None:
@@ -675,14 +687,14 @@ class Shell(QtWidgets.QMainWindow):
         x0, y0, gap = right + 1 + glass.GAP, fg.top(), glass.GAP + FRAME_ALLOWANCE
         strip_w, strip_h = scr.right() + 1 - x0 - FRAME_ALLOWANCE, scr.bottom() + 1 - y0
 
-        image = self.detached_size(False)               # an image's window at the main image's zoom
-        g = docks.PANEL_GUTTER
+        image = self.detached_size()                    # an image's window at the main image's zoom
+        sep = docks.separator(self.linked[0].frame)     # between a cube's image and its panels
 
         def sizes_for(k: float, pw: int) -> list[QtCore.QSize]:
             """The windows with their images shrunk by k: a cube's panels keep pw (shrunk with the rest, a cube's
             spectra were 236 px wide), its window at least CUBE_MIN_H high for them."""
             iw, ih = round(image.width() * k), round(image.height() * k)
-            return [QtCore.QSize(iw + g + pw, max(ih, CUBE_MIN_H)) if wd else QtCore.QSize(iw, ih)
+            return [QtCore.QSize(iw + sep + pw, max(ih, CUBE_MIN_H)) if wd else QtCore.QSize(iw, ih)
                     for wd in windowed]
 
         def fits(plan_: str, ss: list[QtCore.QSize]) -> bool:
@@ -725,9 +737,8 @@ class Shell(QtWidgets.QMainWindow):
                 at = QtCore.QPoint(max(scr.left(), scr.right() + 1 - s.width() - CASCADE * i), y0 + CASCADE * i)
             d.setGeometry(QtCore.QRect(at, s))
             d.show()
-            if wd:                                      # the panels their width, the image the rest, once laid out
-                QtCore.QTimer.singleShot(0, lambda sp=cubes[d].split, pw=panels_w:      # (before, the splitter had
-                                         sp.setSizes([max(1, sp.width() - pw - g), pw]))  # its old width)
+            if wd:                                      # the panels their width, the image the rest
+                cubes[d].panels_width(panels_w)
             x = d.frameGeometry().right() + 1 + glass.GAP
             y = d.frameGeometry().bottom() + 1 + glass.GAP
 

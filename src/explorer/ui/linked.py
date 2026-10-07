@@ -292,26 +292,18 @@ class _Rounded(QtCore.QObject):
 class LinkedCube(CubeView):
     """A linked cube (member k): a CubeView whose image is a panel of its own, titled with its name, between the main
     image and the spectra; closed (or behind another), nothing is read for it. As a window of its own (the mock the
-    user chose for a cube apart, 2026-10-07: its image, its spectra and its lambda-t), the same panel floats with
-    its spectra and lambda-t beside the image, taken out of the main window's tabs; docked again, from wherever it is
-    docked, they go back."""
+    user chose for a cube apart: its image, its spectra and its lambda-t), the same panel floats, and inside it, a
+    main window of its own (frame), the image is the centre and its spectra and lambda-t are panels docked beside it:
+    docks as the main window's, with their titles, close and float, each shown again from Panels where it was. They
+    are made the first time the cube is a window of its own, and their plots go back to the main window's tabs
+    whenever its image panel docks, however it is docked."""
 
     def __init__(self, shell, k: int, name: str):
         super().__init__(shell, k, name, style.is_light())
-        # its image a panel of its own (the shell places it beside the main image), titled with its name; beside the
-        # image, room for its spectra and lambda-t while it is a window of its own (hidden till then)
-        # the image, then its panels, with a handle between them to share the width (a fixed row let the panels'
-        # heights be changed but not the width between them and the image)
-        self.split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        self.split.setChildrenCollapsible(False)
-        self.split.setHandleWidth(docks.PANEL_GUTTER)
-        self.split.addWidget(self.view.widget)
-        self.side = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
-        self.side.setChildrenCollapsible(False)
-        self.side.hide()
-        self.split.addWidget(self.side)
-        self.windowed = False                           # its spectra and lambda-t here, not in the main window's tabs
-        self.dock = docks.dock(shell, name, self.split, f"image:{k}")
+        self.frame = docks.frame(self.view.widget)
+        self.panes: dict[str, QtWidgets.QDockWidget] = {}    # panel key ("spectra:k") -> its dock in the frame
+        self.windowed = False                           # its spectra and lambda-t in the frame, not in the tabs
+        self.dock = docks.dock(shell, name, self.frame, f"image:{k}")
         self.title = ImageTitle(name, self.dock)
         self.title.setToolTip(os.path.basename(str(self.dataset.path)))
         self.dock.setTitleBarWidget(self.title)
@@ -341,37 +333,70 @@ class LinkedCube(CubeView):
         titlebar.round_window(self.dock, glass.RADIUS_PANEL)
 
     def panels(self) -> list:
-        """(key, panel widget, the main window's tabs) of its spectra and lambda-t, those it has."""
+        """(key, panel widget, the main window's tabs, title) of its spectra and lambda-t, those it has."""
         out = []
-        for key, panel, tabs in (("spectra", self.spectra, self.shell.spec_tabs),
-                                 ("lambda_t", self.lambda_t, self.shell.lt_tabs)):
+        for key, panel, tabs, title in (("spectra", self.spectra, self.shell.spec_tabs, "Spectrum"),
+                                        ("lambda_t", self.lambda_t, self.shell.lt_tabs, "λ–t")):
             if panel is not None and tabs is not None:
-                out.append((f"{key}:{self.k}", panel.widget, tabs))
+                out.append((f"{key}:{self.k}", panel.widget, tabs, title))
         return out
 
     def as_window(self, on: bool) -> None:
-        """Its spectra and lambda-t beside its image (on: the panel about to float as the cube's window), or back in
-        the main window's tabs."""
+        """Its spectra and lambda-t docked beside its image in its frame (on: the panel about to float as the cube's
+        window), or back in the main window's tabs. Each panel shown again as it comes in, docked."""
         if bool(on) == self.windowed:
             return
         self.windowed = bool(on)
-        for key, widget, tabs in self.panels():
+        for key, widget, tabs, title in self.panels():
             if on:
-                self.side.addWidget(tabs.take(key))
-                widget.show()
+                tabs.take(key)
+                pane = self.panes.get(key) or self._pane(key, title)
+                lay = pane.widget().layout()            # its gutter (docks.dock)
+                assert lay is not None
+                lay.addWidget(widget)
+                widget.show()                           # a tab behind was hidden
+                pane.setFloating(False)
+                pane.show()
             else:
+                self.panes[key].hide()
                 tabs.give(key, widget)
-        self.side.setVisible(self.windowed and bool(self.panels()))
-        self._image_shown(self.dock.isVisible())
+        self._image_shown(None)
         if not on and not self.dock.isFloating():       # docked by hand with them: the images one width again
             QtCore.QTimer.singleShot(0, self.shell.same_image_widths)
 
-    def _image_shown(self, on: bool) -> None:
+    def _pane(self, key: str, title: str) -> QtWidgets.QDockWidget:
+        """The dock of one of its panels in its frame, made the first time: below the one before it (lambda-t below
+        the spectra), right of the image; dressed as the main window's panels (Shell.dress)."""
+        d = docks.dock(self.frame, title, None, key)
+        before = list(self.panes.values())
+        if before:
+            self.frame.splitDockWidget(before[-1], d, QtCore.Qt.Orientation.Vertical)
+        d.toggleViewAction().setText(f"{self.name} · {title}")
+        d.visibilityChanged.connect(lambda _on: self._image_shown(None))
+        self.panes[key] = d
+        self.shell.dress(d)
+        return d
+
+    def panels_width(self, w: int) -> None:
+        """Its panels w px wide in its window, the image the rest. Its window laid out at its size first: before,
+        the frame had its old width, and Qt shared out that one."""
+        shown = [p for p in self.panes.values() if not p.isHidden()]
+        if not shown:
+            return
+        for lay in (self.dock.layout(), self.dock.widget().layout(), self.frame.layout()):
+            if lay is not None:
+                lay.activate()
+        self.frame.resizeDocks(shown[:1], [w], QtCore.Qt.Orientation.Horizontal)
+
+    def _image_shown(self, on: bool | None) -> None:
         """Its panel closed (or behind another): nothing read for its image (nor, as its window, for its spectra and
-        lambda-t); shown again, the image of now."""
+        lambda-t); shown again, the image of now. As its window, each of its panels read while shown in it. None:
+        one of those panels shown or closed, the image as it is."""
         if self.shell._closing:
             return
+        if on is None:
+            on = self.dock.isVisible()
         self.session.show(f"image:{self.k}", on)
         if self.windowed:
-            for key, _w, _t in self.panels():
-                self.session.show(key, on)
+            for key, pane in self.panes.items():
+                self.session.show(key, on and not pane.isHidden())

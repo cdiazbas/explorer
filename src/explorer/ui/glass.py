@@ -533,6 +533,7 @@ class GlassChrome:
         self.w.setPalette(pal)
         for c in self.w.linked:
             c.dock.setPalette(pal)
+            c.dock.plain_separators = colour is not None    # floating, its window's separators (ui.style)
         self.w.plain_separators = colour is not None    # ui.style: no hairline in them either
         self.w.update()
 

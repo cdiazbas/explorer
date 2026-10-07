@@ -13,18 +13,36 @@ ASPECT = 1.6                # the window: the image (square) and a right-hand co
 FILL = 0.855                # of the monitor's height
 
 
-def gutter(widget: QtWidgets.QWidget) -> QtWidgets.QWidget:
-    """widget inside a PANEL_GUTTER margin (the prototype's _gutter; its look reuses this box as a card)."""
+def gutter(widget: QtWidgets.QWidget | None) -> QtWidgets.QWidget:
+    """widget inside a PANEL_GUTTER margin (the prototype's _gutter; its look reuses this box as a card). None: the
+    box empty, its widget added to its layout later."""
     box = QtWidgets.QWidget()
     box.setObjectName("gutter")
     lay = QtWidgets.QVBoxLayout(box)
     lay.setContentsMargins(*(PANEL_GUTTER,) * 4)
     lay.setSpacing(0)
-    lay.addWidget(widget)
+    if widget is not None:
+        lay.addWidget(widget)
     return box
 
 
-def dock(window: QtWidgets.QMainWindow, title: str, widget: QtWidgets.QWidget, name: str,
+def frame(central: QtWidgets.QWidget) -> QtWidgets.QMainWindow:
+    """A main window inside a panel, central its centre (a linked cube's image): the panel, floating, is the cube's
+    window, and the cube's other panels dock in this frame as the main window's dock in it (ui.linked)."""
+    f = QtWidgets.QMainWindow()
+    f.setWindowFlags(QtCore.Qt.WindowType.Widget)
+    f.setCentralWidget(central)
+    f.setAnimated(False)
+    f.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
+    return f
+
+
+def separator(window: QtWidgets.QMainWindow) -> int:
+    """px between two of the window's docked panels, as its style has them (ui.style: 8 with ours)."""
+    return window.style().pixelMetric(QtWidgets.QStyle.PixelMetric.PM_DockWidgetSeparatorExtent, None, window)
+
+
+def dock(window: QtWidgets.QMainWindow, title: str, widget: QtWidgets.QWidget | None, name: str,
          area=QtCore.Qt.DockWidgetArea.RightDockWidgetArea,
          cls: type[QtWidgets.QDockWidget] = QtWidgets.QDockWidget) -> QtWidgets.QDockWidget:
     """A movable, floatable and closable dock (closing one costs nothing: its reads are skipped). name: the fixed
