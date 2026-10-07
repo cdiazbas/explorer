@@ -624,6 +624,50 @@ def test_a_panel_closed_in_a_cube_s_window_comes_back_from_panels_in_its_place(w
     assert not [a for a in menu.actions() if "·" in a.text()]          # back in the tabs: no entries of its own
 
 
+def test_a_closed_cube_s_window_comes_back_in_the_window_with_its_panels(window):
+    """A cube's window closed, then "each cube in a window of its own" unticked: it was left floating, hidden, its
+    spectra and lambda-t inside it, and its own entry brought it back as a window while the entry for all said they
+    were back. Every cube comes back, closed or not: docked, its panels in the tabs, shown again by its entry."""
+    w, qapp = window
+    other = w.linked[0]
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.5)
+    other.title.buttons[0].click()                      # its close mark
+    qapp.processEvents()
+    w.detach_action.setChecked(False)
+    spin(qapp, lambda: False, timeout=0.4)
+    tabs = [w.spec_tabs.tabText(i) for i in range(w.spec_tabs.count())]
+    print("unticked: floating", other.dock.isFloating(), "shown", other.dock.isVisible(), "windowed", other.windowed,
+          "tabs", tabs)
+    assert not other.dock.isFloating() and not other.dock.isVisible() and not other.windowed
+    assert tabs == ["main_im", "other_im"]
+    other.dock.toggleViewAction().trigger()
+    spin(qapp, lambda: False, timeout=0.3)
+    print("its entry: floating", other.dock.isFloating(), "shown", other.dock.isVisible(), "entry for all",
+          w.detach_action.isChecked())
+    assert other.dock.isVisible() and not other.dock.isFloating() and not w.detach_action.isChecked()
+
+
+def test_reset_after_cubes_apart_gives_the_window_its_width_back(window):
+    """Cubes apart, the window gives up the images' room; ↺ docked them but left the window narrow (1500 -> 852 px,
+    every panel squeezed into it): it takes its width back first, and every panel is where it started (in this
+    780-px window too, where the main image had been at its least width: Shell.reset_sizes)."""
+    w, qapp = window
+    w.resize(min(w.width(), qapp.primaryScreen().geometry().width() - 20), w.height())
+    spin(qapp, lambda: False, timeout=0.3)
+    w.reset_panels()
+    spin(qapp, lambda: False, timeout=0.3)
+    start = (w.width(), w.spec_dock.geometry().getRect(), [c.dock.geometry().getRect() for c in w.linked])
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.5)
+    narrow = w.width()
+    w.reset_panels()
+    spin(qapp, lambda: False, timeout=0.5)
+    back = (w.width(), w.spec_dock.geometry().getRect(), [c.dock.geometry().getRect() for c in w.linked])
+    print("start", start, "apart", narrow, "reset", back)
+    assert narrow < start[0] and back == start
+
+
 def test_after_a_window_resize_the_images_are_one_width(window):
     """Qt gives a window's change of size to its centre, the main image, and keeps the panels' widths: at 1200 x 700
     the main image was 170 px against 306 for each linked one, and at its whole-image fit the others could not show

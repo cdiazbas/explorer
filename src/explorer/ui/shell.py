@@ -566,6 +566,14 @@ class Shell(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(0, self.reset_sizes)
 
     def reset_sizes(self) -> None:
+        """The panels' sizes of a fresh start (docks.reset_sizes), the images one width. The linked images narrowed
+        first, so the spectra take their width from them whatever they had: from a layout where the main image was at
+        its least width, they got 3 px less than from the start's (335 against 338 px, a 780-px window)."""
+        imgs = [c.dock for c in self.linked if c.dock.isVisible() and not c.dock.isFloating()]
+        lay = QtWidgets.QMainWindow.layout(self)
+        if imgs and lay is not None:
+            self.resizeDocks(imgs, [1] * len(imgs), QtCore.Qt.Orientation.Horizontal)
+            lay.activate()
         docks.reset_sizes(self, (self.spec_dock, self.lt_dock), self.images)
         self.same_image_widths()
 
@@ -632,10 +640,12 @@ class Shell(QtWidgets.QMainWindow):
                 restore_spec = True
             else:
                 restore_spec = False
-            for c in self.linked:                       # its panels back in their tabs first: docked with them, it
-                if c.dock in imgs:                      # came back as wide as its window and the window grew
-                    c.as_window(False)
-                    c.dock.setFloating(False)
+            # every cube, its window closed too (left floating, it came back as a window with the entry unticked):
+            # its panels back in their tabs first (docked with them, it came back as wide as its window and the
+            # window grew)
+            for c in self.linked:
+                c.as_window(False)
+                c.dock.setFloating(False)
             if self.glass is not None:
                 self.glass.refit_after_redock()
             elif restore_spec:                          # the spectra as wide as when the images left (the room came
@@ -762,6 +772,8 @@ class Shell(QtWidgets.QMainWindow):
             self.glass.reset()
             self.statusBar().showMessage("panels and zoom back to the start", 4000)
             return
+        if self.linked:                                 # the cubes back first, with the width the window gave up
+            self.detach_cubes(False)
         for d in (self.spec_dock, self.lt_dock, self.slit_dock, *(c.dock for c in self.linked)):
             d.setFloating(False)
         self.restoreState(self._initial_state)
