@@ -361,8 +361,6 @@ class LinkedCube(CubeView):
                 self.panes[key].hide()
                 tabs.give(key, widget)
         self._image_shown(None)
-        if not on and not self.dock.isFloating():       # docked by hand with them: the images one width again
-            QtCore.QTimer.singleShot(0, self.shell.same_image_widths)
 
     def _pane(self, key: str, title: str) -> QtWidgets.QDockWidget:
         """The dock of one of its panels in its frame, made the first time: below the one before it (lambda-t below

@@ -224,7 +224,7 @@ class Shell(QtWidgets.QMainWindow):
             act.toggled.connect(self.detach_cubes)
             self.detach_action = act
             for c in self.linked:
-                c.dock.topLevelChanged.connect(lambda _floating: self._detached_changed())
+                c.dock.topLevelChanged.connect(self._cube_moved)
         self.nav = NavBar(self)
         # playback: t forward at the toolbar's rate, round the end (the prototype's _toggle_play, _play_step)
         self._play = QtCore.QTimer(self)
@@ -566,16 +566,23 @@ class Shell(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(0, self.reset_sizes)
 
     def reset_sizes(self) -> None:
-        """The panels' sizes of a fresh start (docks.reset_sizes), the images one width. The linked images narrowed
-        first, so the spectra take their width from them whatever they had: from a layout where the main image was at
-        its least width, they got 3 px less than from the start's (335 against 338 px, a 780-px window)."""
+        """The panels' sizes of a fresh start (docks.reset_sizes), the images one width."""
+        self._size_panels(lambda: docks.reset_sizes(self, (self.spec_dock, self.lt_dock), self.images))
+
+    def _size_panels(self, size) -> None:
+        """The panels beside the images sized by size(), their room taken from the linked images narrowed to nothing
+        first, and then the images one width: what the spectra got depended on what the images had (335 against
+        338 px from a layout where the main image was at its least width; 517 against 527 after cubes apart and
+        back, the images shared out as each one docked). Every dock's own layout settled first (Qt posts it), as at
+        the end (settle_widths): read before, a closed lambda-t shown again counted its old height."""
+        QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.LayoutRequest)
         imgs = [c.dock for c in self.linked if c.dock.isVisible() and not c.dock.isFloating()]
         lay = QtWidgets.QMainWindow.layout(self)
         if imgs and lay is not None:
             self.resizeDocks(imgs, [1] * len(imgs), QtCore.Qt.Orientation.Horizontal)
             lay.activate()
-        docks.reset_sizes(self, (self.spec_dock, self.lt_dock), self.images)
-        self.same_image_widths()
+        size()
+        self.settle_widths()
 
     def same_image_widths(self) -> None:
         """The docked linked images and the main one one width: theirs and the main one's shared out (Qt keeps a
@@ -648,11 +655,10 @@ class Shell(QtWidgets.QMainWindow):
                 c.dock.setFloating(False)
             if self.glass is not None:
                 self.glass.refit_after_redock()
-            elif restore_spec:                          # the spectra as wide as when the images left (the room came
-                lay.activate()                          # back to them: 647-px images for 428)
-                if self.spec_dock.isVisible() and not self.spec_dock.isFloating():
-                    self.resizeDocks([self.spec_dock], [self._detached_spec_w], QtCore.Qt.Orientation.Horizontal)
-            QtCore.QTimer.singleShot(0, self.same_image_widths)
+            elif restore_spec and self.spec_dock.isVisible() and not self.spec_dock.isFloating():
+                # the spectra as wide as when the images left (the room came back to them: 647-px images for 428)
+                self._size_panels(lambda: self.resizeDocks([self.spec_dock], [self._detached_spec_w],
+                                                           QtCore.Qt.Orientation.Horizontal))
         self._detached_changed()
 
     def detached_size(self) -> QtCore.QSize:
@@ -753,6 +759,20 @@ class Shell(QtWidgets.QMainWindow):
             x = d.frameGeometry().right() + 1 + glass.GAP
             y = d.frameGeometry().bottom() + 1 + glass.GAP
 
+    def _cube_moved(self, floating: bool) -> None:
+        """A linked image floated or docked, however: docked, the images one width again (it came back as wide as
+        it was, into a window that may have given up its room); the Panels entry as it now is."""
+        if not floating:
+            self.settle_widths()
+        self._detached_changed()
+
+    def settle_widths(self) -> None:
+        """same_image_widths once the docks' own layouts have settled (their size hints come back as posted
+        requests): shared out before, from a dock's floating size, a 780-px window's images came out 143, 192 and
+        127 px wide."""
+        QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.LayoutRequest)
+        self.same_image_widths()
+
     def _detached_changed(self) -> None:
         """The Panels entry ticked while any linked cube is in a window of its own (an image alone, dragged out by
         its title, too: the entry then docks it)."""
@@ -785,7 +805,6 @@ class Shell(QtWidgets.QMainWindow):
             if self.slit_tool.mode:
                 self.slit_dock.raise_()
         self.reset_sizes()
-        QtCore.QTimer.singleShot(0, self.reset_sizes)     # again once the layout has settled
         self.reset_view()
         self.statusBar().showMessage("panels and zoom back to the start", 4000)
 

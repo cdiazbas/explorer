@@ -878,15 +878,11 @@ class GlassChrome:
             self.place_panels()
 
     def refit_after_redock(self) -> None:
-        """Linked images docked again: the window fitted and the panels placed once Qt has laid them out, on the
-        loop's next pass. Read at once, a re-docked image still had its floating size or margin: the window came out
-        845 px high for 1092, then a few px narrower or lower at each re-dock (934 x 348 -> 900 x 348)."""
-        def fit():
-            if not self.on:
-                return
-            self.w.same_image_widths()
-            QtCore.QTimer.singleShot(0, self.place_panels)
-        QtCore.QTimer.singleShot(0, fit)
+        """Linked images docked again: the window fitted and the panels placed once Qt has laid them out
+        (Shell.settle_widths). Read before, a re-docked image still had its floating size or margin: the window came
+        out 845 px high for 1092, then a few px narrower or lower at each re-dock (934 x 348 -> 900 x 348)."""
+        self.w.settle_widths()
+        self.place_panels()
 
     # ---------------------------------------------------------------- the image moving, the readout
     def image_changed(self) -> None:
@@ -948,7 +944,6 @@ class GlassChrome:
             if d.isHidden():
                 d.show()
         w.reset_sizes()
-        QtCore.QTimer.singleShot(0, w.reset_sizes)  # again once the layout has settled, as reset_panels
 
     def _restore_panels(self) -> None:
         w = self.w
