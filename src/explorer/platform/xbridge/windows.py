@@ -93,6 +93,21 @@ class XWin:
         self.icon_key: int | None = None                # QIcon.cacheKey of the icon on X (0: none); None: not set yet
 
 
+def pixel(scr: X.Screen, c: QtGui.QColor) -> int:
+    """c as a pixel of the root visual: each channel where the visual's mask puts it (TrueColor); black where the
+    visual is unknown."""
+    vis = scr.visuals.get(scr.root_visual)
+    if vis is None:
+        return scr.black
+    v = vis[1]
+    out = 0
+    for value, mask in ((c.red(), v.red), (c.green(), v.green), (c.blue(), v.blue)):
+        if mask:
+            shift = (mask & -mask).bit_length() - 1
+            out |= (value * ((1 << (mask >> shift).bit_length()) - 1) // 255) << shift
+    return out
+
+
 class Windows:
     def __init__(self, c: X.Connection, on_destroyed=None):
         self.c = c
@@ -149,7 +164,10 @@ class Windows:
         popup = self.is_popup(w)
         g = w.geometry()
         xid = c.new_id()
-        attrs = {X.CW_BIT_GRAVITY: NORTHWEST_GRAVITY, X.CW_EVENT_MASK: EVENTS, X.CW_COLORMAP: self.scr.colormap}
+        attrs = {X.CW_BIT_GRAVITY: NORTHWEST_GRAVITY, X.CW_EVENT_MASK: EVENTS, X.CW_COLORMAP: self.scr.colormap,
+                 # the window's colour until its first pixels come, and where it grows before they do: without a
+                 # background XQuartz showed every new window white while the cubes were read
+                 X.CW_BACK_PIXEL: pixel(self.scr, w.palette().color(QtGui.QPalette.ColorRole.Window))}
         if popup:
             attrs[X.CW_OVERRIDE_REDIRECT] = 1
         vis = self.scr.root_visual
