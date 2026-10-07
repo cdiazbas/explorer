@@ -239,6 +239,22 @@ def rounded_region(rect, r) -> QtGui.QRegion:
     return QtGui.QRegion(path.toFillPolygon().toPolygon())
 
 
+def round_window(w: QtWidgets.QWidget, radius: int) -> None:
+    """w's shape: rounded while it is a window of its own (a floating panel), square docked. A mask on xcb, the X
+    SHAPE through the bridge (which publishes the region it finds on the widget), nothing on a local Mac (the
+    system rounds its windows, and a mask there cut them square)."""
+    from ..platform.xbridge.windows import SHAPE_ATTR
+
+    platform = QtGui.QGuiApplication.platformName()
+    region = rounded_region(w.rect(), radius) if w.isWindow() and platform != "cocoa" else QtGui.QRegion()
+    setattr(w, SHAPE_ATTR, region)
+    if platform == "xcb":
+        if region.isEmpty():
+            w.clearMask()
+        else:
+            w.setMask(region)
+
+
 EDGE = 3                    # px of the hairline overlay along each edge: its two lines are 1 px, at 0.5 and 1.5
 
 

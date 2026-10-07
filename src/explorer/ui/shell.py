@@ -620,12 +620,7 @@ class Shell(QtWidgets.QMainWindow):
                     c.as_window(False)
                     c.dock.setFloating(False)
             if self.glass is not None:
-                # fitted once the layout has them: before it, a docked image still had its floating size, and the
-                # window came out 845 px high for 1092
-                lay.activate()
-                self.same_image_widths()
-                lay.activate()
-                self.glass.place_panels()
+                self.glass.refit_after_redock()
             elif restore_spec:                          # the spectra as wide as when the images left (the room came
                 lay.activate()                          # back to them: 647-px images for 428)
                 if self.spec_dock.isVisible() and not self.spec_dock.isFloating():
@@ -670,7 +665,6 @@ class Shell(QtWidgets.QMainWindow):
             return
         cubes = {c.dock: c for c in self.linked}
         windowed = [cubes[d].windowed and bool(cubes[d].panels()) for d in todo]
-        image_w = self.detached_size(False).width()
         fg = self.frameGeometry()
         right = fg.right()
         if self.glass is not None:                      # beside the panels' column
@@ -681,29 +675,43 @@ class Shell(QtWidgets.QMainWindow):
         x0, y0, gap = right + 1 + glass.GAP, fg.top(), glass.GAP + FRAME_ALLOWANCE
         strip_w, strip_h = scr.right() + 1 - x0 - FRAME_ALLOWANCE, scr.bottom() + 1 - y0
 
-        def scaled(ss, k):
-            return [QtCore.QSize(int(q.width() * k), int(q.height() * k)) for q in ss]
+        image = self.detached_size(False)               # an image's window at the main image's zoom
+        g = docks.PANEL_GUTTER
 
-        # a row or a column, with the main window's panels' width or narrower ones (CUBE_PANELS_MIN_W): the one that
-        # shrinks the windows least (the first that fitted shrank a cube's window to 743 x 325 px, its spectra
-        # unreadable, where a column with narrower panels fitted unshrunk); none with images DETACHED_MIN_W wide or
-        # more: a cascade
-        row_room = scr.right() + 1 - x0 - gap * len(todo)
-        best = None
-        for pw in (None, CUBE_PANELS_MIN_W):
-            ss = [self.detached_size(wd, pw) for wd in windowed]
-            for plan_, k in (("row", min(1.0, row_room / sum(q.width() for q in ss),
-                                         strip_h / max(q.height() for q in ss))),
-                             ("column", min(1.0, (strip_h - gap * len(todo)) / sum(q.height() for q in ss),
-                                            strip_w / max(q.width() for q in ss)))):
-                if best is None or k > best[0] + 1e-9:
-                    best = (k, plan_, ss, self.spec_dock.width() if pw is None else pw)
+        def sizes_for(k: float, pw: int) -> list[QtCore.QSize]:
+            """The windows with their images shrunk by k: a cube's panels keep pw (shrunk with the rest, a cube's
+            spectra were 236 px wide), its window at least CUBE_MIN_H high for them."""
+            iw, ih = round(image.width() * k), round(image.height() * k)
+            return [QtCore.QSize(iw + g + pw, max(ih, CUBE_MIN_H)) if wd else QtCore.QSize(iw, ih)
+                    for wd in windowed]
+
+        def fits(plan_: str, ss: list[QtCore.QSize]) -> bool:
+            if plan_ == "row":
+                return (sum(q.width() + gap for q in ss) <= scr.right() + 1 - x0
+                        and max(q.height() for q in ss) <= strip_h)
+            return max(q.width() for q in ss) <= strip_w and sum(q.height() + gap for q in ss) <= strip_h
+
+        # a row or a column, with the main window's panels' width or narrower ones (CUBE_PANELS_MIN_W): the one
+        # whose images shrink least, found by bisection (the first that fitted shrank a cube's window to 743 x 325
+        # px where a column fitted unshrunk); none with images DETACHED_MIN_W wide or more: a cascade
+        best: tuple[float, str, int] | None = None
+        for pw in (self.spec_dock.width(), CUBE_PANELS_MIN_W):
+            for plan_ in ("row", "column"):
+                if fits(plan_, sizes_for(1.0, pw)):
+                    k = 1.0
+                else:
+                    lo, hi = 0.0, 1.0
+                    for _ in range(20):
+                        mid = (lo + hi) / 2
+                        lo, hi = (mid, hi) if fits(plan_, sizes_for(mid, pw)) else (lo, mid)
+                    k = lo
+                if best is None or k > best[0] + 1e-6:
+                    best = (k, plan_, pw)
         assert best is not None
-        k, plan, sizes, panels_w = best
-        if k < 1.0 and image_w * k < DETACHED_MIN_W:
-            plan, sizes = "cascade", [self.detached_size(wd) for wd in windowed]
-        else:
-            sizes = scaled(sizes, k)
+        k, plan, panels_w = best
+        if k < 1.0 and image.width() * k < DETACHED_MIN_W:
+            plan, k, panels_w = "cascade", 1.0, self.spec_dock.width()
+        sizes = sizes_for(k, panels_w)
         x, y = x0, y0
         for i, (d, s, wd) in enumerate(zip(todo, sizes, windowed, strict=True)):
             if plan == "row":
@@ -712,14 +720,14 @@ class Shell(QtWidgets.QMainWindow):
                 at = QtCore.QPoint(x0, y)
             else:                                       # each no wider than half the monitor
                 if s.width() > scr.width() // 2:
-                    s = scaled([s], (scr.width() // 2) / s.width())[0]
+                    f = (scr.width() // 2) / s.width()
+                    s = QtCore.QSize(int(s.width() * f), int(s.height() * f))
                 at = QtCore.QPoint(max(scr.left(), scr.right() + 1 - s.width() - CASCADE * i), y0 + CASCADE * i)
             d.setGeometry(QtCore.QRect(at, s))
             d.show()
-            if wd:                                      # its image as wide as a lone one's share, its panels the rest
-                split = cubes[d].split
-                share = image_w / (image_w + docks.PANEL_GUTTER + panels_w)
-                split.setSizes([round(split.width() * share), split.width() - round(split.width() * share)])
+            if wd:                                      # the panels their width, the image the rest, once laid out
+                QtCore.QTimer.singleShot(0, lambda sp=cubes[d].split, pw=panels_w:      # (before, the splitter had
+                                         sp.setSizes([max(1, sp.width() - pw - g), pw]))  # its old width)
             x = d.frameGeometry().right() + 1 + glass.GAP
             y = d.frameGeometry().bottom() + 1 + glass.GAP
 

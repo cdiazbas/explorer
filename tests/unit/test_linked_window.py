@@ -542,3 +542,32 @@ def test_in_glass_a_cube_s_window_is_on_the_image_s_colour(window, restore):
     w.set_look(get_look("classic"))
     spin(qapp, lambda: False, timeout=0.4)
     assert c.dock.palette().window().color() != glass.TITLE["dark"]
+
+
+def test_a_window_of_its_own_is_rounded_with_a_margin_the_corners_do_not_cut(window):
+    """A cube's window floats beside the rounded main window: rounded as glass's panels are (RADIUS_PANEL), with a
+    margin round its content the rounding does not cut (in glass, docked, it has none, and floating it went on
+    without one; the user, 2026-10-07). Docked again, square."""
+    from PySide6 import QtCore
+
+    from explorer.look import get_look
+    from explorer.platform.xbridge.windows import SHAPE_ATTR
+    from explorer.ui import docks
+
+    w, qapp = window
+    c = w.linked[0]
+    for look in ("glass", "classic"):
+        w.set_look(get_look(look))
+        spin(qapp, lambda: False, timeout=0.4)
+        w.detach_action.setChecked(True)
+        spin(qapp, lambda: False, timeout=0.5)
+        m = c.dock.widget().layout().contentsMargins()
+        region = getattr(c.dock, SHAPE_ATTR)
+        print(look, "floating: margins", (m.left(), m.top(), m.right(), m.bottom()), "rounded", not region.isEmpty(),
+              "corner in", region.contains(QtCore.QPoint(0, 0)) if not region.isEmpty() else None)
+        assert m.left() == m.right() == m.bottom() == docks.PANEL_GUTTER
+        assert not region.isEmpty() and not region.contains(QtCore.QPoint(0, 0))      # the corner cut round
+        w.detach_action.setChecked(False)
+        spin(qapp, lambda: False, timeout=0.4)
+        assert getattr(c.dock, SHAPE_ATTR).isEmpty()                                  # docked: square
+    w.set_look(get_look("classic"))

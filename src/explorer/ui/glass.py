@@ -375,15 +375,7 @@ class PanelSkin(QtCore.QObject):
         d.update()
 
     def shape(self) -> None:
-        d = self.d
-        region = (titlebar.rounded_region(d.rect(), RADIUS_PANEL) if d.isFloating() and self.platform != "cocoa"
-                  else QtGui.QRegion())
-        setattr(d, self.shape_attr, region)         # the bridge's X SHAPE
-        if self.platform == "xcb":
-            if region.isEmpty():
-                d.clearMask()
-            else:
-                d.setMask(region)
+        titlebar.round_window(self.d, RADIUS_PANEL)  # rounded floating, square docked (the bridge's X SHAPE too)
 
     def eventFilter(self, obj, e):
         if obj is not self.d:
@@ -484,8 +476,8 @@ class GlassChrome:
         for v in self._images():                    # linked cubes' too: images of one size show one region
             if hasattr(v.widget, "ci"):
                 v.widget.ci.setContentsMargins(0, 0, 0, 0)
-        for c in getattr(w, "linked", ()):          # their panels' margins, as the main image's
-            c.dock.widget().layout().setContentsMargins(0, 0, 0, 0)
+        for c in getattr(w, "linked", ()):          # their panels' margins, as the main image's (docked)
+            c.set_docked_margin(0)
         self._bar(nav, view)
         # the readout as the title (look_glass.py:693-724)
         self._watches.append(_Watch(view.widget.viewport(), (QtCore.QEvent.Type.Enter, QtCore.QEvent.Type.Leave),
@@ -881,13 +873,21 @@ class GlassChrome:
         for c in getattr(self.w, "linked", ()):     # the linked images back in the window, shown
             c.dock.show()
             c.dock.setFloating(False)
-        if getattr(self.w, "linked", None):         # fitted once the layout has them (a docked image still had its
-            lay = QtWidgets.QMainWindow.layout(self.w)          # floating size: the window came out 681 px high
-            if lay is not None:                                 # for 734)
-                lay.activate()
-                self.w.same_image_widths()
-                lay.activate()
-        self.place_panels()
+        if getattr(self.w, "linked", None):
+            self.refit_after_redock()
+        else:
+            self.place_panels()
+
+    def refit_after_redock(self) -> None:
+        """Linked images docked again: the window fitted and the panels placed once Qt has laid them out, on the
+        loop's next pass. Read at once, a re-docked image still had its floating size or margin: the window came out
+        845 px high for 1092, then a few px narrower or lower at each re-dock (934 x 348 -> 900 x 348)."""
+        def fit():
+            if not self.on:
+                return
+            self.w.same_image_widths()
+            QtCore.QTimer.singleShot(0, self.place_panels)
+        QtCore.QTimer.singleShot(0, fit)
 
     # ---------------------------------------------------------------- the image moving, the readout
     def image_changed(self) -> None:
@@ -1023,8 +1023,7 @@ class GlassChrome:
             for v in self._images():
                 v.widget.ci.setContentsMargins(*self._was["ci"])
         for c in getattr(w, "linked", ()):
-            g = docks.PANEL_GUTTER
-            c.dock.widget().layout().setContentsMargins(g, g, g, g)
+            c.set_docked_margin(docks.PANEL_GUTTER)
         w.statusBar().setVisible(self._was["statusbar"])
         w.setWindowTitle(self._was["title"])
         self._image_titles(None)

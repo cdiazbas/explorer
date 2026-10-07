@@ -16,7 +16,7 @@ import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import docks, style
+from . import docks, glass, style, titlebar
 from .cards import Rounder
 from .cube import CubeView
 
@@ -275,6 +275,20 @@ class ViewSync(QtCore.QObject):
             self._following = False
 
 
+class _Rounded(QtCore.QObject):
+    """A panel's shape rounded again at each resize while it floats (titlebar.round_window)."""
+
+    def __init__(self, dock: QtWidgets.QDockWidget):
+        super().__init__(dock)
+        self.d = dock
+        dock.installEventFilter(self)
+
+    def eventFilter(self, obj, e):
+        if obj is self.d and e.type() == QtCore.QEvent.Type.Resize:
+            titlebar.round_window(self.d, glass.RADIUS_PANEL)
+        return False
+
+
 class LinkedCube(CubeView):
     """A linked cube (member k): a CubeView whose image is a panel of its own, titled with its name, between the main
     image and the spectra; closed (or behind another), nothing is read for it. As a window of its own (the mock the
@@ -303,8 +317,28 @@ class LinkedCube(CubeView):
         self.dock.setTitleBarWidget(self.title)
         self.dock.visibilityChanged.connect(self._image_shown)
         self.dock.topLevelChanged.connect(lambda floating: None if floating else self.as_window(False))
+        # floating, a window of its own: rounded as glass's panels are, with a margin the round corners do not cut
+        # (in glass, docked, it had none, and floating it went on without one)
+        self.docked_margin = docks.PANEL_GUTTER
+        self.dock.topLevelChanged.connect(lambda _floating: self._frame())
+        self._rounded = _Rounded(self.dock)
         self._rounders = [Rounder(w) for w in [self.view.widget] + [p.widget for p in (self.spectra, self.lambda_t)
                                                                     if p is not None]]
+
+    def set_docked_margin(self, m: int) -> None:
+        """Its margin while docked (glass: none, as the main image's); floating it keeps PANEL_GUTTER."""
+        self.docked_margin = m
+        self._frame()
+
+    def _frame(self) -> None:
+        g = docks.PANEL_GUTTER if self.dock.isFloating() else self.docked_margin
+        lay = self.dock.widget().layout()
+        if lay is not None and lay.contentsMargins().left() != g:
+            lay.setContentsMargins(g, g, g, g)
+            # at once, not at the next layout pass: glass fits the window right after a re-dock, and with the
+            # floating margin still in place it read 10 px less of image and cut the window lower each time
+            lay.activate()
+        titlebar.round_window(self.dock, glass.RADIUS_PANEL)
 
     def panels(self) -> list:
         """(key, panel widget, the main window's tabs) of its spectra and lambda-t, those it has."""
