@@ -90,7 +90,7 @@ def test_a_press_on_lambda_t_picks_t_and_lambda(qapp, shell):
 def test_a_right_click_on_a_panel_releases_the_cursor(qapp, shell):
     shell.session.lock(True)
     ev = type("Click", (), {"button": lambda self: __import__("PySide6").QtCore.Qt.MouseButton.RightButton})()
-    shell._panel_click(ev)
+    shell.main.panel_click(ev)
     assert not shell.session.state.locked
 
 

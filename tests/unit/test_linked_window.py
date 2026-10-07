@@ -108,7 +108,7 @@ def test_the_linked_cube_follows_cursor_and_t_at_its_own_lambda(window):
     assert spin(qapp, lambda: other.scheduler.img_idx == (2, 0, 3) and blos.scheduler.img_idx == (2,))
     p = other.spectra.plots[0]
     x = float(other.spectra.xl[5])
-    other._spectrum_pick(p.vb.mapViewToScene(QtCore.QPointF(x, 0)))  # its own lambda, on its own spectrum
+    other.spectrum_pick(p.vb.mapViewToScene(QtCore.QPointF(x, 0)))  # its own lambda, on its own spectrum
     assert spin(qapp, lambda: other.scheduler.img_idx == (2, 0, 5))
     print("main", w.scheduler.img_idx, "linked", other.scheduler.img_idx, "map", blos.scheduler.img_idx,
           "own", w.session.state.own)

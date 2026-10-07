@@ -37,16 +37,14 @@ from ..look.colormaps import ColormapRegistry
 from . import docks, glass, icons, pens, style
 from .actions import ActionRegistry, KeySheet, mod_key
 from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
+from .cube import CubeView
 from .gestures import Gestures
-from .imageview import CURSOR_PEN, ImageView
-from .lambda_t import LambdaTPanel
+from .imageview import CURSOR_PEN
 from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync
 from .loop import QtLoop
 from .overlays import ColourKey
-from .padlock import PanelLock
 from .slit import SlitHint, SlitTool
 from .slitpanel import SlitPanel
-from .spectra import AxisDrag, SpectraPanel
 from .status import diagnostics_text, pixel_text
 from .stokesgrid import StokesGrid
 from .toolbar import NavBar
@@ -149,26 +147,24 @@ class Shell(QtWidgets.QMainWindow):
         self.loop = QtLoop(self)
         self.session = Session(self.loop, dataset)
         members = [self.session.add(ds) for ds in linked]
-        ex = dataset.executors
         light = style.is_light()                        # the theme the application was given (ui.style)
         self.look = look if look is not None else get_look()
-        self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light)
+        self._closing = False
+        names = cube_names([dataset, *linked])
+        # the main cube's views (ui.cube, member 0: as a linked cube's), and the names the window has always used
+        self.main = CubeView(self, 0, names[0], light, keys="(or F) ")
+        self.view, self.spectra, self.lambda_t = self.main.view, self.main.spectra, self.main.lambda_t
+        self.image_lock, self.spec_lock = self.main.image_lock, self.main.spec_lock
         self.setCentralWidget(docks.gutter(self.view.widget))
         # the slit (S): drawn on the image, the finished one the session's path (ui.slit)
         self.slit_hint = SlitHint(self.view.widget, light=light)
         self.slit_tool = SlitTool(self.session, self.view, self.slit_hint, CURSOR_PEN.color())
         self.slit_tool.modeChanged.connect(self._slit_mode_changed)
         r = dataset.roles
-        # a cube without lambda has no spectra: that dock stays empty and hidden
-        self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, dataset.axes, light=light) \
-            if r.l is not None else None
+        # a cube without lambda has no spectra (and without t no lambda-t): that dock stays empty and hidden
         self.spec_panel = self.spectra.widget if self.spectra is not None else QtWidgets.QWidget()
-        # lambda-t needs both t and lambda
-        self.lambda_t = LambdaTPanel(r.nt, r.nl, dataset.axes) if r.t is not None and r.l is not None else None
         self.lt_panel = self.lambda_t.widget if self.lambda_t is not None else QtWidgets.QWidget()
         # linked cubes: their images beside this one, their panels a tab each in these (ui.linked)
-        self._closing = False
-        names = cube_names([dataset, *linked])
         self.linked = [LinkedCube(self, k, name) for k, name in zip(members, names[1:], strict=True)]
         self.spec_tabs = self._tabs(names[0], "spectra", self.spectra, self.spec_panel)
         self.lt_tabs = self._tabs(names[0], "lambda_t", self.lambda_t, self.lt_panel)
@@ -219,19 +215,7 @@ class Shell(QtWidgets.QMainWindow):
         self.nav.play.toggled.connect(self.set_playing)
         self.nav.fps.valueChanged.connect(lambda v: self._play.setInterval(int(1000 / v)))
         self._play.setInterval(int(1000 / self.nav.fps.value()))
-        self.scheduler: Scheduler                       # made below, once the panels are; the padlocks ask it
-        # the padlocks, both open at start (the prototype's): closed = fixed, right click = fit to what is shown
-        self.image_lock = PanelLock(self.view.widget, "Image contrast: closed = fixed, open = automatic per image. "
-                                    "Click to switch; right click fixes it to this image", light=light)
-        self.image_lock.toggled.connect(lambda on: self.scheduler.fix_levels(on))
-        self.image_lock.refit.connect(self._image_refit)
-        self.spec_lock = None
-        if self.spectra is not None:
-            self.spec_lock = PanelLock(self.spectra.w, "Spectra y range: open = automatic, closed = fixed (I from "
-                                       "100 random profiles, Q U V from the whole image). Click to switch; right click "
-                                       "(or F) fixes it to this pixel", light=light, backed=False)
-            self.spec_lock.toggled.connect(lambda on: self.scheduler.set_y_fixed(on))
-            self.spec_lock.refit.connect(self.fit_spectra)
+        self.scheduler: Scheduler                       # the main cube's, made below once the panels are
         # set by whoever shows the window (ui.app): the saved layout (not `layout`: that is QWidget.layout(), which it
         # hid), its WindowOps (zoom state for the layout), our title bar, the keys read from the terminal
         self.layout_store: LayoutStore | None = None
@@ -253,7 +237,6 @@ class Shell(QtWidgets.QMainWindow):
         self.sys_status.hide()
         self.last: dict = {}
         self.setWindowTitle(title or str(getattr(dataset, "path", "")))
-        self.view.widget.scene().sigMouseClicked.connect(self._click)
         self._keys()
         self._install_gestures()
         # what the sink reads, before the scheduler: an image already in the cache (a second window on the same
@@ -265,18 +248,14 @@ class Shell(QtWidgets.QMainWindow):
         self._seams: MacSeams | None = None
         self._shown_lut = object()
         self._off = self.session.store.subscribe(self._on_state)
-        self.scheduler = Scheduler(self.session, _Sink(self))
+        self.main.start(_Sink(self))                    # its crosshair and markers from here on (CubeView.follow)
+        self.scheduler = self.main.scheduler
         for c in self.linked:
             c.start()
         st = self.session.state
-        self.view.set_crosshair(*st.cursor)
-        if self.spectra is not None:
-            self.spectra.set_lambda(st.l)
-        elif self.spec_tabs is None:
+        if self.spectra is None and self.spec_tabs is None:
             self.spec_dock.hide()
-        if self.lambda_t is not None:
-            self.lambda_t.set_markers(st.t, st.l)
-        elif self.lt_tabs is None:
+        if self.lambda_t is None and self.lt_tabs is None:
             self.lt_dock.hide()
         self.slit_panel.set_markers(st.t, st.l)
         self.slit_panel.set_cursor(*st.cursor)
@@ -309,15 +288,11 @@ class Shell(QtWidgets.QMainWindow):
             st.SLIDER = acc if L.has("glass") else None if L.has("marks") else CURSOR_PEN.color()
             for sl in self.nav.sliders.values():
                 sl.update()
-        self.view.set_reticle(L.has("reticle"))
+        self.main.set_look(L, acc, light)               # its reticle, marks and cards (ui.cube)
         if self.grid is not None:
             self.grid.set_reticle(L.has("reticle"))
         self.nav.set_stokes_drop(L.has("stokes"))
         self._reticle_colours()
-        if self.spectra is not None:
-            self.spectra.set_marks(acc, light) if L.has("marks") else self.spectra.clear_marks()
-        if self.lambda_t is not None:
-            self.lambda_t.set_marks(acc) if L.has("marks") else self.lambda_t.clear_marks()
         self.slit_panel.set_marks(acc) if L.has("marks") else self.slit_panel.clear_marks()
         if L.has("colour") and self.colours is None:
             self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light)
@@ -341,9 +316,8 @@ class Shell(QtWidgets.QMainWindow):
             for w in (self, self.spec_dock, self.lt_dock, self.slit_dock):
                 w.setStyle(self._seams)
         card = (CARD_LIGHT if light else CARD) if L.has("cards") else pg.getConfigOption("background")
-        for pw in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None), self.slit_panel.w):
-            if pw is not None and self.glass is None:   # worn, glass keeps them clear over its slabs
-                pw.setBackground(card)
+        if self.glass is None:                          # worn, glass keeps it clear over its slab
+            self.slit_panel.w.setBackground(card)
         if L.has("glass") and self.glass is None:       # its own parts last, over the modern look's (ui.glass); the
             self.glass = glass.GlassChrome(self)        # slit's panel, if shown, among the panels it floats
             self.glass.apply()
@@ -366,20 +340,12 @@ class Shell(QtWidgets.QMainWindow):
         self.theme = style.apply_theme(app, theme)
         style.separators(self)
         light = style.is_light()
-        self.view.set_light(light)
+        for c in self.cubes:                            # images, panels and padlocks (ui.cube)
+            c.set_light(light)
         self.slit_tool.set_light(light)
         if self.grid is not None:
             self.grid.set_light(light)
-        for lock in (self.image_lock, self.spec_lock):
-            if lock is not None:
-                lock.set_light(light)
-        if self.spectra is not None:
-            self.spectra.set_light(light)
-        if self.lambda_t is not None:
-            self.lambda_t.set_light(light)
         self.slit_panel.set_light(light)
-        for c in self.linked:
-            c.set_light(light)
         if self.colours is not None:
             self.colours.set_light(light)
         self.nav.restyle()
@@ -604,71 +570,20 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- picks on the panels
     def _install_gestures(self) -> None:
-        """Click or drag picks on the spectra (lambda) and on lambda-t (t and lambda); a right click on either
-        releases the cursor; each panel's pointer names what it does."""
-        C = QtCore.Qt.CursorShape
-        self._wanted: dict = {}
-        self._pick_timer = QtCore.QTimer(self, singleShot=True, interval=0)
-        self._pick_timer.timeout.connect(self._pick_flush)
-        picks = {}
-        if self.spectra is not None:
-            vp = self.spectra.w.viewport()
-            vp.setCursor(C.SizeHorCursor)
-            picks[vp] = self._spectrum_pick
-            self.spectra.w.scene().sigMouseClicked.connect(self._panel_click)
-        if self.lambda_t is not None:
-            vp = self.lambda_t.w.viewport()
-            vp.setCursor(C.SizeAllCursor)
-            picks[vp] = self._lt_pick
-            self.lambda_t.w.scene().sigMouseClicked.connect(self._panel_click)
+        """The slit panel's picks (each cube's image and panels have their own: ui.cube); a right click on it releases
+        the cursor. No context menus: QMainWindow's (toolbar and docks on/off) over the toolbar, the dock titles and
+        the sliders; an open one also left the next keys unanswered (the prototype's app/viewer.py:1018-1028)."""
         vp = self.slit_panel.w.viewport()               # picks two things, as lambda-t (the prototype's 1975)
-        vp.setCursor(C.SizeAllCursor)
-        picks[vp] = self._slit_pick
-        self.slit_panel.w.scene().sigMouseClicked.connect(self._panel_click)
-        # no context menus: a right click releases the cursor, nothing else. pyqtgraph's on the image, and
-        # QMainWindow's (toolbar and docks on/off) over the toolbar, the dock titles and the sliders; an open one
-        # also left the next keys unanswered (the prototype's app/viewer.py:1018-1028)
+        vp.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)
+        self.slit_panel.w.scene().sigMouseClicked.connect(self.main.panel_click)
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
-        self.view.vb.setMenuEnabled(False)
-        image = self.view.widget.viewport()
-        image.setCursor(C.CrossCursor)
-        self._gestures = Gestures(self, picks, image)
-        for vp in [*picks, image]:
-            vp.installEventFilter(self._gestures)
-        if self.spectra is not None:                    # after the gestures: the y axis strip first (E4.1)
-            self._axis_drag = AxisDrag(self.spectra, self.scheduler_y_manual, self.scheduler_y_auto)
+        self._gestures = Gestures(self, {vp: self._slit_pick})
+        vp.installEventFilter(self._gestures)
 
-    def scheduler_y_manual(self, k: int, r) -> None:
-        if r[1] > r[0]:
-            self.scheduler.set_y_manual(k, r)
-
-    def scheduler_y_auto(self, k: int) -> None:
-        self.scheduler.y_auto(k)
-
-    def _panel_click(self, ev) -> None:
-        if ev.button() == QtCore.Qt.MouseButton.RightButton:
-            self.session.lock(False)                    # the right click releases from any panel
-
-    def _spectrum_pick(self, pos, now: bool = True) -> None:
-        """lambda nearest to x on whichever spectrum plot is under pos."""
-        if self.spectra is None:
-            return
-        for p in self.spectra.plots:
-            if p.vb.sceneBoundingRect().contains(pos):
-                xv = p.vb.mapSceneToView(pos).x()
-                self._want_pick({"l": int(np.argmin(np.abs(self.spectra.xl - xv)))}, now)
-                return
-
-    def _lt_pick(self, pos, now: bool = True) -> None:
-        """(t, lambda) of the cell under pos on lambda-t."""
-        if self.lambda_t is None:
-            return
-        vb = self.lambda_t.w.getPlotItem().vb
-        if not vb.sceneBoundingRect().contains(pos):
-            return
-        q = vb.mapSceneToView(pos)
-        self._want_pick({"l": int(np.clip(int(q.x()), 0, self.lambda_t.nl - 1)),
-                         "t": int(np.clip(int(q.y()), 0, self.lambda_t.nt - 1))}, now)
+    @property
+    def cubes(self) -> list:
+        """Every cube's views (ui.cube): the main cube's first."""
+        return [self.main, *self.linked]
 
     def _slit_pick(self, pos, now: bool = True) -> None:
         """A click or drag on the slit panel: the cursor to that point of the slit, locked there as a click on the image
@@ -682,22 +597,7 @@ class Shell(QtWidgets.QMainWindow):
         self.session.hover(int(iy[i]), int(ix[i]))
         self.session.lock(True)
         if self.session.present[axis]:
-            self._want_pick({axis: v}, now)
-
-    def _want_pick(self, want: dict, now: bool) -> None:
-        """now: at once (a press); else the latest wins at the next pass of the event loop (a fast drag reads one
-        image per pass, not one per mouse event)."""
-        if now:
-            for axis, v in want.items():
-                self.session.set_index(axis, v)
-            return
-        self._wanted.update(want)
-        self._pick_timer.start()
-
-    def _pick_flush(self) -> None:
-        want, self._wanted = self._wanted, {}
-        for axis, v in want.items():
-            self.session.set_index(axis, v)
+            self.main.want({axis: v}, now)
 
     # ---------------------------------------------------------------- playback
     def set_playing(self, on: bool) -> None:
@@ -760,16 +660,9 @@ class Shell(QtWidgets.QMainWindow):
 
         QtCore.QTimer.singleShot(1500, start)
 
-    def _image_refit(self) -> None:
-        """The image padlock's right click: the contrast fixed to the image shown now."""
-        self.scheduler.fix_levels(True, refit=True)
-        self.image_lock.set_closed(True)
-
     def fit_spectra(self) -> None:
-        """F, or the spectra padlock's right click: each plot fitted to this pixel's profile, and kept (closed)."""
-        self.scheduler.fit_y()
-        if self.spec_lock is not None:
-            self.spec_lock.set_closed(self.scheduler.yrange.fixed)
+        """F: the main cube's spectra fitted to this pixel's profile, and kept (closed); its padlock's right click."""
+        self.main.fit_spectra()
 
     def spectra_to_sample(self) -> None:
         """Shift+F: back to the sample's ranges, fixed (as closing the padlock)."""
@@ -781,35 +674,13 @@ class Shell(QtWidgets.QMainWindow):
         """The whole image, the spectra's whole lambda range, and their y ranges as the padlock says: the sample's
         when closed, this pixel's when open (the prototype's reset_view)."""
         self.view.show_all()
-        if self.spectra is not None:
-            self.spectra.reset_view()
-            self.scheduler.yrange.reset()
-        if self.lambda_t is not None:
-            self.lambda_t.reset_view()
-        for c in self.linked:
+        for c in self.cubes:
             c.reset_view()
 
     # ---------------------------------------------------------------- input
     def _hover(self, y: float, x: float) -> None:
-        self.session.hover(math.floor(y), math.floor(x))
-        self.slit_tool.hover(y, x)
-
-    def _click(self, ev) -> None:
-        if self.slit_tool.click(ev, self.view.vb):     # drawing a slit: the click adds or removes a point
-            return
-        if ev.button() == QtCore.Qt.MouseButton.RightButton:
-            self.session.lock(False)
-            return
-        if ev.button() != QtCore.Qt.MouseButton.LeftButton or not self.view.vb.sceneBoundingRect().contains(
-                ev.scenePos()):
-            return
-        if ev.double():
-            self.view.show_all()
-            return
-        p = self.view.vb.mapSceneToView(ev.scenePos())
-        self.session.lock(False)                        # move there, then lock
-        self.session.hover(math.floor(p.y()), math.floor(p.x()))
-        self.session.lock(True)
+        """The mouse over the main image (the 2x2 view's panels too): ui.cube."""
+        self.main._hover(y, x)
 
     def key_table(self):
         """(keys as shown, what they do, ((key sequence, action), ...)) for this cube: the shortcuts, the terminal's
@@ -943,8 +814,7 @@ class Shell(QtWidgets.QMainWindow):
             b.blockSignals(True)
             b.setChecked(on)
             b.blockSignals(False)
-        self._gestures.rest = self.slit_tool.pointer()
-        for c in self.linked:
+        for c in self.cubes:
             c._gestures.rest = self.slit_tool.pointer()
         self._slit_shown(on or self.session.state.path is not None)
 
@@ -1023,9 +893,9 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- state
     def _on_state(self, st: ViewState, changed: frozenset) -> None:
+        """The window's parts; each cube's crosshair and markers are its own (CubeView.follow)."""
         self.nav.sync(st, changed)
         if "cursor" in changed:
-            self.view.set_crosshair(*st.cursor)
             if self.grid is not None:
                 self.grid.set_crosshair(*st.cursor)
             self.slit_panel.set_cursor(*st.cursor)
@@ -1033,14 +903,8 @@ class Shell(QtWidgets.QMainWindow):
             self.slit_tool.show_path(st.path)
             if st.path is not None or not self.slit_tool.mode:
                 self._slit_shown(st.path is not None)
-        if "locked" in changed:
-            self.view.set_locked(st.locked)
-            if self.grid is not None:
-                self.grid.set_locked(st.locked)
-        if "l" in changed and self.spectra is not None:
-            self.spectra.set_lambda(st.l)
-        if changed & {"t", "l"} and self.lambda_t is not None:
-            self.lambda_t.set_markers(st.t, st.l)
+        if "locked" in changed and self.grid is not None:
+            self.grid.set_locked(st.locked)
         if changed & {"t", "l"}:
             self.slit_panel.set_markers(st.t, st.l)
         self.update_status()
@@ -1123,7 +987,6 @@ class Shell(QtWidgets.QMainWindow):
         self._play.stop()
         self._mem.stop()
         self._off()
-        for c in self.linked:
+        for c in [*self.linked, self.main]:             # the linked ones first: they read on the main one's threads
             c.close()
-        self.scheduler.close()
         super().closeEvent(ev)
