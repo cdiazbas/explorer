@@ -24,3 +24,17 @@ def test_nothing_stale_nothing_listed():
 def test_what_gitignore_keeps_out_is_not_listed():
     remote = ["tests/golden/real/stokes_6173.npz", "docs/old.md"]
     assert sync.stale_files(remote, [], ignored=["tests/golden/real/stokes_6173.npz"]) == ["docs/old.md"]
+
+
+def test_also_carries_files_outside_git_to_the_same_place(tmp_path, monkeypatch, capsys):
+    """sync.local.json's "also": notes kept beside the tree (outside git) go to the same place relative to the remote
+    tree; one that is not here is skipped and said."""
+    root = tmp_path / "proj" / "explorer"
+    root.mkdir(parents=True)
+    (tmp_path / "proj" / "NOTES.md").write_text("notes")
+    monkeypatch.setattr(sync, "ROOT", str(root))
+    calls = []
+    monkeypatch.setattr(sync, "rsync", lambda args, dry, stdin=None: calls.append((args, dry)))
+    sync.push_also(["../NOTES.md", "../missing.md"], "host", "/remote/proj/explorer", True)
+    print(calls, capsys.readouterr().err)
+    assert calls == [([str(tmp_path / "proj" / "NOTES.md"), "host:/remote/proj/NOTES.md"], True)]

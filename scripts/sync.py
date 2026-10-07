@@ -23,7 +23,10 @@
 Host and remote directory come from scripts/sync.local.json (never synced nor versioned: it holds a personal path):
 
     {"host": "bellatrix.uio.no", "remote_dir": "/path/to/projects/CRISPEX/explorer",
-     "forbidden": ["/path/to/the/shared/read-only/data"]}
+     "forbidden": ["/path/to/the/shared/read-only/data"], "also": ["../NOTES.md"]}
+
+"also": files outside git that push carries too, to the same place relative to remote_dir (notes kept beside the
+tree, the same on both machines); push only, never deleted, and held back by .editing_on_server as the rest.
 
 Standard library only: runs with any python3 >= 3.8.
 """
@@ -177,6 +180,18 @@ def remote(host, cmd):
     return subprocess.run(["ssh", "-o", "BatchMode=yes", host, cmd], text=True, capture_output=True)
 
 
+def push_also(paths, host: str, rdir: str, dry: bool) -> None:
+    """The files of "also" (paths relative to this tree, outside git), each to the same place under rdir."""
+    for p in paths:
+        src = os.path.normpath(os.path.join(ROOT, p))
+        if not os.path.isfile(src):
+            print(f"  also: {p} is not a file here: skipped", file=sys.stderr)
+            continue
+        dst = os.path.normpath(os.path.join(rdir, p))
+        print(f"--- also  {p} -> {host}:{dst}")
+        rsync([src, f"{host}:{dst}"], dry)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("action", nargs="?", default="sync", choices=["sync", "push", "pull"])
@@ -210,6 +225,7 @@ def main():
         if not a.dry_run:
             remote(host, f"mkdir -p {shlex.quote(rdir)}")
         rsync(["--files-from=-", "--from0", "./", dest], a.dry_run, stdin="\0".join(files))
+        push_also(cfg.get("also", []), host, rdir, a.dry_run)
         stamp_version(host, rdir, a.dry_run)
         report_stale(host, rdir, files)
     if a.action in ("sync", "pull"):
