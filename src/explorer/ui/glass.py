@@ -508,6 +508,7 @@ class GlassChrome:
         self.bar.raise_()
         self.autohide = AutoHide(w, (self.bar,))
         self._hud_title()
+        self._tabs(True)
         key = w.colour_key                          # at the top left: the bar is at the bottom (look_glass.py:937-943)
         if key is not None:
             key._place = lambda view_: key.move(MARGIN, MARGIN)
@@ -666,6 +667,29 @@ class GlassChrome:
                 f"QToolButton:pressed {{ background: {down.name(H)}; }}"
                 f"QToolButton:checked {{ background: {for_white_text(accent()).name()}; color: white; }}")
 
+    @staticmethod
+    def _tabs_sheet() -> str:
+        """The linked cubes' tabs in the panels (ui.linked.PanelTabs) flat on the slab, as the bar's buttons: the
+        style's were grey buttons on the near-black panel (lightness 67-74 against 5-18)."""
+        ink = INK[_mode()]
+        H = QtGui.QColor.NameFormat.HexArgb
+        dim, hover, front = QtGui.QColor(ink), QtGui.QColor(ink), QtGui.QColor(ink)
+        dim.setAlphaF(0.62)
+        hover.setAlphaF(0.08)
+        front.setAlphaF(0.12)                       # the tab in front: a shade, its name brighter
+        return ("QTabWidget::pane { border: none; background: transparent; }"
+                "QTabBar { background: transparent; }"
+                f"QTabBar::tab {{ background: transparent; color: {dim.name(H)}; border: none; border-radius: 5px;"
+                " padding: 2px 10px; margin: 2px 2px 3px 2px; }"
+                f"QTabBar::tab:hover {{ background: {hover.name(H)}; }}"
+                f"QTabBar::tab:selected {{ background: {front.name(H)}; color: {ink.name()}; }}")
+
+    def _tabs(self, on: bool) -> None:
+        sheet = self._tabs_sheet() if on else ""
+        for t in (getattr(self.w, "spec_tabs", None), getattr(self.w, "lt_tabs", None)):
+            if t is not None:
+                t.setStyleSheet(sheet)
+
     def retheme(self) -> None:
         """Another theme while worn (Shell.set_theme), in place: the panels where they are, the image's region kept,
         which taking glass off and on again would not. What took the old theme's colours when glass went on takes
@@ -683,6 +707,7 @@ class GlassChrome:
             self._hud_title()
         else:
             self._image_titles(TITLE[_mode()])
+        self._tabs(True)
         self.bar.invalidate()
 
     def _fit_sliders(self, room: int) -> None:
@@ -986,6 +1011,7 @@ class GlassChrome:
         w.statusBar().setVisible(self._was["statusbar"])
         w.setWindowTitle(self._was["title"])
         self._image_titles(None)
+        self._tabs(False)
         if "title_bar" in self._was:
             tb = self._was["title_bar"]
             tb.setPalette(QtGui.QPalette())         # nothing of its own: the application's, in the theme of now

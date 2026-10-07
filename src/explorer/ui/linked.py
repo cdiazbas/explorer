@@ -162,6 +162,9 @@ class PanelTabs(QtWidgets.QTabWidget):
         self.session, self.closing = session, closing
         self.setTabPosition(QtWidgets.QTabWidget.TabPosition.South)
         self.setDocumentMode(True)
+        # never the keyboard's: the keys are the window's, and in glass its focus ring showed in the accent
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.tabBar().setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.keys = []
         for name, widget, key in tabs:
             self.addTab(widget, name)

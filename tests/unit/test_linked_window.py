@@ -287,3 +287,76 @@ def test_in_glass_the_strips_between_the_images_are_the_image_s_colour(window):
     seen, span = strip()
     print("classic: strip", span, "colours", seen)
     assert glass.TITLE[glass._mode()].name() not in seen
+
+
+
+@pytest.fixture
+def restore(qapp):
+    """The application's style and palette as they were (a test that switches the theme; test_theme's)."""
+    import pyqtgraph as pg
+    from PySide6 import QtGui, QtWidgets
+
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    yield qapp
+    qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+    qapp.setPalette(pal)
+    qapp.setProperty("explorer_light", False)
+    pg.setConfigOptions(background="k", foreground="d")
+
+
+def test_in_glass_the_tabs_are_flat_on_the_panel(window, restore):
+    """With linked cubes the panels' tabs stayed the style's grey buttons in glass (the user, 2026-10-06): there they
+    are flat on the panel, as the glass bar's buttons are, in either theme; the style's again out of it. Median
+    lightness of each tab as drawn (its text is a small part of it), against the panel's."""
+    import numpy as np
+    from PySide6 import QtGui
+
+    from explorer.look import get_look
+    from explorer.ui import glass
+
+    w, qapp = window
+
+    def tabs_lightness():
+        """In the panel as drawn (the tabs alone are transparent in glass: grabbed alone, black)."""
+        out = []
+        for tabs, dock in ((w.spec_tabs, w.spec_dock), (w.lt_tabs, w.lt_dock)):
+            bar = tabs.tabBar()
+            img = dock.grab().toImage()
+            for i in range(bar.count()):
+                r = bar.tabRect(i).translated(bar.mapTo(dock, bar.rect().topLeft()))
+                px = [QtGui.QColor(img.pixel(x, y)).lightness() for x in range(r.left(), r.right(), 2)
+                      for y in range(r.top(), r.bottom(), 2)]
+                out.append(int(np.median(px)))
+        return out
+
+    w.set_theme("dark")
+    w.set_look(get_look("glass"))
+    spin(qapp, lambda: False, timeout=0.6)
+    dark = tabs_lightness()
+    w.set_theme("light")
+    spin(qapp, lambda: False, timeout=0.6)
+    light = tabs_lightness()
+    w.set_look(get_look("classic"))
+    spin(qapp, lambda: False, timeout=0.4)
+    slab = {m: [c.lightness() for c in glass.SLAB[m]] for m in ("dark", "light")}
+    print("tab lightness in glass: dark", dark, "light", light, "slabs", slab)
+    assert max(dark) <= 40 and min(light) >= 215          # the style's: 67-74 in the dark theme
+    assert w.spec_tabs.styleSheet() == "" and w.lt_tabs.styleSheet() == ""
+
+
+def test_a_click_on_a_tab_leaves_the_keys_to_the_window(window):
+    """The tabs never take the keyboard (their focus ring showed in glass): after a click on one, ← → still move
+    lambda. A guard: offscreen, a click did not give the bar the focus before either."""
+    from PySide6 import QtCore
+    from PySide6.QtTest import QTest
+
+    w, qapp = window
+    bar = w.lt_tabs.tabBar()
+    QTest.mouseClick(bar, QtCore.Qt.MouseButton.LeftButton, pos=bar.tabRect(1).center())
+    qapp.processEvents()
+    l0 = w.session.state.l
+    QTest.keyClick(w, QtCore.Qt.Key.Key_Right)
+    qapp.processEvents()
+    print("tab in front", w.lt_tabs.currentIndex(), "focus on the bar", bar.hasFocus(), "lambda", l0, "->",
+          w.session.state.l)
+    assert w.lt_tabs.currentIndex() == 1 and not bar.hasFocus() and w.session.state.l == l0 + 1
