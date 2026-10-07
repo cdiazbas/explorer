@@ -697,18 +697,15 @@ class Shell(QtWidgets.QMainWindow):
                              ("column", min(1.0, (strip_h - gap * len(todo)) / sum(q.height() for q in ss),
                                             strip_w / max(q.width() for q in ss)))):
                 if best is None or k > best[0] + 1e-9:
-                    best = (k, plan_, ss)
+                    best = (k, plan_, ss, self.spec_dock.width() if pw is None else pw)
         assert best is not None
-        k, plan, sizes = best
+        k, plan, sizes, panels_w = best
         if k < 1.0 and image_w * k < DETACHED_MIN_W:
             plan, sizes = "cascade", [self.detached_size(wd) for wd in windowed]
         else:
             sizes = scaled(sizes, k)
         x, y = x0, y0
         for i, (d, s, wd) in enumerate(zip(todo, sizes, windowed, strict=True)):
-            if wd:                                      # its image as wide as a lone one's, its panels the rest
-                cubes[d].row.setStretch(0, image_w)
-                cubes[d].row.setStretch(1, max(1, sizes[i].width() - image_w))
             if plan == "row":
                 at = QtCore.QPoint(x, y0)
             elif plan == "column":
@@ -719,6 +716,10 @@ class Shell(QtWidgets.QMainWindow):
                 at = QtCore.QPoint(max(scr.left(), scr.right() + 1 - s.width() - CASCADE * i), y0 + CASCADE * i)
             d.setGeometry(QtCore.QRect(at, s))
             d.show()
+            if wd:                                      # its image as wide as a lone one's share, its panels the rest
+                split = cubes[d].split
+                share = image_w / (image_w + docks.PANEL_GUTTER + panels_w)
+                split.setSizes([round(split.width() * share), split.width() - round(split.width() * share)])
             x = d.frameGeometry().right() + 1 + glass.GAP
             y = d.frameGeometry().bottom() + 1 + glass.GAP
 

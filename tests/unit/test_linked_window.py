@@ -494,3 +494,20 @@ def test_an_image_title_has_close_then_float_at_the_left_as_every_panel(window):
     assert kinds == ["close", "float"] and xs[0] < xs[1] < t.width() // 2
     assert ref_names == ["qt_dockwidget_closebutton", "qt_dockwidget_floatbutton"]
     t.leaveEvent(None)
+
+
+def test_a_cube_s_window_shares_its_width_between_image_and_panels_by_hand(window):
+    """In a cube's window the panels' heights could be changed but not the width between them and the image (the
+    user, 2026-10-07): a handle between them, as between the spectra and lambda-t."""
+    w, qapp = window
+    other = w.linked[0]
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.5)
+    split = other.split
+    before = split.sizes()
+    split.setSizes([before[0] + 40, before[1] - 40])        # what dragging its handle does
+    qapp.processEvents()
+    print("image | panels:", before, "->", split.sizes(), "handle", split.handle(1).isVisible())
+    assert split.count() == 2 and split.handle(1).isVisible() and split.sizes()[0] == before[0] + 40
+    w.detach_action.setChecked(False)
+    spin(qapp, lambda: False, timeout=0.3)
