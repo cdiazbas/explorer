@@ -168,8 +168,10 @@ def _read_im(im_path):
         return np.asarray(h[0].data)                       # big-endian float32, (t, s, l, y, x)
 
 
-def write_sp_fits(im_path, sp_path, rows=64):
-    """The per-pixel file: the _im values transposed to numpy (y, x, s, t, lambda), written rows at a time."""
+def write_sp_fits(im_path, sp_path, rows=64, wcs=False):
+    """The per-pixel file: the _im values transposed to numpy (y, x, s, t, lambda), written rows at a time. wcs: with
+    the _im's WCS-TAB extension, PSi_j keywords on its own axes and DATEREF, as SSTRED writes its _sp.fits, so that
+    a reader of the header finds the times and wavelengths of the image cube in it."""
     from astropy.io import fits
 
     im = _read_im(im_path)
@@ -185,6 +187,14 @@ def write_sp_fits(im_path, sp_path, rows=64):
     h["BUNIT"] = "W m^-2 Hz^-1 sr^-1"
     h["ORIGIN"] = "explorer synthetic cube"
     h["SYNTHVER"] = (SYNTH_VERSION, "explorer.testing.synth version")
+    if wcs:
+        h.set("EXTEND", True, after="NAXIS5")
+        h["DATEREF"] = f"{DATE}T00:00:00.000000"
+        for i, extra in ((1, None), (2, None), (4, "HPLN-INDEX"), (5, "HPLT-INDEX")):
+            h[f"PS{i}_0"] = "WCS-TAB"
+            h[f"PS{i}_1"] = "HPLN+HPLT+WAVE+TIME"
+            if extra:
+                h[f"PS{i}_2"] = extra
     out = fits.StreamingHDU(str(sp_path), h)
     try:
         for y0 in range(0, ny, rows):
@@ -192,6 +202,9 @@ def write_sp_fits(im_path, sp_path, rows=64):
             out.write(blk.astype(">f4"))
     finally:
         out.close()
+    if wcs:
+        with fits.open(im_path) as src:
+            fits.append(str(sp_path), src["WCS-TAB"].data, src["WCS-TAB"].header)
     return sp_path
 
 

@@ -3,6 +3,20 @@ from dataclasses import dataclass
 
 import numpy as np
 
+# axis names (CTYPE up to its first dash) that are positions on the Sun or the sky: helioprojective, heliographic,
+# Carrington, solar, celestial
+SPATIAL = ("HPLN", "HPLT", "HGLN", "HGLT", "CRLN", "CRLT", "SOLX", "SOLY", "RA", "DEC")
+
+
+def spatial_lead(axes) -> tuple[str, ...]:
+    """The spatial axes among the leading ones (numpy order) when the last two are not both spatial: the order of a
+    per-pixel file (SSTRED's _sp.fits: HPLT, HPLN, STOKES, UTC, WAVE), whose frames would be lambda-t planes. Empty
+    for an image cube, and for axes no header names."""
+    names = [str(a).upper() for a in axes]
+    if len(names) < 3 or all(a in SPATIAL for a in names[-2:]):
+        return ()
+    return tuple(a for a in names[:-2] if a in SPATIAL)
+
 
 @dataclass(frozen=True)
 class Layout:

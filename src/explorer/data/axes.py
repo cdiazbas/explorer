@@ -81,7 +81,14 @@ def roles(names, shape, axes: str | None = None) -> Roles:
     """By --axes when given; else by axis name (CTYPE); else by the number of unnamed leading axes: three are
     SOLARNET's (t, s, lambda), two are (t, lambda), one is unknown (a profile axis: it may be t or lambda, and only
     the user can tell, with --axes). names and shape are those of the whole cube, numpy order; the last two axes are
-    the image."""
+    the image. ValueError when the header puts spatial axes before the image's (a per-pixel file: its frames would
+    be lambda-t planes, its t the image's rows), whatever --axes says."""
+    from .formats.layout import spatial_lead
+
+    first = spatial_lead(names)
+    if first:
+        raise ValueError(f"its header puts the spatial axes ({', '.join(first)}) before the image's "
+                         f"({', '.join(str(a) for a in names[-2:])}): a per-pixel file, not an image cube")
     lead = [str(a).upper() for a in names[:-2]]
     how = "header"
     if axes:
@@ -94,9 +101,14 @@ def roles(names, shape, axes: str | None = None) -> Roles:
         t, s, l = find("UTC", "TIME", "TAI"), find("STOKES"), find("WAVE", "AWAV", "FREQ")  # noqa: E741
         named = (t, s, l) != (None, None, None)
         if len(lead) == 3:
-            if None in (t, s, l):                       # what the names do not say comes from SOLARNET's order
-                how = "SOLARNET order"
-            t, s, l = (0 if t is None else t), (1 if s is None else s), (2 if l is None else l)  # noqa: E741
+            if None in (t, s, l):                       # what the names do not say comes from SOLARNET's order,
+                how = "SOLARNET order"                  # on the axes the names leave free
+                pos = [t, s, l]
+                for k in range(3):                      # t at 0, s at 1, lambda at 2 when free, else the first free
+                    if pos[k] is None:
+                        free = [i for i in range(3) if i not in pos]
+                        pos[k] = k if k in free else free[0]
+                t, s, l = pos  # noqa: E741
         elif not named and len(lead) == 2:
             t, l, how = 0, 1, "default (t, lambda)"  # noqa: E741
         elif not named and len(lead) == 1:
@@ -168,6 +180,22 @@ class Axes:
         bot = c[1, 0] * (1 - fx) + c[1, 1] * fx
         v = top * (1 - fy) + bot * fy
         return float(v[0]), float(v[1])
+
+
+def check(ax: Axes, r: Roles, names=()) -> None:
+    """ValueError when the header's times or wavelengths are not as many as the cube's steps in t or lambda: such a
+    header describes another cube (a per-pixel file's, or one cut after its header was written), and its values
+    would be indexed past their end while drawing (Axes.utc, dlam_A). Refused at opening, with both counts; a cube
+    without a t or lambda axis is not checked on it (only its index 0 is asked). names: the cube's axis names,
+    numpy order, for the message."""
+    def axis(i):
+        return f" (axis {names[i]})" if i is not None and i < len(names) else ""
+
+    for what, values, i, n in (("times", ax.t_sec, r.t, r.nt), ("wavelengths", ax.lam_nm, r.l, r.nl)):
+        if values is not None and i is not None and len(values) != n:
+            raise ValueError(f"its header gives {len(values)} {what} for {n} steps along its "
+                             f"{'t' if what == 'times' else 'lambda'}{axis(i)}: the header and the data do not "
+                             f"describe the same cube")
 
 
 def from_fits(path) -> Axes:
