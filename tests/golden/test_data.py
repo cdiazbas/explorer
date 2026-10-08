@@ -68,6 +68,7 @@ def test_series_identical_to_the_prototype(golden):
 
 def test_per_pixel_files_identical_to_the_prototype(golden):
     from explorer.data.io import FrameReader
+    from explorer.data.masking import STOKES, mask_along
     from explorer.data.pixel import SpLP, lp_pixel_layout, open_pixel
 
     case, ref, meta, im = golden
@@ -85,7 +86,12 @@ def test_per_pixel_files_identical_to_the_prototype(golden):
             for k in ("scale", "zero", "max_resid"):
                 assert cal[k] == pytest.approx(want[k], rel=1e-12, abs=1e-24), k
             for j, (y, x) in enumerate(case["pixels"]):
-                assert np.array_equal(lp.block(y, x), ref[f"icube.{j}"], equal_nan=True), f"icube {(y, x)}"
+                # the prototype's values with the negative-I rule (data/masking.py): it kept the padding's 0 counts
+                # as the fit's zero, negative (-7.3e-12 in the synthetic case); explorer reads them as NaN
+                want_blk = ref[f"icube.{j}"].copy()
+                if want_blk.shape[0] == STOKES:
+                    mask_along(want_blk, 0)
+                assert np.array_equal(lp.block(y, x), want_blk, equal_nan=True), f"icube {(y, x)}"
             lp.close()
         if sp is not None:
             sp.close()

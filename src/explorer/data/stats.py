@@ -153,7 +153,9 @@ def quv_amplitude_ranges(frames: FrameReader, roles: Roles, cont, t, threads=8, 
     the signal splits between them depends on the reference azimuth. In % of each pixel's I_c when the continuum
     tuning is known, else in the data's units. Frames are read `threads` at a time, so memory holds `threads`
     frames and one A per Stokes; byte swap, scale and maximum in one numba pass per frame (absmax_into, in strips
-    on `strips`): 0.99 -> 0.44-0.49 s with the frames in the page cache (6173, bellatrix).
+    on `strips`): 0.99 -> 0.44-0.49 s with the frames in the page cache (6173, bellatrix). In a cube of 4 Stokes
+    a pixel where I is negative at that lambda counts nowhere (its scale 0: the negative-I rule, masking.py), from
+    I's frames at each lambda (FrameReader.negative_i: one more read per lambda unless the viewer read them).
     Returns ({stokes: half-width}, {stokes: (noise, pixels with signal, percentile)}, seconds reading, total)."""
     sa = roles.s
     if sa is None:
@@ -176,6 +178,21 @@ def quv_amplitude_ranges(frames: FrameReader, roles: Roles, cont, t, threads=8, 
         tio[0] += time.perf_counter() - q
         return frames.to_float32(b) if converted else b
 
+    def masked(scale, s_, lam):
+        """scale, 0 where I is negative at this lambda (a copy only when somewhere it is)."""
+        j = [0] * len(frames.shape[:-2])
+        if roles.t is not None:
+            j[roles.t] = int(t)
+        j[sa] = s_
+        if roles.l is not None:
+            j[roles.l] = lam
+        neg = frames.negative_i(j)
+        if neg is None or not neg.size:
+            return scale
+        out = scale.copy()
+        out[neg] = 0
+        return out
+
     dtype = np.float32 if converted else lay.dtype
     if cont is not None:
         ic = np.frombuffer(read(0, cont), dtype).astype(np.float32)
@@ -192,12 +209,13 @@ def quv_amplitude_ranges(frames: FrameReader, roles: Roles, cont, t, threads=8, 
             noise = np.inf
             jobs = [(s_, lam) for lam in lams]
             for i in range(0, len(jobs), threads):
-                for b in ex.map(lambda a: read(*a), jobs[i:i + threads]):
-                    sub = np.frombuffer(b, dtype)[::stride].astype(np.float32) * scale[::stride]
+                got = ex.map(lambda a: (read(*a), masked(scale, *a)), jobs[i:i + threads])
+                for b, sc in got:
+                    sub = np.frombuffer(b, dtype)[::stride].astype(np.float32) * sc[::stride]
                     sub = sub[np.isfinite(sub) & (sub != 0)]
                     if sub.size > 100:
                         noise = min(noise, 1.4826 * float(np.median(np.abs(sub - np.median(sub)))))
-                    absmax_into(A, b, dtype, scale, strips, parts)     # NaN padding never wins
+                    absmax_into(A, b, dtype, sc, strips, parts)        # NaN padding never wins
             if not np.isfinite(noise) or noise <= 0:
                 continue
             sig = A[A > k_sig * noise]

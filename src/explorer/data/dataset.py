@@ -24,6 +24,7 @@ from . import formats
 from .cache import FrameCache
 from .executors import Executors
 from .io import FrameReader
+from .masking import stokes_axis
 from .pixel import PixelReader, SpFits, calibrate_frames, open_pixel
 from .policy import Budgets, MemoryGuard, StorageProbe, plan_budgets
 from .rowbands import RowBands
@@ -77,6 +78,8 @@ class Dataset:
             self.frame_calibration: dict | None = None  # integer LP frames fitted to a FITS per-pixel file
             if not no_sp:
                 self._open_pixel(sp)
+            # after the per-pixel file's calibration, which fits the values as stored
+            self.frames.stokes = stokes_axis(self.roles)
             # without a per-pixel file, series come a row at a time on network storage (rowbands.py)
             self.rowbands: RowBands | None = (RowBands(self.frames, max_bytes=self.budgets.pixel)
                                            if self.pixel is None and getattr(self.probe, "network", False) else None)
@@ -138,9 +141,11 @@ class Dataset:
         return self.budgets
 
     def nbytes(self) -> int:
-        """The bytes the caches hold: images, the cursor's per-pixel blocks or row blocks, the blocks along slits."""
+        """The bytes the caches hold: images, the cursor's per-pixel blocks or row blocks, the blocks along slits,
+        where I is negative."""
         return (self.cache.nbytes() + (self.pixel.nbytes() if self.pixel is not None else 0)
-                + (self.rowbands.nbytes() if self.rowbands is not None else 0) + self.slit_cache.nbytes())
+                + (self.rowbands.nbytes() if self.rowbands is not None else 0) + self.slit_cache.nbytes()
+                + self.frames.neg_i.nbytes())
 
     # ---------------------------------------------------------------- reads
     def image(self, idx) -> Future:

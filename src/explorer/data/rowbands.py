@@ -8,6 +8,8 @@ system's cache or 0.3-1.4 s from the storage. Blocks of 8 rows (64 kB) cost the 
 storage was fast (1.339, 1/8) and nothing when it was slow (0.96x), docs/journal.md: one row, which serves every
 horizontal move, is the default. Blocks are aligned (rows [k*rows, (k+1)*rows)). On local disks bytes are not free:
 Dataset uses this on network storage only.
+A series of Q, U or V in a cube of 4 Stokes needs I's for the negative-I rule (masking.py): I's block of rows is
+kept beside it, in the same LRU, so the pixels along the row find both in memory.
 """
 import threading
 from collections import OrderedDict
@@ -34,18 +36,41 @@ class RowBands:
         fixed = tuple(-1 if a in free else int(i) for a, i in enumerate(idx))
         return fixed, free, int(y) // self.rows
 
-    def _values(self, band, y, x):
-        return self.frames.to_float32(band[..., int(y) % self.rows, int(x)])
-
-    def peek(self, y: int, x: int, idx, free_axes):
-        """The series from a block in memory, or None; never reads."""
+    def _band(self, y, idx, free_axes, read: bool):
+        """The block of rows around y for the series at idx along free_axes: in memory, else read when `read` (else
+        None)."""
         key = self._key(y, idx, free_axes)
         with self._lock:
             band = self._lru.get(key)
-            if band is None:
-                return None
-            self._lru.move_to_end(key)
-        return self._values(band, y, x)
+            if band is not None:
+                self._lru.move_to_end(key)
+                return band
+        if not read:
+            return None
+        y0 = int(y) // self.rows * self.rows
+        band = self.frames.row_band(idx, free_axes, y0, min(self.frames.ny, y0 + self.rows))
+        with self._lock:
+            if key not in self._lru:
+                self._lru[key] = band
+                self._bytes += band.nbytes
+                self._trim()
+        return band
+
+    def _values(self, band, y, x, idx, free_axes, read: bool):
+        """The series at (y, x) from its block, the negative-I rule applied; None when I's block is needed and not
+        in memory (read False)."""
+        fr, r = self.frames, int(y) % self.rows
+        v = fr.to_float32(band[..., r, int(x)])
+        ii = fr.i_index(idx, free_axes)
+        if ii is None:
+            return fr.mask_series(v, idx, free_axes)
+        ib = self._band(y, ii, free_axes, read)
+        return None if ib is None else fr.mask_series(v, idx, free_axes, fr.to_float32(ib[..., r, int(x)]))
+
+    def peek(self, y: int, x: int, idx, free_axes):
+        """The series from a block in memory, or None; never reads."""
+        band = self._band(y, idx, free_axes, read=False)
+        return None if band is None else self._values(band, y, x, idx, free_axes, read=False)
 
     def series(self, y: int, x: int, idx, free_axes) -> np.ndarray:
         """As FrameReader.series; reads the block of rows around (y, x) when it is not in memory. When one block
@@ -59,16 +84,13 @@ class RowBands:
         y0 = int(y) // self.rows * self.rows
         y1 = min(self.frames.ny, y0 + self.rows)
         need = int(np.prod(sizes, dtype=np.int64)) * (y1 - y0) * self.frames.nx * self.frames.layout.dtype.itemsize
+        if self.frames.i_index(idx, free_axes) is not None:
+            need *= 2                                   # I's block beside it
         if need > self.max_bytes:
             return self.frames.series(y, x, idx, free_axes)
-        band = self.frames.row_band(idx, free_axes, y0, y1)
-        key = self._key(y, idx, free_axes)
-        with self._lock:
-            if key not in self._lru:
-                self._lru[key] = band
-                self._bytes += band.nbytes
-                self._trim()
-        return self._values(band, y, x)
+        got = self._values(self._band(y, idx, free_axes, read=True), y, x, idx, free_axes, read=True)
+        assert got is not None
+        return got
 
     def nbytes(self) -> int:
         return self._bytes

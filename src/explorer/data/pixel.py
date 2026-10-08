@@ -7,6 +7,7 @@ Two layouts, both written by SSTRED next to the image cube:
 A read takes the aligned strip of `strip` pixels around the one asked for, and keeps them in a small LRU: on
 StorNext a strip of up to 64 pixels costs about the same as one pixel (docs/measured.md), so the pixels around
 the cursor come with it.
+A block of 4 Stokes leaves with the negative-I rule applied (masking.py): every Stokes NaN where I is negative.
 """
 import os
 import threading
@@ -16,6 +17,7 @@ from dataclasses import replace
 import numpy as np
 
 from ..obs import span
+from . import masking
 from .formats import Layout, fits_layout
 from .io import FrameReader, ShortRead
 
@@ -49,8 +51,12 @@ class PixelReader:
         return np.frombuffer(raw, self.layout.dtype).reshape(k, self.ns, self.nt, self.nl)
 
     def strip_read(self, y: int, x0: int, k: int) -> np.ndarray:
-        """(k, ns, nt, nl) float32 in physical units, k neighbouring pixels of row y."""
+        """(k, ns, nt, nl) float32 in physical units, k neighbouring pixels of row y; with 4 Stokes, NaN at every
+        Stokes where I is negative."""
         raise NotImplementedError
+
+    def _masked(self, out: np.ndarray) -> np.ndarray:
+        return masking.mask_along(out, 1) if self.ns == masking.STOKES else out
 
     def peek(self, y: int, x: int):
         """The block at (y, x) if it is cached (marked as just used), else None; never reads."""
@@ -139,7 +145,7 @@ class SpFits(PixelReader):
             out = out * self._conv[0] + self._conv[1]
         if self._blank is not None:
             out[a == self._blank] = np.nan
-        return out.reshape(k, self.ns, self.nt, self.nl)
+        return self._masked(out.reshape(k, self.ns, self.nt, self.nl))
 
 
 class SpLP(PixelReader):
@@ -188,7 +194,7 @@ class SpLP(PixelReader):
         out = raw.astype(np.float32) * self.scale + self.zero
         if self.layout.blank is not None:
             out[raw == raw.dtype.type(self.layout.blank)] = np.nan
-        return out
+        return self._masked(out)
 
 
 def calibrate_frames(frames: FrameReader, sp: PixelReader, pixels=None) -> dict:
