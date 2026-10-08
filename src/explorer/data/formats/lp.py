@@ -9,7 +9,9 @@ clipped cubes), the scans in the file name say it (lp_single_layout).
 
 Values are counts in the integer cubes. What they mean is in the IDL save file SSTRED writes beside the cube,
 <stem>_im_times+wvl.idlsave (lp_sidecar): the scale (fac) and the value that stands for no data (nan_rplcmnt),
-read by lp_values; its wavelengths and times by axes.from_lp.
+read by lp_values; its wavelengths and times by axes.from_lp. A cube derived from another of the same observation
+(<stem>_stokesI_..., Stokes I alone) has none of its own: the full-Stokes cube's (lp_sibling_sidecar) gives its
+times and wavelengths only, never its values' meaning.
 """
 import os
 import re
@@ -23,6 +25,7 @@ HEADER_BYTES = 512
 _SCANS = re.compile(r"=(\d+)-(\d+)(?=[._]|$)")      # "=0-85": the scans in a cube, as SSTRED names it
 _DATATYPE = {"1": "u1", "2": "i2", "3": "i4", "4": "f4"}
 _IMAGE_CUBE = re.compile(r"(.*)_im(?:\.[^.]+)*?\.[if]cube$")       # <stem>_im[.tag].icube: tag as in "aligned6173"
+_DERIVED = re.compile(r"_stokes[IQUV]+(?=_)")      # "_stokesI_": some of the Stokes of the "_stokes_" cube
 SIDECAR = "_im_times+wvl.idlsave"
 
 
@@ -104,6 +107,22 @@ def lp_sidecar(path) -> str | None:
         m = _IMAGE_CUBE.match(os.path.basename(p))
         side = os.path.join(os.path.dirname(p), m.group(1) + SIDECAR) if m else None
         if side is not None and os.path.isfile(side):
+            return side
+    return None
+
+
+def lp_sibling_sidecar(path) -> str | None:
+    """For an LP image cube without an IDL save file of its own (lp_sidecar), the one of the cube it was derived
+    from in the same observation: <stem>_stokes_<rest>_im_times+wvl.idlsave for <stem>_stokesI_<rest>_im[.tag].icube,
+    next to the path given, else next to the file it links to; None when the name says no such cube or there is no
+    file. The same scans and tunings, so its times and wavelengths can be the derived cube's (axes.from_lp checks
+    their sizes); its fac and nan_rplcmnt describe the other cube's values (float, unscaled), never these."""
+    for p in dict.fromkeys((os.path.abspath(str(path)), os.path.realpath(str(path)))):
+        m = _IMAGE_CUBE.match(os.path.basename(p))
+        if m is None or not _DERIVED.search(m.group(1)):
+            continue
+        side = os.path.join(os.path.dirname(p), _DERIVED.sub("_stokes", m.group(1), count=1) + SIDECAR)
+        if os.path.isfile(side):
             return side
     return None
 

@@ -20,6 +20,7 @@ cube (~6 km/s); velocities are those of the tabulated lambda. Axes.distortion sa
 """
 import json
 import math
+import os
 import re
 from typing import NamedTuple
 
@@ -297,12 +298,17 @@ def from_lp(path, r: Roles) -> Axes:
     each scan's time as the mean over its tunings, as from_fits takes it. The times are seconds since midnight UT
     of a day the file does not give, so they are shown as times of day (Axes.time_of_day). Measured on real cubes
     against their FITS siblings: lambda identical, times within 1e-10 s. The line is the one laboratory line of
-    LINES inside the tuned range. Never raises: without the file, or with values that do not match the cube's axes,
-    what it cannot give stays unknown, and Axes.source says why."""
+    LINES inside the tuned range. Without a file of its own, the one of the cube it was derived from
+    (formats.lp_sibling_sidecar: a Stokes I cube of the full-Stokes one), only when both its lambda and its times
+    are the sizes of this cube's (nl, and nt scans): else none of it, since other sizes say another cube; that
+    borrowing is said once per file on the console. Never raises: without the file, or with values that do not
+    match the cube's axes, what it cannot give stays unknown, and Axes.source says why."""
     from .formats import idlsave, lp_sidecar
+    from .formats.lp import lp_sibling_sidecar
 
     ax = Axes()
     side = lp_sidecar(path)
+    borrowed = side is None and (side := lp_sibling_sidecar(path)) is not None
     if side is None:
         ax.source.append("no IDL save file beside the cube")
         return ax
@@ -317,14 +323,24 @@ def from_lp(path, r: Roles) -> Axes:
         ax.source.append(f"IDL save {what} does not match the cube (nt={r.nt}, nl={r.nl}): not used")
         log.warning("axes of %s: %s", path, ax.source[-1])
 
+    if borrowed and not _sizes_match(v, r):
+        mismatch(f"of the same observation {os.path.basename(side)}: lambda "
+                 f"{getattr(v.get('lambda'), 'shape', None)}, time {getattr(_seconds(v), 'shape', None)}")
+        return ax
+    if borrowed:
+        ax.source.append(f"times and lambda from {os.path.basename(side)}, the same observation's")
+        if str(path) not in _borrowed:
+            _borrowed.add(str(path))
+            log.warning("%s: times and wavelengths only from %s (the same scans and tunings); its scale and padding "
+                        "value are another cube's: the values stay as stored", os.path.basename(str(path)),
+                        os.path.basename(side))
     lam = v.get("lambda")
     if isinstance(lam, np.ndarray) and lam.dtype.kind == "f" and r.l is not None and lam.shape == (r.nl,):
         ax.lam_nm = lam.astype(float)
         ax.source.append("lambda per tuning (IDL save lambda)")
     elif lam is not None:
         mismatch(f"lambda {getattr(lam, 'shape', '')}")
-    # the (scan, tuning) seconds are "time" in some files and "times" in others, the other holding 'HH:MM:SS' text
-    t = next((a for a in (v.get("time"), v.get("times")) if isinstance(a, np.ndarray) and a.dtype.kind == "f"), None)
+    t = _seconds(v)
     if t is not None and r.t is not None and t.shape[0] == r.nt:
         ax.t_sec, ax.time_of_day = t.reshape(r.nt, -1).mean(axis=1).astype(float), True
         ax.source.append("time per scan (IDL save, seconds of the day UT, mean over tunings)")
@@ -337,6 +353,23 @@ def from_lp(path, r: Roles) -> Axes:
             ax.source.append(f"line {ax.line}: the one laboratory line inside the tuned range")
     _isolated_continuum(ax)
     return ax
+
+
+_borrowed: set[str] = set()     # cubes whose times came from another cube's file: said once (linking reads them twice)
+
+
+def _seconds(v: dict):
+    """The (scan, tuning) seconds of an IDL save file: "time" in some files and "times" in others, the other holding
+    'HH:MM:SS' text; None without them."""
+    return next((a for a in (v.get("time"), v.get("times")) if isinstance(a, np.ndarray) and a.dtype.kind == "f"), None)
+
+
+def _sizes_match(v: dict, r: Roles) -> bool:
+    """Whether an IDL save file's lambda and times are a cube's: nl tunings, and nt scans of nl tunings each (or
+    one time per scan)."""
+    lam, t = v.get("lambda"), _seconds(v)
+    return (r.t is not None and r.l is not None and isinstance(lam, np.ndarray) and lam.shape == (r.nl,)
+            and t is not None and t.shape in ((r.nt, r.nl), (r.nt,)))
 
 
 # ---------------------------------------------------------------- units of the spectra

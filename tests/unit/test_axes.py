@@ -153,3 +153,53 @@ def test_lp_axes_that_do_not_match_the_cube_stay_unknown(tmp_path):
     (tmp_path / "bare").mkdir()
     bare = _lp_cube_with_save(tmp_path / "bare")                        # no file: nothing, and no error
     assert axes.from_lp(bare, axes.roles(lay.axes, lay.shape)).lam_nm is None
+
+
+def _derived_lp_cube(tmp_path, nt=2, nl=3):
+    """A Stokes I cube derived from a full-Stokes one, as SSTRED's directory holds it: <stem>_stokesI_<rest>_im
+    with an aligned tag, int16, and no times file of its own."""
+    head = f"stokes=[I], ns=1 :  datatype=2 (integer), dims=3, nx=5, ny=4, nt={nt * nl}, endian=l"
+    im = tmp_path / f"c=0-{nt - 1}_stokesI_corrected_im.aligned6173.icube"
+    im.write_bytes(head.encode().ljust(512, b"\0") + np.full((nt * nl, 4, 5), 7, "<i2").tobytes())
+    return im
+
+
+def test_a_derived_lp_cube_takes_times_and_lambda_only_from_its_observation_s_file(tmp_path, caplog):
+    from explorer.data import formats
+    from explorer.data.formats.lp import lp_sibling_sidecar
+
+    tod = 32457.73 + np.array([[0.0, 0.5, 1.0], [29.5, 30.0, 30.5]])
+    im = _derived_lp_cube(tmp_path)
+    side = synth.write_idlsave(tmp_path / "c=0-1_stokes_corrected_im_times+wvl.idlsave",
+                               {"lambda": np.array([854.04, 854.21, 854.40]), "time": tod,
+                                "times": np.array(["09:01:04.292", "09:01:33.754"]),
+                                "fac": np.float32(1.0), "nan_rplcmnt": np.float32(-1.7691475e-08)})
+    assert formats.lp_sidecar(im) is None                                # not its own
+    print("sibling:", lp_sibling_sidecar(im))
+    assert lp_sibling_sidecar(im) == side
+    lay = formats.open_layout(im)
+    print("layout:", lay.shape, "scale", lay.scale, "blank", lay.blank)
+    assert not lay.scaled and lay.blank is None                          # the other cube's fac and blank: not taken
+    with caplog.at_level("WARNING"):
+        ax = axes.from_lp(im, axes.roles(lay.axes, lay.shape))
+        axes.from_lp(im, axes.roles(lay.axes, lay.shape))                # said once per file
+    said = [r.getMessage() for r in caplog.records if "c=0-1_stokes_corrected_im_times+wvl" in r.getMessage()]
+    print("said:", said)
+    print("source:", ax.source)
+    np.testing.assert_allclose(ax.t_sec, tod.mean(axis=1))
+    np.testing.assert_allclose(ax.lam_nm, [854.04, 854.21, 854.40])
+    assert ax.line == "Ca II 854.2" and ax.time_of_day
+    assert len(said) == 1 and "times and wavelengths only" in said[0]
+
+
+def test_a_derived_lp_cube_refuses_an_observation_s_file_of_other_sizes(tmp_path):
+    from explorer.data import formats
+
+    im = _derived_lp_cube(tmp_path)
+    synth.write_idlsave(tmp_path / "c=0-1_stokes_corrected_im_times+wvl.idlsave",       # 5 scans against its 2
+                        {"lambda": np.array([854.04, 854.21, 854.40]), "time": np.zeros((5, 3))})
+    lay = formats.open_layout(im)
+    ax = axes.from_lp(im, axes.roles(lay.axes, lay.shape))
+    print("source:", ax.source)
+    assert ax.t_sec is None and ax.lam_nm is None                        # neither: the sizes say another cube
+    assert any("does not match" in s for s in ax.source)
