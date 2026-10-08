@@ -2,10 +2,11 @@
 cube its lambda and Stokes, linked to the main cube's or not.
 
 From the prototype's Viewer (set_index, _step, _on_hover, set_locked, the start in __init__) and the plan of linked
-windows (docs/PLAN_VENTANAS_ENLAZADAS.md in the project, §3.2). Linked cubes (ROADMAP E8.1) are members on the main
-cube's grid with its times, or a single frame (data.link decides): the cursor, the lock and t are the same state
-for all; each member's lambda and Stokes are the main's when linked, else its own, in the state too (ViewState.own),
-so that a change of either notifies as any other. Other grids and cadences (mapping pixels and times) come later.
+windows (docs/PLAN_VENTANAS_ENLAZADAS.md in the project, §3.2, §3.3). Linked cubes (ROADMAP E8.1, E8.4) are members
+on the main cube's grid (data.link decides): the cursor, the lock and t are the same state for all, each member
+showing its time nearest to the main cube's t (data.link.frames: Member.t, read in member_state alone); each
+member's lambda and Stokes are the main's when linked, else its own, in the state too (ViewState.own), so that a
+change of either notifies as any other. Other grids (mapping pixels) come later.
 """
 import dataclasses
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from typing import Protocol
 import numpy as np
 
 from ..data.axes import Roles
+from ..data.link import frames
 from ..obs import counter
 from .loop import Loop
 from .state import Store, ViewState
@@ -32,19 +34,20 @@ class Cube(Protocol):
 @dataclass
 class Member:
     """A cube in the session; link_l, link_s: its lambda and Stokes are the main cube's (decision D3 of the
-    linked-windows plan), else its own (ViewState.own)."""
+    linked-windows plan), else its own (ViewState.own); t: its t at each of the main cube's (data.link.frames)."""
     dataset: Cube
     link_l: bool = True
     link_s: bool = True
+    t: tuple[int, ...] = ()
 
 
 class Session:
     def __init__(self, loop: Loop, main):
         """main: the main cube (an explorer.data Dataset). Starts as the prototype did: the middle tuning, the first t
         and Stokes, the cursor at the centre of the image."""
-        self.members = [Member(main)]
-        self.master = 0                                 # the member whose t is the time of the session
         r = main.roles
+        self.members = [Member(main, t=tuple(range(r.nt)))]
+        self.master = 0                                 # the member whose t is the time of the session
         self.sizes = {"t": r.nt, "s": r.ns, "l": r.nl}
         self.present = {"t": r.t is not None, "s": r.s is not None, "l": r.l is not None}
         self.store = Store(loop, ViewState(l=r.nl // 2 if r.l is not None else 0, cursor=(main.ny // 2, main.nx // 2)))
@@ -59,25 +62,31 @@ class Session:
         return self.store.state
 
     def add(self, dataset, link_l: bool = False, link_s: bool | None = None) -> int:
-        """A linked cube on the main cube's grid (data.link has checked its times); returns its member number. Its
-        lambda is its own by default (another line: lambda by index means nothing across lines); its Stokes are the
-        main cube's when both have the same number, else its own."""
+        """A linked cube on the main cube's grid; returns its member number. At each of the main cube's t it shows
+        its time nearest to it, by their axes' times (data.link.frames, as data.link.plan has checked); without
+        times on both, the same t, so only with as many times (ValueError otherwise). Its lambda is its own by
+        default (another line: lambda by index means nothing across lines); its Stokes are the main cube's when
+        both have the same number, else its own."""
         if (dataset.ny, dataset.nx) != (self.main.ny, self.main.nx):
             raise ValueError(f"{dataset.nx}x{dataset.ny} pixels against {self.main.nx}x{self.main.ny}: only cubes on "
                              f"the main cube's grid are linked yet")
         r, main = dataset.roles, self.main.roles
+        fr = frames(getattr(self.main, "axes", None), getattr(dataset, "axes", None), main.nt, r.nt)    # 1 without t
+        if fr.t is None:
+            raise ValueError(fr.note)
         if link_s is None:
             link_s = r.s is not None and main.s is not None and r.ns == main.ns
-        self.members.append(Member(dataset, link_l=bool(link_l) and r.nl == main.nl, link_s=bool(link_s)))
+        self.members.append(Member(dataset, link_l=bool(link_l) and r.nl == main.nl, link_s=bool(link_s),
+                                   t=tuple(int(k) for k in fr.t)))
         own = (r.nl // 2 if r.l is not None else 0, 0)
         k = len(self.members) - 1
         self.store.set(own=self.store.state.own + (own,), panels=self.store.state.panels | {f"image:{k}"})
         return k
 
     def member_state(self, member: int, state: ViewState | None = None) -> ViewState:
-        """The state as member k reads it: t within its times (a single frame at every t), its lambda and Stokes (the
-        main's when linked), its panels ("spectra:k" as "spectra"; "image:k" as "image", its image shown), no slit
-        (the slit is the main cube's). The main cube's state as it is."""
+        """The state as member k reads it: its t nearest in time to the main cube's (Member.t; a single frame at every
+        t), its lambda and Stokes (the main's when linked), its panels ("spectra:k" as "spectra"; "image:k" as
+        "image", its image shown), no slit (the slit is the main cube's). The main cube's state as it is."""
         st = state or self.store.state
         if member == 0:
             return st
@@ -85,7 +94,7 @@ class Session:
         own_l, own_s = st.own[member - 1]
         mine = frozenset(p.split(":")[0] for p in st.panels if p.endswith(f":{member}"))
         r = m.dataset.roles
-        return dataclasses.replace(st, t=min(st.t, r.nt - 1), l=min(st.l if m.link_l else own_l, r.nl - 1),
+        return dataclasses.replace(st, t=m.t[st.t], l=min(st.l if m.link_l else own_l, r.nl - 1),
                                    s=min(st.s if m.link_s else own_s, r.ns - 1), panels=mine, path=None, draft=None)
 
     def set_member_index(self, member: int, axis: str, v: int) -> None:

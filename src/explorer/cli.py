@@ -28,9 +28,9 @@ def _parser() -> argparse.ArgumentParser:
   explorer stokes_6173_im.icube                 a La Palma cube: its axes from its _sp file or the scans in its name
   explorer Blos.6173_map.fcube --axes t         a map whose frames are times (nothing in the file says so)
   explorer stokes_6173_im.icube Blos.6173_map.fcube Vlos.6173_map.icube
-                                                linked cubes: the first leads; the others, on its pixels and at its
-                                                times, show beside it and follow its cursor and t, each at its own λ
-                                                (other pixels or times: not linked yet, and said why)
+                                                linked cubes: the first leads; the others, on its pixels, show beside
+                                                it and follow its cursor and t (their times nearest to its), each at
+                                                its own λ (other pixels: not linked yet, and said why)
 
 subcommands (explorer <subcommand> --help):
 {lines}
@@ -39,8 +39,9 @@ explorer --demo is explorer demo""")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     ap.add_argument("cubes", nargs="*", metavar="cube",
                     help="a cube to open: _im.fits, or a La Palma .icube / .fcube; its per-pixel file is found next "
-                         "to it. More cubes: linked to the first (the same pixels and times; a map of one frame is "
-                         "shown at every t); a cube that cannot be linked yet is left out, with the reason")
+                         "to it. More cubes: linked to the first (the same pixels; at each of its times, their "
+                         "nearest; without times, as many as its; a map of one frame is shown at every t); a cube that "
+                         "cannot be linked yet is left out, with the reason")
     ap.add_argument("--sp", help="this per-pixel file instead of the one found next to the (first) cube")
     ap.add_argument("--nosp", action="store_true", help="read without the per-pixel files")
     ap.add_argument("--axes", help="what the (first) cube's leading axes are, slowest first: t,s,l, s,l, t,l, or t "

@@ -1,7 +1,9 @@
-"""Linking cubes to the first one (ROADMAP E8.1): which of the others can follow it, and how their leading axes are
-read. The first cube leads: its grid and its times are everyone's. This first step links only what lies on the
-same grid with the same times (or a single frame, shown at every t); other grids and cadences are refused with
-what does not match, never linked wrong.
+"""Linking cubes to the first one (ROADMAP E8.1, E8.4): which of the others can follow it, how their leading axes are
+read, and which of their times each of its times shows. The first cube leads: its grid and its times are
+everyone's. What lies on the same grid links: with times on both, at its time nearest to the first cube's (another
+cadence, another start, two series joined); without, only with as many times (or a single frame, shown at every t).
+Other grids, and other cadences without times to match them by, are refused with what does not match, never linked
+wrong.
 
     link = plan(main, path)             # main: a Dataset (or describe(path)); path: another cube
     if link.ok: Dataset.open(path, axes=link.axes) ... else: print(link.why)
@@ -11,8 +13,8 @@ How a linked cube's leading axes are read, the first evidence that says it:
 2. the first cube: frames that nothing names, as many as the first cube's times, are those times (a field or
    velocity map of the same series: Blos, Vlos); a single frame is shown at every t;
 3. else it is not linked, and the reason says what --axes would make it.
-Then the checks: the same grid (ny, nx); the same number of times; where both have times, the same times, within
-half the first cube's cadence (an LP cube's are times of day: compared as such).
+Then the checks: the same grid (ny, nx); its times matched to the first cube's (frames: an LP cube's are times of
+day, compared as such; FITS cubes of other days are refused).
 """
 import os
 from dataclasses import dataclass
@@ -55,7 +57,7 @@ def _name(path) -> str:
     return os.path.basename(str(path))
 
 
-def clock(ax: _axes.Axes) -> tuple[np.datetime64 | None, np.ndarray] | None:
+def clock(ax: _axes.Axes | None) -> tuple[np.datetime64 | None, np.ndarray] | None:
     """(the day, or None for an LP cube's times of day; seconds since that day's midnight UT per t), or None
     without times."""
     if ax is None or ax.t_sec is None:
@@ -67,23 +69,50 @@ def clock(ax: _axes.Axes) -> tuple[np.datetime64 | None, np.ndarray] | None:
     return day, t + (ax.dateref - day) / np.timedelta64(1, "s")
 
 
-def same_times(main: _axes.Axes, other: _axes.Axes) -> tuple[bool, str]:
-    """Whether two cubes' times are the same, within half the main cube's cadence; (True, "") when either has none
-    (the main's are taken)."""
+@dataclass(frozen=True)
+class Frames:
+    """Which of a linked cube's times is shown at each of the first cube's (Session.member_state reads t from it)."""
+    t: np.ndarray | None            # (nt of the first,) its t at each; None: not linked (note says why)
+    dt: np.ndarray | None           # its time minus the first cube's at each, s; None without times on both
+    note: str                       # how they were matched (for the start-up's log), or why not
+
+
+def frames(main: _axes.Axes | None, other: _axes.Axes | None, nt: int, n: int, lead: str = "the first cube") -> Frames:
+    """A linked cube's t at each of the first cube's nt times (n: its own number of times; axes None: no times).
+    One time: shown at every t. Times on both (the same day): its time nearest to each of the first cube's, the
+    earlier of two as near, as CRISPEX's tsel_ref (crispex.pro:2898-2906); however far it is, as there, and as the
+    plan of linked windows maps time (§3.3: the nearest, with its delta-t); the note says at how many of the first
+    cube's times the nearest is more than half its own cadence away (outside its series, or in a gap). Without times
+    on either: the first cube's t, so only with as many times; else not linked. lead: the first cube's name in the
+    notes."""
+    if n <= 1:
+        return Frames(np.zeros(nt, int), None, "one time: shown at every t")
     a, b = clock(main), clock(other)
+    a = a if a is not None and len(a[1]) == nt else None
+    b = b if b is not None and len(b[1]) == n else None
     if a is None or b is None:
-        return True, "" if b is not None else "no times of its own: the first cube's"
+        if n == nt:
+            return Frames(np.arange(nt), None, "no times of its own: the first cube's" if b is None else "")
+        whose = "neither has times" if a is None and b is None else "it has no times" if a is not None else \
+            f"{lead} has no times"
+        return Frames(None, None, f"{n} times against {nt} of {lead}; {whose} to match them by")
     (day_a, ta), (day_b, tb) = a, b
-    if len(ta) != len(tb):
-        return False, f"{len(tb)} times against {len(ta)}"
     if day_a is not None and day_b is not None and day_a != day_b:
-        return False, f"observed on {day_b}, the first cube on {day_a}"
-    cadence = float(np.median(np.diff(ta))) if len(ta) > 1 else 0.0
-    tol = 0.5 * cadence if cadence > 0 else 1.0
-    worst = float(np.max(np.abs(ta - tb)))
-    if worst > tol:
-        return False, f"its times differ from the first cube's by up to {worst:.1f} s (half the cadence: {tol:.1f} s)"
-    return True, f"the same times (within {worst:.2g} s)"
+        return Frames(None, None, f"observed on {day_b}, {lead} on {day_a}")
+    gap = np.abs(np.where(np.isfinite(tb), tb, np.inf)[None, :] - ta[:, None])
+    t = gap.argmin(axis=1)
+    dt = tb[t] - ta
+    worst = float(np.max(np.abs(dt)))
+    if n == nt and np.array_equal(t, np.arange(nt)):
+        return Frames(t, dt, f"the same times (within {worst:.2g} s)")
+    half = 0.5 * float(np.median(np.diff(tb)))
+    far = np.abs(dt) > half
+    note = f"its time nearest to each of {lead}'s: its t {t.min()}-{t.max()} of {n}"
+    note += f", within {float(np.max(np.abs(dt[~far]))):.1f} s" if (~far).any() else ""
+    if far.any():
+        note += (f"; at {int(far.sum())} of the {nt} times of {lead} the nearest is more than half its cadence away "
+                 f"({half:.1f} s; up to {float(np.max(np.abs(dt[far]))):.0f} s), and that frame is shown")
+    return Frames(t, dt, note)
 
 
 def plan(main, path) -> Link:
@@ -112,13 +141,10 @@ def plan(main, path) -> Link:
         info = describe(path, spec)
         r = info.roles
     if r.t is not None and r.nt > 1:
-        if r.nt != nt:
-            return Link(str(path), False, why=f"{name}: {r.nt} times against {nt} of {lead}; other cadences are not "
-                                               f"linked yet")
-        same, note = same_times(main.axes, info.axes)
-        if not same:
-            return Link(str(path), False, why=f"{name}: {note}")
-        how = f"{how}; {note}" if note else how
+        fr = frames(main.axes, info.axes, nt, r.nt, lead)
+        if fr.t is None:
+            return Link(str(path), False, why=f"{name}: {fr.note}")
+        how = f"{how}; {fr.note}" if fr.note else how
     elif r.t is None or r.nt == 1:
         how = how if "every t" in how else f"{how}; one time: shown at every t"
     return Link(str(path), True, axes=spec, how=how)

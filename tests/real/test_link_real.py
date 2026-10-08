@@ -1,6 +1,7 @@
-"""Linking the shared real cubes to the Stokes 6173 LP cube (ROADMAP E8.1, data.link): field and velocity maps of
-its 17 scans follow its times; a map of another number of frames, another grid, another cadence are refused; the
-same observation as FITS links with the same times. Only where the data/lp/ links resolve (bellatrix)."""
+"""Linking the shared real cubes to the Stokes 6173 LP cube (ROADMAP E8.1, E8.4, data.link): field and velocity maps
+of its 17 scans follow its times; a map of another number of frames and another grid are refused; another cadence
+with times links at its nearest times; the same observation as FITS links with the same times. Only where the
+data/lp/ links resolve (bellatrix)."""
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,7 @@ CASES = [  # file, linked, what its reason or account must say
     ("Vlos.6173_map.icube", True, "17 times"),
     ("Bstr.6173_map.fcube", False, "pixels"),            # 2031x2025: three rows short
     ("Blos_6173_map=0-3.fcube", False, "pixels"),
-    ("aligned_stokes_8542=0-54_=0-28_im.aligned6173.fcube", False, "84 times"),
+    ("aligned_stokes_8542=0-54_=0-28_im.aligned6173.fcube", True, "nearest"),     # times of both: E8.4
     ("stokes_6173_im.fits", True, "same times"),
     ("halpha_6563_im.fits", False, "pixels"),
 ]

@@ -212,8 +212,8 @@ class Scheduler:
             self._evaluate(st, set(changed & {"cursor"}) | {f"show:{p}" for p in came})
 
     def _as_member(self, st: ViewState) -> tuple[ViewState, frozenset]:
-        """The notice as the linked cube reads it: its state, and what changed of it since its last notice (a t
-        beyond a single frame's is no change)."""
+        """The notice as the linked cube reads it: its state, and what changed of it since its last notice (a t of
+        the main cube that shows the same of its frames is no change: a single frame, or its nearest time again)."""
         mine, seen = self.session.member_state(self.member, st), self._seen
         self._seen = mine
         fields = ("t", "s", "l", "cursor", "panels", "locked", "playing")
