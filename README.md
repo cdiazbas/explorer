@@ -54,6 +54,12 @@ window closes, the terminal names the files (in `~/.cache/explorer/logs/`): send
 
   `--axes` names the leading axes of any cube whose header or name does not, slowest first: `t,s,l`, `s,l`, `t,l`
   or `t` (`l` is λ).
+- **A per-pixel file given as the cube** (`explorer stokes_6173_sp.fits`) is recognised (a FITS one by its header,
+  whatever its name; an LP one by its image cube next to it, or by its name and dims) and its image cube next to it
+  is opened with it; the terminal says so. Without its image cube nothing opens, and the terminal says which file
+  is needed; among linked cubes, that one is left out. `--sp` naming a FITS image cube is refused (`explorer
+  c_sp.fits --sp c_im.fits` is taken the right way round). A cube whose header gives other times or wavelengths
+  than its frames hold is refused when opened.
 
 ### Linked cubes
 

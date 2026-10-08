@@ -3784,3 +3784,39 @@ sus primeros píxeles, la ventana entera mientras se leían los cubos. Con el co
 usuario la ve aparecer "de forma instantánea". El test se escribió primero con una conexión simulada incompleta:
 pasaba solo y fallaba en la suite completa de Linux, donde otro test ya había puesto un icono a la aplicación; ahora
 pone el icono él mismo.
+
+### 2026-10-08 (2): un fichero por píxel dado como cubo (ROADMAP E1.23)
+
+**El fallo.** `explorer` con el `_sp.fits` corregido de una serie de Hα (nb_6563, 35 scans) se caía al construir la
+ventana: `IndexError: index 2027 is out of bounds for axis 0 with size 35` en `Axes.utc`, desde la barra. El
+fichero (bellatrix, solo leído) tiene NAXIS = [11, 35, 1, 2032, 2028] con CTYPE WAVE, UTC, STOKES, HPLN, HPLT: en
+orden de numpy (HPLT, HPLN, STOKES, UTC, WAVE). `roles()` encontraba STOKES en la tercera posición, completaba t y λ
+por el orden SOLARNET (t = 0, λ = 2, la misma que s) y tomaba las 2028 filas por tiempos; la cabecera daba los 35
+tiempos de la WCS-TAB. Reproducido en el Mac con el `_sp.fits` sintético con su WCS-TAB y DATEREF, como lo escribe
+SSTRED (`synth.write_sp_fits(..., wcs=True)`): `utc_str(15)` con 3 tiempos, el mismo `IndexError`. Sin DATEREF
+(el sintético de antes) `utc` devolvía None antes de indexar: por eso no lo veía ninguna prueba.
+
+**Lo hecho.**
+- **Al abrir:** unos ejes espaciales antes de los de la imagen son un fichero por píxel, y `roles()` lo rechaza,
+  diga lo que diga `--axes`; una cabecera con tantos tiempos o λ distintos de los pasos del cubo en t o λ se rechaza
+  al abrir el `Dataset`, con las dos cifras. Tres ejes delante con solo algunos nombrados ya no ponen dos papeles
+  en el mismo eje.
+- **Lo que se da:** `formats.per_pixel` reconoce el fichero (un FITS por su cabecera; un LP por las cabeceras del
+  `_im` de al lado, del mismo formato primero, o por su nombre `_sp` y más cuadros que píxeles por cuadro, como el
+  `_sp.icube` de nb_6563: 21 × 66 y 4068240) y `formats.opening` abre su `_im` con él:
+  `[explorer] c_sp.fits is the per-pixel file of c_im.fits (its header puts HPLT, HPLN first): opening that one
+  with it`. Sin `_im`: `[explorer] c_sp.fits is a per-pixel file (...), not an image cube, and its image cube
+  c_im.fits is not next to it: open that one (...)`, estado de salida 1, sin traza. Entre cubos enlazados, el que
+  no tiene `_im` se queda fuera con el motivo, como los que no casan; el `_sp` del propio primer cubo se toma como
+  su fichero por píxel, no se enlaza consigo. `c_sp.fits --sp c_im.fits` se toma al revés; `--sp` con un `_im` FITS
+  se rechaza. Los sufijos tras `_sp` (`_sp.aligned6173.icube`, `.fcube`) se emparejan con su `_im.aligned6173`.
+
+**Pruebas** (`tests/unit/test_per_pixel_given.py`, 14; en el código de antes fallan todas y la de la orden se
+queda en el bucle de eventos con la ventana abierta sobre el `_sp`): sintéticos FITS y LP, con y sin `_im` al lado,
+renombrado, con sufijo, enlazados, `--sp` al revés y el desajuste de tiempos (una WCS-TAB de 2 tiempos sobre 3
+cuadros). Grupos `test_formats`, `test_axes`, `test_dataset`, `test_pixel`, `test_cli`, `test_app_start`,
+`test_start_paths`, `test_link`, `test_linked_window`, `test_toolbar` en verde en el Mac.
+
+**Sin probar:** el fichero real (se comprueba en bellatrix); un `_sp` LP sin `_im` y sin `_sp` en el nombre no se
+reconoce (su cabecera sola no lo dice). Al rechazar una cabecera con otros tiempos, un cubo así deja de abrirse en
+vez de abrirse con índices; si aparece alguno real, la alternativa es abrirlo sin sus tiempos.
