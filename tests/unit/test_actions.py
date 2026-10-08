@@ -69,6 +69,7 @@ def test_the_registry_installs_every_sequence_and_its_sheet_lists_them(qapp):
     page = reg.sheet_html(QtGui.QPalette())
     for text in ("λ: previous, next", "quit", "&lt;b&gt;", "lock &amp; go", "Keys", "Mouse", "? or Esc closes this"):
         assert text in page
+    assert page.rstrip().endswith("Designed and implemented by C. J. Díaz Baso</i></p>")   # the sheet's last line
     w.close()
 
 

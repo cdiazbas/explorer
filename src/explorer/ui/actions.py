@@ -26,6 +26,8 @@ def mod_key() -> str:
     return "⌘" if sys.platform == "darwin" else "Ctrl+"
 
 
+CREDIT = "Designed and implemented by C. J. Díaz Baso"     # the last line of the ? sheet
+
 class ActionRegistry:
     def __init__(self, rows, mouse=()):
         """rows: (keys as shown, what they do, ((key sequence, slot), ...)); a row with no binding is only shown (a
@@ -74,7 +76,8 @@ class ActionRegistry:
                 + "".join(row(k, w) for k, w, _b in self.rows)
                 + '<tr><td colspan="3">&nbsp;</td></tr>' + head("Mouse")
                 + "".join(row(k, w) for k, w in self.mouse) + "</table>"
-                + f'<p style="color:{dim}">? or Esc closes this</p>')
+                + f'<p style="color:{dim}">? or Esc closes this</p>'
+                + f'<p align="right" style="color:{dim}"><i>{CREDIT}</i></p>')
 
 
 class KeySheet(QtWidgets.QLabel):
