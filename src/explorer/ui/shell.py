@@ -508,7 +508,9 @@ class Shell(QtWidgets.QMainWindow):
         last = self.last.get("image")
         if self.colour_key is not None and last is not None:
             ns = self.session.sizes["s"] if self.session.present["s"] else 1
-            self.colour_key.set(STOKES[s] if ns > 1 else "I", last[1], self.colours.lut(s), self.colours.maps[s])
+            # named as the image's label is (ui.stokeslabel): "Stokes Q" with the four, nothing for one plane
+            self.colour_key.set(f"Stokes {STOKES[s]}" if ns == len(STOKES) else "", last[1], self.colours.lut(s),
+                                self.colours.maps[s])
 
     def cycle_colours(self, step: int) -> None:
         """C / Shift+C: the next or previous map for the Stokes shown; image, lambda-t and key follow, nothing is

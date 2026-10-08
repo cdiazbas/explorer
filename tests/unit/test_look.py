@@ -159,7 +159,7 @@ def test_modern(themed, cube):
         assert w.colours.maps[3] == "CET-D4" and w.colour_key.note == "CET-D4"
         assert w.view.img.lut is not None and before is None
         assert np.array_equal(w.lambda_t.img.lut, cm.table("CET-D4"))
-        assert w.colour_key.state[0] == "V" and w.colour_key.state[3] == "CET-D4"
+        assert w.colour_key.state[0] == "Stokes V" and w.colour_key.state[3] == "CET-D4"
         w.cycle_colours(-1)
         assert w.colours.maps[3] == "gray" and w.view.img.lut is None
         # the cards in the image's black: a grey (20, 20, 22) parted the panels from the image beside them

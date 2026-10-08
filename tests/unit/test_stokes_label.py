@@ -193,7 +193,7 @@ def test_the_letter_is_in_the_theme_s_ink_and_gives_way_to_glass_s_key(qapp, win
             assert colours["main image"] == (None if keyed else want)
             assert all(shown >= hidden + 5 for shown, hidden, _box in px.values())     # drawn, in the ink
             if look == "glass":
-                assert keyed and key.state[0] == "I"                        # the key names the Stokes there
+                assert keyed and key.state[0] == "Stokes I"                        # the key names the Stokes there
             else:
                 label = w.view.widget.mapFromScene(main.view.stokes.sceneBoundingRect()).boundingRect()
                 assert w.slit_hint.y() >= label.bottom()    # below the letter (the box's last row: its text's margin)
