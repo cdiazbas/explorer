@@ -3820,3 +3820,50 @@ cuadros). Grupos `test_formats`, `test_axes`, `test_dataset`, `test_pixel`, `tes
 **Sin probar:** el fichero real (se comprueba en bellatrix); un `_sp` LP sin `_im` y sin `_sp` en el nombre no se
 reconoce (su cabecera sola no lo dice). Al rechazar una cabecera con otros tiempos, un cubo así deja de abrirse en
 vez de abrirse con índices; si aparece alguno real, la alternativa es abrirlo sin sus tiempos.
+
+### 2026-10-08 (3): cubos de otra cadencia, enlazados por la hora más cercana; los tiempos de un cubo de Stokes I (ROADMAP E8.4, E8.5)
+
+**El caso.** Con los cubos CRISP de banda estrecha del 2023-05-03, en bellatrix,
+`explorer nb_6173_…=0-54_stokes_corrected_im.fits nb_8542_…=0-54_…=0-28_stokesI_corrected_im.aligned6173.icube`
+dejaba fuera el 8542: «84 times against 55 … other cadences are not linked yet». Y el 8542 solo, sin tiempos ni λ: no
+tiene `_im_times+wvl.idlsave` propio.
+
+**Los tiempos de un cubo derivado (E8.5).** SSTRED deja el cubo de Stokes I (`…_stokesI_…_im.icube`) junto al de los
+cuatro Stokes sin fichero de tiempos. El del cubo completo (`…_stokes_…_im_times+wvl.idlsave`, medido en bellatrix:
+`time` 84×20, `lambda` 20) tiene los mismos barridos y las mismas sintonías. Si sus tamaños son los del cubo (nt, nl),
+se toman de él los tiempos y las λ, y la terminal lo dice una vez. Su `fac` (1.0) y su `nan_rplcmnt` (−1.77e−8)
+describen el cubo de float, no el de int16: los valores siguen como están, y el aviso de cuentas no cambia. Con otros
+tamaños no se usa nada.
+
+**Otras cadencias (E8.4).** El plan de ventanas enlazadas (§3.3) lleva cada t maestro al índice más cercano de cada
+cubo, con su Δt; CRISPEX hace lo mismo (`tsel_ref`, `crispex.pro:2898-2906`), el primero de dos igual de cercanos y
+sin límite de distancia. Así se hace: `data/link.py` `frames` da, para cada t del primero, el t del enlazado, y
+`Session.member_state` es el único sitio que lo lee. Lejos de todos sus tiempos (fuera de su serie o en un hueco), el
+enlazado muestra el más cercano, como CRISPEX; la línea de arranque dice en cuántos t pasa de media cadencia y hasta
+cuántos segundos. Sin tiempos en alguno de los dos, solo se enlaza con los mismos t, como antes, y el rechazo dice cuál
+no los tiene. Cambia también un caso: los mismos t con horas que difieren más de media cadencia ya no se rechazan, se
+enlazan por la hora.
+
+**Medido en sintéticos** (Mac, `tests/unit/test_link.py`; un FITS de 55 barridos a 20 s y un LP de Stokes I de 84 en
+dos series, los 55 primeros 6 s después de los del FITS y 29 tras 400 s, con sus tiempos en el fichero del cubo
+completo):
+- 6173 manda (55): el 8542 muestra 0…54;
+- 8542 manda (84): el 6173 muestra 0…54 y luego 54 en los 29 últimos (hasta 986 s lejos; la línea lo dice: «at 29 of
+  the 84 times … more than half its cadence away»);
+- 8542 manda, enlazado un cubo solo de la segunda serie (29): 0 en los 55 primeros t, después 0…28. Antes salía 0…28
+  y luego 28: el `min(t, nt−1)` de antes no miraba la hora;
+- 14 s después de cada barrido (más de media cadencia): el barrido anterior, 0, 0, 1, …, 53;
+- el 8542 sin fichero de tiempos: rechazado, «84 times against 55 …; it has no times to match them by».
+
+Las seis pruebas nuevas fallan sobre `4cae1f4` y pasan ahora. **Sin medir con los cubos reales:** ni la pareja del
+usuario ni `tests/real/test_link_real.py`, que ahora espera que el 8542 alineado de `data/lp` se enlace con
+`stokes_6173_im.icube` por la hora (antes, rechazado por 84 frente a 17).
+
+**Por decidir (el usuario):**
+- **Δt en pantalla.** El plan lo pone en la barra de estado (etapa 6); aún solo sale en la línea de arranque.
+- **Lejos de todo.** Se muestra el más cercano, como CRISPEX. Ocultarlo pasada cierta distancia, o rechazar el enlace
+  si ningún t queda a menos de media cadencia, sería otra regla.
+- **Un cubo LP no trae la fecha:** dos cubos LP de días distintos se comparan por la hora del día.
+- **Series intercaladas.** Si el desfase entre las dos líneas de una misma secuencia está cerca de media cadencia,
+  el más cercano puede saltar de un barrido al anterior entre t vecinos. En el caso real, 6173 y 8542 se observan en
+  la misma secuencia (≈29.5 s); su desfase no se ha medido.

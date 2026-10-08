@@ -71,10 +71,19 @@ explorer stokes_6173_im.icube Blos.6173_map.fcube Vlos.6173_map.icube
 
 Each linked image is shown beside the first, the same size and the same region (zoom and pan are shared). The
 spectrum and λ–t panels have a tab per cube. The cursor, its lock and t are everyone's; λ is each cube's own,
-picked on its own spectrum or λ–t; Stokes is shared when the cubes have as many. For now a cube is linked only when it is on the same pixels and at the same times
-as the first: a map with as many frames as the first cube has times takes them as its times (no `--axes` needed); a
-map of one frame is shown at every t. Any other cube is left out, and the terminal says why (other pixels, other
-times). `--sp` and `--axes` are the first cube's; `--nosp` applies to all.
+picked on its own spectrum or λ–t; Stokes is shared when the cubes have as many. For now a cube is linked only when it
+is on the same pixels as the first. At each t of the first cube, a linked cube shows its scan nearest in time, as
+CRISPEX does: another cadence, another start or two series joined (`=0-54_=0-28`) link, and the terminal says how
+far the nearest scans are (when the first cube's t is outside the other's series, its first or last scan stays on
+screen). A cube without times links only with as many frames as the first cube has times: a map takes them as its
+times (no `--axes` needed); a map of one frame is shown at every t. Any other cube is left out, and the terminal says
+why (other pixels; other times with nothing to match them by). `--sp` and `--axes` are the first cube's; `--nosp`
+applies to all.
+
+A La Palma cube derived from another of the same observation (`..._stokesI_..._im.icube`, Stokes I alone) has no
+`_times+wvl.idlsave` of its own: its times and wavelengths are taken from the full-Stokes cube's
+(`..._stokes_..._im_times+wvl.idlsave`) when their sizes are the cube's, and the terminal says so. Its values stay as
+stored (counts): that file's scale and padding value are the other cube's.
 
 ### Notes
 
