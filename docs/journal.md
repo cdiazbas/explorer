@@ -3867,3 +3867,74 @@ usuario ni `tests/real/test_link_real.py`, que ahora espera que el 8542 alineado
 - **Series intercaladas.** Si el desfase entre las dos líneas de una misma secuencia está cerca de media cadencia,
   el más cercano puede saltar de un barrido al anterior entre t vecinos. En el caso real, 6173 y 8542 se observan en
   la misma secuencia (≈29.5 s); su desfase no se ha medido.
+
+### 2026-10-08 (4): en un cubo de 4 Stokes, I negativa es relleno (ROADMAP E1.24)
+
+**Lo que se veía.** En el cubo alineado `aligned_stokes_8542=0-54_=0-28_im.aligned6173.fcube` (LP, float32, 4
+Stokes; medido en bellatrix, solo lectura), el fotograma de I en t = 0, λ = 0 tiene un 25.5 % de NaN y un 0.2 % de
+valores negativos, I ≈ −1.769e-08, con Q igual a I en esos píxeles: no es dato. Su idlsave dice `nan_rplcmnt` =
+−1.7691475e-08 y `fac` = 1, y los negativos son −1.76914732e-08, −1.76914714e-08, −1.76914696e-08...: el valor de
+relleno arrastrado por la interpolación de la alineación al borde del campo, cerca pero no igual. La prueba exacta
+de `formats.lp_values` (crudo == `nan_rplcmnt`) no los ve y llegaban como dato. Los cubos de Stokes de 6173 no
+tienen I negativa: su relleno ya sale NaN.
+
+**La regla** (el usuario): en un cubo con exactamente 4 Stokes, donde I < 0 los cuatro Stokes son NaN, como el
+relleno. Muestra a muestra: I negativa en un (t, λ) borra ese (t, λ). Un cubo de un Stokes (un Doppler, una
+diferencia) y los mapas (B, v) conservan sus negativos.
+
+**Dónde vive.** `data/masking.py`, y se aplica solo en la capa de datos, de donde salen los valores:
+- fotogramas (`FrameReader.read`, también los leídos por adelantado), filas, bandas de la rendija sin `_sp`, series
+  (espectros y λ-t), puntos (la muestra del rango de los espectros) y bloques de filas (`RowBands`);
+- los ficheros por píxel (`_sp.fits`, `_sp.icube`/`.fcube`): el bloque trae los cuatro Stokes;
+- los rangos de Q U V desde fotogramas enteros: el píxel con I negativa no cuenta.
+Los niveles de color salen de lo leído: sin I negativa en sus percentiles. La rejilla 2×2, el panel de la rendija y
+los enlazados leen por el mismo `Dataset`.
+
+**Q, U y V necesitan la I del mismo (t, λ).** Un bloque o una serie con todos los Stokes ya la tiene. Una serie de
+un solo Stokes la pide en la misma llamada (el doble de peticiones). Un fotograma toma de `NegativeI` dónde es
+negativa la I de ese (t, λ): la deja cada fotograma de I leído (índices, no la imagen: 34 kB para un 0.2 % de una
+imagen 2k). Si no está, lee los dos fotogramas a la vez, en trozos en el pool como uno solo. La rejilla pide I, Q, U
+y V juntos: el primero de Q, U, V lee la I y los otros esperan. Un hilo del pool (lectura adelantada, un trozo)
+nunca espera: la lee otra vez, para no quedarse con un hilo que otro necesita.
+
+**Coste** (Mac M1 Pro, SSD, ficheros en la caché del sistema; cubo LP float32 sintético de 1024×1024, t 3, Stokes 4,
+λ 8; tres rondas antes/después alternadas, medianas de 48 lecturas, ms; carga 4-6, swap 7.0 de 8.2 GB con otros
+procesos en marcha):
+
+| | sin I negativa (como 6173) | con un borde del 1.2 % |
+|---|---|---|
+| Fotograma de I | 0.35 → 0.40 | 0.34 → 1.08 |
+| Fotograma de Q, con la I leída antes | 0.34 → 0.34 | 0.34 → 0.39 |
+| Fotograma de Q, sin ella | 0.34 → 0.72 | 0.34 → 1.43 |
+| Rendija de Q sin `_sp` (24 bandas de 300 filas), sin I leída | 1.6 → 3.4 | 1.6 → 3.5 |
+| Lo mismo con la I leída | 1.6 → 1.7 | 1.6 → 2.4 |
+| Tira de 16 píxeles del `_sp.fcube` | 0.004 → 0.007 | igual |
+
+- **Las series**, en el mismo proceso con la regla puesta y quitada (4 rondas de 200 píxeles): 0.67-1.0 ms en los dos
+  casos, sin diferencia por encima del ruido.
+- **Encontrar los negativos de una imagen 2k:** 1.5 ms con la comparación. Ahora primero su mínimo sin NaN: 0.28 ms
+  si no hay ninguno, 2.4 ms si hay un borde. Un núcleo de numba no mejoró (2.1 ms).
+- **En StorNext, sin medir.** Por inferencia: la λ-t de Q, U o V sin `_sp` hace el doble de peticiones, y una
+  rendija de Q sin `_sp` lee el doble de bandas. Un paso en t viendo Q lee dos fotogramas en paralelo.
+
+**El golden del `_sp.icube` sintético cambia.** Ese fichero escribe el relleno como 0 cuentas, y el cero del
+ajuste lo deja en −7.3e-12; el prototipo lo daba como dato. Ahora es NaN, y la prueba aplica la regla a la
+referencia del prototipo.
+
+**Pruebas.** `tests/unit/test_negative_i.py`, 26:
+- cubos sintéticos FITS y LP, con y sin fichero por píxel, con un borde de I negativa y Q = U = V = I;
+- en el LP, el borde lleva el valor de la idlsave y copias perturbadas como las de la alineación.
+- **Antes del cambio fallan 25.** En el LP el valor guardado es −1.7691473e-08 frente a un `nan_rplcmnt` de
+  −1.7691475e-08: imagen de I con 438 NaN donde deben ser 508; bloque por píxel 0 NaN de 60; λ-t de Q en bloques
+  de filas 0 de 15; niveles de I desde −1.769e-08; rangos de Q U V de 1.77e-08, la amplitud del borde, frente a
+  7.9e-11 del mismo cubo con NaN.
+- **Después pasan:** 508 de 508, 60 de 60, 15 de 15; niveles desde 6.46e-09; rangos iguales a los del cubo con NaN.
+- **La de un Stokes con negativos** (y un mapa de velocidad) pasa antes y después: es la guarda.
+
+Además, grupos de `tests/unit` de datos, núcleo y paneles, y `tests/golden`, pasan en el Mac.
+
+**Falta.**
+- El cubo real de 8542 en bellatrix (`tests/real`, y verlo).
+- El coste en StorNext.
+- **Decisión del usuario, sin tomar:** la regla va muestra a muestra. Si en un píxel la I es negativa solo en
+  algunos λ (no visto en el borde), solo esos λ quedan NaN; borrar el píxel entero en ese t sería la otra lectura.
