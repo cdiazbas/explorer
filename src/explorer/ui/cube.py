@@ -1,9 +1,9 @@
 """One cube's views in the window: its image, its spectra and lambda-t, their padlocks, the gestures that pick on them,
-its crosshair and markers, and its scheduler (ROADMAP E8.1). The main cube's and each linked cube's are this one
-class, member k of the session: a pick sets the cube's own lambda (Session.set_member_index, the main cube's index for
-k = 0), a click on its image locks the cursor for all. What differs is where the views sit and what the main cube
-alone has: its image in the window's centre and the slit, the 2x2 view, the colour key and the status line
-(ui.shell); a linked image in a panel of its own (ui.linked.LinkedCube).
+its crosshair, markers and Stokes label, and its scheduler (ROADMAP E8.1). The main cube's and each linked cube's
+are this one class, member k of the session: a pick sets the cube's own lambda (Session.set_member_index, the main
+cube's index for k = 0), a click on its image locks the cursor for all. What differs is where the views sit and what
+the main cube alone has: its image in the window's centre and the slit, the 2x2 view, the colour key and the status
+line (ui.shell); a linked image in a panel of its own (ui.linked.LinkedCube).
 
 The behaviour is the main cube's as it was in ui.shell (from the prototype's app/viewer.py: _install_gestures 1790,
 _spectrum_click to _pick_flush 1270-1317, _image_click 1419), now one code for every cube.
@@ -88,6 +88,9 @@ class CubeView:
             if r.l is not None else None
         self.lambda_t = LambdaTPanel(r.nt, r.nl, ds.axes) if r.t is not None and r.l is not None else None
         self.last_s = 0                                 # the Stokes of the lambda-t shown (its colour map)
+        self.ns = r.ns
+        # its Stokes named in the image's top left by something else: the main cube's colour key, which glass puts there
+        self.named = False
         self.scheduler: Scheduler                       # made in start(); the padlocks and picks ask it
         # the padlocks, both open at start (the prototype's): closed = fixed, right click = fit to what is shown
         self.image_lock = PanelLock(self.view.widget, IMAGE_TIP, light=light)
@@ -120,7 +123,8 @@ class CubeView:
         self.follow(self.session.member_state(self.k, st), changed)
 
     def follow(self, st, changed) -> None:
-        """The crosshair, the lock and its markers, from its own state (changed None: all of them)."""
+        """The crosshair, the lock, its markers and its Stokes label, from its own state (changed None: all of
+        them)."""
         def has(*f):
             return changed is None or bool(changed & set(f))
         if has("cursor"):
@@ -131,6 +135,15 @@ class CubeView:
             self.spectra.set_lambda(st.l)
         if has("t", "l", "own") and self.lambda_t is not None:
             self.lambda_t.set_markers(st.t, st.l)
+        if has("s", "own"):
+            self.show_stokes(st.s)
+
+    def show_stokes(self, s: int) -> None:
+        """The label of Stokes s ("Stokes Q") on its image and its lambda-t (ui.stokeslabel), when it has the four
+        Stokes; on the image, not while something else names it there (named)."""
+        self.view.set_stokes(None if self.named else s, self.ns)
+        if self.lambda_t is not None:
+            self.lambda_t.set_stokes(s, self.ns)
 
     # ---------------------------------------------------------------- the look and the theme
     def set_look(self, look, acc, light: bool) -> None:

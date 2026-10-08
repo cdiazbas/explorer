@@ -8,7 +8,7 @@ the Mac; over ssh -Y the drawing 42 -> 4.4-4.9 ms, docs/measured.md). Level 0 is
 go on 1..255, so the colour table decides how padding looks. Zooming in renders the visible region again with more
 detail, down to full resolution; range changes in a burst render once (a 0-ms timer).
 The mouse over the image gives (y, x) in data pixels to on_hover, at every move the view receives (_Moves); the
-crosshair is drawn where the core's cursor is.
+crosshair is drawn where the core's cursor is; "Stokes Q" at the top left when its owner gives a Stokes (set_stokes).
 """
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -19,6 +19,7 @@ from PySide6 import QtCore
 
 from ..data.kernels import reduce_u8
 from . import pens
+from .stokeslabel import StokesLabel
 
 if TYPE_CHECKING:
     from .overlays import Reticle
@@ -69,6 +70,7 @@ class ImageView:
         self.reticle: Reticle | None = None
         self._locked = False
         self.base_lut: np.ndarray | None = None          # the look's grey: pyqtgraph's own, or the light theme's
+        self.stokes = StokesLabel(self.vb, light)       # the Stokes shown, once set_stokes gives it
         self.set_light(light)
         if reticle:
             self.set_reticle(True)
@@ -101,6 +103,7 @@ class ImageView:
             grey = self.img.lut                         # as pyqtgraph keeps it: compared by identity above
         self.base_lut = grey
         self.set_locked(self._locked)
+        self.stokes.set_light(light)
 
     # ---------------------------------------------------------------- input
     def _moved(self, pos) -> None:
@@ -147,6 +150,18 @@ class ImageView:
             self.reticle.setVisible(on)
         self.hl.setVisible(not on)
         self.vl.setVisible(not on)
+
+    def set_stokes(self, s: int | None, ns: int) -> None:
+        """The label of Stokes s of ns ("Stokes Q") at the view's top left, when ns is 4 (ui.stokeslabel); s None:
+        nothing."""
+        self.stokes.show_stokes(s, ns)
+
+    def below_stokes(self) -> int:
+        """px from the widget's top to the bottom of the Stokes label's box (its text's margin included), where what
+        goes under it starts (the slit's hint). From the layout's margin, not from the box's place on the scene, which
+        lags a margin change until the layout runs (glass takes the margin off and gives it back)."""
+        top = self.widget.ci.layout.getContentsMargins()[1]
+        return int(np.ceil(top + self.stokes.pos().y() + self.stokes.boundingRect().height()))
 
     def set_lut(self, table) -> None:
         """The colour table of the uint8 image (level 0: padding); None: pyqtgraph's own grey (base_lut: the look's)."""

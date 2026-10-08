@@ -337,4 +337,6 @@ def test_in_glass_the_accent_and_the_hint_below_the_colour_key(qapp, shell):
     click(w.view, 30.5, 30.5, double=True)
     assert w.session.state.path == ((8.5, 8.5), (30.5, 30.5))
     w.set_look(get_look("classic"))
-    assert w.slit_hint.pos() == QtCore.QPoint(8, 8) and w.slit_tool.marks[0].colour() != glass.accent()
+    # out of glass: at the top left again, below the image's Stokes label (ui.stokeslabel)
+    assert w.view.stokes.isVisible() and w.slit_hint.pos() == QtCore.QPoint(8, w.view.below_stokes())
+    assert w.slit_tool.marks[0].colour() != glass.accent()

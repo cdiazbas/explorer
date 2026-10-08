@@ -2,6 +2,7 @@
 the index grid (tunings are not evenly spaced), with the current t and lambda as lines; delta-lambda [Å] below when
 the header gives the wavelengths (round values placed between the tunings), the tuning index otherwise; t in UT
 when the header gives the times, the frame index otherwise. No zoom and no pan: the whole grid is always in view.
+The Stokes it shows ("Stokes Q") at the top left, when the cube has the four (set_stokes, ui.stokeslabel).
 
 Its levels are the core's (levels.panel_levels: Q U V symmetric about 0). From the prototype's app/viewer.py: the
 lambda-t dock (846-866), TuningAxis (315), IndexAxis (384), _lam_label and _t_label (1099-1104), _set_lt (2165).
@@ -14,6 +15,7 @@ from ..data.axes import fmt_signed
 from . import pens, style
 from .imageview import CURSOR_PEN
 from .spectra import SignedAxis
+from .stokeslabel import StokesLabel
 
 MARGIN = 9                                              # px round the plot, as the spectra's layout keeps
 
@@ -127,6 +129,7 @@ class LambdaTPanel:
         self.w.addItem(self.t_line)
         self.w.addItem(self.l_line)
         self.w.disableAutoRange()
+        self.stokes = StokesLabel(pi.vb, style.is_light())
         self.reset_view()
         pi.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         for side in ("left", "bottom"):
@@ -135,8 +138,14 @@ class LambdaTPanel:
         self.widget = self.w
 
     def set_light(self, light: bool) -> None:
-        """The axes in this theme's ink; the background is the shell's (a card, or the plots' own)."""
+        """The axes and the Stokes label in this theme's ink; the background is the shell's (a card, or the plots'
+        own)."""
         style.default_axes(self.w)
+        self.stokes.set_light(light)
+
+    def set_stokes(self, s: int | None, ns: int) -> None:
+        """The label of Stokes s of ns ("Stokes Q") at the top left, when ns is 4 (ui.stokeslabel); s None: nothing."""
+        self.stokes.show_stokes(s, ns)
 
     def lam_label(self, i: int) -> str:
         return fmt_signed(self.xl[i], 2) if self.physical else str(i)

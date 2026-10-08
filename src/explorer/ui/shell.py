@@ -57,7 +57,6 @@ if TYPE_CHECKING:
 
 MEMORY_S = 1.0                                          # the caches' budget follows the machine's memory (Dataset)
 STATUS_INSET = 8            # px each side of the status line: half the rounded corners' 16, its text clear of the curve
-GRID_LABEL = 30             # px from the top: the slit's hint below the 2x2 view's Stokes label (stokesgrid, at 6)
 FRAME_ALLOWANCE = 24       # px a floating window's frame may add to the size asked
 CUBE_MIN_H = 560           # px: a cube's window at least this high, for its spectra and lambda-t
 CUBE_PANELS_MIN_W = 320    # px: its spectra and lambda-t no narrower, when the screen has no room for wider ones
@@ -1128,14 +1127,20 @@ class Shell(QtWidgets.QMainWindow):
         self._slit_shown(True)
 
     def _place_slit_hint(self) -> None:
-        """The slit's hint at the image's top left; in glass below the colour key, which glass moves there (the
-        prototype's app/look_glass.py:1015-1021); in the 2x2 view below the panel's Stokes label."""
+        """What sits at the image's top left: the Stokes label (ui.stokeslabel), but not under glass's colour key,
+        which glass moves there and whose top row names the Stokes; the slit's hint below the label, below the key
+        (the prototype's app/look_glass.py:1015-1021) or below the 2x2 view's panel's label."""
         x = y = SlitHint.MARGIN
         key = self.colour_key
-        if self.glass is not None and key is not None and key.isVisibleTo(self.view.widget):
+        keyed = self.glass is not None and key is not None and key.isVisibleTo(self.view.widget)
+        self.main.named = keyed
+        self.main.show_stokes(self.session.state.s)
+        if keyed and key is not None:
             x, y = glass.MARGIN, key.y() + key.height() + 8
-        if self.grid is not None and self.grid.isVisibleTo(self.view.widget):
-            y = max(y, GRID_LABEL)
+        labelled = self.grid.views[0] if self.grid is not None and self.grid.isVisibleTo(self.view.widget) else \
+            self.view if self.view.stokes.isVisible() else None
+        if labelled is not None:
+            y = max(y, labelled.below_stokes())
         self.slit_hint.move(x, y)
 
     # ---------------------------------------------------------------- state
