@@ -3736,3 +3736,51 @@ al otro y con ↺. En cada paso se midieron los solapes, los tamaños y el zoom;
   septiembre) y con la regla de auditar simplificaciones cada 10 commits.
 - **Cómo se sincroniza:** con `sync.py`, por una lista `also` de ficheros fuera de git en su configuración local, que
   no está versionada.
+
+### 2026-10-08 (1): las ventanas de cada cubo como docks, frente a ADS; el contorno de redimensionado; el arranque sin blanco (ROADMAP E8.1, E8.3, E5.8, E6.21)
+
+**El problema de fondo.** Cada fallo de las ventanas de cubo de estos días salía de una costura entre cuatro
+maneras de poner una vista en pantalla: la imagen principal como widget central con una cabecera que imitaba un
+título, cada imagen enlazada como dock, espectro y λ-t como pestañas de un dock compartido, y la ventana de un cubo
+como el dock de su imagen flotando con un divisor que tomaba prestadas esas pestañas. Se probaron dos salidas en
+paralelo, cada una en su rama desde `038d30b`, con los mismos criterios: parecido medido contra las capturas de
+ahora (12 escenarios, 36 ficheros), una lista de comportamientos, velocidad y tamaño.
+
+- **A, Qt Advanced Docking System (PySide6-QtAds 5.1.1):** 8 de 12 escenarios idénticos (en 4 el espectro 1 px más
+  bajo), +949 líneas en la capa de acoplado (unas 360 solo para que pareciera `QDockWidget`), una dependencia atada
+  a PySide6 6.11.2 y cinco remiendos entre ADS, el puente y el estilo. En Linux, 10 tests nuevos fallaban y una
+  comprobación acababa en segfault. A mano, en el Mac, el usuario no consiguió volver a acoplar una imagen: medido
+  con el puntero real, la ventana arrastrada (su borde superior en y 471) tapaba la mitad inferior de los brazos de
+  la cruz de ADS (453-501), y solo se veían "arriba" y "centro". Descartada; lo medido, en `CRISPEX/ads_prototype/`.
+- **B, la capa de `QDockWidget` hecha uniforme (rama `e8-docks`):** la ventana de un cubo es un `QMainWindow` dentro
+  del dock de su imagen, y su espectro y su λ-t son docks normales en él (creados la primera vez que el cubo se
+  separa: el arranque no cambia). Idéntica píxel a píxel en los 36 ficheros; +91 líneas; de 19 esperas de una
+  pasada del bucle a 11. Comprobaciones de comportamiento: 73 bien y 9 mal en `038d30b`, 87 y 1 (el límite de
+  `ViewGuard`, E8.3), lo mismo en el Mac y en bellatrix. El usuario, en el Mac y por el puente: "mucho más
+  intuitivo"; Qt abre el hueco donde caerá el panel.
+
+**El comparador de capturas tenía un fallo.** Devolvía una vista de numpy sobre la memoria de una `QImage` ya
+liberada, y el resultado cambiaba de una ejecución a otra: con las capturas de A contaba 10 ficheros distintos donde
+había 14. Con `.copy()`, la línea base contra sí misma sigue en 0 de 36. El refactor de `b571d12` vuelve a dar
+iguales los 12 escenarios salvo 1 fichero (824 px) que también difiere entre dos tandas del mismo código: ruido.
+
+**Velocidad de B** (bellatrix, offscreen, los tres cubos de `data/lp`, ABBA con el cerrojo, nodo NUMA 0, carga
+0,2-1,5; medianas de 4 procesos, ms): separar los cubos 72 / volver 109 / redimensionar 62 en classic, contra 72 /
+103 / 43 antes; en glass 69 / 100 / 79 contra 68 / 133 / 54. Todo el coste de más al redimensionar venía de repartir
+el ancho de las imágenes en cada paso (`same_image_widths` en `resizeEvent`: dos pasadas de layout); sin esa línea,
+43 y 51. Ahora se reparte 150 ms después del último cambio de tamaño: 43 / 52, y volver más rápido que antes (89
+frente a 102, 79 frente a 134). Durante el arrastre la imagen principal se lleva el cambio y al soltar se igualan.
+
+**El contorno de redimensionado (E5.8).** Por el puente, XQuartz mostraba el anillo con forma blanco por dentro
+mientras crecía, y al encoger dejaba anillos atrás; lo mismo en `038d30b`, no era de B. Medido en el XQuartz del
+usuario, con el coste de cada paso en el registro: el anillo, 34-40 ms; el anillo con la forma puesta antes que el
+tamaño, 32-36 ms e igual de sucio; cuatro ventanas sin forma, limpias pero 540-1100 ms (el borde a 1-2 pasos por
+segundo); las mismas subidas al frente una sola vez, igual de lentas. Una sola ventana sin forma, rellena del color
+del look y con el borde propio del servidor en el acento: 31-34 ms (p90 36-44), limpia. Lleva el tamaño escrito en
+el centro con una fuente del servidor.
+
+**El arranque en blanco (E6.21).** El puente creaba sus ventanas X sin fondo, y XQuartz las mostraba blancas hasta
+sus primeros píxeles, la ventana entera mientras se leían los cubos. Con el color de la ventana de Qt como fondo, el
+usuario la ve aparecer "de forma instantánea". El test se escribió primero con una conexión simulada incompleta:
+pasaba solo y fallaba en la suite completa de Linux, donde otro test ya había puesto un icono a la aplicación; ahora
+pone el icono él mismo.
