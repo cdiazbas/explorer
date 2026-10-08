@@ -3938,3 +3938,36 @@ Además, grupos de `tests/unit` de datos, núcleo y paneles, y `tests/golden`, p
 - El coste en StorNext.
 - **Decisión del usuario, sin tomar:** la regla va muestra a muestra. Si en un píxel la I es negativa solo en
   algunos λ (no visto en el borde), solo esos λ quedan NaN; borrar el píxel entero en ese t sería la otra lectura.
+
+### 2026-10-08 (5): el Stokes a la vista en la imagen y en la λ–t (ROADMAP E4.15)
+
+**El problema.** Al pasar de I a Q, U y V (teclas, combo, control segmentado, barra de glass) nada decía qué Stokes
+se veía en la imagen ni en la λ–t (el usuario). Solo la vista 2×2 rotulaba sus paneles, con una letra.
+
+**Lo hecho.** Un ayudante, `ui/stokeslabel.py`, el mismo para todas las vistas: «Stokes I» … «Stokes V» en la
+esquina superior izquierda de la caja de la vista (8, 6 px), en la tinta del tema (235, 235, 240 en oscuro; 30, 30,
+34 en claro), como las letras de la 2×2, que ahora lo usan también. Lo llevan la imagen y la λ–t de cada cubo, el
+principal y los enlazados, cada uno con su propio Stokes del estado de la sesión, en cuanto cambia. Solo cuando el
+eje de Stokes tiene cuatro planos: con uno, o sin eje (un mapa), no se sabe si es I, un campo magnético u otra cosa
+(el usuario).
+
+- **La pista de la rendija** estaba en (8, 8), donde va la etiqueta: baja bajo ella, a una altura que sale del margen
+  del layout y de la caja del texto (39 px en el Mac). En la 2×2 estaba fija en 30, con la letra tocando el borde
+  superior de la pista (medido en `4cae1f4`: caja de la letra 15-38, pista desde 30); ahora también a 39.
+- **En glass** la clave de color sube a esa esquina (16, 16) y habría tapado parte de la etiqueta. Su primera fila ya
+  nombra el Stokes («I», sin «Stokes»), así que la imagen principal no lleva etiqueta mientras la clave está allí. Las
+  imágenes enlazadas y las λ–t sí la llevan.
+- **Paneles estrechos de la 2×2:** con la ventana a 640 px cada panel mide 170 px y la etiqueta acaba en x 79; el
+  candado empieza en 315 (en la imagen). Se tocarían con paneles de menos de unos 110 px.
+
+**Medido.** `tests/unit/test_stokes_label.py`: con I → Q → U → V desde la sesión, la imagen y la λ–t del principal y
+del enlazado de cuatro Stokes dicen lo mismo; el mapa y un cubo de un solo Stokes, nada, ni en la imagen ni en la
+λ–t; la tinta, en oscuro y claro y en los tres aspectos, y dibujada (85-88 píxeles de tinta en la caja con la
+etiqueta, 0 sin ella). Con el código de antes no hay ningún texto en esas cajas. Las 12 capturas del arnés de
+comparación, contra las de `4cae1f4` (dos tandas de ese código: 1 fichero con 824 px de ruido, el de siempre): 14
+ficheros distintos, solo donde están las etiquetas y la pista movida; `one_*_glass_window` idénticos (sin etiqueta
+bajo la clave).
+
+**Sin resolver.** La tinta clara del tema oscuro sobre imagen clara se lee mal: 1.45:1 sobre la λ–t gris del cubo
+sintético, 1.85:1 de mediana sobre la granulación de un enlazado (por debajo de 3:1). Es lo que ya hacían las letras
+de la 2×2; un halo como el de la retícula, o un fondo como el de la clave, es decisión del usuario (sin probar).
