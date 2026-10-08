@@ -116,6 +116,43 @@ def plan_links(path, others, axes=None) -> list:
     return links
 
 
+def given_cubes(path, sp, no_sp, linked) -> tuple[str, str | None, list[str], dict[str, str]]:
+    """The cubes to open for those given: a per-pixel file given as a cube becomes its image cube, opened with it
+    (formats.opening), said in one line on stderr; (first cube, its per-pixel file, the linked cubes, their
+    per-pixel files by path). The first cube's ValueError (a per-pixel file without its image cube, --sp naming an
+    image cube) is the caller's; a linked one's leaves that cube out, with the reason, as data.link's refusals. A
+    linked per-pixel file of the first cube is taken as its per-pixel file, not linked to it."""
+    from ..data.formats import opening
+
+    first = opening(path, sp, no_sp)
+    if first.note:
+        print(f"[{APP_NAME}] {first.note}", file=sys.stderr)
+    path, sp = first.path, first.sp
+    others: list[str] = []
+    sps: dict[str, str] = {}
+    for p in linked:
+        try:
+            o = opening(p, None, no_sp)
+        except (ValueError, OSError) as e:
+            print(f"[{APP_NAME}] not linked: {e}", file=sys.stderr)
+            continue
+        if o.sp is not None and os.path.realpath(o.path) == os.path.realpath(path):
+            if sp is None:
+                sp = o.sp
+                print(f"[{APP_NAME}] {os.path.basename(str(p))} is the per-pixel file of {os.path.basename(path)}: "
+                      f"opened with it, not linked to it", file=sys.stderr)
+            else:
+                print(f"[{APP_NAME}] not linked: {os.path.basename(str(p))} is a per-pixel file of "
+                      f"{os.path.basename(path)}, which --sp gives one already", file=sys.stderr)
+            continue
+        if o.note:
+            print(f"[{APP_NAME}] {o.note}", file=sys.stderr)
+        others.append(o.path)
+        if o.sp is not None:
+            sps[o.path] = o.sp
+    return path, sp, others, sps
+
+
 def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False, traces=False,
           saved_layout=True, linked=()) -> Started | None:
     """Everything `explorer cube` does before its event loop: the display plan, the themed application, the cube,
@@ -144,6 +181,11 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     from .style import THEMES
 
     q = time.perf_counter()
+    try:
+        path, sp, linked, linked_sp = given_cubes(path, sp, no_sp, linked)
+    except (ValueError, OSError) as e:                  # a per-pixel file without its image cube: what is needed
+        print(f"[{APP_NAME}] {e}", file=sys.stderr)
+        return None
     try:
         links = plan_links(path, linked, axes) if linked else []
     except (ValueError, OSError) as e:                  # the first cube: reported as below, when opened
@@ -179,7 +221,8 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     others: list = []
     try:
         for link in links:
-            others.append(Dataset.open(link.path, no_sp=no_sp, axes=link.axes, guard=guard, executors=ds.executors))
+            others.append(Dataset.open(link.path, sp=linked_sp.get(link.path), no_sp=no_sp, axes=link.axes,
+                                       guard=guard, executors=ds.executors))
     except (ValueError, OSError) as e:
         print(f"[{APP_NAME}] cannot open {link.path}: {e}", file=sys.stderr)
         for d in others:
