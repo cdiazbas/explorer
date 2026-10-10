@@ -400,3 +400,37 @@ def test_while_drawn_a_late_result_for_its_previous_stage_is_shown_once_drawn_no
         sched.close()
     finally:
         ds.close()
+
+
+@pytest.mark.parametrize("linked_file", ["per-pixel", "frames"])
+def test_a_slit_drawn_on_a_linked_cube_reads_that_cube_at_its_own_lambda(cube, tmp_path, linked_file):
+    """With linked cubes (ROADMAP E8.1) the slices are those of the cube the slit was drawn on (ViewState.path_cube):
+    its values at the same pixels, at its own lambda, through its per-pixel file or its frames; back on the main
+    cube, the main cube's."""
+    d = synth.write_dataset(tmp_path, "other", shape=(SHAPE[0], SHAPE[1], 7, SHAPE[3], SHAPE[4]), seed=4,
+                            icube=False)
+    other = fits.getdata(d["im"]).astype(np.float32)
+    drv = Driver.open(cube[0])
+    ds = Dataset.open(d["im"], no_sp=linked_file == "frames", executors=drv.dataset.executors)
+    try:
+        k = drv.session.add(ds)
+        drv.show("slit")
+        drv.session.set_path(A, k)
+        drv.wait_idle()
+        st = drv.session.member_state(k)
+        print("linked cube", k, "per-pixel" if ds.pixel is not None else "frames", "lambda", st.l, "Stokes", st.s)
+        ts, sl = want(other, A, st.t, st.s, st.l)
+        np.testing.assert_array_equal(drv.shown.slit_ts, ts)
+        np.testing.assert_array_equal(drv.shown.slit_sl, sl)
+        drv.session.set_member_index(k, "l", 5)             # its own lambda: the time slice there
+        drv.wait_idle()
+        np.testing.assert_array_equal(drv.shown.slit_ts, want(other, A, st.t, st.s, 5)[0])
+        drv.session.set_path(A, 0)
+        drv.wait_idle()
+        main = drv.state()
+        ts, sl = want(cube[1], A, main.t, main.s, main.l)
+        np.testing.assert_array_equal(drv.shown.slit_ts, ts)
+        np.testing.assert_array_equal(drv.shown.slit_sl, sl)
+    finally:
+        ds.close()
+        drv.close()
