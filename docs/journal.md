@@ -4213,3 +4213,90 @@ ejecuciones; la prueba sola, 0 de 30; los 11 ficheros juntos, 129 pasan. Classic
 `AutoHide`; no hay otro temporizador de arranque que cambie píxeles.
 
 **Visto y sin trazar** (X.15): 2 de 400 con la ventana y la λ–t de otro tamaño (claro → oscuro, con carga 6-7).
+
+### 2026-10-10 (10): el idlsave de un cubo alineado o `_sp`, y los nombres de 2019 (ROADMAP E1.25)
+
+**La idea del usuario** (que un cubo `…_sp.aligned6173.icube` tome el idlsave de su observación, el nombre menos la
+etiqueta) ya se cumplía. En las seis fechas de 2023-2025 enlazadas o listadas, 100 de los 101 cubos `nb_` encuentran
+su idlsave y leen λ y tiempos: el alineado quitando la etiqueta, el `_sp` a través de su `_im` y el `_stokesI_` del
+`_stokes_`. El que falta es uno recortado sin idlsave propio. En el árbol de reduc (48 carpetas de cubos, solo
+listadas) no hay ningún `.sav`, ni ningún idlsave con la etiqueta de alineado en el nombre.
+
+**Lo que fallaba era 2019.** El 2019-09-04, SSTRED escribió `<stem>_im_times_wvl.idlsave`, con `_` donde hoy pone `+`:
+los Hα de ese día se abrían en cuentas, sin λ ni tiempos. El 8542 de ese día tiene los dos nombres, iguales salvo en
+`fac`: 1 en el de `+` (el del cubo float) y 1e9 en el de `_` (el de los cubos de enteros); los de enteros tomaban el de
+`+` y se quedaban en cuentas.
+
+**Ahora** se acepta también el nombre antiguo. Si están los dos, se toma el idlsave cuyo `fac` encaja con el tipo del
+cubo (distinto de 1 para enteros, 1 o ninguno para float); si no encaja exactamente uno, ninguno, y se dice. Cada cubo
+dice una vez en la terminal qué idlsave tomó cuando no lleva su propio nombre, y un cubo de enteros con `fac` 1 dice
+que sigue en cuentas.
+
+**Medido** (bellatrix, solo lectura, un cuadro): el Hα y el 8542 Stokes I de 2019, escalados por 1e-9, coinciden con
+su FITS hermano (medianas iguales; diferencia máxima 1.2e-4 y 1.8e-4 de la mediana, la cuantización de 1 cuenta). Un
+cubo alineado tiene la escala de cuentas del no alineado: medianas 3024/3023, 847/845, 1713/1711, 4017/4016 y
+1367/1367, y el mismo valor de relleno sin nada por debajo. Cinco casos nuevos de `test_formats` fallan antes y pasan
+después; `tests/real`, 40 pasan. Negativo sin trazar: el 8542 alineado de 2019 en enteros frente al float difiere en
+más de 1 cuenta en el 9.6 % de los píxeles (en (0, 0): 0 frente a 2796), por un relleno distinto del borde; no se
+comprobó que todos sean borde.
+
+**Sin decidir:** el `_rot5` del 2019-09-02 (mismo idlsave si se quita `_rot5`, mismas estadísticas que el alineado sin
+rotar) y el cubo recortado del 2024-09-11 (su idlsave tiene 147 barridos y el cubo 86).
+
+### 2026-10-10 (11): un `_sp` sin su `_im`: cuánto cuesta leer imágenes del fichero por píxel (ROADMAP E1.23)
+
+**La idea** (el usuario): `explorer nb_6563_..._sp.fits` busca su `_im` y abre los dos; si no está, abrir el `_sp`
+solo, «como `--no-sp` pero al revés».
+
+**Lo que ya hay.** Comprobado en bellatrix con los 13 ficheros por píxel reales (los 12 de `data/` y el `_sp.icube` de
+2025-07-05, leído en su sitio): `formats.opening` abre el `_im` de cada uno, los FITS por su cabecera y los LP por
+nombre y dimensiones, también con `.aligned6173`, `cmapcorr_sp` y `meinv_…_sp`.
+
+**La medida** (`bench/sp_frames.py`; nodo 0, cerrojo; Hα 2024-10-10 =0-48, el mismo cubo por los dos lados, todos los
+cuadros iguales). Un píxel del `_sp` ocupa 2940 bytes (FITS, 13 GB) o 1470 (LP, 6.2 GB), menos que una página: un
+cuadro del `_sp` toca todas las páginas del fichero.
+
+| | FITS 13 GB | LP 6.2 GB |
+|---|---|---|
+| cuadro del `_im` | 8.9-21 ms | 4.8-9 ms |
+| del `_sp`, en frío | 20.7 s | 10.5 s |
+| del `_sp`, en la caché de páginas | 7.3-9.6 s | 4.2-4.3 s |
+| del `_sp`, con el fichero ya mapeado | 59-65 ms (25-32 con 16 hilos) | 54-55 ms (22-26) |
+
+Una pasada cuesta casi lo mismo guarde lo que guarde: 1 cuadro 4.1-4.7 s, los 15 λ de un t 4.5 s, los 49 t de una λ
+6.4 s (LP, en caché). Carga 1.2-5.4 en la serie FITS; 17.8 → 5.9 en la LP, que no cuenta como carga baja, aunque los
+efectos son de 100-1000×. Negativo: releer en lecturas de 256 MiB se quedó en 0.65-0.72 GB/s, sin caché (inferencia:
+StorNext no pasa por la caché de páginas en lecturas tan grandes; los fallos de página sí la llenan).
+
+**No se implementa.** Un paso en t cuesta hoy unos 22 ms; el primer cuadro del `_sp`, 4-26 s; los 22-65 ms exigen
+todo el `_sp` en RAM (13 GB aquí, 176 GB el de 6173 Stokes del 2025-07-11). Para el usuario, sin probar: cuadros por
+bloques en una pasada al cambiar λ o t; una copia transpuesta en su caché (disco; nunca junto a los datos de reduc); un
+modo solo espectros con una imagen fija. Hoy no hay ningún `_sp` real sin su `_im` en `data/`.
+
+### 2026-10-10 (12): la rendija del cubo en que se dibuja; el eje que no se sabe λ (ROADMAP E8.6)
+
+**El problema** (el usuario): con Stokes y Blos enlazados, la rendija dibujada sobre el Blos daba el corte temporal de
+Stokes. El panel leía siempre el primer cubo: `SlitReads` tomaba `session.main` y la t, λ y Stokes del estado
+principal; el clic de una imagen enlazada llegaba a la herramienta sin decir de qué cubo era, y el panel se construía
+una vez con los ejes del primero.
+
+**Ahora** la sesión apunta el cubo de la rendija: el de la imagen que recibió el primer punto. Las lecturas pasan a ese
+cubo (su fichero por píxel o sus cuadros, su caché, su λ y su Stokes) y el panel toma sus ejes y su nombre. Un mapa sin
+tiempos propios, cuyos cuadros son las t del primero, se rotula con los tiempos del primero, y su panel muestra solo el
+corte temporal, a todo el ancho.
+
+**Los nombres** (el usuario: un Blos frente al tiempo no es «λ–t» ni tiene «λ index»): el eje distinto de t de un cubo
+enlazado solo se llama λ cuando se sabe (λ en Å, CTYPE, `--axes` o el orden SOLARNET de tres ejes); si no, por lo que
+muestra el cubo: BTYPE, la palabra del mapa o el nombre del fichero («Blos–t», «Blos index»), provisional, en una sola
+función (`data/names.py` `slice_names`). El cubo principal no cambia.
+
+**Medido** (bellatrix, sin pantalla, carga 0.4-2.8): en la ventana enlazada sintética, antes, la rendija sobre el mapa
+daba un corte espectral de 5 filas (el mapa tiene 1) y un corte temporal que difería hasta 2.83 del mapa; después,
+igual al mapa (|Δ| = 0); igual con el otro cubo (7 λ, a su λ). Con los cubos reales (`stokes_6173_im.icube` +
+`Blos.6173_map.fcube`): sobre el Blos, corte (17, 959) de −3329 a 1947 G, título `Slit: Blos · Fe I 617.3`, t en UT;
+de vuelta sobre Stokes, los cortes de antes. Sin rendija, el arranque es idéntico píxel a píxel (solo y enlazado; 0 px
+entre dos tandas). Grupos de la rendija, el enlazado, la sesión, los nombres y la λ–t: 213 pasan.
+
+**Por decidir:** la palabra para el eje que no se sabe λ; un panel de rendija por ventana de cubo (ahora uno, en la
+principal); qué clic decide el cubo (ahora el primero); si el cubo principal sigue la misma regla; si «default (t,
+lambda)» sin fichero de λ cuenta como λ. Sin ver: los colores en modern y glass.
