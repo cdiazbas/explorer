@@ -1,4 +1,6 @@
 """Which format a file is, from its first bytes rather than its name."""
+import os
+
 from ...obs import get_logger
 from .fits import fits_layout
 from .layout import Layout
@@ -36,11 +38,15 @@ def open_layout(path) -> Layout:
     if side is None:
         if layout.dtype.kind in "iu" and str(path) not in _said:    # nothing says what the counts are: shown
             _said.add(str(path))                                        # as they are; said once per file
-            log.warning("%s: values in counts, padding as data: no <stem>_im_times+wvl.idlsave beside it or the "
-                        "file it links to", path)
+            log.warning("%s: values in counts, padding as data: no <stem>_im_times+wvl.idlsave taken beside it or "
+                        "the file it links to", path)
         return layout
     try:
-        return lp_values(layout, side)
+        valued = lp_values(layout, side)
     except (OSError, ValueError) as e:                  # the cube still opens, in counts
         log.warning("%s not read, values of %s left as stored: %s", side, path, e)
         return layout
+    if layout.dtype.kind in "iu" and not valued.scaled and str(path) not in _said:     # its fac is 1: the float
+        _said.add(str(path))                                                             # cube's, beside it
+        log.warning("%s: values in counts: %s gives them no scale (fac 1 or none)", path, os.path.basename(side))
+    return valued

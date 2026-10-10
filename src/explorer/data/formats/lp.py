@@ -8,10 +8,10 @@ file (nl = its nx, nt = its ny), so the two are read as a pair. Without one (fie
 clipped cubes), the scans in the file name say it (lp_single_layout).
 
 Values are counts in the integer cubes. What they mean is in the IDL save file SSTRED writes beside the cube,
-<stem>_im_times+wvl.idlsave (lp_sidecar): the scale (fac) and the value that stands for no data (nan_rplcmnt),
-read by lp_values; its wavelengths and times by axes.from_lp. A cube derived from another of the same observation
-(<stem>_stokesI_..., Stokes I alone) has none of its own: the full-Stokes cube's (lp_sibling_sidecar) gives its
-times and wavelengths only, never its values' meaning.
+<stem>_im_times+wvl.idlsave (lp_sidecar; _times_wvl beside its 2019 cubes): the scale (fac) and the value that
+stands for no data (nan_rplcmnt), read by lp_values; its wavelengths and times by axes.from_lp. A cube derived
+from another of the same observation (<stem>_stokesI_..., Stokes I alone) has none of its own: the full-Stokes
+cube's (lp_sibling_sidecar) gives its times and wavelengths only, never its values' meaning.
 """
 import os
 import re
@@ -19,7 +19,10 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
+from ...obs import get_logger
 from .layout import Layout
+
+log = get_logger("data")
 
 HEADER_BYTES = 512
 _SCANS = re.compile(r"=(\d+)-(\d+)(?=[._]|$)")      # "=0-85": the scans in a cube, as SSTRED names it
@@ -27,6 +30,8 @@ _DATATYPE = {"1": "u1", "2": "i2", "3": "i4", "4": "f4"}
 _IMAGE_CUBE = re.compile(r"(.*)_im(?:\.[^.]+)*?\.[if]cube$")       # <stem>_im[.tag].icube: tag as in "aligned6173"
 _DERIVED = re.compile(r"_stokes[IQUV]+(?=_)")      # "_stokesI_": some of the Stokes of the "_stokes_" cube
 SIDECAR = "_im_times+wvl.idlsave"
+SIDECARS = (SIDECAR, "_im_times_wvl.idlsave")      # SSTRED's name, and its 2019 cubes' (an underscore for the plus)
+_said: set[str] = set()     # cubes whose IDL save file was named: the layout and the axes look it up, linking twice
 
 
 @dataclass(frozen=True)
@@ -100,30 +105,72 @@ def lp_single_layout(path) -> Layout:
 
 
 def lp_sidecar(path) -> str | None:
-    """The IDL save file beside an LP image cube: <stem>_im_times+wvl.idlsave for <stem>_im[.tag].icube or .fcube
-    (an aligned cube's tag is not in its name), next to the path given, else next to the file it links to (a cube
-    linked alone, under another name, into another directory, as companions() does); None when there is none."""
+    """The IDL save file beside an LP image cube: <stem>_im_times+wvl.idlsave, or _times_wvl, for <stem>_im[.tag].icube
+    or .fcube (an aligned cube's tag is not in its name; its counts are on the scale of the unaligned cube's, the
+    same fac), next to the path given, else next to the file it links to (a cube linked alone, under another name,
+    into another directory, as companions() does); None when there is none. With both names there, the one whose
+    fac fits the cube's values (_fits_values): SSTRED wrote one for the integer cubes and one for the float cube of
+    the same observation, with the same times and lambda; when not exactly one fits, neither. A file under another
+    name than the cube's own is said once on the console, and so is a choice that could not be made."""
     for p in dict.fromkeys((os.path.abspath(str(path)), os.path.realpath(str(path)))):
         m = _IMAGE_CUBE.match(os.path.basename(p))
-        side = os.path.join(os.path.dirname(p), m.group(1) + SIDECAR) if m else None
-        if side is not None and os.path.isfile(side):
-            return side
+        found = _beside(p, m.group(1)) if m else []
+        chosen = len(found) > 1
+        if chosen:
+            fit = [s for s in found if _fits_values(p, s)]
+            if len(fit) != 1:
+                _say(path, f"{len(found)} IDL save files of the same observation ("
+                           f"{', '.join(os.path.basename(s) for s in found)}), and {'each' if fit else 'none'} of "
+                           f"them can scale its values: none taken")
+                return None
+            found = fit
+        if found:
+            if found[0] != os.path.splitext(os.path.abspath(str(path)))[0] + "_times+wvl.idlsave":
+                _say(path, f"scale, padding, times and wavelengths from {found[0]}"
+                           + (" (of the two there, the one whose fac fits its values)" if chosen else ""))
+            return found[0]
     return None
+
+
+def _beside(p, stem: str) -> list[str]:
+    """The IDL save files <stem>_im_times+wvl.idlsave and <stem>_im_times_wvl.idlsave next to p, those that exist."""
+    return [s for s in (os.path.join(os.path.dirname(p), stem + suffix) for suffix in SIDECARS) if os.path.isfile(s)]
+
+
+def _fits_values(cube, side) -> bool:
+    """Whether an IDL save file's fac can be the scale of an LP cube's values: other than 1 for integer counts, 1
+    or none for floats. On the one observation with both files (SSTRED's 8542 Stokes cubes of 2019), the integer
+    cubes' counts are the float cube's values times the 1e9 of one file, and the other file says 1."""
+    from .idlsave import read
+
+    try:
+        fac = read(side, names={"fac"}).get("fac")
+        integer = lp_header(cube).dtype.kind in "iu"
+    except (OSError, ValueError):
+        return False
+    return (isinstance(fac, np.number) and bool(np.isfinite(fac)) and float(fac) not in (0.0, 1.0)) == integer
+
+
+def _say(path, what: str) -> None:
+    if str(path) not in _said:
+        _said.add(str(path))
+        log.warning("%s: %s", os.path.basename(str(path)), what)
 
 
 def lp_sibling_sidecar(path) -> str | None:
     """For an LP image cube without an IDL save file of its own (lp_sidecar), the one of the cube it was derived
-    from in the same observation: <stem>_stokes_<rest>_im_times+wvl.idlsave for <stem>_stokesI_<rest>_im[.tag].icube,
-    next to the path given, else next to the file it links to; None when the name says no such cube or there is no
-    file. The same scans and tunings, so its times and wavelengths can be the derived cube's (axes.from_lp checks
-    their sizes); its fac and nan_rplcmnt describe the other cube's values (float, unscaled), never these."""
+    from in the same observation: <stem>_stokes_<rest>_im_times+wvl.idlsave (or _times_wvl, the first there) for
+    <stem>_stokesI_<rest>_im[.tag].icube, next to the path given, else next to the file it links to; None when the
+    name says no such cube or there is no file. The same scans and tunings, so its times and wavelengths can be the
+    derived cube's (axes.from_lp checks their sizes); its fac and nan_rplcmnt describe the other cube's values
+    (float, unscaled), never these."""
     for p in dict.fromkeys((os.path.abspath(str(path)), os.path.realpath(str(path)))):
         m = _IMAGE_CUBE.match(os.path.basename(p))
         if m is None or not _DERIVED.search(m.group(1)):
             continue
-        side = os.path.join(os.path.dirname(p), _DERIVED.sub("_stokes", m.group(1), count=1) + SIDECAR)
-        if os.path.isfile(side):
-            return side
+        found = _beside(p, _DERIVED.sub("_stokes", m.group(1), count=1))
+        if found:
+            return found[0]
     return None
 
 

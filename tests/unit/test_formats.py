@@ -185,6 +185,63 @@ def test_an_lp_cube_linked_alone_finds_the_idlsave_beside_the_file_it_points_to(
     assert formats.open_layout(link).scale == pytest.approx(1e-11)
 
 
+def test_an_lp_cube_takes_its_idlsave_under_the_older_name(tmp_path):
+    # SSTRED's 2019 cubes: <stem>_im_times_wvl.idlsave, an underscore for the plus
+    im, _ = _lp_pair(tmp_path, np.ones((2, 1, 3, 4, 5), np.int16))
+    synth.write_idlsave(tmp_path / "c_im_times_wvl.idlsave", {"fac": np.float32(1e9)})
+    assert formats.lp_sidecar(im) == str(tmp_path / "c_im_times_wvl.idlsave")
+    assert formats.open_layout(im).scale == pytest.approx(1e-9)
+
+
+def test_of_two_idlsave_files_each_cube_takes_the_one_whose_scale_fits_its_values(tmp_path):
+    # as SSTRED's 8542 Stokes cubes of 2019: the same times and lambda in both files, fac 1e9 in
+    # _times_wvl for the integer cubes, fac 1 in _times+wvl for the float one
+    im, _ = _lp_pair(tmp_path, np.ones((2, 1, 3, 4, 5), np.int16))
+    fl = _lp_frames(tmp_path / "c_im.aligned6173.fcube", np.full((6, 4, 5), 1e-9, np.float32))
+    synth.write_idlsave(tmp_path / "c_im_times+wvl.idlsave", {"fac": np.float32(1.0)})
+    synth.write_idlsave(tmp_path / "c_im_times_wvl.idlsave", {"fac": np.float32(1e9)})
+    assert formats.lp_sidecar(im) == str(tmp_path / "c_im_times_wvl.idlsave")
+    assert formats.open_layout(im).scale == pytest.approx(1e-9)
+    assert formats.lp_sidecar(fl) == str(tmp_path / "c_im_times+wvl.idlsave")
+    assert not formats.open_layout(fl).scaled
+
+
+def test_of_two_idlsave_files_that_both_fit_neither_is_taken(tmp_path, caplog):
+    im, _ = _lp_pair(tmp_path, np.ones((2, 1, 3, 4, 5), np.int16))
+    synth.write_idlsave(tmp_path / "c_im_times+wvl.idlsave", {"fac": np.float32(1e11)})
+    synth.write_idlsave(tmp_path / "c_im_times_wvl.idlsave", {"fac": np.float32(1e9)})
+    with caplog.at_level("WARNING"):
+        assert formats.lp_sidecar(im) is None
+    print(caplog.text)
+    assert "c_im_times+wvl.idlsave" in caplog.text and "c_im_times_wvl.idlsave" in caplog.text
+
+
+def test_an_aligned_cube_given_as_its_per_pixel_file_says_which_idlsave_it_took(tmp_path, caplog):
+    # nb_6563_..._corrected_sp.aligned6173.icube: its image cube's idlsave is the unaligned cube's, the tag dropped
+    (tmp_path / "w").mkdir()
+    im0, sp0 = _lp_pair(tmp_path / "w", np.ones((2, 1, 3, 4, 5), np.int16))
+    im, sp = tmp_path / "c_im.aligned6173.icube", tmp_path / "c_sp.aligned6173.icube"
+    im0.rename(im)
+    sp0.rename(sp)
+    synth.write_idlsave(tmp_path / "c_im_times+wvl.idlsave", {"fac": np.float32(1e11)})
+    o = formats.opening(sp)
+    assert o.path == str(im)
+    with caplog.at_level("WARNING"):
+        assert formats.open_layout(o.path).scale == pytest.approx(1e-11)
+    print(caplog.text)
+    assert "c_im.aligned6173.icube" in caplog.text and "c_im_times+wvl.idlsave" in caplog.text
+
+
+def test_an_integer_lp_cube_whose_idlsave_gives_no_scale_says_its_values_are_counts(tmp_path, caplog):
+    # SSTRED's 6173 cmapcorr integer cube of 2019: the one idlsave there says fac 1, the float cube's
+    im, _ = _lp_pair(tmp_path, np.ones((2, 1, 3, 4, 5), np.int16))
+    synth.write_idlsave(tmp_path / "c_im_times+wvl.idlsave", {"fac": np.float32(1.0)})
+    with caplog.at_level("WARNING"):
+        assert not formats.open_layout(im).scaled
+    print(caplog.text)
+    assert "counts" in caplog.text and "c_im_times+wvl.idlsave" in caplog.text
+
+
 def test_an_integer_lp_cube_without_its_idlsave_says_its_values_are_counts(tmp_path, caplog):
     im, _ = _lp_pair(tmp_path, np.ones((2, 1, 3, 4, 5), np.int16))
     with caplog.at_level("WARNING"):
