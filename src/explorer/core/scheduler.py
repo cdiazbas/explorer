@@ -327,10 +327,10 @@ class Scheduler:
                 self._cleared = True
             return
         refill = self._cleared
-        r = self.ds.roles                               # a spectrum needs lambda; a lambda-t needs t and lambda
-        want_spec = (r.l is not None and "spectra" in st.panels
+        r = self.ds.roles                               # a spectrum needs lambda; a lambda-t needs t (without
+        want_spec = (r.l is not None and "spectra" in st.panels     # lambda, one column: the value against t)
                      and bool(kinds & {"cursor", "t", "show:spectra"} or refill))
-        want_lt = (r.l is not None and r.t is not None and "lambda_t" in st.panels
+        want_lt = (r.t is not None and "lambda_t" in st.panels
                    and bool(kinds & {"cursor", "s", "show:lambda_t"} or refill))
         if not (want_spec or want_lt):
             if "cursor" in kinds:
@@ -410,18 +410,23 @@ class Scheduler:
         r = self.ds.roles
         return self._as(arr, spec_axes, (r.s, r.l)).reshape(r.ns, r.nl)
 
+    def _lt(self, arr, lt_axes) -> np.ndarray:
+        """lambda-t as (t, lambda); a cube without lambda as one column."""
+        r = self.ds.roles
+        return self._as(arr, lt_axes, (r.t, r.l)).reshape(r.nt, r.nl)
+
     def _read_series(self, g: int, st: ViewState, want_spec: bool, want_lt: bool) -> None:
         r, (y, x) = self.ds.roles, st.cursor
         idx = self.session.index_of(self.member, st)
         spec_axes = sorted(a for a in (r.s, r.l) if a is not None)
-        lt_axes = sorted((r.t, r.l)) if r.t is not None and r.l is not None else None
+        lt_axes = sorted(a for a in (r.t, r.l) if a is not None) if r.t is not None else None
         want_lt = want_lt and lt_axes is not None
         spec = self.ds.peek_series(y, x, idx, spec_axes) if want_spec else None
         lt = self.ds.peek_series(y, x, idx, lt_axes) if want_lt else None
         if spec is not None:
             self._show("spectra", g, self._spec(spec, spec_axes), (y, x), st.t)
         if lt is not None:
-            self._show("lambda_t", g, self._as(lt, lt_axes, (r.t, r.l)), (y, x), st.s)
+            self._show("lambda_t", g, self._lt(lt, lt_axes), (y, x), st.s)
         need_spec, need_lt = want_spec and spec is None, want_lt and lt is None
         if not (need_spec or need_lt):
             return
@@ -434,7 +439,7 @@ class Scheduler:
                 sp = self._spec(self.ds.read_series(y, x, idx, spec_axes), spec_axes)
                 self.loop.post(lambda: self._show("spectra", g, sp, (y, x), st.t))
             if need_lt and not self.gens.stale("cursor", g):
-                lt_ = self._as(self.ds.read_series(y, x, idx, lt_axes), lt_axes, (r.t, r.l))
+                lt_ = self._lt(self.ds.read_series(y, x, idx, lt_axes), lt_axes)
                 self.loop.post(lambda: self._show("lambda_t", g, lt_, (y, x), st.s))
 
         def failed(f: Future) -> None:

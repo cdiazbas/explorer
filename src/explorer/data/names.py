@@ -85,26 +85,42 @@ def quantity(path, axes=None) -> str:
 class SliceNames(NamedTuple):
     """How a cube's panels name its axis other than t: panel, the title of that axis against t ("λ–t"); label, that
     axis's label in index units ("λ index"; in Ångström the panels say "Δλ [Å]" themselves); spectral: the axis is
-    known to be lambda; mapped: the cube is a map (no axis but t), so a slice along that axis says nothing."""
+    known to be lambda; mapped: the cube has no axis but t, or one plane along the other (a map, a single tuning), so
+    a slice along that axis is one row and says nothing: lambda-t is a curve against t, the slit's spectral slice is
+    left out; value: what a curve's values are, with their unit when the header gives it ("Blos [G]")."""
     panel: str
     label: str
     spectral: bool
     mapped: bool
+    value: str = "value"
 
 
 KNOWN_LAMBDA = ("header", "--axes", "SOLARNET order")   # Roles.how that name lambda; else it is a guess
 
 
+def value_label(path, axes=None) -> str:
+    """What a cube's values are, for the axis of a curve: its BTYPE, else the word naming a map in its file name, else
+    "value"; with BUNIT in brackets when the header gives it."""
+    btype = str(getattr(axes, "btype", None) or "").strip()
+    s = stem(path)
+    word = re.split(r"[^A-Za-z]+", s)[0].lower() if s else ""
+    q = btype or QUANTITIES.get(word) or "value"
+    unit = str(getattr(axes, "bunit", None) or "").strip()
+    return f"{q} [{unit}]" if unit else q
+
+
 def slice_names(roles, axes, path) -> SliceNames:
     """The names of a cube's axis other than t, in one place. Known to be lambda (its tunings in Å, or so named by
-    the header, by --axes or by SOLARNET's order of three axes): "λ–t" and "λ index", as always. Otherwise (an
-    unnamed axis taken for lambda by default, or a map) the quantity's name (quantity): "Blos–t", "Blos index"."""
+    the header, by --axes or by SOLARNET's order of three axes), with more than one tuning: "λ–t" and "λ index", as
+    always. Otherwise (a map, a single tuning, or an unnamed axis taken for lambda by default) by what the cube shows:
+    its quantity (quantity), "Blos–t", "Blos index"; a single tuning known to be lambda by its line ("Fe I 617.3–t")."""
     dl = axes.dlam_A() if axes is not None and roles.l is not None else None
     spectral = roles.l is not None and ((dl is not None and len(dl) == roles.nl) or roles.how in KNOWN_LAMBDA)
-    if spectral:
+    mapped = roles.l is None or roles.nl <= 1
+    if spectral and not mapped:
         return SliceNames("λ–t", "λ index", True, False)
-    q = quantity(path, axes)
-    return SliceNames(f"{q}–t", f"{q} index", False, roles.l is None)
+    q = (line_of(path, axes) if spectral else None) or quantity(path, axes)
+    return SliceNames(f"{q}–t", f"{q} index", spectral, mapped, value_label(path, axes))
 
 
 def cube_names(datasets) -> list[str]:

@@ -180,7 +180,9 @@ class Shell(QtWidgets.QMainWindow):
         self.spec_tabs = self._tabs(names[0], "spectra", self.spectra, self.spec_panel)
         self.lt_tabs = self._tabs(names[0], "lambda_t", self.lambda_t, self.lt_panel)
         self.spec_dock = docks.dock(self, "Spectrum", self.spec_tabs or self.spec_panel, "spectrum")
-        self.lt_dock = docks.dock(self, "λ–t", self.lt_tabs or self.lt_panel, "lambda_t")
+        # lambda-t named by what the cube shows when it has one plane along lambda or none (data.names)
+        lt_title = self.main.slices.panel if self.main.slices is not None and self.lt_tabs is None else "λ–t"
+        self.lt_dock = docks.dock(self, lt_title, self.lt_tabs or self.lt_panel, "lambda_t")
         # the slit's slices: lambda-t's tab, there from the first S on and only with a slit or one being drawn
         # (_slit_tab; the prototype's 1046-1052)
         self.slit_panel = SlitPanel(r.nt, r.nl, dataset.axes)

@@ -79,7 +79,8 @@ def test_the_linked_panels_are_tabs_named_in_english_and_only_the_front_one_read
     names = {k: [t.tabText(i) for i in range(t.count())] for k, t in tabs.items()}
     print("docks", w.spec_dock.windowTitle(), w.lt_dock.windowTitle(), "tabs", names,
           "panels", sorted(w.session.state.panels))
-    assert names == {"spectra": ["main_im", "other_im"], "lambda_t": ["main_im", "other_im"]}   # the map has none
+    # the map has no spectra, and its lambda-t is a curve against t (ui.lambda_t.TimeCurve)
+    assert names == {"spectra": ["main_im", "other_im"], "lambda_t": ["main_im", "other_im", "Blos.map"]}
     assert w.linked[1].name == "Blos.map" and w.linked[1].spectra is None
     assert {"spectra", "lambda_t"} <= w.session.state.panels and "spectra:1" not in w.session.state.panels
     w.spec_tabs.setCurrentIndex(1)                      # the linked cube's spectra in front: only they are read
@@ -509,7 +510,7 @@ def test_one_entry_puts_every_cube_in_a_window_of_its_own_and_back(window):
     assert tabs == tabs_before[:1] and other.windowed and [p.objectName() for p in panes] == ["spectra:1", "lambda_t:1"]
     assert all(p.window() is other.dock and not p.isFloating() for p in panes)
     assert other.spectra.widget.isVisibleTo(other.dock) and "spectra:1" in w.session.state.panels
-    assert not blos.panes                               # a map: an image alone
+    assert list(blos.panes) == ["lambda_t:2"]           # a map: its image and its curve against t
     a.setChecked(False)
     spin(qapp, lambda: False, timeout=0.6)
     sizes = [v.widget.width() for v in views]

@@ -20,7 +20,7 @@ from . import glass
 from .cards import CARD, CARD_LIGHT
 from .gestures import Gestures
 from .imageview import ImageView
-from .lambda_t import LambdaTPanel
+from .lambda_t import LambdaTPanel, TimeCurve
 from .padlock import PanelLock
 from .spectra import AxisDrag, SpectraPanel
 
@@ -84,14 +84,23 @@ class CubeView:
         self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light)
         self.view.widget.scene().sigMouseClicked.connect(self._click)
         r = ds.roles
-        # a cube without lambda has no spectra; lambda-t needs both t and lambda
+        # a cube without lambda has no spectra
         self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, ds.axes, light=light) \
             if r.l is not None else None
-        # a linked cube's axis other than t named as data.names says (not lambda unless known to be); the main
-        # cube's as it always was
-        self.slices = slice_names(r, ds.axes, getattr(ds, "path", "")) if k else None
-        self.lambda_t = (LambdaTPanel(r.nt, r.nl, ds.axes, *([self.slices.label] if self.slices else []))
-                         if r.t is not None and r.l is not None else None)
+        # its axis other than t named as data.names says (not lambda unless known to be): a linked cube's, and the
+        # main cube's with one plane along it or none; the main cube's with lambda as it always was
+        self.slices = slice_names(r, ds.axes, getattr(ds, "path", "")) if k or r.l is None or r.nl <= 1 else None
+        # lambda-t needs t; with one plane along the other axis it is one cell wide, a curve against t
+        self.lambda_t: LambdaTPanel | TimeCurve | None = None
+        if r.t is not None and self.slices is not None and self.slices.mapped:
+            # a linked map without times of its own whose frames are the main cube's t (data.link: Blos and Vlos of
+            # 6173): its t in the main cube's times, as its slit panel (Shell.slit_cube)
+            times = ds.axes
+            if k and getattr(ds.axes, "t_sec", None) is None and session.members[k].t == tuple(range(r.nt)):
+                times = shell.dataset.axes
+            self.lambda_t = TimeCurve(r.nt, times, self.slices.value, light=light)
+        elif r.t is not None and r.l is not None:
+            self.lambda_t = LambdaTPanel(r.nt, r.nl, ds.axes, *([self.slices.label] if self.slices else []))
         self.last_s = 0                                 # the Stokes of the lambda-t shown (its colour map)
         self.ns = r.ns
         # its Stokes named in the image's top left by something else: the main cube's colour key, which glass puts there
@@ -233,7 +242,8 @@ class CubeView:
         self._pick_timer.timeout.connect(self._pick_flush)
         picks = {}
         for panel, pick, cursor in ((self.spectra, self.spectrum_pick, C.SizeHorCursor),
-                                    (self.lambda_t, self.lt_pick, C.SizeAllCursor)):
+                                    (self.lambda_t, self.lt_pick,
+                                     C.SizeHorCursor if isinstance(self.lambda_t, TimeCurve) else C.SizeAllCursor)):
             if panel is None:
                 continue
             vp = panel.w.viewport()
@@ -268,15 +278,13 @@ class CubeView:
                 return
 
     def lt_pick(self, pos, now: bool = True) -> None:
-        """(t, lambda) of the cell under pos on lambda-t."""
+        """(t, lambda) of the cell under pos on lambda-t; t alone on its curve (TimeCurve)."""
         if self.lambda_t is None:
             return
         vb = self.lambda_t.w.getPlotItem().vb
         if not vb.sceneBoundingRect().contains(pos):
             return
-        q = vb.mapSceneToView(pos)
-        self.want({"l": int(np.clip(int(q.x()), 0, self.lambda_t.nl - 1)),
-                   "t": int(np.clip(int(q.y()), 0, self.lambda_t.nt - 1))}, now)
+        self.want(self.lambda_t.pick(vb.mapSceneToView(pos)), now)
 
     def want(self, want: dict, now: bool) -> None:
         """now: at once (a press); else the latest wins at the next pass of the event loop (a fast drag reads one

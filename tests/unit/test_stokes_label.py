@@ -111,7 +111,7 @@ def drawn(view, ink, tol=40):
 
 def test_every_cube_with_stokes_names_the_one_shown_on_its_image_and_lambda_t(qapp, window):
     """I -> Q -> U -> V from the session (as keys 1-4, the Stokes control and the glass bar set it): the main cube's
-    and the linked cube with the same Stokes follow at once; the map has no letter and no lambda-t."""
+    and the linked cube with the same Stokes follow at once; the map has no letter, nor its curve against t."""
     from explorer.data.axes import STOKES
 
     w = window
@@ -124,7 +124,7 @@ def test_every_cube_with_stokes_names_the_one_shown_on_its_image_and_lambda_t(qa
         seen = letters(w)
         print(f"s={s}:", seen)
         assert seen[main.name] == (text, text) and seen[other.name] == (text, text)
-        assert seen[blos.name] == (None, "no lambda-t")
+        assert seen[blos.name] == (None, None)
 
 
 def test_the_2x2_view_keeps_a_letter_per_panel_and_lambda_t_names_the_session_s(qapp, window):
@@ -156,7 +156,7 @@ def test_no_label_without_the_four_stokes(qapp, cubes, which):
             seen = letters(w)
             print(f"{which} (ns {w.main.ns}, s {w.session.state.s}):", seen)
             assert seen[w.main.name] == (None, None if w.main.lambda_t is not None else "no lambda-t")
-        assert (w.main.lambda_t is None) == (which == "map")
+        assert (w.main.lambda_t is None) == (w.dataset.roles.t is None)   # a map with frames: its curve
     finally:
         w.close()
         for d in files:
