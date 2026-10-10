@@ -12,7 +12,8 @@ local Mac, Qt's own X11, the bridge, ...), as the prototype keeps them (app/view
   Mac native, and a theme chosen in one is not the other's default.
 - One INI file per user (config_dir()/layout.ini, never next to the code); EXPLORER_LAYOUT names another one.
 - A window with linked cubes (ROADMAP E8.1) keeps its geometry and panels apart: its images side by side want a
-  wider window, and its panels have tabs a one-cube window does not (the look and the theme are shared).
+  wider window, and its panels have tabs a one-cube window does not (the look and the theme are shared). Its cubes'
+  windows too (ROADMAP E8.3): which cubes are apart and the panels inside each one (Shell.cube_windows).
 """
 import os
 
@@ -36,6 +37,7 @@ class LayoutStore:
         self.path = path or layout_path()
         self.geometry_key = f"app/{self.kind}/geometry"
         self.state_key = f"app/{self.kind}/state"
+        self.cubes_key = f"app/{self.kind}/cubes"
 
     def _settings(self) -> QtCore.QSettings:
         st = QtCore.QSettings(self.path, QtCore.QSettings.Format.IniFormat)
@@ -66,6 +68,11 @@ class LayoutStore:
         if not (zoomed or window.isMaximized() or window.isFullScreen()):
             st.setValue(self.geometry_key, window.saveGeometry())
         st.setValue(self.state_key, window.saveState())
+        cubes = getattr(window, "cube_windows", None)
+        if cubes is not None:                           # linked cubes' windows: only those of this session
+            st.remove(self.cubes_key)
+            for k, v in cubes().items():
+                st.setValue(f"{self.cubes_key}/{k}", v)
         if look is not None:
             st.setValue(self.LOOK_KEY, look)
         if theme is not None:
@@ -101,6 +108,12 @@ class LayoutStore:
         for d in window.findChildren(QtWidgets.QDockWidget):     # places and sizes, never absences
             if d.isHidden():
                 d.show()
+        again = getattr(window, "restore_cube_windows", None)
+        if restored and again is not None:              # after the main state: it floats their image panels
+            st.beginGroup(self.cubes_key)
+            kept = {k: st.value(k) for k in st.allKeys()}
+            st.endGroup()
+            again(kept)
         # the toolbar as the look this layout is for wants it, not as the state says: hidden in glass (its controls
         # are on the glass bar), shown in the others (the prototype's viewer.py:2413-2415, look_glass.py:618-622).
         # Decided by the layout, not by the window's look: leaving glass restores the classic layout while the window
@@ -115,4 +128,5 @@ class LayoutStore:
         st = self._settings()
         st.remove(self.geometry_key)
         st.remove(self.state_key)
+        st.remove(self.cubes_key)
         st.sync()

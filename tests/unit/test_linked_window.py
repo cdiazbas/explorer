@@ -704,3 +704,63 @@ def test_a_resize_shares_the_widths_once_it_stops_not_at_every_step(window):
         assert max(sizes) - min(sizes) <= 2
     finally:
         del w.same_image_widths
+
+
+def test_the_saved_layout_keeps_each_cube_s_window_and_its_panels(window, cubes, tmp_path):
+    """The saved layout kept the main window's panels but not those inside a cube's window, nor that the cubes were
+    apart (ROADMAP E8.3): at the next start a cube's window came back as its image alone, its spectra and lambda-t
+    in the main window's tabs. Saved apart, its panels' width changed by hand and one of them floated out, a new
+    window with the same layout (restored before it is shown, as ui.app does) has each cube apart again, in the same
+    place and size, its panels in the same place and size inside it or out of it. The layout file is the test's."""
+    from PySide6 import QtCore
+
+    from explorer.data.dataset import Dataset
+    from explorer.ui.layout import LayoutStore
+    from explorer.ui.shell import Shell
+
+    w, qapp = window
+    store = LayoutStore("test", str(tmp_path / "layout.ini"), linked=True)
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.5)
+    other = w.linked[0]
+    other.panels_width(other.dock.width() // 3)
+    sp, lt = other.panes["spectra:1"], other.panes["lambda_t:1"]
+    other.frame.resizeDocks([sp, lt], [100, 300], QtCore.Qt.Orientation.Vertical)
+    spin(qapp, lambda: False, timeout=0.3)
+    lt.setFloating(True)                                # one of its panels floated out of it
+    lt.setGeometry(120, 420, 330, 210)
+    spin(qapp, lambda: False, timeout=0.3)
+
+    def arrangement(win):
+        c = win.linked[0]
+        return (win.detach_action.isChecked(), c.windowed, [d.isFloating() for d in (cc.dock for cc in win.linked)],
+                c.dock.geometry().getRect(),
+                {k: (p.isVisible(), p.isFloating(), p.geometry().getRect()) for k, p in sorted(c.panes.items())},
+                c.view.widget.width())
+
+    before = arrangement(w)
+    store.save(w)
+    main, otherc, blos = cubes
+    ds = Dataset.open(main)
+    linked = [Dataset.open(otherc, executors=ds.executors), Dataset.open(blos, axes="t", executors=ds.executors)]
+    b = Shell(ds, linked=linked)
+    try:
+        store.restore(b, qapp)
+        b.show()
+        spin(qapp, lambda: False, timeout=0.6)
+        after = arrangement(b)
+        print("saved", before, "\nrestored", after)
+        assert after == before
+        tabs = [b.spec_tabs.tabText(i) for i in range(b.spec_tabs.count())]
+        assert tabs == ["main_im"]                       # its spectra in its window, not in the main window's tabs
+        b.detach_action.setChecked(False)               # and back in the window, its panels in their tabs
+        spin(qapp, lambda: False, timeout=0.4)
+        assert not b.linked[0].windowed and b.spec_tabs.count() == 2
+    finally:
+        b.close()
+        for d in linked:
+            d.close()
+        ds.close()
+    w.detach_action.setChecked(False)
+    spin(qapp, lambda: False, timeout=0.3)
+

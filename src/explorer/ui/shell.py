@@ -767,6 +767,39 @@ class Shell(QtWidgets.QMainWindow):
             x = d.frameGeometry().right() + 1 + glass.GAP
             y = d.frameGeometry().bottom() + 1 + glass.GAP
 
+    def cube_windows(self) -> dict:
+        """What the saved layout keeps of the cubes' windows (ui.layout), beyond the main window's state (which has
+        each cube's image panel, floating or not, with its place and size): which cubes are windows of their own, the
+        arrangement of the panels inside each one, and the width the window gave up for them."""
+        out: dict = {"room": self._detached_width, "spec_w": self._detached_spec_w}
+        for c in self.linked:
+            out[f"{c.k}/windowed"] = c.windowed
+            if c.panes:
+                out[f"{c.k}/state"] = c.frame.saveState()
+        return out
+
+    def restore_cube_windows(self, kept: dict) -> None:
+        """The cubes' windows as cube_windows() kept them, once the main window's state has floated their image
+        panels: each one a window again, its panels made in its frame before the frame's state is restored (a dock
+        restored before it exists is left out of it), then shown (places and sizes, never absences)."""
+        def flag(v) -> bool:                            # an INI file gives "true" back
+            return v is True or str(v).lower() == "true"
+
+        for c in self.linked:
+            if not (flag(kept.get(f"{c.k}/windowed")) and c.dock.isFloating()):
+                continue
+            c.as_window(True)
+            state = kept.get(f"{c.k}/state")
+            if state:
+                c.frame.restoreState(state)
+            for p in c.panes.values():
+                if p.isHidden():
+                    p.show()
+        if any(c.windowed for c in self.linked):
+            self._detached_width = int(kept.get("room") or 0)
+            self._detached_spec_w = int(kept.get("spec_w") or 0)
+        self._detached_changed()
+
     def _cube_moved(self, floating: bool) -> None:
         """A linked image floated or docked, however: docked, the images one width again (it came back as wide as
         it was, into a window that may have given up its room); the Panels entry as it now is."""
