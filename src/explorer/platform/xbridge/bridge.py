@@ -30,7 +30,7 @@ from . import trace as trace_mod
 from . import xproto as X
 from .qtinput import QtInput
 from .transport import Transport
-from .windows import ATOMS, Windows, XWin
+from .windows import ATOMS, MOVERESIZE, MOVERESIZE_MOVE, Windows, XWin
 
 log = get_logger("platform.xbridge")
 Qt, E = QtCore.Qt, QtCore.QEvent
@@ -201,6 +201,28 @@ class Bridge(QtCore.QObject):
         rec = self.windows.get(w)
         if rec is not None and not self.dead:
             self.windows.minimize(rec)
+
+    def moveresize(self, w: QtWidgets.QWidget, edges=None) -> bool:
+        """Let the window manager move w (edges None) or resize it by these Qt edges, from the press now held
+        (windows.moveresize); False when it cannot: the caller does it. Qt is then given the release the manager
+        takes (qtinput.handed_to_manager)."""
+        rec = self.windows.get(w)
+        held = self.input.held()
+        if rec is None or self.dead or held is None:
+            return False
+        if edges is None:
+            direction: int | None = MOVERESIZE_MOVE
+        else:
+            ed = Qt.Edge
+            direction = MOVERESIZE.get((bool(edges & ed.TopEdge), bool(edges & ed.LeftEdge),
+                                        bool(edges & ed.RightEdge), bool(edges & ed.BottomEdge)))
+        if direction is None:
+            return False
+        (x, y), button = held
+        if not self.windows.moveresize(rec, x, y, direction, button):
+            return False
+        self.post(self.input.handed_to_manager, w)      # after the press that asked has returned
+        return True
 
     # ---------------------------------------------------------------- Qt events
     def eventFilter(self, obj, e) -> bool:

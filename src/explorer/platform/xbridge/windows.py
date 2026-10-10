@@ -55,6 +55,11 @@ CURSORS = {Qt.CursorShape.ArrowCursor: 68, Qt.CursorShape.UpArrowCursor: 22, Qt.
            Qt.CursorShape.WhatsThisCursor: 92, Qt.CursorShape.BusyCursor: 150, Qt.CursorShape.OpenHandCursor: 58,
            Qt.CursorShape.ClosedHandCursor: 52, Qt.CursorShape.BitmapCursor: 86}
 WIDGET_SIZE_MAX = (1 << 24) - 1
+# _NET_WM_MOVERESIZE directions (EWMH) by the edges held: (top, left, right, bottom); MOVE is the title bar's
+MOVERESIZE = {(True, True, False, False): 0, (True, False, False, False): 1, (True, False, True, False): 2,
+              (False, False, True, False): 3, (False, False, True, True): 4, (False, False, False, True): 5,
+              (False, True, False, True): 6, (False, True, False, False): 7}
+MOVERESIZE_MOVE = 8
 CHECK_MS = 1000                                         # a request still unanswered this long after a notice taken
 #                                                         for an echo: its geometry is asked of X
 
@@ -466,6 +471,24 @@ class Windows:
         self.c.client_message(self.scr.root, rec.xid, self.atoms["_NET_WM_STATE"], [int(add), a[0], a[1], 1],
                               ROOT_MSG)
         self.c.flush()
+        return True
+
+    def moveresize(self, rec: XWin, x: int, y: int, direction: int, button: int) -> bool:
+        """Hand a move (MOVERESIZE_MOVE) or a resize by an edge to the window manager, from the press at root (x, y)
+        with this button: GNOME and KDE then also snap the window to the edges. Only when the manager says it can
+        (_NET_SUPPORTED); False otherwise (quartz-wm, no manager): the caller moves or resizes the window itself.
+        The press's implicit grab is released first (EWMH: the manager grabs the pointer, and a client still holding
+        it makes that grab fail); the release of the button then goes to the manager. From the prototype's
+        wm_moveresize (app/xbridge.py:610-632)."""
+        if not self.wm_supports("_NET_WM_MOVERESIZE"):
+            return False
+        self.c.ungrab_pointer(X.CURRENT_TIME)
+        self.c.client_message(self.scr.root, rec.xid, self.atoms["_NET_WM_MOVERESIZE"],
+                              [x, y, direction, button, 1], ROOT_MSG)      # source 1: an application
+        self.c.flush()
+        if self.trace is not None:
+            self.trace.write("MOVERESIZE", rec.xid, f"direction {direction} from ({x}, {y}), button {button}: "
+                                                    f"handed to the manager")
         return True
 
     def activate(self, rec: XWin) -> None:

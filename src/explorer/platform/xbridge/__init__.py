@@ -29,8 +29,9 @@ log = get_logger("platform.xbridge")
 
 
 class BridgeWindowOps(WindowOps):
-    """Activation and minimising asked of the X window manager, as a native window would; the shape published for the
-    X SHAPE. Zoom is WindowOps', by geometry, which the bridge carries to X."""
+    """Activation, minimising, and moving and resizing by the title bar and the edges asked of the X window manager, as
+    a native window would; the shape published for the X SHAPE. Zoom is WindowOps', by geometry, which the bridge
+    carries to X."""
     _display: "BridgeDisplay"
 
     def activate(self) -> None:
@@ -42,6 +43,16 @@ class BridgeWindowOps(WindowOps):
 
     def minimize(self) -> None:
         self.w.showMinimized()                          # the bridge asks the manager (WindowStateChange)
+
+    def begin_drag(self) -> bool:
+        """The window manager moves the window when it can (_NET_WM_MOVERESIZE: GNOME and KDE then also snap it);
+        False otherwise (quartz-wm, no manager): the title bar moves it."""
+        b = self._display.bridge
+        return (b is not None and b.moveresize(self.w)) or super().begin_drag()
+
+    def begin_resize(self, edges) -> bool:
+        b = self._display.bridge
+        return (b is not None and b.moveresize(self.w, edges)) or super().begin_resize(edges)
 
     def outline(self, colour):
         """Drawn by the X server, on a connection of its own (platform.xoutline): a Qt window would be sent whole,

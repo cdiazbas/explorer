@@ -225,6 +225,31 @@ class QtInput:
             self._last_press = (b, e.time, e.root_x, e.root_y)
             self._send_mouse(h, E.Type.MouseButtonPress, e, b, self.buttons, mods)
 
+    def held(self) -> tuple[tuple[int, int], int] | None:
+        """The pointer's root position and the X button of the press now held (the last one pressed), or None with
+        no button down."""
+        if self.buttons == Qt.MouseButton.NoButton or self._last_press is None or self._root is None:
+            return None
+        b = self._last_press[0]
+        return self._root, next((k for k, v in BUTTONS.items() if v == b), 1)
+
+    def handed_to_manager(self, w: QtWidgets.QWidget) -> None:
+        """The window manager took the pointer to move or resize w (_NET_WM_MOVERESIZE): the button's release goes
+        to it, never here. Qt is given that release now: without it, mouseButtons() still had the button down after
+        the manager was done and the pointer moved on with no button."""
+        h = w.windowHandle()
+        if h is None or self.buttons == Qt.MouseButton.NoButton or self._root is None:
+            return
+        b = self._last_press[0] if self._last_press is not None else Qt.MouseButton.LeftButton
+        self.buttons = Qt.MouseButton.NoButton
+        self._end_double_grab()
+        glob = QtCore.QPointF(*self._root)
+        loc = QtCore.QPointF(w.mapFromGlobal(glob.toPoint()))
+        ev = QtGui.QMouseEvent(E.Type.MouseButtonRelease, loc, loc, glob, b, Qt.MouseButton.NoButton,
+                               QtGui.QGuiApplication.keyboardModifiers())
+        QtCore.QCoreApplication.sendEvent(h, ev)
+        self.stats["mouse"] += 1
+
     def _double_grab(self, w: QtWidgets.QWidget, e) -> None:
         if QtWidgets.QWidget.mouseGrabber() is not None or QtWidgets.QApplication.activePopupWidget() is not None:
             return
