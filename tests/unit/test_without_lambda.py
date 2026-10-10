@@ -90,6 +90,29 @@ def test_a_single_tuning_or_none_is_named_by_what_the_cube_shows():
         assert tuple(got)[:len(want)] == want
 
 
+def test_a_map_main_cube_has_no_spectrum_panel_anywhere(qapp, cubes, tmp_path):
+    """No Spectrum for a cube without lambda: hidden at start, and kept so by reset_panels and by a saved layout's
+    restore (which shows every hidden panel), and not offered in the Panels menu."""
+    from explorer.ui.layout import LayoutStore
+
+    w, close = open_window(qapp, cubes["blos"])
+    try:
+        assert w.spectra is None and w.spec_dock.isHidden()
+        w.reset_panels()
+        qapp.processEvents()
+        after_reset = w.spec_dock.isHidden()
+        store = LayoutStore("nolambda", path=str(tmp_path / "layout.ini"))
+        store.save(w)
+        store.restore(w, qapp)
+        qapp.processEvents()
+        after_restore = w.spec_dock.isHidden()
+        offered = w.spec_dock.toggleViewAction().isVisible()
+        print("Spectrum hidden after reset", after_reset, "after restore", after_restore, "in the menu", offered)
+        assert after_reset and after_restore and not offered
+    finally:
+        close()
+
+
 def test_a_map_s_lambda_t_is_its_value_against_t_and_a_click_sets_t(qapp, cubes):
     """The map's lambda-t is a curve (TimeCurve): the cursor's values over t, as the file has them, named "Blos–t",
     "Blos [G]" up; the current t marked; a click on it at t = 3 sets t = 3."""

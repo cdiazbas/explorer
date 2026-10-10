@@ -172,17 +172,24 @@ class Shell(QtWidgets.QMainWindow):
         self.slit_tool = SlitTool(self.session, self.view, self.slit_hint, CURSOR_PEN.color())
         self.slit_tool.modeChanged.connect(self._slit_mode_changed)
         r = dataset.roles
-        # a cube without lambda has no spectra (and without t no lambda-t): that dock stays empty and hidden
+        # a cube without lambda has no spectra (and without t no lambda-t): that dock stays empty and absent
         self.spec_panel = self.spectra.widget if self.spectra is not None else QtWidgets.QWidget()
         self.lt_panel = self.lambda_t.widget if self.lambda_t is not None else QtWidgets.QWidget()
         # linked cubes: their images beside this one, their panels a tab each in these (ui.linked)
         self.linked = [LinkedCube(self, k, name) for k, name in zip(members, names[1:], strict=True)]
         self.spec_tabs = self._tabs(names[0], "spectra", self.spectra, self.spec_panel)
         self.lt_tabs = self._tabs(names[0], "lambda_t", self.lambda_t, self.lt_panel)
-        self.spec_dock = docks.dock(self, "Spectrum", self.spec_tabs or self.spec_panel, "spectrum")
-        # lambda-t named by what the cube shows when it has one plane along lambda or none (data.names)
+        # a panel no cube has (the spectra without lambda, lambda-t without t) is absent: never shown, by a saved
+        # layout, reset_panels or glass either (docks.GatedDock), and not in the Panels menu
         lt_title = self.main.slices.panel if self.main.slices is not None and self.lt_tabs is None else "λ–t"
-        self.lt_dock = docks.dock(self, lt_title, self.lt_tabs or self.lt_panel, "lambda_t")
+        self.spec_dock = docks.dock(self, "Spectrum", self.spec_tabs or self.spec_panel, "spectrum",
+                                    cls=docks.GatedDock)
+        self.lt_dock = docks.dock(self, lt_title, self.lt_tabs or self.lt_panel, "lambda_t", cls=docks.GatedDock)
+        for d, has in ((self.spec_dock, self.spectra is not None or self.spec_tabs is not None),
+                       (self.lt_dock, self.lambda_t is not None or self.lt_tabs is not None)):
+            assert isinstance(d, docks.GatedDock)
+            d.allowed = (lambda: True) if has else (lambda: False)
+            d.toggleViewAction().setVisible(has)
         # the slit's slices: lambda-t's tab, there from the first S on and only with a slit or one being drawn
         # (_slit_tab; the prototype's 1046-1052)
         self.slit_panel = SlitPanel(r.nt, r.nl, dataset.axes)
