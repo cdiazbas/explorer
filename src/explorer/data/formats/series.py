@@ -9,6 +9,7 @@ whose times cannot all be read keep their name order, and t is an index.
 """
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
@@ -20,6 +21,7 @@ from .layout import Layout
 TIME_KEYS = ("T_OBS", "DATE-AVG", "DATE-OBS", "DATE_OBS")
 # what every file of a series must share, with the shape and the stored type; files that differ are refused
 SAME = ("WAVELNTH", "INSTRUME", "BUNIT")
+HEADER_THREADS = 16         # headers read at once
 _TIME = re.compile(r"^(\d{4})[-.](\d{2})[-.](\d{2})[T_ ](\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)")
 
 
@@ -65,6 +67,74 @@ def _image_hdu(h, path):
     raise ValueError(f"{path}: no image HDU")
 
 
+def _value(text: str):
+    """A card's value: a string (quotes undone), T/F, an int, a float, or None when empty."""
+    v = text.strip()
+    if v.startswith("'"):
+        out, i = [], 1
+        while i < len(v):
+            if v[i] == "'":
+                if v[i + 1:i + 2] == "'":
+                    out.append("'")
+                    i += 2
+                    continue
+                break
+            out.append(v[i])
+            i += 1
+        return "".join(out).rstrip()
+    v = v.split("/", 1)[0].strip()
+    if v in ("T", "F"):
+        return v == "T"
+    if not v:
+        return None
+    try:
+        return int(v)
+    except ValueError:
+        return float(v.replace("D", "E"))
+
+
+def _header_cards(f, at: int) -> tuple[dict, int]:
+    """The valued cards of the header at byte `at` and the byte its data start at."""
+    cards: dict = {}
+    f.seek(at)
+    while True:
+        block = f.read(2880)
+        if len(block) < 2880:
+            raise ValueError("no END card")
+        at += 2880
+        for k in range(0, 2880, 80):
+            card = block[k:k + 80].decode("ascii")
+            key = card[:8].rstrip()
+            if key == "END":
+                return cards, at
+            if card[8:10] == "= " and key not in cards:
+                cards[key] = _value(card[10:])
+
+
+def _image_cards(path) -> tuple[int, dict, bool, int]:
+    """(HDU index, cards, compressed, data offset) of the file's image, from its header blocks alone (astropy
+    takes 7 ms a file for the same, 30 times as long: a series of thousands opens in seconds, not minutes).
+    ValueError when the file is not as expected; the caller then asks astropy."""
+    with open(path, "rb") as f:
+        at = 0
+        for i in range(8):
+            cards, data = _header_cards(f, at)
+            n = int(cards.get("NAXIS", 0))
+            if cards.get("ZIMAGE") is True and cards.get("XTENSION") == "BINTABLE":
+                img = dict(cards)
+                img["BITPIX"], img["NAXIS"] = cards["ZBITPIX"], cards["ZNAXIS"]
+                for k in range(1, int(cards["ZNAXIS"]) + 1):
+                    img[f"NAXIS{k}"] = cards[f"ZNAXIS{k}"]
+                return i, img, True, data
+            if n >= 2 and (i == 0 or cards.get("XTENSION") == "IMAGE"):
+                return i, cards, False, data
+            size = abs(int(cards.get("BITPIX", 8))) // 8 * int(cards.get("GCOUNT", 1)) * (
+                int(np.prod([int(cards[f"NAXIS{k}"]) for k in range(1, n + 1)], dtype=np.int64)) if n else 0)
+            size += int(cards.get("PCOUNT", 0)) if n else 0
+            at = data + -(-size // 2880) * 2880
+    raise ValueError(f"{path}: no image HDU among the first 8")
+
+
 def _groups(values: list, paths: list[str]) -> str:
     """'a (3 files: x.fits, ..., z.fits); b (1 file: w.fits)': the files under each distinct value."""
     out = []
@@ -86,20 +156,27 @@ def series_layout(paths) -> SeriesLayout:
         raise ValueError(f"a series needs two files or more, {len(paths)} given")
     if len(set(map(os.path.realpath, paths))) != len(paths):
         raise ValueError("a series lists the same file twice")
-    rows = []
-    for p in paths:
-        with fits.open(p, memmap=False, lazy_load_hdus=True, do_not_scale_image_data=True) as h:
-            i, hdr, comp = _image_hdu(h, p)
-            off = int(h.fileinfo(i)["datLoc"])
-            bitpix = int(hdr["BITPIX"])
-            n = int(hdr["NAXIS"])
-            shape = tuple(int(hdr[f"NAXIS{k}"]) for k in range(n, 0, -1))
-            rows.append(dict(path=p, hdu=i, offset=off, compressed=comp, bitpix=bitpix, shape=shape,
-                             axes=tuple(str(hdr.get(f"CTYPE{k}", f"axis{k}")).split("-")[0] for k in (2, 1)),
-                             scaling=(float(hdr.get("BSCALE", 1.0)), float(hdr.get("BZERO", 0.0)),
-                                      hdr.get("BLANK") if bitpix > 0 else None),
-                             same={k: hdr.get(k) for k in SAME},
-                             times={k: hdr.get(k) for k in TIME_KEYS}))
+
+    def row(p):
+        try:
+            i, hdr, comp, off = _image_cards(p)
+        except (ValueError, KeyError, UnicodeDecodeError):     # astropy's reading, and its message
+            with fits.open(p, memmap=False, lazy_load_hdus=True, do_not_scale_image_data=True) as h:
+                i, hdr, comp = _image_hdu(h, p)
+                off = int(h.fileinfo(i)["datLoc"])
+                hdr = dict(hdr)
+        bitpix = int(hdr["BITPIX"])
+        n = int(hdr["NAXIS"])
+        shape = tuple(int(hdr[f"NAXIS{k}"]) for k in range(n, 0, -1))
+        return dict(path=p, hdu=i, offset=off, compressed=comp, bitpix=bitpix, shape=shape,
+                    axes=tuple(str(hdr.get(f"CTYPE{k}", f"axis{k}")).split("-")[0] for k in (2, 1)),
+                    scaling=(float(hdr.get("BSCALE", 1.0)), float(hdr.get("BZERO", 0.0)),
+                             hdr.get("BLANK") if bitpix > 0 else None),
+                    same={k: hdr.get(k) for k in SAME},
+                    times={k: hdr.get(k) for k in TIME_KEYS})
+
+    with ThreadPoolExecutor(min(HEADER_THREADS, len(paths))) as ex:      # on network storage, latency overlapped
+        rows = list(ex.map(row, paths))
     for what, get in (("shape", lambda r: r["shape"]), ("BITPIX", lambda r: r["bitpix"]),
                       ("BSCALE, BZERO, BLANK", lambda r: r["scaling"]),
                       ("tile compression", lambda r: r["compressed"]),

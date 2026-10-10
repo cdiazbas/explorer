@@ -184,3 +184,18 @@ def test_the_command_without_series_links_as_before(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert cli.main(["--series", "aia_*.fits"]) == 0                # a quoted pattern, expanded in name order
     assert seen["series"] == ["aia_00.fits", "aia_01.fits", "aia_02.fits"]
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+def test_header_blocks_read_as_astropy_reads_them(tmp_path, monkeypatch, compressed):
+    """The cards read from the header blocks give the layout astropy's reading gives, plain and compressed."""
+    from explorer.data.formats import series as _series
+
+    paths, _ = series(tmp_path, compressed=compressed, order=[2, 0, 1, 4, 3], BLANK=-500, BUNIT="DN / s")
+    fast = series_layout(paths)
+
+    def refuse(p):
+        raise ValueError("astropy's turn")
+
+    monkeypatch.setattr(_series, "_image_cards", refuse)
+    assert series_layout(paths) == fast and fast.compressed == compressed and fast.blank == -500
