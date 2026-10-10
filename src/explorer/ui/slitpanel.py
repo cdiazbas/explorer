@@ -16,6 +16,7 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore, QtWidgets
 
+from ..core.levels import gamma_panel
 from ..data.axes import fmt_signed
 from . import pens, style
 from .imageview import CURSOR_PEN
@@ -67,6 +68,8 @@ class SlitPanel:
         self.on: dict = {}                              # (y, x) -> the first point of the slit on that pixel
         self.cursor: tuple[int, int] | None = None
         self._shown: list = [None, None]                # the arrays on screen: the same one again is not drawn again
+        self._raw: list = [(None, None), (None, None)]  # (array, levels) of each as the core gave them
+        self.gamma = 1.0                                # their cube's at their Stokes (Session.gamma)
         self._ranges(1)
         self.widget = self.w
 
@@ -170,12 +173,20 @@ class SlitPanel:
             self.ts.setRange(xRange=(0, max(1, n)), yRange=(0, self.nt), padding=0)
         self.sl.setYRange(0, self.nl, padding=0)
 
-    def show(self, ts, sl, ts_levels=None, sl_levels=None) -> None:
-        """ts: (nt, n) and sl: (nl, n), None to keep the one shown; their levels the core's (levels.panel_levels)."""
+    def show(self, ts, sl, ts_levels=None, sl_levels=None, gamma: float | None = None) -> None:
+        """ts: (nt, n) and sl: (nl, n), None to keep the one shown; their levels the core's (levels.panel_levels);
+        gamma: their cube's at their Stokes (None: the one it has; a new one draws both again)."""
+        if gamma is not None and float(gamma) != self.gamma:
+            self.gamma, self._shown = float(gamma), [None, None]
+            if ts is None:
+                ts, ts_levels = self._raw[0]
+            if sl is None:
+                sl, sl_levels = self._raw[1]
         for k, (item, a, lv) in enumerate(((self.ts_img, ts, ts_levels), (self.sl_img, sl, sl_levels))):
             if a is None or a is self._shown[k]:
                 continue
             self._shown[k] = a
+            self._raw[k] = (a, lv)
             if k == 0 and self.flat:
                 self._show_curve(a)
                 continue
@@ -183,6 +194,7 @@ class SlitPanel:
             if not np.isfinite(a).any():                # nothing read yet, or padding all along
                 item.setImage(np.zeros(a.shape, np.float32), levels=(0, 1))
             else:
+                a, lv = gamma_panel(a, lv, self.gamma)
                 item.setImage(a, levels=(float(lv[0]), float(lv[1])))
             item.setRect(QtCore.QRectF(0, 0, a.shape[1], a.shape[0]))
 
@@ -201,6 +213,7 @@ class SlitPanel:
     def clear(self) -> None:
         self.curve.setData([], [])
         self._shown = [None, None]
+        self._raw = [(None, None), (None, None)]
         self.ts_img.clear()
         self.sl_img.clear()
 

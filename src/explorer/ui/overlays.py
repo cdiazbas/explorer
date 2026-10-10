@@ -71,7 +71,10 @@ class ColourKey(QtWidgets.QWidget):
     def _place(self, view):
         self.move(12, view.height() - self.H - 12)
 
-    def set(self, name, lim, lut, cmap=None):
+    def set(self, name, lim, lut, cmap=None, gamma: float = 1.0):
+        """gamma: the image's (core.levels), written after the name when it is not 1."""
+        if gamma != 1:
+            name = "   ".join(t for t in (name, f"\u03b3 {gamma:.2g}") if t)
         st = (name, round(float(lim[0]), 12), round(float(lim[1]), 12), cmap if cmap is not None else lut is None)
         if st == self.state:
             return

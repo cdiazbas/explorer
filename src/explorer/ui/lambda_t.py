@@ -14,6 +14,7 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..core.levels import gamma_panel
 from ..data.axes import fmt_signed
 from . import pens, style
 from .imageview import CURSOR_PEN
@@ -118,6 +119,8 @@ class LambdaTPanel:
         left = IndexAxis("left", self.t_label, nt, fine_of=self.t_label_fine)
         self.w = pg.PlotWidget(axisItems={"bottom": bottom, "left": left})
         self.img = pg.ImageItem()
+        self.gamma = 1.0                                # its cube's at the Stokes shown (Session.gamma)
+        self._shown: tuple | None = None                # (lt, levels) as the core gave them
         self.w.addItem(self.img)
         pi = self.w.getPlotItem()
         pi.setMouseEnabled(x=False, y=False)            # the whole (t, lambda) grid always in view; a click picks
@@ -162,16 +165,30 @@ class LambdaTPanel:
         u = self.ax.utc_str(i, seconds=True) if self.timed else None
         return u or str(i)
 
-    def show(self, lt: np.ndarray, levels) -> None:
-        """lt: (nt, nl); levels: the core's. With nothing finite (padding), an empty grid."""
+    def show(self, lt: np.ndarray, levels, gamma: float | None = None) -> None:
+        """lt: (nt, nl); levels: the core's; gamma: its cube's at its Stokes (None: the one it has). With nothing
+        finite (padding), an empty grid."""
+        self._shown = (lt, levels)
+        if gamma is not None:
+            self.gamma = float(gamma)
         nt, nl = lt.shape
         if not np.isfinite(lt).any():
             self.img.setImage(np.zeros((nt, nl), np.float32), levels=(0, 1))
         else:
-            self.img.setImage(lt, levels=(float(levels[0]), float(levels[1])))
+            a, lv = gamma_panel(lt, levels, self.gamma)
+            self.img.setImage(a, levels=(float(lv[0]), float(lv[1])))
         self.img.setRect(QtCore.QRectF(0, 0, nl, nt))
 
+    def set_gamma(self, gamma: float) -> None:
+        """What it shows drawn again with this gamma; nothing when it already has it."""
+        if float(gamma) == self.gamma:
+            return
+        self.gamma = float(gamma)
+        if self._shown is not None:
+            self.show(*self._shown)
+
     def clear(self) -> None:
+        self._shown = None
         self.img.clear()
 
     def set_lut(self, lut) -> None:
@@ -253,8 +270,9 @@ class TimeCurve:
         u = self.ax.utc_str(i, seconds=True) if self.timed else None
         return u or str(i)
 
-    def show(self, lt: np.ndarray, levels=None) -> None:
-        """lt: (nt, 1) or (nt,); the y range its finite values' (nothing finite: the curve empty)."""
+    def show(self, lt: np.ndarray, levels=None, gamma: float | None = None) -> None:
+        """lt: (nt, 1) or (nt,); the y range its finite values' (nothing finite: the curve empty). A curve has no
+        gamma."""
         v = np.asarray(lt, float).reshape(-1)[:self.nt]
         ok = np.isfinite(v)
         if not ok.any():
@@ -270,6 +288,9 @@ class TimeCurve:
 
     def set_lut(self, lut) -> None:
         """A curve has no colour table."""
+
+    def set_gamma(self, gamma: float) -> None:
+        """Nor a gamma: its values are drawn as they are."""
 
     def set_marks(self, colour) -> None:
         self.t_line.setZValue(max(self.t_line.zValue(), 10.0) + 1)

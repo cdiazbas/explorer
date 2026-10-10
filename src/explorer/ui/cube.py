@@ -37,7 +37,7 @@ class CubeSink:
         self.cube = cube
 
     def image(self, idx, img, levels):
-        self.cube.view.set_image(img, levels)
+        self.cube.view.set_image(img, levels, gamma=self.cube.gamma_now())
         self.cube.paint_colour()
 
     def spectra(self, spec, pixel, t):
@@ -47,7 +47,7 @@ class CubeSink:
     def lambda_t(self, lt, pixel, s, levels):
         self.cube.last_s = s
         if self.cube.lambda_t is not None:
-            self.cube.lambda_t.show(lt, levels)
+            self.cube.lambda_t.show(lt, levels, gamma=self.cube.session.gamma(self.cube.k, s))
             self.cube.paint_colour()
 
     def cleared(self, pixel):
@@ -151,6 +151,14 @@ class CubeView:
             self.lambda_t.set_markers(st.t, st.l)
         if has("s", "own"):
             self.show_stokes(st.s)
+        if changed is not None and "gamma" in changed:  # an image or lambda-t of another Stokes brings its own
+            self.view.set_gamma(self.gamma_now())
+            if self.lambda_t is not None:
+                self.lambda_t.set_gamma(self.session.gamma(self.k, self.last_s))
+
+    def gamma_now(self) -> float:
+        """Its gamma at the Stokes its image shows (Session.gamma)."""
+        return self.session.gamma(self.k, self.session.member_state(self.k).s)
 
     def show_stokes(self, s: int) -> None:
         """The label of Stokes s ("Stokes Q") on its image and its lambda-t (ui.stokeslabel), when it has the four
@@ -209,6 +217,7 @@ class CubeView:
 
     # ---------------------------------------------------------------- input
     def _hover(self, y: float, x: float) -> None:
+        self.shell.pointer = self.k                     # the image the gamma keys act on (Shell.step_gamma)
         self.session.hover(math.floor(y), math.floor(x))
         self.shell.slit_tool.hover(y, x)                # the slit being drawn follows the pointer, on any image
 

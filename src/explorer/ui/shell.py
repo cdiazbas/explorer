@@ -27,6 +27,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import APP_NAME
+from ..core.levels import gamma_step
 from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
@@ -89,7 +90,7 @@ class _Sink:
 
     def image(self, idx, img, levels):
         self.shell.last["image"] = (idx, levels)
-        self.shell.view.set_image(img, levels)
+        self.shell.view.set_image(img, levels, gamma=self.shell.main.gamma_now())
         if self.shell.glass is not None:
             self.shell.glass.image_changed()
         self.shell._paint_colour()
@@ -106,8 +107,9 @@ class _Sink:
 
     def lambda_t(self, lt, pixel, s, levels):
         self.shell.last["lambda_t"] = (lt, pixel, s, levels)
+        self.shell.main.last_s = s
         if self.shell.lambda_t is not None:
-            self.shell.lambda_t.show(lt, levels)
+            self.shell.lambda_t.show(lt, levels, gamma=self.shell.session.gamma(0, s))
             if self.shell.colours is not None and self.shell.look.has("colour"):
                 self.shell.lambda_t.set_lut(self.shell.colours.lut(s))
 
@@ -129,7 +131,7 @@ class _Sink:
 
     def grid_image(self, s, idx, img, levels):
         if self.shell.grid is not None:
-            self.shell.grid.set_image(s, img, levels)
+            self.shell.grid.set_image(s, img, levels, gamma=self.shell.session.gamma(0, s))
 
     def slit_path(self, pix):
         reads = self.shell.scheduler.slit               # the main cube's scheduler has them
@@ -138,7 +140,7 @@ class _Sink:
 
     def slit(self, ts, sl, s, ts_levels, sl_levels):
         self.shell.last["slit"] = s
-        self.shell.slit_panel.show(ts, sl, ts_levels, sl_levels)
+        self.shell.slit_panel.show(ts, sl, ts_levels, sl_levels, gamma=self.shell.session.gamma(self.shell._slit_on, s))
         if self.shell.colours is not None and self.shell.look.has("colour"):
             self.shell.slit_panel.set_lut(self.shell.colours.lut(s))
 
@@ -291,6 +293,7 @@ class Shell(QtWidgets.QMainWindow):
         self.colours: ColormapRegistry | None = None    # made the first time the look has colour
         self.colour_key: ColourKey | None = None
         self.grid: StokesGrid | None = None             # the 2x2 view (ui.stokesgrid), made the first time it is asked
+        self.pointer = 0                                # the cube whose image the mouse last moved over (CubeView)
         self.glass: glass.GlassChrome | None = None     # the glass look's chrome (ui.glass), while worn
         self._seams: MacSeams | None = None
         self._shown_lut = object()
@@ -549,7 +552,43 @@ class Shell(QtWidgets.QMainWindow):
             ns = self.session.sizes["s"] if self.session.present["s"] else 1
             # named as the image's label is (ui.stokeslabel): "Stokes Q" with the four, nothing for one plane
             self.colour_key.set(f"Stokes {STOKES[s]}" if ns == len(STOKES) else "", last[1], self.colours.lut(s),
-                                self.colours.maps[s])
+                                self.colours.maps[s], gamma=self.session.gamma(0, s))
+
+    # ---------------------------------------------------------------- gamma (core.levels; keys G, Shift+G, Ctrl+G)
+    def gamma_target(self) -> tuple[int, int]:
+        """(cube, Stokes) of the image under the pointer, or the one it last moved over: a panel of the 2x2 view is
+        its Stokes, any other image its cube's Stokes now."""
+        k = self.pointer if 0 <= self.pointer < len(self.cubes) else 0
+        if k == 0 and self.grid is not None and self.grid.isVisible() and self.grid.under is not None:
+            return 0, self.grid.under
+        return k, self.session.member_state(k).s
+
+    def step_gamma(self, d: int) -> None:
+        """G / Shift+G: gamma of the image under the pointer down or up one step (levels.gamma_step)."""
+        k, s = self.gamma_target()
+        self.set_gamma(k, s, gamma_step(self.session.gamma(k, s), d))
+
+    def reset_gamma(self) -> None:
+        """Ctrl+G: gamma of the image under the pointer back to 1."""
+        self.set_gamma(*self.gamma_target(), 1.0)
+
+    def set_gamma(self, k: int, s: int, g: float) -> None:
+        self.session.set_gamma(k, s, g)
+        g = self.session.gamma(k, s)
+        ns = self.cubes[k].ns
+        what = " ".join(t for t in (self.cubes[k].name if self.linked else "",
+                                    f"Stokes {STOKES[s]}" if ns == len(STOKES) else "") if t)
+        self.statusBar().showMessage(f"\u03b3 {g:.3g}{': ' + what if what else ''}  (G \u21e7G {mod_key()}G)", 3000)
+
+    def _gamma_changed(self) -> None:
+        """The parts with a gamma that are the window's: the 2x2 view's panels, the slit's slices, the colour key."""
+        if self.grid is not None:
+            for s, v in enumerate(self.grid.views):
+                v.set_gamma(self.session.gamma(0, s))
+        slit_s = self.last.get("slit")
+        if slit_s is not None:
+            self.slit_panel.show(None, None, gamma=self.session.gamma(self._slit_on, slit_s))
+        self._paint_colour()
 
     def cycle_colours(self, step: int) -> None:
         """C / Shift+C: the next or previous map for the Stokes shown; image, lambda-t and key follow, nothing is
@@ -1070,6 +1109,11 @@ class Shell(QtWidgets.QMainWindow):
             rows += [("F", "spectra: fit y to this pixel, and keep it", ((K.Key_F, self.fit_spectra),)),
                      ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
                       (("Shift+F", self.spectra_to_sample),))]
+        # provisional, until the colour key takes the scaling (the user decides where its controls go)
+        rows += [("G  \u21e7G", "contrast \u03b3: lower, higher, on the image under the pointer (its Stokes)",
+                  (("G", lambda: self.step_gamma(-1)), ("Shift+G", lambda: self.step_gamma(1)))),
+                 (mod + "G", "contrast \u03b3 back to 1 (linear) on the image under the pointer",
+                  (("Ctrl+G", self.reset_gamma),))]
         # always bound: the terminal's keys are read once, and the look can change while the window runs
         rows += [("M", "look: classic \u2192 modern \u2192 glass", ((K.Key_M, self.toggle_look),)),
                  ("T", "theme: dark \u21c4 light", ((K.Key_T, self.toggle_theme),)),
@@ -1296,6 +1340,8 @@ class Shell(QtWidgets.QMainWindow):
             self.grid.set_locked(st.locked)
         if changed & {"t", "l", "own"}:
             self._slit_markers()
+        if "gamma" in changed:                          # each cube's image and lambda-t: CubeView.follow
+            self._gamma_changed()
         self.update_status()
 
     def update_status(self) -> None:

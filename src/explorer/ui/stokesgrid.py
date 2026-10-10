@@ -12,6 +12,7 @@ reads the frames (Scheduler.set_grid). From the prototype's app/look_glass.py St
     grid.set_image(s, img, levels); grid.set_crosshair(y, x); grid.set_locked(on); grid.set_lut(s, table)
     grid.set_region(rect); grid.region()
 """
+import functools
 from collections.abc import Callable
 
 from PySide6 import QtCore, QtWidgets
@@ -33,10 +34,12 @@ class StokesGrid(QtWidgets.QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(SPACING)
         self.views: list[ImageView] = []
+        self.on_hover = on_hover
+        self.under: int | None = None                   # the Stokes of the panel the mouse last moved over
         self._following = False
         cols = 1 if ns == 1 else 2
         for k in range(ns):
-            v = ImageView(on_hover=on_hover, strips=strips, parts=parts, light=light)
+            v = ImageView(on_hover=functools.partial(self._hovered, k), strips=strips, parts=parts, light=light)
             v._first = False                            # the region comes from the single view, not the whole image
             v.vb.setMenuEnabled(False)
             v.widget.viewport().setCursor(QtCore.Qt.CursorShape.CrossCursor)
@@ -47,6 +50,10 @@ class StokesGrid(QtWidgets.QWidget):
             self.views.append(v)
         self.set_light(light)
         self.hide()
+
+    def _hovered(self, s: int, y: float, x: float) -> None:
+        self.on_hover(y, x)
+        self.under = s
 
     def set_light(self, light: bool) -> None:
         for v in self.views:
@@ -75,14 +82,14 @@ class StokesGrid(QtWidgets.QWidget):
         p = vb.mapSceneToView(ev.scenePos())
         return p.y(), p.x()
 
-    def set_image(self, s: int, img, levels) -> None:
+    def set_image(self, s: int, img, levels, gamma: float | None = None) -> None:
         v = self.views[s]
         # a guard on every panel: the wheel turns the one under the pointer, and a guard on the first alone let the
         # others go out past the whole image (11x, the user saw it). The four are the same size and show the same
         # region, so their guards agree
         if v.guard is None:
             v.guard = ViewGuard(v.vb, img.shape[1], img.shape[0])
-        v.set_image(img, levels)
+        v.set_image(img, levels, gamma)
 
     def set_crosshair(self, y: int, x: int) -> None:
         for v in self.views:

@@ -17,7 +17,8 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore
 
-from ..data.kernels import reduce_u8
+from ..core.levels import symmetric_levels
+from ..data.kernels import gamma_table, reduce_u8
 from . import pens
 from .stokeslabel import StokesLabel
 
@@ -78,6 +79,7 @@ class ImageView:
         self.widget.viewport().installEventFilter(self._moves)
         self._full: np.ndarray | None = None
         self._lim = (0.0, 1.0)
+        self._gamma = 1.0                               # its cube's at its Stokes (Session.gamma); 1: straight
         self._first = True
         self.guard: ViewGuard | None = None
         self._pending = QtCore.QTimer(self.widget)
@@ -112,13 +114,23 @@ class ImageView:
             self.on_hover(p.y(), p.x())
 
     # ---------------------------------------------------------------- drawing
-    def set_image(self, img: np.ndarray, levels) -> None:
+    def set_image(self, img: np.ndarray, levels, gamma: float | None = None) -> None:
+        """gamma: the image's (core.levels); None keeps the one it has."""
         self._full, self._lim = img, (float(levels[0]), float(levels[1]))
+        if gamma is not None:
+            self._gamma = float(gamma)
         if self._first:
             ny, nx = img.shape
             self.vb.setRange(QtCore.QRectF(0, 0, nx, ny), padding=0)
             self.guard = ViewGuard(self.vb, nx, ny)
             self._first = False
+        self.render()
+
+    def set_gamma(self, gamma: float) -> None:
+        """The image drawn again with this gamma; nothing when it already has it."""
+        if float(gamma) == self._gamma:
+            return
+        self._gamma = float(gamma)
         self.render()
 
     def set_crosshair(self, y: int, x: int) -> None:
@@ -199,7 +211,8 @@ class ImageView:
         f = max(1, int(min((vx1 - vx0) / max(1.0, vp.width() * dpr), (vy1 - vy0) / max(1.0, vp.height() * dpr))))
         h, w = (y1 - y0) // f, (x1 - x0) // f
         out = np.empty((h, w), np.uint8)
-        reduce_u8(img, y0, x0, f, self._lim[0], self._lim[1], out, self.strips, self.parts)
+        table = None if self._gamma == 1 else gamma_table(self._gamma, symmetric_levels(self._lim))
+        reduce_u8(img, y0, x0, f, self._lim[0], self._lim[1], out, self.strips, self.parts, table=table)
         self.img.setImage(out, levels=(0, 255), autoDownsample=False)
         self.img.setRect(QtCore.QRectF(x0, y0, w * f, h * f))      # keep data-pixel coordinates
         self.last_render = dict(factor=f, shape=(h, w), region=(y0, y1, x0, x1))
