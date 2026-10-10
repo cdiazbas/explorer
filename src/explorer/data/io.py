@@ -330,6 +330,12 @@ class FrameReader:
         self.close()
 
 
+# compressed files kept open after a read: astropy keeps each one's compressed table in memory once read from it
+# (3900 AIA files of 1986x1986 held 4.9 GB, 1.3 MB a file), so the latest few, not all; another is opened again
+# (astropy reads its header: 7-10 ms)
+KEEP_OPEN = 16
+
+
 def _room_for_files(n: int, spare: int = 256) -> None:
     """Raise this process's soft limit of open files to hold n more (macOS starts shells at 256), up to the hard
     limit; where it cannot be raised, opening fails later with the system's message."""
@@ -364,8 +370,10 @@ class SeriesReader(FrameReader):
         self.threads = max(1, int(threads))
         if layout.compressed:
             import threading
+            from collections import OrderedDict
 
-            self._hdul: list = [None] * len(layout.paths)
+            self._open: OrderedDict = OrderedDict()     # t -> its HDUList, idle, the latest used last
+            self._open_lock = threading.Lock()
             self._locks = [threading.Lock() for _ in layout.paths]
 
     def _t(self, idx) -> int:
@@ -388,14 +396,20 @@ class SeriesReader(FrameReader):
         from astropy.io import fits
 
         with self._locks[t]:
-            h = self._hdul[t]
+            with self._open_lock:
+                h = self._open.pop(t, None)             # out of the idle ones while in use: never closed under it
             if h is None:
-                h = self._hdul[t] = fits.open(self.layout.paths[t], memmap=False, do_not_scale_image_data=True)
-            # through section, never .data: astropy keeps .data (a whole image per file, outside the cache's
-            # budget: +1044 MB after 30 frames of 4096x4096, against +37 MB through section; memmap=True holds
-            # +377 MB of mapped pages; bellatrix, 2026-10-10)
-            sec = h[self.layout.hdus[t]].section
-            a = sec[:, :] if rows is None else sec[rows] if x is None else sec[rows, x]
+                h = fits.open(self.layout.paths[t], memmap=False, do_not_scale_image_data=True)
+            try:
+                # through section, never .data: astropy keeps .data (a whole image per file, outside the cache's
+                # budget: +1044 MB after 30 frames of 4096x4096, against +37 MB through section)
+                sec = h[self.layout.hdus[t]].section
+                a = sec[:, :] if rows is None else sec[rows] if x is None else sec[rows, x]
+            finally:
+                with self._open_lock:
+                    self._open[t] = h
+                    while len(self._open) > KEEP_OPEN:
+                        self._open.popitem(last=False)[1].close()
         return np.asarray(a).astype(self.layout.dtype, copy=False)
 
     def _read_raws(self, idxs, chunks: int | None = None) -> list[np.ndarray]:
@@ -480,9 +494,8 @@ class SeriesReader(FrameReader):
         return self.to_float32(raw.reshape(fn.shape))
 
     def close(self) -> None:
-        for h in getattr(self, "_hdul", ()):
-            if h is not None:
-                h.close()
+        for h in getattr(self, "_open", {}).values():
+            h.close()
         for fd in getattr(self, "fds", ())[1:]:
             os.close(fd)
         self.fds = []
