@@ -61,8 +61,10 @@ window closes, the terminal names the files (in `~/.cache/explorer/logs/`): send
   c_sp.fits --sp c_im.fits` is taken the right way round). A cube whose header gives other times or wavelengths
   than its frames hold is refused when opened.
 - **A series of FITS images, one per file** (SDO/AIA, HMI: `--series`): the files are one cube whose t is the files,
-  read where they are, without building a cube first. Plain and tile-compressed (JSOC's) files are both read; a
-  compressed frame is decompressed at each read (~9x a plain frame's read).
+  read where they are, without building a cube first. Plain and tile-compressed (JSOC's) files are both read. A
+  compressed frame is decompressed at each read, one at a time (~0.12 s for AIA's 1986x1986, ~0.4 s for 4096x4096
+  on bellatrix), so playback starts at the rate that allows (the terminal says it); a slit's time slice
+  decompresses the rows it crosses in every file, and over hundreds of files takes minutes.
 
   ```bash
   explorer --series aia*.fits                # or "aia*.fits", quoted: the pattern is expanded by explorer
