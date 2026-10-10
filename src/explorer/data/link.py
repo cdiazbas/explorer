@@ -117,6 +117,14 @@ def frames(main: _axes.Axes | None, other: _axes.Axes | None, nt: int, n: int, l
     return Frames(t, dt, note)
 
 
+def other_grid(ny: int, nx: int, main) -> str:
+    """What differs between a grid of ny x nx pixels and main's (a Dataset or a CubeInfo), or "" when they are the
+    same: the check every file drawn on the first cube's pixels passes (a linked cube, a mask: data.mask)."""
+    if (ny, nx) == (main.ny, main.nx):
+        return ""
+    return f"{nx}x{ny} pixels against {main.nx}x{main.ny} of {_name(main.path)}"
+
+
 def plan(main, path) -> Link:
     """How the cube at path links to main (a Dataset or a CubeInfo): Link.ok, the axes to open it with, and how
     that was decided; or why it is not linked."""
@@ -129,9 +137,9 @@ def plan(main, path) -> Link:
         info = describe(path)
     except (OSError, ValueError) as e:
         return unread(e)
-    if (info.ny, info.nx) != (main.ny, main.nx):
-        return Link(str(path), False, why=f"{name}: {info.nx}x{info.ny} pixels against {main.nx}x{main.ny} of "
-                                           f"{lead}; other grids are not linked yet")
+    grid = other_grid(info.ny, info.nx, main)
+    if grid:
+        return Link(str(path), False, why=f"{name}: {grid}; other grids are not linked yet")
     r, spec = info.roles, None
     nt = main.roles.nt if main.roles.t is not None else 1
     how = f"its axes from its own {r.how}"
