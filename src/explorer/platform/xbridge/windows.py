@@ -91,6 +91,7 @@ class XWin:
         self.activate_on_map = False
         self.state_from_x = False
         self.icon_key: int | None = None                # QIcon.cacheKey of the icon on X (0: none); None: not set yet
+        self.back: int | None = None                    # the background pixel on X
 
 
 def pixel(scr: X.Screen, c: QtGui.QColor) -> int:
@@ -164,10 +165,11 @@ class Windows:
         popup = self.is_popup(w)
         g = w.geometry()
         xid = c.new_id()
+        back = self.back_pixel(w)
         attrs = {X.CW_BIT_GRAVITY: NORTHWEST_GRAVITY, X.CW_EVENT_MASK: EVENTS, X.CW_COLORMAP: self.scr.colormap,
                  # the window's colour until its first pixels come, and where it grows before they do: without a
                  # background XQuartz showed every new window white while the cubes were read
-                 X.CW_BACK_PIXEL: pixel(self.scr, w.palette().color(QtGui.QPalette.ColorRole.Window))}
+                 X.CW_BACK_PIXEL: back}
         if popup:
             attrs[X.CW_OVERRIDE_REDIRECT] = 1
         vis = self.scr.root_visual
@@ -176,6 +178,7 @@ class Windows:
         pw = w.parentWidget()
         owner = self.by_widget.get(pw.window()) if pw is not None else None
         rec = XWin(w, xid, popup, owner)
+        rec.back = back
         # the geometry it is created with is asked for too: a manager's late notice of it (quartz-wm through ssh -Y,
         # 230 ms after the glass look had placed a panel elsewhere) is an echo once newer geometry is asked
         rec.asked.append((g.x(), g.y(), g.width(), g.height()))
@@ -197,6 +200,21 @@ class Windows:
         self.by_xid[xid] = rec
         self.stats["created"] += 1
         return rec
+
+    def back_pixel(self, w: QtWidgets.QWidget) -> int:
+        return pixel(self.scr, w.palette().color(QtGui.QPalette.ColorRole.Window))
+
+    def set_background(self, rec: XWin) -> None:
+        """The window's colour as its X background again, after its palette changed (a change of theme, the glass
+        look's window colour): X fills with it what it exposes before the pixels come, and kept, it showed the
+        colour of the start there. Nothing is sent when X has that colour already."""
+        back = self.back_pixel(rec.w)
+        if back == rec.back:
+            return
+        rec.back = back
+        self.c.change_attributes(rec.xid, {X.CW_BACK_PIXEL: back})
+        if self.trace is not None:
+            self.trace.write("BACK", rec.xid, f"{back:#08x}")
 
     def _properties(self, rec: XWin) -> None:
         c, A, w = self.c, self.atoms, rec.w

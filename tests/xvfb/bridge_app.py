@@ -2,8 +2,8 @@
 as the user runs it (BridgeDisplay, Shell) and answers commands on stdin, one per line, with one JSON line on stdout.
 
     python tests/xvfb/bridge_app.py <cube_im.fits> [--size 800x600]
-    state | grab | copy TEXT | bigcopy N | panel | popup | mask | look NAME | stokes | where NAME | menu | idle
-    | quit
+    state | grab | copy TEXT | bigcopy N | panel | popup | mask | look NAME | theme NAME | stokes | where NAME | menu
+    | idle | quit
 """
 import argparse
 import json
@@ -183,6 +183,11 @@ def main():
             w.set_look(get_look(arg, {}))
             settle()
             out(dict(ok=True))
+        elif cmd == "theme":                            # dark or light while the window runs (T)
+            w.set_theme(arg)
+            settle()
+            out(dict(ok=True, window={r.xid: r.w.palette().color(QtGui.QPalette.ColorRole.Window).rgb() & 0xFFFFFF
+                                      for r in bridge.windows if not r.popup}))
         elif cmd == "stokes":                           # the modern look's drop-down, where it is on the screen
             d = w.nav.drop
             settle()

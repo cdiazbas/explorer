@@ -223,7 +223,8 @@ class Bridge(QtCore.QObject):
                     self._schedule()
             return False
         if t not in (E.Type.Show, E.Type.Hide, E.Type.Move, E.Type.Resize, E.Type.WindowStateChange,
-                     E.Type.WindowTitleChange, E.Type.WindowIconChange) or not isinstance(obj, QtWidgets.QWidget):
+                     E.Type.WindowTitleChange, E.Type.WindowIconChange, E.Type.PaletteChange) \
+                or not isinstance(obj, QtWidgets.QWidget):
             return False
         if not obj.isWindow():
             if t in (E.Type.Move, E.Type.Resize, E.Type.Hide):
@@ -254,6 +255,11 @@ class Bridge(QtCore.QObject):
             # its own icon, or the application's set after the window was made (QApplication.setWindowIcon tells
             # every top-level so)
             self.windows.set_icon(rec)
+            self.c.flush()
+        elif t == E.Type.PaletteChange:
+            # a change of theme reaches every top-level so (QApplication.setPalette), and the glass look's colour of
+            # the window its own (setPalette)
+            self.windows.set_background(rec)
             self.c.flush()
         return False
 
