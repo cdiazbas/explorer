@@ -1,6 +1,7 @@
 """The slit panel (ROADMAP E7.2): two slices along the slit drawn on the image, side by side, sharing the x axis
 "along the slit [px]": the time slice (t up, at this Stokes and lambda) and the spectral slice (lambda up, at this
-Stokes and t), as CRISPEX's loop path time slice and its spectrum along a slit. The t and lambda markers across them;
+Stokes and t), as CRISPEX's loop path time slice and its spectrum along a slit. A linked map's slit (set_cube): the
+time slice alone, its one-row spectral slice saying nothing. The t and lambda markers across them;
 a vertical line on both where the cursor's pixel lies on the slit, hidden when it is off it. No zoom, no pan, no
 pyqtgraph menu (the prototype's F20g): a click or drag picks t (or lambda) from y and the slit's point from x.
 
@@ -54,6 +55,7 @@ class SlitPanel:
             pl.addItem(ln)
             ln.hide()
         self.clear_marks()
+        self.spectral = True                            # the spectral slice shown (not for a map: set_cube)
         self.pix: tuple[np.ndarray, np.ndarray] | None = None
         self.on: dict = {}                              # (y, x) -> the first point of the slit on that pixel
         self.cursor: tuple[int, int] | None = None
@@ -61,8 +63,8 @@ class SlitPanel:
         self._ranges(1)
         self.widget = self.w
 
-    def _cube(self, nt: int, nl: int, axes, times=None) -> None:
-        self.nt, self.nl, self.ax = max(1, nt), max(1, nl), axes
+    def _cube(self, nt: int, nl: int, axes, times=None, label: str = "λ index") -> None:
+        self.nt, self.nl, self.ax, self.label = max(1, nt), max(1, nl), axes, label
         self.tax = times if times is not None else axes  # whose times label t
         dl = axes.dlam_A() if axes is not None else None
         self.physical = dl is not None and len(dl) == nl
@@ -77,21 +79,29 @@ class SlitPanel:
 
     def _left_labels(self) -> None:
         self.ts.setLabel("left", "t [UT]" if self.timed else "t index")
-        self.sl.setLabel("left", "Δλ [Å]" if self.physical else "λ index")
+        self.sl.setLabel("left", "Δλ [Å]" if self.physical else self.label)
 
     @staticmethod
     def _axis_style(a: pg.AxisItem) -> None:
         a.setStyle(tickLength=4)                        # out of the image, as lambda-t's
         a.setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
 
-    def set_cube(self, nt: int, nl: int, axes, times=None) -> None:
+    def set_cube(self, nt: int, nl: int, axes, times=None, label: str = "λ index", mapped: bool = False) -> None:
         """The slices of another cube from now on (a linked cube's slit, Session.set_path): its t and lambda axes;
-        times: the axes whose times label its t, when not its own (a map with the main cube's times). The slices shown
-        go, the next slit's come. The same cube again changes nothing."""
+        times: the axes whose times label its t, when not its own (a map with the main cube's times); label: its axis
+        other than t in index units (data.names.slice_names); mapped: a map, whose spectral slice (one row) says
+        nothing and is left out, the time slice taking the panel. The slices shown go, the next slit's come. The same
+        cube again changes nothing."""
         times = times if times is not None else axes
-        if (max(1, nt), max(1, nl)) == (self.nt, self.nl) and axes is self.ax and times is self.tax:
+        if ((max(1, nt), max(1, nl), label, mapped) == (self.nt, self.nl, self.label, not self.spectral)
+                and axes is self.ax and times is self.tax):
             return
-        self._cube(nt, nl, axes, times)
+        self._cube(nt, nl, axes, times, label)
+        if mapped and self.spectral:
+            self.w.ci.removeItem(self.sl)
+        elif not mapped and not self.spectral:
+            self.w.ci.addItem(self.sl, row=0, col=1)
+        self.spectral = not mapped
         self.ts.setAxisItems({"left": self._t_axis()})
         self.sl.setAxisItems({"left": self._l_axis()})
         self._left_labels()
@@ -176,7 +186,7 @@ class SlitPanel:
         if self.pix is None:
             return None
         for pl, axis, n in ((self.ts, "t", self.nt), (self.sl, "l", self.nl)):
-            if pl.vb.sceneBoundingRect().contains(pos):
+            if (pl is self.ts or self.spectral) and pl.vb.sceneBoundingRect().contains(pos):
                 q = pl.vb.mapSceneToView(pos)
                 return int(np.clip(int(q.x()), 0, self.n - 1)), axis, int(np.clip(int(q.y()), 0, n - 1))
         return None

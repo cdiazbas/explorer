@@ -48,3 +48,34 @@ def test_cubes_that_would_share_a_name_are_told_apart():
     got = cube_names([cube("stokes_6173_im.fits"), cube("stokesI_6173_im.fits")])
     print(got)
     assert got == ["stokes_6173_im", "stokesI_6173_im"]
+
+
+def _roles(t=0, l=None, nl=1, how="header"):  # noqa: E741
+    from explorer.data.axes import Roles
+    return Roles(t, None, l, 17, 1, nl, how)
+
+
+def _axes(dl=None, btype=None):
+    return types.SimpleNamespace(dlam_A=lambda: dl, btype=btype, line=None)
+
+
+def test_the_axis_other_than_t_is_lambda_only_when_known():
+    """lambda-t and "λ index" only for an axis known to be lambda (tunings in Å, or named by the header, --axes or
+    SOLARNET's order); a map, or an unnamed axis taken for lambda by default, by what the cube shows: its BTYPE,
+    else the map's word in its file name, else its file name."""
+    from explorer.data.names import slice_names
+    cases = [
+        (_roles(l=1, nl=5, how="default (t, lambda)"), _axes(dl=list(range(5))), "x_im.icube",
+         ("λ–t", "λ index", True)),
+        (_roles(l=1, nl=5), _axes(), "x_im.fits", ("λ–t", "λ index", True)),
+        (_roles(l=1, nl=5, how="--axes"), _axes(), "x.icube", ("λ–t", "λ index", True)),
+        (_roles(), _axes(), "Blos.6173_map.fcube", ("Blos–t", "Blos index", False)),
+        (_roles(), _axes(btype="Magnetic field"), "Blos.6173_map.fcube",
+         ("Magnetic field–t", "Magnetic field index", False)),
+        (_roles(l=1, nl=6, how="default (t, lambda)"), _axes(), "meinv_6173_im.icube",
+         ("meinv_6173_im–t", "meinv_6173_im index", False)),
+    ]
+    for r, ax, path, want in cases:
+        got = slice_names(r, ax, path)
+        print(path, r.how, "->", got)
+        assert got[:3] == want and got.mapped == (r.l is None)

@@ -104,7 +104,8 @@ class IndexAxis(pg.AxisItem):
 class LambdaTPanel:
     """widget: what goes in the dock."""
 
-    def __init__(self, nt: int, nl: int, axes):
+    def __init__(self, nt: int, nl: int, axes, label: str = "λ index"):
+        """label: its axis other than t in index units, when not in Å (data.names.slice_names)."""
         self.nt, self.nl, self.ax = nt, nl, axes
         dl = axes.dlam_A() if axes is not None else None
         self.physical = dl is not None and len(dl) == nl
@@ -120,7 +121,7 @@ class LambdaTPanel:
         pi.setMenuEnabled(False)
         pi.vb.setMenuEnabled(False)
         pi.hideButtons()
-        self.w.setLabel("bottom", "Δλ [Å]" if self.physical else "λ index")
+        self.w.setLabel("bottom", "Δλ [Å]" if self.physical else label)
         self.w.setLabel("left", "t [UT]" if self.timed else "t index")
         self.t_line = pg.InfiniteLine(angle=0)
         self.l_line = pg.InfiniteLine(angle=90)

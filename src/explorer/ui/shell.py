@@ -1095,7 +1095,8 @@ class Shell(QtWidgets.QMainWindow):
         times = None
         if getattr(axes, "t_sec", None) is None and m.t == tuple(range(r.nt)):
             times = self.dataset.axes
-        self.slit_panel.set_cube(r.nt, r.nl, axes, times)
+        names = self.cubes[k].slices                    # a linked cube's (data.names); the main cube's as always
+        self.slit_panel.set_cube(r.nt, r.nl, axes, times, *((names.label, names.mapped) if names else ()))
         if self.linked:
             self.slit_dock.setWindowTitle(f"Slit: {self.cubes[k].name}")
         self._slit_markers()

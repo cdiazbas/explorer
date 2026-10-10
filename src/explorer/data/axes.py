@@ -137,6 +137,7 @@ class Axes:
         self.corners = None         # (nt, 2, 2, 2) [t, j, i, (x", y")] field corners
         self.corner_px: tuple | None = None  # ((x0, x1), (y0, y1)) 0-based pixel indices of the corners
         self.bunit = None
+        self.btype = None           # what the data are (BTYPE), when the header says
         self.distortion = None      # the header's wavelength distortion (e.g. "WCSDVARR Lookup"), not applied
         self.source: list[str] = []  # what was read, for the status and about texts
 
@@ -237,6 +238,7 @@ def from_hdul(h) -> Axes:
 def _read(h, ax: Axes) -> None:
     hd = h[0].header
     ax.bunit = hd.get("BUNIT")
+    ax.btype = hd.get("BTYPE")
     # line: WAVEBAND -> laboratory wavelength
     wb = hd.get("WAVEBAND")
     if wb is not None and _norm(wb) in LINES:

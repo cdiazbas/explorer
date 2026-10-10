@@ -266,9 +266,9 @@ def slices_along(ds, session, k, pix):
 @pytest.mark.parametrize("k", [2, 1, 0])
 def test_a_slit_drawn_on_a_cube_s_image_shows_that_cube_s_slices(window, k):
     """A slit drawn on Blos gave the main cube's slices (the user, 2026-10-10): the slit panel shows the slices of the
-    cube whose image took the slit, at its own lambda and Stokes; on a map, a spectral slice of one row. The slit is
-    still on every image; a map without times of its own has its t in the main cube's times. k: the Blos map, the
-    other line (7 tunings, its own lambda), the main cube."""
+    cube whose image took the slit, at its own lambda and Stokes. The slit is still on every image; a map without
+    times of its own has its t in the main cube's times, and no spectral slice. k: the Blos map, the other line (7
+    tunings, its own lambda), the main cube."""
     w, qapp = window
     cube = w.cubes[k]
     when = w.slit_panel.t_label_fine(1)               # the main cube's times
@@ -295,6 +295,8 @@ def test_a_slit_drawn_on_a_cube_s_image_shows_that_cube_s_slices(window, k):
     assert w.session.state.path_cube == k
     assert (panel.nt, panel.nl) == (max(1, cube.dataset.roles.nt), max(1, cube.dataset.roles.nl))
     assert title == f"Slit: {cube.name}"
+    assert panel.spectral == (k != 2)                   # the map's one-row spectral slice left out
+    assert (panel.sl in panel.w.ci.items) == (k != 2)
     if k != 1:                                          # the map has no times: the main cube's label its t
         assert panel.t_label_fine(1) == when
     assert all(len(m.line.getData()[0]) > 0 for m in w.slit_tool.marks)

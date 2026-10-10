@@ -15,6 +15,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore
 
 from ..core.scheduler import Scheduler
+from ..data.names import slice_names
 from . import glass
 from .cards import CARD, CARD_LIGHT
 from .gestures import Gestures
@@ -86,7 +87,11 @@ class CubeView:
         # a cube without lambda has no spectra; lambda-t needs both t and lambda
         self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, ds.axes, light=light) \
             if r.l is not None else None
-        self.lambda_t = LambdaTPanel(r.nt, r.nl, ds.axes) if r.t is not None and r.l is not None else None
+        # a linked cube's axis other than t named as data.names says (not lambda unless known to be); the main
+        # cube's as it always was
+        self.slices = slice_names(r, ds.axes, getattr(ds, "path", "")) if k else None
+        self.lambda_t = (LambdaTPanel(r.nt, r.nl, ds.axes, *([self.slices.label] if self.slices else []))
+                         if r.t is not None and r.l is not None else None)
         self.last_s = 0                                 # the Stokes of the lambda-t shown (its colour map)
         self.ns = r.ns
         # its Stokes named in the image's top left by something else: the main cube's colour key, which glass puts there

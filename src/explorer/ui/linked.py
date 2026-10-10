@@ -337,7 +337,8 @@ class LinkedCube(CubeView):
         """(key, panel widget, the main window's tabs, title) of its spectra and lambda-t, those it has."""
         out = []
         for key, panel, tabs, title in (("spectra", self.spectra, self.shell.spec_tabs, "Spectrum"),
-                                        ("lambda_t", self.lambda_t, self.shell.lt_tabs, "λ–t")):
+                                        ("lambda_t", self.lambda_t, self.shell.lt_tabs,
+                                         self.slices.panel if self.slices else "λ–t")):
             if panel is not None and tabs is not None:
                 out.append((f"{key}:{self.k}", panel.widget, tabs, title))
         return out

@@ -13,6 +13,7 @@ to MAX_CHARS.
 """
 import os
 import re
+from typing import NamedTuple
 
 from .axes import LINES
 
@@ -68,6 +69,42 @@ def short_name(path, axes=None) -> str:
     if line:
         return line
     return cut(s)
+
+
+def quantity(path, axes=None) -> str:
+    """What the cube shows, for the panels of an axis not known to be lambda: the header's BTYPE, else the word that
+    names a map at the start of its file name (QUANTITIES), else its file's name, cut."""
+    btype = getattr(axes, "btype", None)
+    if btype and str(btype).strip():
+        return str(btype).strip()
+    s = stem(path)
+    word = re.split(r"[^A-Za-z]+", s)[0].lower() if s else ""
+    return QUANTITIES.get(word) or cut(s)
+
+
+class SliceNames(NamedTuple):
+    """How a cube's panels name its axis other than t: panel, the title of that axis against t ("λ–t"); label, that
+    axis's label in index units ("λ index"; in Ångström the panels say "Δλ [Å]" themselves); spectral: the axis is
+    known to be lambda; mapped: the cube is a map (no axis but t), so a slice along that axis says nothing."""
+    panel: str
+    label: str
+    spectral: bool
+    mapped: bool
+
+
+KNOWN_LAMBDA = ("header", "--axes", "SOLARNET order")   # Roles.how that name lambda; else it is a guess
+
+
+def slice_names(roles, axes, path) -> SliceNames:
+    """The names of a cube's axis other than t, in one place. Known to be lambda (its tunings in Å, or so named by
+    the header, by --axes or by SOLARNET's order of three axes): "λ–t" and "λ index", as always. Otherwise (an
+    unnamed axis taken for lambda by default, or a map) the quantity's name (quantity): "Blos–t", "Blos index"."""
+    dl = axes.dlam_A() if axes is not None and roles.l is not None else None
+    spectral = roles.l is not None and ((dl is not None and len(dl) == roles.nl) or roles.how in KNOWN_LAMBDA)
+    if spectral:
+        return SliceNames("λ–t", "λ index", True, False)
+    q = quantity(path, axes)
+    return SliceNames(f"{q}–t", f"{q} index", False, roles.l is None)
 
 
 def cube_names(datasets) -> list[str]:
