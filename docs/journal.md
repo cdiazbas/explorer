@@ -3971,3 +3971,245 @@ bajo la clave).
 **Sin resolver.** La tinta clara del tema oscuro sobre imagen clara se lee mal: 1.45:1 sobre la λ–t gris del cubo
 sintético, 1.85:1 de mediana sobre la granulación de un enlazado (por debajo de 3:1). Es lo que ya hacían las letras
 de la 2×2; un halo como el de la retícula, o un fondo como el de la clave, es decisión del usuario (sin probar).
+
+### 2026-10-10 (1): el plan de enlazado comprueba la cabecera como `Dataset.open` (ROADMAP X.13)
+
+**El problema** (S10 de la auditoría de simplificación). `link.describe` leía los ejes como `Dataset`, pero sin
+`axes.check`. Un cubo enlazado con una WCS-TAB de 2 tiempos para 3 pasos en t pasaba el plan («no times of its own:
+the first cube's»), `Dataset.open` lo rechazaba después y `start()` devolvía `None`: no abría ni el primer cubo.
+
+**Lo hecho.** `axes.read` (roles, `from_fits` o `from_lp` y `check`) es la única lectura, la de `Dataset` y la de
+`describe`. El plan deja fuera ese cubo con la razón de `Dataset.open` («cannot be read as a cube (…)») y el primero
+abre solo. Con cubos enlazados, un primer cubo con la cabecera que no casa se rechaza ahora en `plan_links`, antes de
+crear la aplicación Qt, con el mismo mensaje. E1.23 (rechazar o abrir sin tiempos) se decide ya en un solo sitio.
+
+**Medido** (bellatrix, sin pantalla). Dos pruebas nuevas, `test_link` y `test_app_start`, fallan antes (ok=True;
+`start` devuelve `None`) y pasan después. Los grupos de link, axes, dataset, app y per_pixel: 91 passed;
+`tests/real/test_link_real.py`: 7 passed. Sin prueba: el segundo `try` del plan (un cubo con un eje sin nombre leído
+como t, de otra longitud que su cabecera).
+
+### 2026-10-10 (2): run.sh no toca entornos ajenos; la rama `compare-bridges` y la higiene de la historia (ROADMAP X.6)
+
+**El problema.** `scripts/run.sh` comparaba el `uv.lock` de su árbol con el `.lock.cksum` del entorno con el que
+corría y, si difería y podía escribirlo, lanzaba su propio `setup_env.sh` sobre él, sin mirar de quién era: el de
+`EXPLORER_VENV`, o el que enlaza `.venv-<plat>` en las copias de prueba de `/tmp`, se reconstruía con las versiones de
+una copia vieja o experimental, bajo todos los que lo usan (F72 del prototipo).
+
+**Lo hecho.** El entorno propio es el `.venv-<plat>` de la carpeta del árbol, comparado tras seguir enlaces
+(`cd -P`). Solo ese se reconstruye, y solo en ese se añade el `explorer.app` de macOS. Uno ajeno corre como está, con
+un aviso: su ruta en disco, que este código corre con sus versiones, y cómo hacerse uno propio. Avisar y no negarse:
+el entorno queda intacto igual, y negarse pararía también `run.sh doctor`. Consecuencia: un entorno hecho con
+`setup_env.sh --venv DIR` fuera del árbol ya no se reconstruye solo.
+
+**Medido.** `tests/unit/test_run_sh.py`, con árboles y entornos de mentira en una carpeta temporal: con el run.sh de
+antes fallan 2 de 5 (el `EXPLORER_VENV` ajeno y el enlace: «updating <ajeno>»), en el Mac y en bellatrix; después
+pasan 5. Sin la comprobación en la línea del `explorer.app`, la prueba del ajeno falla.
+
+**`test_started_by_run_sh`.** Fallaba en todo worktree y en las copias de `/tmp` sin el entorno enlazado: run.sh no
+encontraba `.venv-<plat>` junto al código, salía con 1 y `doctor` no escribía su informe. Ahora la prueba le da
+`EXPLORER_VENV` = el entorno de las pruebas, lo que solo es seguro con este arreglo.
+
+**La rama `compare-bridges`** (71 commits fuera de `main`): sus 68 commits están en `main` con otros hashes (la
+reescritura del 2026-10-05); no guarda código, pruebas, medidas ni notas que no estén en `main`. Lo único distinto es
+el blob `e13dd22` de `tests/golden/data/synth_small/reference.npz`, con la ruta del Mac en su `meta.npy` (UTF-32: ni
+el grep ni `hygiene.py`, que solo recorre `HEAD`, lo ven): el que X.11 quitó de `main`. Propuesto borrarla (decisión
+del usuario). La entrada 2026-10-04 (30) cita `328bcc5` como el commit con la ruta; tras la reescritura es `b93c4a3`.
+
+**Higiene de toda la historia**, en todas las ramas locales: 0 menciones de asistentes, de coautoría y de rutas personales
+en mensajes y diffs; una sola identidad de autor; ningún fichero de auditoría versionado nunca. La única fuga, ese npz.
+
+### 2026-10-10 (3): las ventanas de cubo en la disposición guardada; la piel de glass en sus paneles sacados (ROADMAP E8.3)
+
+**La disposición guardada.** El estado de la ventana principal guarda el panel de la imagen de cada cubo, flotando o
+no, pero no el `QMainWindow` de dentro: al arrancar otra vez, un cubo aparte volvía como su imagen sola, con su
+espectro y su λ–t en las pestañas de la ventana principal (medido: imagen de 388 px en vez de 249, ningún panel en su
+ventana). Ahora `LayoutStore` guarda también, en `app/<kind>/cubes/`, qué cubos son ventana propia, el estado de cada
+marco y el ancho cedido por la ventana. Al restaurar, después del estado principal, hace de cada cubo una ventana otra
+vez (crea sus paneles) antes de restaurar el estado de su marco: `restoreState` se salta los docks que aún no existen.
+Un panel sacado de la ventana de un cubo vuelve flotando donde estaba. En glass, la ventana del cubo la recoloca glass
+al arrancar si la ventana ajustada tapa sus paneles, como a sus propios paneles.
+
+**La piel de glass.** Glass vestía solo sus tres paneles; uno sacado de la ventana de un cubo salía cuadrado, con el
+título sin piel y sin la losa. Ahora lleva el mismo `PanelSkin` mientras flota (también si glass se pone con él ya
+fuera) y lo pierde al volver. Al quitar glass, las pieles se quitan en orden inverso: la de un panel de cubo encontró
+sus gráficas ya transparentes y debe devolver eso antes de que las de los paneles principales devuelvan el fondo
+original (en el orden directo las gráficas se quedaban transparentes fuera de glass; lo comprueba la prueba).
+
+**Medido.** Las dos pruebas nuevas fallan con el código de `0712b98` y pasan con el nuevo (bellatrix y Mac). El
+arranque, píxel a píxel (Mac, sin pantalla, 19 ventanas: clásico y glass, un cubo y enlazados, restaurado de una
+disposición del código anterior, cubos aparte y de vuelta): 0 px de diferencia; ruido entre dos tandas del mismo
+código, 0. En bellatrix, los grupos de docks, layout, glass, linked, look, theme, titlebar, shell y arranque, y
+`tests/xvfb` en un Xvfb privado (36 passed).
+
+**Queda.** El límite de `ViewGuard` y la piel en los paneles acoplados dentro de una ventana de cubo (decisiones del
+usuario). Sin probar en un Mac local: la piel sobre un panel que ya tiene su ventana nativa (en cocoa se hace
+translúcido después de flotar).
+
+### 2026-10-10 (4): el puente: el fondo al cambiar de tema, mover y redimensionar por el gestor, y la exposición negra medida (ROADMAP E6.21, E6.11, E6.19)
+
+**E6.21, lo que faltaba.** Cada ventana X nacía con el color de ventana de Qt de fondo, pero al cambiar de tema en
+marcha se quedaba con el del arranque: lo que X expone antes de que lleguen los píxeles salía del tema viejo.
+`QApplication.setPalette` manda `PaletteChange` a cada ventana de nivel superior (los paneles flotantes también) ya
+con el color nuevo; glass, con `setPalette` en la principal, solo a esa. El puente responde con un
+`ChangeWindowAttributes` del píxel nuevo, solo si cambia: en XQuartz, una petición pequeña por cambio de tema. En Xvfb
+otro cliente borra cada ventana con `ClearArea` y lee el fondo: en `main` seguía `0xefefef` tras pasar a oscuro y a
+claro; con el arreglo, el del tema.
+
+**E6.11.** Por el puente, la barra y los bordes movían y redimensionaban la ventana por su cuenta: en GNOME o KDE por
+`ssh -Y` no había acople a los bordes. Portado del prototipo (`app/xbridge.py:610-632`): si el gestor anuncia
+`_NET_WM_MOVERESIZE` en `_NET_SUPPORTED`, se suelta el agarre implícito de la pulsación y se le manda el mensaje
+(raíz, dirección, botón, fuente 1). Si no lo anuncia (quartz-wm, sin gestor), el camino de siempre. Con un gestor
+falso que informa del mensaje y de si pudo agarrar el puntero: mensaje correcto y agarre concedido. Cada pieza se ve
+fallar al quitarla: sin el mensaje (código de `main`), nada llega; sin soltar el agarre, `AlreadyGrabbed`; sin dar a
+Qt la liberación, Qt seguía con el botón pulsado después. Con metacity de verdad en Xvfb, arrastrar la barra al borde
+izquierdo deja la ventana en la mitad izquierda (960×1080); con `main`, en (0, 230) con su tamaño. Sin probar en
+GNOME o KDE reales; `_NET_SUPPORTED` se lee una vez al empezar.
+
+**E6.19, solo medido.** Una zona de 400×300 de la ventana principal, tapada y descubierta por otro cliente, 10 veces
+por proceso, ABBA. Sin enlace, 2 ms hasta verse bien. A 25 ms y 5 MB/s, 51 ms en los que el 92 % es el color de
+fondo: un viaje de ida y vuelta hasta la `CopyArea` del puente. Con el pixmap trasero de cada ventana como su
+`background_pixmap` (experimento en una copia), X pinta los píxeles él mismo: bien desde la primera lectura. Carga
+3.9-8, sin fijar: no es una tanda de carga baja. Un panel de un solo color no distinguía las dos cosas (su fondo ya es
+su contenido). Sin medir: qué pasa al crecer la ventana (el pixmap se repetiría en mosaico) y XQuartz.
+
+**Para correr `tests/xvfb` con cookie** hacen falta también las de las pantallas de los enlaces de `bench/xlink.py`
+(600-699); sin cookie, como en las suites de siempre, no.
+
+### 2026-10-10 (5): la máscara, `--mask` (ROADMAP E8.2)
+
+**Lo hecho.** `explorer cubo [enlazados] --mask fichero` dibuja el contorno de una máscara 0/1 sobre todas las
+imágenes: la del cubo principal, las de los enlazados y las cuatro de la 2×2, en los tres aspectos.
+
+- **Como CRISPEX** (`crispex.pro`): un cuadro, que se muestra en todos los t, o tantos como tiempos del primer cubo, y
+  en cada t el suyo (`:21105-21111`); si no, se rechaza diciendo las dimensiones (`:10175-10198`).
+- **Píxeles puestos:** valor ≥ 1, el nivel 1 de su `CONTOUR` (`:7174-7177`); una máscara de bytes 0/255 también vale.
+- **Comprobaciones:** las de `data/link.py`. La de rejilla queda en una función, `other_grid`, que usa también el
+  enlazado con el mismo mensaje; la de tiempos es `frames`, sin leer tiempos propios de la máscara (la regla de IDL).
+- **Formatos:** FITS y LP, por su contenido. Al LP nunca se le aplica la idlsave de al lado: su `fac` es de un cubo.
+- **Si no casa:** el visor arranca sin ella y lo dice en la terminal, como un cubo que no se puede enlazar (IDL no
+  arrancaba).
+
+El contorno va por los bordes de los píxeles, con los tramos rectos unidos; el de IDL pasa por los centros de los
+píxeles del borde, medio píxel más adentro. El color, por ahora el acento del aspecto (azul en classic y modern,
+naranja en glass), en una sola función: `ui/mask.py` `mask_colour`.
+
+**Medido.** `tests/unit/test_mask.py` (17) y `test_mask_drawn.py` (4); contra `0712b98` fallan todas salvo la guarda
+del mensaje de `link.plan`. Con la principal, un mapa enlazado y la 2×2, cada imagen lleva el contorno del cuadro de
+su t y lo sigue (borde izquierdo 5 → 11 → 14 → 8 en t 0, 2, 3, 1). Sin `--mask`, las 36 capturas del arnés son
+idénticas a `main` (dos tandas de `main` difieren en el fichero de siempre, 824 px). En bellatrix, 155 pruebas de los
+grupos tocados y 7 de `tests/real/test_link_real.py`.
+
+**Coste** (bellatrix, nodo 0, con el cerrojo, carga 4-8; una máscara de umbral de `stokes_6173_im.fits`, 186 cuadros
+de 2044 × 2030, ~25 000 segmentos, hecha en `/tmp` y borrada):
+
+| | ms |
+|---|---|
+| leer un cuadro | 4.6 |
+| contorno, primera versión (dos `np.nonzero`) | 94.7 |
+| contorno, con un `flatnonzero` | 17.7 |
+| un paso en t hasta la imagen nueva, sin máscara (ABBA) | 26.5 / 26.4 |
+| ídem, con máscara por t | 61.6 / 60.4 |
+
+El reparto de esos +35 ms (lectura y contorno ~23, dibujo ~10-15) es inferido, no medido por partes. Una pista falsa:
+las líneas grises con forma de contorno de una captura ampliada son de la imagen (de los 21 428 píxeles distintos sin
+el contorno, 21 423 son del acento).
+
+**Falta.** El coste por paso (fuera del hilo de la interfaz, por adelantado al reproducir, o solo lo visible: sin
+probar), una tecla para ocultarla (IDL tenía una por imagen), leer los tiempos propios de una máscara FITS, que la vea
+el usuario. **Por decidir:** el color, bordes o centros, arrancar sin ella o negarse, umbral ≥ 1 o > 0.
+
+### 2026-10-10 (6): la caché de numba al arrancar y la rendija frente al prototipo (ROADMAP E6.20, E7.5)
+
+**Condiciones:** bellatrix, bajo el cerrojo, nodo 0 (CPU pares); cubo 6173 con su fichero por píxel; carga 2.3-9: no
+es una tanda de carga baja. Resultados y scripts en `bench/results/perf_2026-10-10/`. Sin cambios de código.
+
+**E6.20, la caché de numba.**
+- Todos los núcleos de explorer llevan `cache=True`. La caché está en `~/.cache/explorer/numba`, una carpeta por ruta
+  del árbol (el compartido, cada copia en `/tmp`, cada worktree: 87 en bellatrix), válida mientras el fichero no
+  cambie. En el árbol compartido se reutiliza: las entradas del 1 de octubre son las del `kernels.py` de hoy.
+- Por el puente (Xvfb privado, sin enlace), la primera imagen en X: fría 6.99 s, caliente 2.47 s; lo que espera tras
+  la imagen de Qt, 3.38 frente a 0.057 s. `warm_up` solo: frío 4.2 s (`encode` 1.4 + 1.0 s), caliente 0.23 s.
+- Sin pantalla, la primera imagen: 2.37 frente a 2.11 s.
+- **Las pruebas X compilan siempre:** el conftest da a cada prueba un `XDG_CACHE_HOME` vacío. `tests/xvfb` con un
+  `NUMBA_CACHE_DIR` por sesión: 245 → 188 s (una pasada de cada, sin fijar).
+- `warm_up` no compila las variantes de disposición 'A' de `tile_flags` y `encode` que la ejecución usa (aparecieron
+  4-50 s después en la caché del usuario); su coste a media sesión, sin medir. `run.sh doctor` no calienta los
+  núcleos de explorer.
+- **Negativo:** calentar en un hilo al empezar adelanta la imagen en X a 6.12 s, pero retrasa la de Qt de 3.5 a 5.6
+  s: el compilador quita el GIL al arranque.
+
+**E7.5, la rendija en `main`** (`bench/slit_read.py abba`, las dos cachés calientes):
+
+| tanda | explorer: primera / siguientes | prototipo: primera / siguientes | total explorer / prototipo |
+|---|---|---|---|
+| 1, 4 rondas | 25.7 / 27.3 ms | 21.9 / 14.0 ms | 141 / 239 ms |
+| 2, 3 rondas | 30.4 / 38.6 ms | 22.3 / 13.7 ms | 140 / 173 ms |
+| 3, 3 rondas | 35.9 / 43.8 ms | 42.1 / 23.7 ms | 130 / 124 ms |
+
+- La primera rendija ya no está en 45-61 ms: la mejora de la rama se confirma en `main`.
+- El tiempo propio de las siguientes es bimodal (14-24 o 35-55 ms): cuando la lectura acaba mientras el hilo de la
+  interfaz aún pinta tras traer la pestaña de la rendija, sus resultados esperan 13-20 ms en la cola; el aviso
+  `panels` de esa pestaña llega 60-130 ms después de `set_path`.
+- cProfile de las rendijas terminadas: `paintEvent` acumula 208-615 ms en explorer frente a 29-35 en el prototipo,
+  casi todo fuera de Python (¿el GIL de los lectores o el dibujo de Qt? sin probar).
+- **Negativos:** vectorizar el bucle de `_from_blocks` es más lento (1.4 → 2.2 ms) y no cambia nada en ABBA;
+  `setswitchinterval(0.001)` queda dentro del ruido.
+- El tiempo propio penaliza a explorer porque su lectura es más rápida y el trabajo de la interfaz ya no se esconde
+  tras la E/S; el total es igual o mejor. Por decidir: juzgar E7.5 por el total.
+
+### 2026-10-10 (7): auditoría de simplificación, 27 commits desde `b571d12` (ROADMAP X.14)
+
+A `0712b98`. Los duplicados, con un script de ventanas de 3 líneas normalizadas repetidas en `src/explorer` y leyendo
+el código; lo muerto, con un script AST de nombres que no aparecen en `src`, `tests`, `scripts` ni `bench`,
+confirmado con grep. La cobertura, con grep sobre `tests/`: la venv no tiene `coverage`. 21 hallazgos, 20 abiertos y 1
+que no es defecto, en el fichero de auditoría (fuera de git).
+
+- **Un defecto, S10:** un enlazado que el plan acepta y `Dataset.open` rechaza paraba el arranque. Arreglado (X.13).
+- **Inventario de la capa de ventanas:** 11 `singleShot(0)`, 19 ramas `if self.glass`, 29 `look.has`, 25
+  `isFloating`. Las esperas llevan su medida en el comentario y no se proponen quitar; sí una que depende del orden de
+  la cola (S17).
+- **Duplicados:** etiquetas y ejes de la λ–t copiados en el panel de la rendija; tres títulos de panel y dos dibujos
+  de las marcas cerrar y flotar; `_Sink` frente a `CubeSink`; cinco LRU con presupuesto de bytes (`NegativeI` fijo en
+  32 MB, sin parte del presupuesto); «soltar, mover, bloquear» cuatro veces.
+- **Muerto:** `SlitPanel.set_background`, tres peticiones de `xproto` y cuatro atributos que nadie lee.
+
+Propuesto empezar por lo muerto, los ejes de los paneles y los ayudantes de shell y cube: ~70 líneas, cada cambio con
+capturas antes y después y las suites en bellatrix. Nada tocado: pendiente del visto bueno del usuario.
+
+### 2026-10-10 (8): E6.12 y E5.16, preparadas para decidir (sin código)
+
+**E6.12.** De los 15 hallazgos abiertos del prototipo, explorer hereda 14; F20 pasa a ser parte del diseño con el ADR
+0009. Todos comprobados en el código de explorer; F24a y F35 medidos además en el Mac (sin pantalla): el separador de
+los docks es de 1 px con el estilo de macOS (8 con el de explorer fuera de él), y un panel flotante es `Qt::Tool` sin
+`WA_MacAlwaysShowToolWindow`, con el mecanismo que los esconde al perder el foco en el `libqcocoa` de la venv; el
+efecto en pantalla no se ha visto. Propuestos: 6 cerrados como ⚪ sin coste (F9, F20n, F23f, F23g, F7, F20); 3 con una
+sola sesión de medida en bellatrix (F3, F9c, F50: el tope de 12 fps viene del puente del prototipo, limitado por CPU);
+4 con un vistazo del usuario (F35, F37, F38, F40); 2 decisiones de aspecto (F24a, F47e).
+
+**E5.16.** Leído `crispex.pro`: fondo blanco y tinta negra (índices 255 y 0 de la tabla 0, `:22108`), curvas
+`THICK=2` sin símbolos (`:22109`), espectro medio raya-punto (`LINE=3`, `:8425-8428`), marcadores λ y t de 2 px de la
+tabla 13 índice 255 (`:8566-8570`; RGB sin verificar, falta `colors1.tbl`; el marcador t de intensidad-tiempo es
+negro), cursor `+` de 1 px, negro si la media 3×3 del byte escalado es ≥ 122 y blanco si no (`:8066`, `:7887-7921`).
+El classic de explorer difiere en casi todo: fondo y tinta del tema, curva de 1.5 px con puntos y rejilla
+(`ui/spectra.py:197-215`), marcadores (255, 80, 80) (`ui/imageview.py:31`, `ui/pens.py:47-57`), cruz roja fija, sin
+espectro medio. Por decidir, elemento a elemento, en una copia «classic IDL».
+
+### 2026-10-10 (9): la prueba de temas en glass que fallaba a veces (ROADMAP X.12, X.15)
+
+**La causa.** La barra de glass se oculta 2.5 s después de crear la ventana (`AutoHide`, `ui/glass.py:192`). La prueba
+la mostraba otra vez antes de comparar, pero dejaba el temporizador en marcha: el de la primera ventana tenía 2.1-2.6 s
+en bellatrix (1.8 s en el Mac) y saltaba durante la espera de 0.3 s antes de las capturas. Faltaba la barra en esa
+ventana: un 14 % de píxeles distintos de claro a oscuro y un 6 % de oscuro a claro, en la caja exacta de la barra. En
+las 130 ejecuciones instrumentadas, cada fallo coincide con la barra oculta y ningún acierto la tiene. El código hace
+lo que debe; la prueba corría una carrera.
+
+**Medido** (bellatrix, sin pantalla, sin fijar, carga 2-8; tasas de fallo, no tiempos): las dos variantes glass, 67 de
+100 fallaban; con retrasos inyectados de 0 a 1.4 s, 15 de 80 (con 1.4 s se oculta la de la segunda ventana: las dos
+corren la carrera); la prueba sin tocar, sola, 6 de 30; los 11 ficheros que la hacían fallar juntos, 1 de 129. No es
+estado heredado de otras pruebas: es el mismo temporizador.
+
+**Ahora** la prueba para el temporizador en las dos ventanas antes de mostrar la barra: ninguna barra oculta en 300
+ejecuciones; la prueba sola, 0 de 30; los 11 ficheros juntos, 129 pasan. Classic, modern y la 2×2 de modern no tienen
+`AutoHide`; no hay otro temporizador de arranque que cambie píxeles.
+
+**Visto y sin trazar** (X.15): 2 de 400 con la ventana y la λ–t de otro tamaño (claro → oscuro, con carga 6-7).
