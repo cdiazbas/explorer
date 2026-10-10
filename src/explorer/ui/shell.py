@@ -95,6 +95,8 @@ class _Sink:
         self.shell._paint_colour()
         self.shell.update_status()
         self.shell.first_image()
+        if self.shell.session.state.playing:
+            self.shell._shown = (self.shell._shown + [time.perf_counter()])[-30:]
 
     def spectra(self, spec, pixel, t):
         self.shell.last["spectra"] = (spec, pixel, t)
@@ -242,6 +244,9 @@ class Shell(QtWidgets.QMainWindow):
         self._play = QtCore.QTimer(self)
         self._play.timeout.connect(self._play_step)
         self._fps: list[float] = []
+        self._shown: list[float] = []                   # when images reached the view while playing
+        self._fps_default = self.nav.fps.value()
+        self._fps_auto: dict[str, int] = {}             # rates set by what was measured: the link, the frames
         self.nav.play.toggled.connect(self.set_playing)
         self.nav.fps.valueChanged.connect(lambda v: self._play.setInterval(int(1000 / v)))
         self._play.setInterval(int(1000 / self.nav.fps.value()))
@@ -908,8 +913,13 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- playback
     def set_playing(self, on: bool) -> None:
+        shown, played = self.shown_fps(), self.played_fps()
+        if not on and shown is not None and played is not None and shown < 0.8 * played:
+            self.statusBar().showMessage(f"played at {played:.1f} fps; images shown {shown:.1f} a second", 10000)
+        if on:
+            self.cap_fps_by_frames()
         self.session.set_playing(on)
-        self._fps = []
+        self._fps, self._shown = [], []
         (self._play.start if on else self._play.stop)()
         self.nav.play.setIcon(icons.glyph_icon("pause" if on else "play", self.nav.play))
         if self.nav.play.isChecked() != on:
@@ -925,6 +935,36 @@ class Shell(QtWidgets.QMainWindow):
         f = self._fps
         return (len(f) - 1) / (f[-1] - f[0]) if len(f) > 2 and f[-1] > f[0] else None
 
+    def shown_fps(self) -> float | None:
+        """The rate images reached the view over the last ones shown while playing (30 at most); None before
+        three."""
+        f = self._shown
+        return (len(f) - 1) / (f[-1] - f[0]) if len(f) > 2 and f[-1] > f[0] else None
+
+    def auto_fps(self, why: str, fps: int) -> int | None:
+        """The playback rate from what was measured (why: "link", "frames"): the lowest of them, set while the
+        rate box holds the default or the last rate set this way (one the user chose stays). The rate set, or
+        None."""
+        held = self.nav.fps.value()
+        if held != self._fps_default and held != min(self._fps_auto.values(), default=held + 1):
+            return None
+        self._fps_auto[why] = int(fps)
+        rate = min(self._fps_auto.values())
+        self.nav.fps.setValue(rate)
+        return rate
+
+    def cap_fps_by_frames(self) -> None:
+        """The playback rate no higher than the main cube's frames can be read (a compressed series decompresses
+        one frame at a time): steps faster than that move the slider, not the image."""
+        cap = self.dataset.frames.playback_cap() if hasattr(self.dataset, "frames") else None
+        if cap is None:
+            return
+        fps, before = max(1, int(cap)), self.nav.fps.value()
+        if self.auto_fps("frames", fps) == fps and fps != before:
+            msg = f"frames decompressed in ~{1000 / cap:.0f} ms each, one at a time: playback at {fps} fps"
+            self.statusBar().showMessage(msg, 10000)
+            print(f"[{APP_NAME}] {msg}", file=sys.stderr)
+
     def start_link_probe(self, link) -> None:
         """Over a remote X display: the link measured in the background 1.5 s after start (so it does not compete
         with the start-up's traffic), and the default rate set to 60 % of it over one image, unless the rate was
@@ -934,7 +974,7 @@ class Shell(QtWidgets.QMainWindow):
 
         from ..platform import linkprobe
 
-        res, default = {}, self.nav.fps.value()
+        res: dict = {}
 
         def run():
             try:
@@ -955,8 +995,7 @@ class Shell(QtWidgets.QMainWindow):
             if cw is None:
                 return
             fps = linkprobe.suggest_fps(res["MBps"], link.bytes_per_px * cw.width() * cw.height(), hi=link.fps_cap)
-            if self.nav.fps.value() == default:
-                self.nav.fps.setValue(fps)
+            fps = self.auto_fps("link", fps) or fps
             msg = f"X11 link ~{res['MBps']:.0f} MB/s, round trip {res['rtt_ms']:.1f} ms: playback at {fps} fps"
             self.statusBar().showMessage(msg, 10000)
             print(f"[{APP_NAME}] {msg}", file=sys.stderr)
@@ -1296,6 +1335,7 @@ class Shell(QtWidgets.QMainWindow):
         print(line, file=sys.stderr, flush=True)
         for seconds, fn in self._after_first:
             QtCore.QTimer.singleShot(int(seconds * 1000), fn)
+        QtCore.QTimer.singleShot(1000, self.cap_fps_by_frames)     # the frames read ahead by then counted too
 
     def after_first_image(self, seconds: float, fn) -> None:
         """Run fn this many seconds after the first image is on screen (or after now, if it already is)."""
