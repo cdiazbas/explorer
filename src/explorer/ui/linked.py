@@ -371,6 +371,7 @@ class LinkedCube(CubeView):
             self.frame.splitDockWidget(before[-1], d, QtCore.Qt.Orientation.Vertical)
         d.toggleViewAction().setText(f"{self.name} · {title}")
         d.visibilityChanged.connect(lambda _on: self._image_shown(None))
+        d.topLevelChanged.connect(lambda floating: self.shell.pane_floated(d, floating))
         self.panes[key] = d
         self.shell.dress(d)
         return d

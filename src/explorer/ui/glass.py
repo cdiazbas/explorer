@@ -490,6 +490,9 @@ class GlassChrome:
         nav.play.toggled.connect(self._play_toggled)
         # the panels, floating beside the window (look_glass.py:474-608)
         self.skins = [PanelSkin(d) for d in self.docks()]
+        for d in self._cube_panes():                # floating out of a cube's window: the same skin
+            if d.isFloating():
+                self.skins.append(PanelSkin(d))
         if w.isVisible():
             QtCore.QTimer.singleShot(0, self.first_place)
         else:
@@ -563,6 +566,20 @@ class GlassChrome:
         """The panels glass floats: the slit's too, shown only with a slit (docks.GatedDock; look_glass.py:518-519).
         Linked cubes' panels are tabs inside these (ui.linked)."""
         return [d for d in (self.w.spec_dock, self.w.lt_dock, self.w.slit_dock) if d is not None]
+
+    def _cube_panes(self) -> list:
+        """The panels of the linked cubes' windows (ui.linked.LinkedCube.panes): docked in a cube's window they are on
+        its colour (_image_titles); floating out of it, each wears a PanelSkin, as the panels above."""
+        return [d for c in getattr(self.w, "linked", ()) for d in c.panes.values()]
+
+    def pane_floated(self, dock: QtWidgets.QDockWidget, floating: bool) -> None:
+        """A cube's panel floated out of its window (its skin put on) or docked in it again (taken off)."""
+        skin = next((s for s in self.skins if s.d is dock), None)
+        if floating and skin is None:
+            self.skins.append(PanelSkin(dock))
+        elif not floating and skin is not None:
+            self.skins.remove(skin)
+            skin.remove()
 
     def _bar(self, nav, view) -> None:
         """The toolbar's controls in the bar, two rows (look_glass.py:660-691): every action leaves the toolbar,
@@ -988,8 +1005,8 @@ class GlassChrome:
         tb.show()
         self.bar.hide()
         self.bar.deleteLater()
-        for s in self.skins:
-            s.remove()
+        for s in reversed(self.skins):              # a cube's panel's skin first: it found its plots already
+            s.remove()                              # clear (the main panels' skins made them so), and gives that back
         self.skins = []
         for d, floating in self._was["floating"].items():
             d.setFloating(floating)

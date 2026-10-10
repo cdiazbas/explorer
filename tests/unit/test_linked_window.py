@@ -764,3 +764,51 @@ def test_the_saved_layout_keeps_each_cube_s_window_and_its_panels(window, cubes,
     w.detach_action.setChecked(False)
     spin(qapp, lambda: False, timeout=0.3)
 
+
+def test_in_glass_a_panel_floated_out_of_a_cube_s_window_wears_the_glass_skin(window, restore):
+    """In glass a panel floated from the main window is a rounded slab with glass's title, plots clear over it; one
+    floated out of a cube's window came out as the window's plain panel (ROADMAP E8.3). It wears the same skin as one
+    floated from the main window; docked in the cube's window again, the skin is gone, and out of glass nothing of it
+    is left on its plots."""
+    from PySide6 import QtCore, QtGui
+
+    from explorer.look import get_look
+    from explorer.platform.xbridge.windows import SHAPE_ATTR
+
+    w, qapp = window
+    w.set_theme("dark")
+    c = w.linked[0]
+    plot_bg = QtGui.QBrush(c.spectra.w.backgroundBrush())
+    w.set_look(get_look("glass"))
+    spin(qapp, lambda: False, timeout=0.6)
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.6)
+    pane = c.panes["spectra:1"]
+    fill = pane.widget().autoFillBackground()
+    pane.setFloating(True)
+    pane.resize(w.spec_dock.size())
+    spin(qapp, lambda: False, timeout=0.4)
+
+    def skin(d):
+        region = getattr(d, SHAPE_ATTR, QtGui.QRegion())
+        img = d.grab().toImage()
+        middle = QtGui.QColor(img.pixel(d.width() // 2, d.height() - 3)).lightness()
+        return dict(title=type(d.titleBarWidget()).__name__, rounded=not region.isEmpty(),
+                    corner_cut=not region.isEmpty() and not region.contains(QtCore.QPoint(0, 0)),
+                    fill=d.widget().autoFillBackground(), gutter=d.widget().layout().contentsMargins().left(),
+                    slab=middle <= 40)
+
+    ref, got = skin(w.spec_dock), skin(pane)
+    print("floated from the main window", ref, "\nfloated out of a cube's window", got)
+    assert w.spec_dock.isFloating() and pane.isFloating()
+    assert got == ref and got["title"] == "PanelTitle" and got["rounded"] and got["corner_cut"]
+    pane.setFloating(False)                             # docked in its cube's window: the skin gone
+    spin(qapp, lambda: False, timeout=0.3)
+    assert type(pane.titleBarWidget()).__name__ != "PanelTitle" and getattr(pane, SHAPE_ATTR, QtGui.QRegion()).isEmpty()
+    pane.setFloating(True)
+    spin(qapp, lambda: False, timeout=0.3)
+    w.detach_action.setChecked(False)
+    w.set_look(get_look("classic"))
+    spin(qapp, lambda: False, timeout=0.4)
+    assert c.spectra.w.backgroundBrush() == plot_bg
+    assert type(pane.titleBarWidget()).__name__ != "PanelTitle" and pane.widget().autoFillBackground() == fill

@@ -391,6 +391,12 @@ class Shell(QtWidgets.QMainWindow):
         if self._seams is not None:
             dock.setStyle(self._seams)
 
+    def pane_floated(self, dock: QtWidgets.QDockWidget, floating: bool) -> None:
+        """A panel of a cube's window floated out of it or docked in it again: in glass, it wears glass's skin while
+        it floats, as a panel floated from this window does."""
+        if self.glass is not None:
+            self.glass.pane_floated(dock, floating)
+
     def toggle_theme(self) -> None:
         """T: dark and light in turn; from a Mac's native theme, the other of the two."""
         self.set_theme("dark" if style.is_light() else "light")
