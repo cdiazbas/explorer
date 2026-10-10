@@ -193,6 +193,9 @@ class Shell(QtWidgets.QMainWindow):
         # the slit's slices: lambda-t's tab, there from the first S on and only with a slit or one being drawn
         # (_slit_tab; the prototype's 1046-1052)
         self.slit_panel = SlitPanel(r.nt, r.nl, dataset.axes)
+        if self.main.slices is not None:                # one plane along lambda, or none: the time slice alone
+            n = self.main.slices
+            self.slit_panel.set_cube(r.nt, r.nl, dataset.axes, None, n.label, n.mapped, n.value)
         slit_dock = docks.dock(self, "Slit", self.slit_panel.widget, "slit", cls=docks.GatedDock)
         assert isinstance(slit_dock, docks.GatedDock)
         self.slit_dock = slit_dock
@@ -1143,8 +1146,11 @@ class Shell(QtWidgets.QMainWindow):
         times = None
         if getattr(axes, "t_sec", None) is None and m.t == tuple(range(r.nt)):
             times = self.dataset.axes
-        names = self.cubes[k].slices                    # a linked cube's (data.names); the main cube's as always
-        self.slit_panel.set_cube(r.nt, r.nl, axes, times, *((names.label, names.mapped) if names else ()))
+        # a linked cube's names (data.names), and a main cube's with one plane along lambda or none; the main
+        # cube's with lambda as always
+        names = self.cubes[k].slices
+        self.slit_panel.set_cube(r.nt, r.nl, axes, times,
+                                 *((names.label, names.mapped, names.value) if names else ()))
         if self.linked:
             self.slit_dock.setWindowTitle(f"Slit: {self.cubes[k].name}")
         self._slit_markers()

@@ -144,6 +144,18 @@ def test_a_map_s_lambda_t_is_its_value_against_t_and_a_click_sets_t(qapp, cubes)
         close()
 
 
+@pytest.mark.parametrize("which", ["blos", "one"])
+def test_the_slit_of_a_main_cube_with_one_plane_or_none_shows_its_time_slice_alone(qapp, cubes, which):
+    """The slit panel of a main cube with a single tuning, or none, leaves out the one-row spectral slice, as a
+    linked map's does."""
+    w, close = open_window(qapp, cubes[which])
+    try:
+        print(which, "spectral slice shown:", w.slit_panel.spectral, "label", w.slit_panel.label)
+        assert not w.slit_panel.spectral
+    finally:
+        close()
+
+
 def test_a_single_tuning_keeps_its_spectra_and_has_a_curve_for_lambda_t(qapp, cubes):
     from explorer.ui.lambda_t import TimeCurve
 
@@ -182,5 +194,34 @@ def test_a_main_cube_with_lambda_keeps_its_panels(qapp, cubes):
         assert isinstance(w.lambda_t, LambdaTPanel) and w.lt_dock.windowTitle() == "λ–t" and w.main.slices is None
         assert w.slit_panel.spectral and not w.spec_dock.isHidden()
         assert w.spec_dock.toggleViewAction().isVisible() and w.lt_dock.toggleViewAction().isVisible()
+    finally:
+        close()
+
+
+def test_a_2d_map_s_slit_is_a_curve_along_it(qapp, cubes, tmp_path):
+    """A map with neither t nor lambda: no Spectrum, no lambda-t, and its slit's one row drawn as a curve of its
+    values along the slit (the file's, pixel by pixel), "Blos [G]" up."""
+    from astropy.io import fits
+
+    p = tmp_path / "blos_2d.fits"
+    h = fits.Header()
+    h["CTYPE1"], h["CTYPE2"], h["BTYPE"], h["BUNIT"] = "HPLN-TAN", "HPLT-TAN", "Blos", "G"
+    img = cubes["values"][0]
+    fits.PrimaryHDU(img.astype(">f4"), h).writeto(p)
+    w, close = open_window(qapp, str(p))
+    try:
+        assert w.spec_dock.isHidden() and w.lt_dock.isHidden()
+        assert not w.spec_dock.toggleViewAction().isVisible() and not w.lt_dock.toggleViewAction().isVisible()
+        w.session.set_path([(4.5, 10.5), (30.5, 30.5)], cube=0)
+        w._slit_shown(True)
+        sp = w.slit_panel
+        assert spin(qapp, lambda: sp.pix is not None and sp.curve.yData is not None and len(sp.curve.yData) == sp.n
+                    and np.isfinite(sp.curve.yData).all())
+        iy, ix = sp.pix
+        got, want = np.asarray(sp.curve.yData), img[iy, ix]
+        print("flat", sp.flat, "label", sp.ts.getAxis("left").labelText, "points", sp.n, "max |diff|",
+              float(np.abs(got - want).max()))
+        assert sp.flat and not sp.spectral and sp.ts.getAxis("left").labelText == "Blos [G]"
+        assert np.allclose(got, want)
     finally:
         close()

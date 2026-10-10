@@ -1,7 +1,8 @@
 """The slit panel (ROADMAP E7.2): two slices along the slit drawn on the image, side by side, sharing the x axis
 "along the slit [px]": the time slice (t up, at this Stokes and lambda) and the spectral slice (lambda up, at this
-Stokes and t), as CRISPEX's loop path time slice and its spectrum along a slit. A linked map's slit (set_cube): the
-time slice alone, its one-row spectral slice saying nothing. The t and lambda markers across them;
+Stokes and t), as CRISPEX's loop path time slice and its spectrum along a slit. A cube with one plane along lambda
+or none, main or linked (set_cube, mapped): the time slice alone, its one-row spectral slice saying nothing; with a
+single t too (a 2D map), the one row it has drawn as what it is, a curve along the slit. The t and lambda markers;
 a vertical line on both where the cursor's pixel lies on the slit, hidden when it is off it. No zoom, no pan, no
 pyqtgraph menu (the prototype's F20g): a click or drag picks t (or lambda) from y and the slit's point from x.
 
@@ -18,7 +19,7 @@ from PySide6 import QtCore, QtWidgets
 from ..data.axes import fmt_signed
 from . import pens, style
 from .imageview import CURSOR_PEN
-from .lambda_t import MARGIN, IndexAxis, TuningAxis
+from .lambda_t import MARGIN, IndexAxis, TimeCurve, TuningAxis
 
 ALONG = "along the slit [px]"
 
@@ -28,6 +29,8 @@ class SlitPanel:
 
     def __init__(self, nt: int, nl: int, axes):
         self._cube(nt, nl, axes)
+        self.flat = False                               # a 2D map's slice: a curve (set_cube)
+        self.value = "value"                            # its y axis's label
         self.w = pg.GraphicsLayoutWidget()
         self.w.ci.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)     # as lambda-t's: off the panel's edges
         self.ts = self.w.addPlot(row=0, col=0, axisItems={"left": self._t_axis()})
@@ -54,6 +57,10 @@ class SlitPanel:
         for pl, ln in zip((self.ts, self.sl), self.cur_lines, strict=True):
             pl.addItem(ln)
             ln.hide()
+        # a 2D map's slice: one row, drawn as a curve of its values along the slit (set_cube)
+        self.curve = pg.PlotDataItem(pen=pg.mkPen(self._ink(style.is_light()), width=1.5), antialias=True)
+        self.ts.addItem(self.curve)
+        self.curve.hide()
         self.clear_marks()
         self.spectral = True                            # the spectral slice shown (not for a map: set_cube)
         self.pix: tuple[np.ndarray, np.ndarray] | None = None
@@ -71,14 +78,22 @@ class SlitPanel:
         self.xl = np.asarray(dl, float) if self.physical else np.arange(self.nl, dtype=float)
         self.timed = self.tax is not None and getattr(self.tax, "t_sec", None) is not None
 
-    def _t_axis(self) -> IndexAxis:
+    def _t_axis(self) -> pg.AxisItem:
+        if self.flat:                                   # a curve's values
+            a = pg.AxisItem("left")
+            a.enableAutoSIPrefix(False)
+            return a
         return IndexAxis("left", self.t_label, self.nt, fine_of=self.t_label_fine)
+
+    @staticmethod
+    def _ink(light: bool):
+        return TimeCurve._ink(light)                    # a curve's ink, as lambda-t's
 
     def _l_axis(self) -> pg.AxisItem:
         return TuningAxis("left", self.xl) if self.physical else IndexAxis("left", self.lam_label, self.nl)
 
     def _left_labels(self) -> None:
-        self.ts.setLabel("left", "t [UT]" if self.timed else "t index")
+        self.ts.setLabel("left", self.value if self.flat else "t [UT]" if self.timed else "t index")
         self.sl.setLabel("left", "Δλ [Å]" if self.physical else self.label)
 
     @staticmethod
@@ -86,17 +101,24 @@ class SlitPanel:
         a.setStyle(tickLength=4)                        # out of the image, as lambda-t's
         a.setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
 
-    def set_cube(self, nt: int, nl: int, axes, times=None, label: str = "λ index", mapped: bool = False) -> None:
+    def set_cube(self, nt: int, nl: int, axes, times=None, label: str = "λ index", mapped: bool = False,
+                 value: str = "value") -> None:
         """The slices of another cube from now on (a linked cube's slit, Session.set_path): its t and lambda axes;
         times: the axes whose times label its t, when not its own (a map with the main cube's times); label: its axis
         other than t in index units (data.names.slice_names); mapped: a map, whose spectral slice (one row) says
-        nothing and is left out, the time slice taking the panel. The slices shown go, the next slit's come. The same
-        cube again changes nothing."""
+        nothing and is left out, the time slice taking the panel; a map with a single t too, its slice a curve along
+        the slit, value its y axis's label (data.names.SliceNames.value). The slices shown go, the next slit's come.
+        The same cube again changes nothing."""
         times = times if times is not None else axes
-        if ((max(1, nt), max(1, nl), label, mapped) == (self.nt, self.nl, self.label, not self.spectral)
+        if ((max(1, nt), max(1, nl), label, mapped, value) == (self.nt, self.nl, self.label, not self.spectral,
+                                                                self.value)
                 and axes is self.ax and times is self.tax):
             return
         self._cube(nt, nl, axes, times, label)
+        self.flat, self.value = mapped and self.nt == 1, value
+        self.ts_img.setVisible(not self.flat)
+        self.t_line.setVisible(not self.flat)
+        self.curve.setVisible(self.flat)
         if mapped and self.spectral:
             self.w.ci.removeItem(self.sl)
         elif not mapped and not self.spectral:
@@ -142,7 +164,10 @@ class SlitPanel:
         self._mark()
 
     def _ranges(self, n: int) -> None:
-        self.ts.setRange(xRange=(0, max(1, n)), yRange=(0, self.nt), padding=0)
+        if self.flat:                                   # its y range is its values' (show)
+            self.ts.setXRange(0, max(1, n), padding=0)
+        else:
+            self.ts.setRange(xRange=(0, max(1, n)), yRange=(0, self.nt), padding=0)
         self.sl.setYRange(0, self.nl, padding=0)
 
     def show(self, ts, sl, ts_levels=None, sl_levels=None) -> None:
@@ -151,6 +176,9 @@ class SlitPanel:
             if a is None or a is self._shown[k]:
                 continue
             self._shown[k] = a
+            if k == 0 and self.flat:
+                self._show_curve(a)
+                continue
             lv = lv if lv is not None else (0.0, 1.0)
             if not np.isfinite(a).any():                # nothing read yet, or padding all along
                 item.setImage(np.zeros(a.shape, np.float32), levels=(0, 1))
@@ -158,7 +186,20 @@ class SlitPanel:
                 item.setImage(a, levels=(float(lv[0]), float(lv[1])))
             item.setRect(QtCore.QRectF(0, 0, a.shape[1], a.shape[0]))
 
+    def _show_curve(self, a) -> None:
+        """A 2D map's one-row slice: its values along the slit, the y range theirs."""
+        v = np.asarray(a, float).reshape(-1)
+        ok = np.isfinite(v)
+        if not ok.any():
+            self.curve.setData([], [])
+            return
+        self.curve.setData(np.arange(len(v)) + 0.5, v, connect="finite")
+        lo, hi = float(v[ok].min()), float(v[ok].max())
+        pad = (hi - lo) * 0.05 if hi > lo else max(abs(lo) * 0.05, 1e-12)
+        self.ts.setYRange(lo - pad, hi + pad, padding=0)
+
     def clear(self) -> None:
+        self.curve.setData([], [])
         self._shown = [None, None]
         self.ts_img.clear()
         self.sl_img.clear()
@@ -209,8 +250,9 @@ class SlitPanel:
             pens.mark(ln, CURSOR_PEN.color())
 
     def set_light(self, light: bool) -> None:
-        """The axes in this theme's ink; the background is the shell's (a card, or the plots' own)."""
+        """The axes and a map's curve in this theme's ink; the background is the shell's (a card, or the plots' own)."""
         style.default_axes(self.w)
+        self.curve.setPen(pg.mkPen(self._ink(light), width=1.5))
 
     def set_background(self, colour) -> None:
         self.w.setBackground(colour)
