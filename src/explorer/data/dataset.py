@@ -23,7 +23,7 @@ from . import axes as _axes
 from . import formats
 from .cache import FrameCache
 from .executors import Executors
-from .io import FrameReader
+from .io import FrameReader, SeriesReader
 from .masking import stokes_axis
 from .pixel import PixelReader, SpFits, calibrate_frames, open_pixel
 from .policy import Budgets, MemoryGuard, StorageProbe, plan_budgets
@@ -44,22 +44,31 @@ def _done(value) -> Future:
 
 
 class Dataset:
-    def __init__(self, path, *, sp=None, no_sp=False, probe=None, guard=None, axes=None, executors=None):
+    def __init__(self, path, *, sp=None, no_sp=False, probe=None, guard=None, axes=None, executors=None,
+                 series=None):
         """Open the cube at path; sp: a per-pixel file to use instead of the companions next to it; no_sp: none;
         axes: what the leading axes are when the header does not say it right (--axes, axes.roles), e.g. "s,l".
         probe and guard: given instead of measured (tests, or a second cube on the same storage). executors: another
         cube's, for a cube linked to it: one thread runs parallel numba for both (two at once abort the process,
-        executors.py); they stay that cube's, and are not closed with this one."""
-        self.path = str(path)
-        self.layout = formats.open_layout(path)
+        executors.py); they stay that cube's, and are not closed with this one. series: FITS files, one image each,
+        read as the t axis of one cube (formats.series_layout); path is then ignored, and there is no per-pixel
+        file."""
         self.executors: Executors | None = None
         self._own_executors = executors is None
         self._io = ThreadPoolExecutor(IO_THREADS, thread_name_prefix="io")
-        self.frames = FrameReader(self.layout, pool=self._io)
+        if series is not None:
+            files = formats.series_layout(series)
+            self.layout: formats.Layout = files
+            self.path, no_sp = files.path, True
+            self.frames: FrameReader = SeriesReader(files, pool=self._io)
+        else:
+            self.path = str(path)
+            self.layout = formats.open_layout(path)
+            self.frames = FrameReader(self.layout, pool=self._io)
         try:
             self.shape = self.layout.shape
             self.ny, self.nx = self.frames.ny, self.frames.nx
-            self.roles, self.axes = _axes.read(path, self.layout, axes)
+            self.roles, self.axes = _axes.read(self.path, self.layout, axes)
             with span("data.open.probe"):
                 self.probe = probe if probe is not None else StorageProbe(self.frames)
             self.guard = guard if guard is not None else MemoryGuard()

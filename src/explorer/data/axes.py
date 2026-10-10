@@ -205,7 +205,8 @@ def read(path, layout, axes: str | None = None) -> tuple[Roles, Axes]:
     checked against each other (check): what Dataset opens a cube with and data.link plans it with, so the plan
     never accepts a cube that its opening refuses. layout: the cube's (formats.open_layout)."""
     r = roles(layout.axes, layout.shape, axes)
-    ax = from_fits(path) if layout.kind == "fits" else from_lp(path, r)
+    ax = (from_fits(path) if layout.kind == "fits" else from_series(layout) if layout.kind == "series"
+          else from_lp(path, r))
     check(ax, r, layout.axes)
     return r, ax
 
@@ -223,6 +224,25 @@ def from_fits(path) -> Axes:
         ax.source.append(f"header not read: {type(e).__name__}: {e}")
         log.warning("axes of %s: %s", path, ax.source[-1])
         return ax
+
+
+def from_series(layout) -> Axes:
+    """The axes of a file series (formats.SeriesLayout): its frames' times from their headers, its unit from the
+    first file's; no lambda."""
+    ax = Axes()
+    if layout.t_sec is not None:
+        ax.t_sec = np.asarray(layout.t_sec, float)
+        ax.dateref = np.datetime64(layout.dateref)
+        ax.source.append(f"time per file ({layout.time_key})")
+    try:
+        from astropy.io import fits
+
+        with fits.open(layout.path, memmap=False, lazy_load_hdus=True) as h:
+            hd = h[layout.hdus[0]].header
+            ax.bunit, ax.btype = hd.get("BUNIT"), hd.get("BTYPE")
+    except Exception as e:                                          # never block opening a cube
+        ax.source.append(f"header not read: {type(e).__name__}: {e}")
+    return ax
 
 
 def from_hdul(h) -> Axes:

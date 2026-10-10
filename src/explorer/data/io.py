@@ -14,7 +14,7 @@ import numpy as np
 
 from ..obs import span
 from . import masking
-from .formats import Layout
+from .formats import Layout, SeriesLayout
 
 
 class ShortRead(OSError):
@@ -328,3 +328,161 @@ class FrameReader:
 
     def __exit__(self, *exc):
         self.close()
+
+
+def _room_for_files(n: int, spare: int = 256) -> None:
+    """Raise this process's soft limit of open files to hold n more (macOS starts shells at 256), up to the hard
+    limit; where it cannot be raised, opening fails later with the system's message."""
+    import resource
+
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    want = n + spare
+    if soft == resource.RLIM_INFINITY or soft >= want:
+        return
+    top = want if hard == resource.RLIM_INFINITY else min(want, hard)
+    try:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (max(soft, top), hard))
+    except (ValueError, OSError):
+        pass
+
+
+class SeriesReader(FrameReader):
+    """Images of a file series (formats.SeriesLayout): frame t is file t's image. Plain images are read with
+    preads at each file's data offset, a frame in parts as FrameReader's; tile-compressed ones are decompressed,
+    whole or the rows asked for (astropy's section), one read at a time per file. Values along t (a pixel, a band
+    of rows) take one read per file, on threads started for the call: the files have no common offset to gather
+    from in one request."""
+
+    layout: SeriesLayout
+
+    def __init__(self, layout: SeriesLayout, pool: ThreadPoolExecutor | None = None, chunks: int = 4,
+                 threads: int = 16):
+        _room_for_files(2 * len(layout.paths))         # a descriptor per file, and astropy's for compressed ones
+        super().__init__(layout, pool=pool, chunks=chunks)
+        self.fds = [self.fd] + [os.open(p, os.O_RDONLY) for p in layout.paths[1:]]     # layout.path: the first
+        self.threads = max(1, int(threads))
+        if layout.compressed:
+            import threading
+
+            self._hdul: list = [None] * len(layout.paths)
+            self._locks = [threading.Lock() for _ in layout.paths]
+
+    def _t(self, idx) -> int:
+        idx = tuple(int(i) for i in np.atleast_1d(idx))
+        if len(idx) != 1 or not 0 <= idx[0] < self.shape[0]:
+            raise IndexError(f"frame index {idx} outside {self.shape[:-2]}")
+        return idx[0]
+
+    def frame_offset(self, idx) -> int:
+        return self.layout.offsets[self._t(idx)]
+
+    def sample_at(self, k: int, y: int, x: int) -> tuple[int, int]:
+        if self.layout.compressed:                      # somewhere in its table: a small read on its storage
+            return self.fds[k], self.layout.offsets[k]
+        return self.fds[k], self.layout.offsets[k] + (y * self.nx + x) * self.layout.dtype.itemsize
+
+    def _decompressed(self, t: int, rows: slice | None = None, x: int | None = None) -> np.ndarray:
+        """File t's image as stored (BSCALE, BZERO not applied), its rows `rows` (all when None), or its pixel x
+        of those rows."""
+        from astropy.io import fits
+
+        with self._locks[t]:
+            h = self._hdul[t]
+            if h is None:
+                h = self._hdul[t] = fits.open(self.layout.paths[t], memmap=False, do_not_scale_image_data=True)
+            hdu = h[self.layout.hdus[t]]
+            if rows is None:
+                a = hdu.data
+            else:
+                a = hdu.section[rows] if x is None else hdu.section[rows, x]
+        return np.asarray(a).astype(self.layout.dtype, copy=False)
+
+    def _read_raws(self, idxs, chunks: int | None = None) -> list[np.ndarray]:
+        if not self.layout.compressed:
+            return [self._read_plain(i, chunks) for i in idxs]
+        return [self._decompressed(self._t(i)).reshape(self.ny, self.nx) for i in idxs]
+
+    def _read_plain(self, idx, chunks):
+        t = self._t(idx)
+        fb, k = self.frame_bytes, self.chunks if chunks is None else max(1, int(chunks))
+        step = -(-fb // k)
+        raw = np.empty((self.ny, self.nx), self.layout.dtype)
+        parts = [(memoryview(raw).cast("B")[a:min(fb, a + step)], self.layout.offsets[t] + a)
+                 for a in range(0, fb, step)]
+        fd = self.fds[t]
+        futs = [self.pool.submit(_preadv_exact, fd, v, at) for v, at in parts[1:]] if k > 1 else []
+        for v, at in parts if k == 1 else parts[:1]:
+            _preadv_exact(fd, v, at)
+        for f in futs:
+            f.result()
+        return raw
+
+    def read_rows_raw(self, idx, y0: int, y1: int) -> np.ndarray:
+        if not 0 <= y0 < y1 <= self.ny:
+            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        t = self._t(idx)
+        if self.layout.compressed:
+            return self._decompressed(t, slice(y0, y1)).reshape(y1 - y0, self.nx)
+        it = self.layout.dtype.itemsize
+        n = (y1 - y0) * self.nx * it
+        b = os.pread(self.fds[t], n, self.layout.offsets[t] + y0 * self.nx * it)
+        if len(b) != n:
+            raise ShortRead(f"read {len(b)} of {n} bytes of rows {y0}..{y1} in {self.layout.paths[t]}")
+        return np.frombuffer(b, self.layout.dtype).reshape(y1 - y0, self.nx)
+
+    def _pixel_raw(self, t: int, y: int, x: int):
+        if self.layout.compressed:
+            return self._decompressed(t, slice(y, y + 1), x).reshape(-1)[0]
+        it = self.layout.dtype.itemsize
+        b = os.pread(self.fds[t], it, self.layout.offsets[t] + (y * self.nx + x) * it)
+        if len(b) != it:
+            raise ShortRead(f"read {len(b)} of {it} bytes of pixel ({y}, {x}) in {self.layout.paths[t]}")
+        return np.frombuffer(b, self.layout.dtype)[0]
+
+    def _map(self, fn, items) -> list:
+        items = list(items)
+        if len(items) <= 1:
+            return [fn(i) for i in items]
+        with ThreadPoolExecutor(min(self.threads, len(items))) as ex:
+            return list(ex.map(fn, items))
+
+    def band_values(self, idxs, y0: int, y1: int, at, threads: int = 8) -> np.ndarray:
+        at = np.asarray(at, np.int64)
+        if at.size and not (0 <= at.min() and at.max() < (y1 - y0) * self.nx):
+            raise IndexError(f"positions outside a band of {y1 - y0} rows of {self.nx}")
+        idxs = list(idxs)
+        if not idxs:
+            return np.empty((0, at.size), np.float32)
+        with span("data.bands.read"):
+            return np.stack(self._map(lambda j: self.to_float32(self.read_rows_raw(j, y0, y1).reshape(-1)[at]),
+                                      idxs))
+
+    def series(self, y: int, x: int, idx, free_axes) -> np.ndarray:
+        if not 0 <= y < self.ny or not 0 <= x < self.nx:
+            raise IndexError(f"pixel ({y}, {x}) outside {self.ny}x{self.nx}")
+        sizes, fn = self.series_frames(idx, free_axes)
+        with span("data.series.read"):
+            raw = np.array(self._map(lambda t: self._pixel_raw(int(t), int(y), int(x)), fn), self.layout.dtype)
+        return self.to_float32(raw).reshape(sizes)
+
+    def row_band(self, idx, free_axes, y0: int, y1: int) -> np.ndarray:
+        sizes, fn = self.series_frames(idx, free_axes)
+        with span("data.rowband.read"):
+            out = np.stack(self._map(lambda t: self.read_rows_raw((int(t),), y0, y1), fn))
+        return out.reshape(*sizes, y1 - y0, self.nx)
+
+    def _gather_points(self, ys, xs, fn) -> np.ndarray:
+        pid = np.broadcast_to(np.arange(len(ys)).reshape((-1,) + (1,) * (fn.ndim - 1)), fn.shape).ravel()
+        with span("data.points.read"):
+            raw = np.array(self._map(lambda k: self._pixel_raw(int(fn.ravel()[k]), int(ys[pid[k]]), int(xs[pid[k]])),
+                                     range(fn.size)), self.layout.dtype)
+        return self.to_float32(raw.reshape(fn.shape))
+
+    def close(self) -> None:
+        for h in getattr(self, "_hdul", ()):
+            if h is not None:
+                h.close()
+        for fd in getattr(self, "fds", ())[1:]:
+            os.close(fd)
+        self.fds = []
+        super().close()
