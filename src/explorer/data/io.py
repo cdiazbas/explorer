@@ -357,9 +357,10 @@ class SeriesReader(FrameReader):
 
     def __init__(self, layout: SeriesLayout, pool: ThreadPoolExecutor | None = None, chunks: int = 4,
                  threads: int = 16):
-        _room_for_files(2 * len(layout.paths))         # a descriptor per file, and astropy's for compressed ones
+        _room_for_files(len(layout.paths))
         super().__init__(layout, pool=pool, chunks=chunks)
-        self.fds = [self.fd] + [os.open(p, os.O_RDONLY) for p in layout.paths[1:]]     # layout.path: the first
+        # plain: a descriptor per file (layout.path is the first); compressed: astropy's, opened at the first read
+        self.fds = [self.fd] + ([] if layout.compressed else [os.open(p, os.O_RDONLY) for p in layout.paths[1:]])
         self.threads = max(1, int(threads))
         if layout.compressed:
             import threading
@@ -377,8 +378,8 @@ class SeriesReader(FrameReader):
         return self.layout.offsets[self._t(idx)]
 
     def sample_at(self, k: int, y: int, x: int) -> tuple[int, int]:
-        if self.layout.compressed:                      # somewhere in its table: a small read on its storage
-            return self.fds[k], self.layout.offsets[k]
+        if self.layout.compressed:                      # the first file's table: a small read on its storage
+            return self.fd, self.layout.offsets[0]
         return self.fds[k], self.layout.offsets[k] + (y * self.nx + x) * self.layout.dtype.itemsize
 
     def _decompressed(self, t: int, rows: slice | None = None, x: int | None = None) -> np.ndarray:
@@ -390,11 +391,11 @@ class SeriesReader(FrameReader):
             h = self._hdul[t]
             if h is None:
                 h = self._hdul[t] = fits.open(self.layout.paths[t], memmap=False, do_not_scale_image_data=True)
-            hdu = h[self.layout.hdus[t]]
-            if rows is None:
-                a = hdu.data
-            else:
-                a = hdu.section[rows] if x is None else hdu.section[rows, x]
+            # through section, never .data: astropy keeps .data (a whole image per file, outside the cache's
+            # budget: +1044 MB after 30 frames of 4096x4096, against +37 MB through section; memmap=True holds
+            # +377 MB of mapped pages; bellatrix, 2026-10-10)
+            sec = h[self.layout.hdus[t]].section
+            a = sec[:, :] if rows is None else sec[rows] if x is None else sec[rows, x]
         return np.asarray(a).astype(self.layout.dtype, copy=False)
 
     def _read_raws(self, idxs, chunks: int | None = None) -> list[np.ndarray]:
