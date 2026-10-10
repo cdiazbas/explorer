@@ -1,6 +1,7 @@
 """`explorer doctor` runs headless, reads a cube's header, and reports a failed check with exit code 1."""
 import json
 import os
+import sys
 
 import numpy as np
 import pytest
@@ -69,6 +70,9 @@ def test_started_by_run_sh_the_numba_pool_is_the_one_the_viewer_sizes(headless):
 
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     env = {k: v for k, v in os.environ.items() if k != "NUMBA_NUM_THREADS"}
+    # the environment running these tests: a worktree or a copy in /tmp has none of its own next to the code, and
+    # run.sh leaves another tree's as it is (ROADMAP X.6)
+    env["EXPLORER_VENV"] = sys.prefix
     out = headless / "r.json"
     subprocess.run([os.path.join(root, "scripts", "run.sh"), "doctor", "--out", str(out)], env=env,
                    capture_output=True, text=True, timeout=300)
