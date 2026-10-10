@@ -199,6 +199,16 @@ def check(ax: Axes, r: Roles, names=()) -> None:
                              f"describe the same cube")
 
 
+def read(path, layout, axes: str | None = None) -> tuple[Roles, Axes]:
+    """The roles of a cube's leading axes (roles, with axes as --axes) and its physical axes (from_fits, from_lp),
+    checked against each other (check): what Dataset opens a cube with and data.link plans it with, so the plan
+    never accepts a cube that its opening refuses. layout: the cube's (formats.open_layout)."""
+    r = roles(layout.axes, layout.shape, axes)
+    ax = from_fits(path) if layout.kind == "fits" else from_lp(path, r)
+    check(ax, r, layout.axes)
+    return r, ax
+
+
 def from_fits(path) -> Axes:
     """The axes of a FITS cube. Never raises: a header that cannot be read leaves the axes unknown (indices), and
     says why in Axes.source and the log."""

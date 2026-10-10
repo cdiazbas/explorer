@@ -59,9 +59,7 @@ class Dataset:
         try:
             self.shape = self.layout.shape
             self.ny, self.nx = self.frames.ny, self.frames.nx
-            self.roles = _axes.roles(self.layout.axes, self.shape, axes)
-            self.axes = _axes.from_fits(path) if self.layout.kind == "fits" else _axes.from_lp(path, self.roles)
-            _axes.check(self.axes, self.roles, self.layout.axes)
+            self.roles, self.axes = _axes.read(path, self.layout, axes)
             with span("data.open.probe"):
                 self.probe = probe if probe is not None else StorageProbe(self.frames)
             self.guard = guard if guard is not None else MemoryGuard()

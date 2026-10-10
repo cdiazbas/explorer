@@ -38,6 +38,31 @@ def test_start_without_the_saved_layout_reads_and_writes_none(qapp, headless):
     assert not config.exists() or not any(config.rglob("*")), list(config.rglob("*"))
 
 
+def test_a_linked_cube_that_cannot_open_is_left_out_and_the_first_opens(qapp, headless, capsys):
+    """A linked cube whose WCS-TAB holds 2 times for its 3 frames in t (Dataset.open refuses it): not linked, with
+    the reason, as the plan's other refusals; the first cube opens alone. Planned as linked, its opening made the
+    start return None, the first cube included."""
+    from astropy.io import fits
+
+    from explorer.ui.app import start
+
+    shape = (3, 1, 5, 16, 12)
+    main = synth.write_stokes_cube(headless / "x_im.fits", shape=shape)
+    other = synth.write_stokes_cube(headless / "y_im.fits", shape=(2,) + shape[1:])
+    with fits.open(main) as a, fits.open(other) as b:
+        fits.HDUList([fits.PrimaryHDU(a[0].data, a[0].header), b["WCS-TAB"].copy()]).writeto(headless / "z_im.fits")
+    s = start(main, no_sp=True, saved_layout=False, linked=[headless / "z_im.fits"])
+    err = capsys.readouterr().err
+    print(err)
+    assert s is not None, err
+    try:
+        assert s.ds.path == str(main) and s.linked == []
+        assert "not linked: z_im.fits" in err and "2 times for 3 steps along its t" in err
+    finally:
+        s.shell.close()
+        s.close()
+
+
 def test_the_self_test_goes_through_start(headless):
     cube = synth.write_dataset(headless / "d", "c", shape=(2, 4, 3, 32, 24), icube=False)["im"]
     out = headless / "r.json"

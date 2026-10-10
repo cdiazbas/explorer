@@ -13,8 +13,9 @@ How a linked cube's leading axes are read, the first evidence that says it:
 2. the first cube: frames that nothing names, as many as the first cube's times, are those times (a field or
    velocity map of the same series: Blos, Vlos); a single frame is shown at every t;
 3. else it is not linked, and the reason says what --axes would make it.
-Then the checks: the same grid (ny, nx); its times matched to the first cube's (frames: an LP cube's are times of
-day, compared as such; FITS cubes of other days are refused).
+Then the checks: its header against its frames, as Dataset.open checks them (axes.read: refused here what it would
+refuse there); the same grid (ny, nx); its times matched to the first cube's (frames: an LP cube's are times of day,
+compared as such; FITS cubes of other days are refused).
 """
 import os
 from dataclasses import dataclass
@@ -46,10 +47,11 @@ class Link:
 
 
 def describe(path, axes: str | None = None) -> CubeInfo:
+    """Its axes read and checked as Dataset.open reads and checks them (axes.read): ValueError where that refuses
+    the cube."""
     layout = open_layout(path)
     ny, nx = (int(n) for n in layout.shape[-2:])
-    r = _axes.roles(layout.axes, layout.shape, axes)
-    ax = _axes.from_fits(path) if layout.kind == "fits" else _axes.from_lp(path, r)
+    r, ax = _axes.read(path, layout, axes)
     return CubeInfo(str(path), ny, nx, r, ax)
 
 
@@ -119,10 +121,14 @@ def plan(main, path) -> Link:
     """How the cube at path links to main (a Dataset or a CubeInfo): Link.ok, the axes to open it with, and how
     that was decided; or why it is not linked."""
     name, lead = _name(path), _name(main.path)
+
+    def unread(e) -> Link:                              # as Dataset.open would refuse it (describe)
+        return Link(str(path), False, why=f"{name}: cannot be read as a cube ({e})")
+
     try:
         info = describe(path)
     except (OSError, ValueError) as e:
-        return Link(str(path), False, why=f"{name}: cannot be read as a cube ({e})")
+        return unread(e)
     if (info.ny, info.nx) != (main.ny, main.nx):
         return Link(str(path), False, why=f"{name}: {info.nx}x{info.ny} pixels against {main.nx}x{main.ny} of "
                                            f"{lead}; other grids are not linked yet")
@@ -138,7 +144,10 @@ def plan(main, path) -> Link:
         else:
             return Link(str(path), False, why=f"{name}: {n} frames that nothing names, not the {nt} times of {lead}; "
                                                f"--axes would say what they are")
-        info = describe(path, spec)
+        try:
+            info = describe(path, spec)
+        except (OSError, ValueError) as e:
+            return unread(e)
         r = info.roles
     if r.t is not None and r.nt > 1:
         fr = frames(main.axes, info.axes, nt, r.nt, lead)

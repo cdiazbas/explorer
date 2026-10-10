@@ -74,6 +74,27 @@ def test_another_grid_is_refused(cubes):
     assert not link.ok and "pixels" in link.why and "grids" in link.why
 
 
+def test_a_cube_whose_header_does_not_describe_its_frames_is_refused_as_opening_refuses_it(tmp_path):
+    """Its WCS-TAB holds 2 times for its 3 frames in t (as test_per_pixel_given builds it): Dataset.open refuses it,
+    so the plan does too, with the same reason; planned as linked, its opening stopped the whole start."""
+    from astropy.io import fits
+
+    from explorer.data.dataset import Dataset
+    from explorer.data.link import describe, plan
+
+    shape = (3, 1, 5, 16, 12)
+    main = synth.write_stokes_cube(tmp_path / "x_im.fits", shape=shape)
+    other = synth.write_stokes_cube(tmp_path / "y_im.fits", shape=(2,) + shape[1:])
+    with fits.open(main) as a, fits.open(other) as b:
+        fits.HDUList([fits.PrimaryHDU(a[0].data, a[0].header), b["WCS-TAB"].copy()]).writeto(tmp_path / "z_im.fits")
+    link = plan(describe(main), tmp_path / "z_im.fits")
+    show(link)
+    with pytest.raises(ValueError) as e:
+        Dataset.open(tmp_path / "z_im.fits", no_sp=True, axes=link.axes)
+    print("Dataset.open:", e.value)
+    assert not link.ok and "2 times for 3 steps along its t" in link.why and str(e.value) in link.why
+
+
 def test_a_cube_with_its_own_axes_and_the_same_times_links_as_it_reads(cubes):
     from explorer.data.dataset import Dataset
     from explorer.data.link import plan
