@@ -31,7 +31,9 @@ def _parser() -> argparse.ArgumentParser:
                                                 linked cubes: the first leads; the others, on its pixels, show beside
                                                 it and follow its cursor and t (their times nearest to its), each at
                                                 its own λ (other pixels: not linked yet, and said why)
-
+  explorer stokes_6173_im.fits --mask spots.fits
+                                                the outline of a 0/1 mask on the first cube's pixels over every
+                                                image: one frame at every t, or one per t
 subcommands (explorer <subcommand> --help):
 {lines}
 
@@ -47,6 +49,10 @@ explorer --demo is explorer demo""")
     ap.add_argument("--axes", help="what the (first) cube's leading axes are, slowest first: t,s,l, s,l, t,l, or t "
                                    "for a map whose frames are times (l is lambda), for cubes whose header or name "
                                    "does not say it")
+    ap.add_argument("--mask", metavar="FILE",
+                    help="a mask on the first cube's pixels, outlined on every image where it is 1 or more: FITS or "
+                         "a La Palma .icube / .fcube, one frame (y, x) shown at every t, or one per t (t, y, x); "
+                         "another grid or number of frames is left out, with the reason")
     ap.add_argument("--x11", choices=("auto", "native", "bridge"), default="auto",
                     help="over ssh -Y: Qt's own X11 (native) or the bridge; auto decides")
     from .ui.app import window_options
@@ -102,11 +108,12 @@ def main(argv: list[str] | None = None) -> int:
     if not a.cubes:
         _parser().print_help()
         return 0
-    for c in a.cubes:
+    for c in a.cubes + ([a.mask] if a.mask else []):
         if not os.path.exists(c):
             print(f"{APP_NAME}: no such file: {c}", file=sys.stderr)
             return 2
     from .ui.app import run
 
     return run(a.cubes[0], sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11, theme=a.theme, look=a.look,
-               reset_layout=a.reset_layout, traces=a.log, quit_after=a.quit_after, linked=a.cubes[1:])
+               reset_layout=a.reset_layout, traces=a.log, quit_after=a.quit_after, linked=a.cubes[1:],
+               mask=a.mask)

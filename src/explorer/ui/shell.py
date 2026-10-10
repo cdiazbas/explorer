@@ -42,6 +42,7 @@ from .gestures import Gestures
 from .imageview import CURSOR_PEN
 from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync
 from .loop import QtLoop
+from .mask import MaskOutlines, mask_colour
 from .overlays import ColourKey
 from .slit import SlitHint, SlitTool
 from .slitpanel import SlitPanel
@@ -139,9 +140,10 @@ class _Sink:
 
 
 class Shell(QtWidgets.QMainWindow):
-    def __init__(self, dataset, title: str | None = None, t0: float | None = None, look=None, linked=()):
+    def __init__(self, dataset, title: str | None = None, t0: float | None = None, look=None, linked=(), mask=None):
         """t0: perf_counter() when opening started, for the time to the first image. linked: cubes linked to this
-        one (data.link has checked them; opened with its executors), shown beside it."""
+        one (data.link has checked them; opened with its executors), shown beside it. mask: a data.mask.Mask on its
+        grid, outlined on every image (ui.mask); None: nothing of it is made."""
         super().__init__()
         self.dataset = dataset
         self.images = 1 + len(linked)                   # side by side (ui.docks: the first window's width)
@@ -211,6 +213,11 @@ class Shell(QtWidgets.QMainWindow):
             self._view_sync = ViewSync([self.view] + [c.view for c in self.linked], self)
             for c in self.linked:                       # the slit on every image, drawn on any of them (as the
                 self.slit_tool.attach(c.view)           # 2x2 view's panels)
+        # the mask's outline on every image (ui.mask), the 2x2 view's when it is made (set_grid)
+        self.mask_outlines: MaskOutlines | None = MaskOutlines(self.session, mask) if mask is not None else None
+        if self.mask_outlines is not None:
+            for v in [self.view, *(c.view for c in self.linked)]:
+                self.mask_outlines.attach(v)
         self.setAnimated(False)
         # each linked cube in a window of its own beside this one, or back in it (Panels; detach_cubes)
         self.detach_action: QtGui.QAction | None = None
@@ -342,6 +349,8 @@ class Shell(QtWidgets.QMainWindow):
         # the slit in the markers' colour: the cursor's in the classic look (the prototype's _slit_style, 1733)
         self.slit_tool.set_colour(acc if L.has("marks") or L.has("glass") else CURSOR_PEN.color())
         self._place_slit_hint()
+        if self.mask_outlines is not None:
+            self.mask_outlines.set_colour(mask_colour(L))
         for c in self.linked:
             c.set_look(L, acc, light)
 
@@ -428,6 +437,8 @@ class Shell(QtWidgets.QMainWindow):
                 self._grid_follow = _Follow(self.view.widget, self.grid)
                 for v in self.grid.views:               # the slit on the four, drawn on any of them
                     self.slit_tool.attach(v)
+                    if self.mask_outlines is not None:
+                        self.mask_outlines.attach(v)
             self.grid.setGeometry(self.view.widget.rect())
             self.grid.set_region(self.view.vb.viewRect())
             st = self.session.state
@@ -1280,6 +1291,8 @@ class Shell(QtWidgets.QMainWindow):
         self._play.stop()
         self._mem.stop()
         self._off()
+        if self.mask_outlines is not None:
+            self.mask_outlines.close()
         for c in [*self.linked, self.main]:             # the linked ones first: they read on the main one's threads
             c.close()
         super().closeEvent(ev)

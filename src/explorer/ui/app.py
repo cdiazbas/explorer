@@ -82,9 +82,9 @@ class Started:
     prototype's self-test counts from there); theme: the one applied; linked: the cubes linked to it. close() lets go
     of the cubes and the display."""
 
-    def __init__(self, app, shell, ds, disp, plan, tracer, t0, app_ready, theme, linked=()):
+    def __init__(self, app, shell, ds, disp, plan, tracer, t0, app_ready, theme, linked=(), mask=None):
         self.app, self.shell, self.ds, self.disp, self.plan, self.tracer = app, shell, ds, disp, plan, tracer
-        self.t0, self.app_ready, self.theme, self.linked = t0, app_ready, theme, list(linked)
+        self.t0, self.app_ready, self.theme, self.linked, self.mask = t0, app_ready, theme, list(linked), mask
 
     def close(self) -> None:
         if self.tracer is not None:
@@ -92,6 +92,8 @@ class Started:
             print(f"[geometry] the trace of this session: {self.tracer.path}", file=sys.stderr)
         for d in self.linked:                           # first: they run on the main cube's threads
             d.close()
+        if self.mask is not None:
+            self.mask.close()
         self.ds.close()
         self.disp.close()
 
@@ -114,6 +116,20 @@ def plan_links(path, others, axes=None) -> list:
         else:
             print(f"[{APP_NAME}] not linked: {link.why}", file=sys.stderr)
     return links
+
+
+def open_mask(path, main):
+    """data.mask's Mask at path over the first cube (main, a Dataset), how its frames follow t on stderr; None, and
+    why, when it cannot be drawn on it (the window opens without it, as a cube that cannot be linked)."""
+    from ..data.mask import Mask, MaskRefused
+
+    try:
+        mask = Mask.open(path, main)
+    except MaskRefused as e:
+        print(f"[{APP_NAME}] no mask: {e}", file=sys.stderr)
+        return None
+    print(f"[{APP_NAME}] {mask.describe()}", file=sys.stderr)
+    return mask
 
 
 def given_cubes(path, sp, no_sp, linked) -> tuple[str, str | None, list[str], dict[str, str]]:
@@ -154,7 +170,7 @@ def given_cubes(path, sp, no_sp, linked) -> tuple[str, str | None, list[str], di
 
 
 def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False, traces=False,
-          saved_layout=True, linked=()) -> Started | None:
+          saved_layout=True, linked=(), mask=None) -> Started | None:
     """Everything `explorer cube` does before its event loop: the display plan, the themed application, the cube,
     the Shell with its title bar, its saved layout, the display's attachment, the terminal's keys and the link probe.
     The self-test (bench/explorer_selftest.py) goes through it too, so it measures the window as it is shown (as the
@@ -162,8 +178,9 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     at the close, nor dropped. theme None: the one in use at the last close on this way of displaying, else auto.
     traces: the session's traces (TRACES: the geometry's and, through the bridge, the bridge's), as --log asks.
     linked: other cubes, linked to this one (ROADMAP E8.1) where data.link finds they can be, each with its own
-    per-pixel file unless no_sp; sp and axes are the first cube's. None (and why, on stderr) when there is no
-    display or the first cube cannot be read."""
+    per-pixel file unless no_sp; sp and axes are the first cube's. mask: a mask file outlined on every image
+    (ROADMAP E8.2, data.mask), left out with the reason when it does not fit the first cube. None (and why, on
+    stderr) when there is no display or the first cube cannot be read."""
     t0 = time.perf_counter()
     if traces:                                          # before the bridge and the window, which read them once
         for name in TRACES:
@@ -229,6 +246,7 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
             d.close()
         ds.close()
         return None
+    masked = open_mask(mask, ds) if mask is not None else None
     phases["cube"] = time.perf_counter() - q
     try:
         q = time.perf_counter()
@@ -242,7 +260,7 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
 
         tracer = geomtrace.install_from_env()           # EXPLORER_GEOMETRY_TRACE=1: before the window, to see it all
         names = " + ".join(os.path.basename(str(p)) for p in [path, *(lk.path for lk in links)])
-        shell = Shell(ds, title=f"{names} — {APP_NAME}", t0=t0, look=get_look(look), linked=others)
+        shell = Shell(ds, title=f"{names} — {APP_NAME}", t0=t0, look=get_look(look), linked=others, mask=masked)
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
         shell.breakdown = (before, phases, shown, plan.remote)
@@ -263,21 +281,23 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         if plan.remote and link.bytes_per_px is not None:
             shell.start_link_probe(link)                # the default playback rate from what the link carries
         log.info("%s; %s", ds.describe(), disp.stats())
-        return Started(app, shell, ds, disp, plan, tracer, t0, app_ready, theme, others)
+        return Started(app, shell, ds, disp, plan, tracer, t0, app_ready, theme, others, masked)
     except BaseException:
         for d in others:
             d.close()
+        if masked is not None:
+            masked.close()
         ds.close()
         disp.close()
         raise
 
 
 def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False, traces=False,
-        quit_after: float | None = None, linked=()) -> int:
+        quit_after: float | None = None, linked=(), mask=None) -> int:
     """Open path (and the cubes linked to it) and run the event loop until the window closes; returns the exit
     code. quit_after: seconds after the first image, then quit (measurements, as the prototype's --quit-after)."""
     s = start(path, sp=sp, no_sp=no_sp, axes=axes, x11=x11, theme=theme, look=look, reset_layout=reset_layout,
-              traces=traces, linked=linked)
+              traces=traces, linked=linked, mask=mask)
     if s is None:
         return 1
     try:
