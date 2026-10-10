@@ -60,7 +60,10 @@ def parts(w):
                status=w.statusBar(), image_lock=w.image_lock, spec_lock=w.spec_lock, colour_key=w.colour_key,
                spec_dock=w.spec_dock, lt_dock=w.lt_dock, grid=w.grid)
     if w.glass is not None:
-        w.glass.bar.show()                              # shown in both: the autohide's timing is not compared
+        # shown in both and kept: the autohide's timing is not compared. Its timer runs from the window's making, the
+        # first window's ~2 s before the capture: hidden in the spin before it, 15 % of that window's pixels differed
+        w.glass.autohide.stop()
+        w.glass.bar.show()
         out["bar"] = w.glass.bar
     return {k: v for k, v in out.items() if v is not None and v.isVisible()}
 
