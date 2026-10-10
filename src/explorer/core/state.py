@@ -36,6 +36,7 @@ class ViewState:
                                                         # linked cube k's)
     own: tuple[tuple[int, int], ...] = ()               # (lambda, Stokes) of each linked cube (members 1, 2...),
                                                         # its own when not linked to the main cube's
+    gamma: tuple[tuple[int, int, float], ...] = ()      # (cube, Stokes, gamma) where gamma is not 1, sorted
 
 
 FIELDS = frozenset(f.name for f in dataclasses.fields(ViewState))

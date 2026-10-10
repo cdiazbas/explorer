@@ -17,6 +17,7 @@ import numpy as np
 from ..data.axes import Roles
 from ..data.link import frames
 from ..obs import counter
+from .levels import GAMMA_MAX, GAMMA_MIN
 from .loop import Loop
 from .state import Store, ViewState
 
@@ -195,6 +196,24 @@ class Session:
 
     def _clip(self, points) -> tuple:
         return tuple((float(np.clip(x, 0, self.main.nx)), float(np.clip(y, 0, self.main.ny))) for x, y in points)
+
+    def gamma(self, member: int, s: int) -> float:
+        """The gamma of cube member's Stokes s (core.levels): 1 unless set."""
+        for k, ss, g in self.store.state.gamma:
+            if (k, ss) == (member, s):
+                return g
+        return 1.0
+
+    def set_gamma(self, member: int, s: int, g: float) -> None:
+        """Gamma of cube member's Stokes s, within levels.GAMMA_MIN..GAMMA_MAX: one per cube and Stokes (Q's is not
+        V's, nor another cube's). Its image, its lambda-t and the slit's slices of it at that Stokes follow."""
+        if not 0 <= int(member) < len(self.members):
+            raise ValueError(f"no cube {member}: the session has {len(self.members)}")
+        r = self.members[member].dataset.roles
+        s = int(np.clip(int(s), 0, (r.ns if r.s is not None else 1) - 1))
+        g = float(np.clip(float(g), GAMMA_MIN, GAMMA_MAX))
+        rest = tuple(e for e in self.store.state.gamma if (e[0], e[1]) != (int(member), s))
+        self.store.set(gamma=tuple(sorted(rest + (((int(member), s, g),) if g != 1 else ()))))
 
     def set_playing(self, on: bool) -> None:
         """Playback on or off: without a per-pixel file the slit's spectral slice waits until it stops (the
