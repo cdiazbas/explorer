@@ -49,8 +49,8 @@ class StorageProbe:
         for _ in range(n_small):
             k, y, x = rng.integers(nfr), rng.integers(frames.ny), rng.integers(frames.nx)
             q = time.perf_counter()
-            at = frames.layout.offset + int(k) * frames.frame_bytes + (int(y) * frames.nx + int(x)) * it
-            os.pread(frames.fd, it, at)
+            fd, at = frames.sample_at(int(k), int(y), int(x))
+            os.pread(fd, it, at)
             small.append((time.perf_counter() - q) * 1e3)
         self.small_ms = float(np.median(small))
         self.probe_ms = (time.perf_counter() - t0) * 1e3

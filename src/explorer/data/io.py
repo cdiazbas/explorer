@@ -54,6 +54,11 @@ class FrameReader:
             raise IndexError(f"frame index {idx} outside {self.shape[:-2]}")
         return self.layout.offset + sum(i * s for i, s in zip(idx, self.strides, strict=True)) * self.frame_bytes
 
+    def sample_at(self, k: int, y: int, x: int) -> tuple[int, int]:
+        """(file descriptor, byte offset) of pixel (y, x) of frame number k (file order): where the storage probe
+        times a small read."""
+        return self.fd, self.layout.offset + k * self.frame_bytes + (y * self.nx + x) * self.layout.dtype.itemsize
+
     def read_raw(self, idx, chunks: int | None = None) -> np.ndarray:
         """The frame as stored (dtype and byte order of the file)."""
         return self._read_raws([idx], chunks)[0]
