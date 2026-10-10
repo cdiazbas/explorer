@@ -102,6 +102,21 @@ def test_a_linked_cube_reads_its_own_panels_and_no_slit(session):
     assert st.panels == {"spectra", "image"} and st.path is None and session.state.path is not None
 
 
+def test_the_slit_records_the_cube_it_was_drawn_on(session):
+    """The slit panel shows the slices of the cube the slit was drawn on: set_path and set_draft record it, None
+    leaves it, a cube the session does not have is refused."""
+    k = session.add(cube())
+    session.set_draft(((1.5, 1.5),), k)
+    session.set_path(((1.5, 1.5), (9.5, 4.5)), k)
+    assert (session.state.draft_cube, session.state.path_cube) == (k, k)
+    session.set_path(((2.5, 1.5), (9.5, 4.5)))
+    assert session.state.path_cube == k
+    session.set_path(((2.5, 1.5), (9.5, 4.5)), 0)
+    assert session.state.path_cube == 0
+    with pytest.raises(ValueError):
+        session.set_path(((2.5, 1.5), (9.5, 4.5)), 2)
+
+
 def test_a_single_frame_is_shown_at_every_t(session):
     k = session.add(cube(("HPLT", "HPLN"), (30, 20)))     # a map: no leading axes
     session.set_index("t", 4)

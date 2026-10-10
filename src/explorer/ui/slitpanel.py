@@ -7,7 +7,7 @@ pyqtgraph menu (the prototype's F20g): a click or drag picks t (or lambda) from 
 What it shows is the core's (core.slitreads): the pixels along the slit, then the slices and their levels. From the
 prototype's app/viewer.py: the slit dock (1023-1048), _slit_mark (1922), _slit_pick (1932), _paint_slice (1893).
 
-    panel = SlitPanel(nt, nl, axes); dock it as panel.widget
+    panel = SlitPanel(nt, nl, axes); dock it as panel.widget; panel.set_cube(nt, nl, axes): another cube's slices
     panel.set_path((iy, ix)); panel.show(ts, sl, ts_levels, sl_levels); panel.set_markers(t, l); panel.set_cursor(y, x)
 """
 import numpy as np
@@ -26,28 +26,20 @@ class SlitPanel:
     """widget: what goes in the dock. ts, sl: the two plots; ts_img, sl_img: their images."""
 
     def __init__(self, nt: int, nl: int, axes):
-        self.nt, self.nl, self.ax = max(1, nt), max(1, nl), axes
-        dl = axes.dlam_A() if axes is not None else None
-        self.physical = dl is not None and len(dl) == nl
-        self.xl = np.asarray(dl, float) if self.physical else np.arange(self.nl, dtype=float)
-        self.timed = axes is not None and getattr(axes, "t_sec", None) is not None
+        self._cube(nt, nl, axes)
         self.w = pg.GraphicsLayoutWidget()
         self.w.ci.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)     # as lambda-t's: off the panel's edges
-        self.ts = self.w.addPlot(row=0, col=0, axisItems={
-            "left": IndexAxis("left", self.t_label, self.nt, fine_of=self.t_label_fine)})
-        self.sl = self.w.addPlot(row=0, col=1, axisItems={
-            "left": TuningAxis("left", self.xl) if self.physical else IndexAxis("left", self.lam_label, self.nl)})
+        self.ts = self.w.addPlot(row=0, col=0, axisItems={"left": self._t_axis()})
+        self.sl = self.w.addPlot(row=0, col=1, axisItems={"left": self._l_axis()})
         self.sl.setXLink(self.ts)
         self.ts_img, self.sl_img = pg.ImageItem(), pg.ImageItem()
         self.ts.addItem(self.ts_img)
         self.sl.addItem(self.sl_img)
-        self.ts.setLabel("left", "t [UT]" if self.timed else "t index")
-        self.sl.setLabel("left", "Δλ [Å]" if self.physical else "λ index")
+        self._left_labels()
         for pl in (self.ts, self.sl):
             pl.setLabel("bottom", ALONG)
             for side in ("left", "bottom"):
-                pl.getAxis(side).setStyle(tickLength=4)     # out of the image, as lambda-t's
-                pl.getAxis(side).setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
+                self._axis_style(pl.getAxis(side))
             pl.setMouseEnabled(x=False, y=False)
             pl.hideButtons()
             pl.setMenuEnabled(False)
@@ -69,16 +61,56 @@ class SlitPanel:
         self._ranges(1)
         self.widget = self.w
 
+    def _cube(self, nt: int, nl: int, axes, times=None) -> None:
+        self.nt, self.nl, self.ax = max(1, nt), max(1, nl), axes
+        self.tax = times if times is not None else axes  # whose times label t
+        dl = axes.dlam_A() if axes is not None else None
+        self.physical = dl is not None and len(dl) == nl
+        self.xl = np.asarray(dl, float) if self.physical else np.arange(self.nl, dtype=float)
+        self.timed = self.tax is not None and getattr(self.tax, "t_sec", None) is not None
+
+    def _t_axis(self) -> IndexAxis:
+        return IndexAxis("left", self.t_label, self.nt, fine_of=self.t_label_fine)
+
+    def _l_axis(self) -> pg.AxisItem:
+        return TuningAxis("left", self.xl) if self.physical else IndexAxis("left", self.lam_label, self.nl)
+
+    def _left_labels(self) -> None:
+        self.ts.setLabel("left", "t [UT]" if self.timed else "t index")
+        self.sl.setLabel("left", "Δλ [Å]" if self.physical else "λ index")
+
+    @staticmethod
+    def _axis_style(a: pg.AxisItem) -> None:
+        a.setStyle(tickLength=4)                        # out of the image, as lambda-t's
+        a.setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
+
+    def set_cube(self, nt: int, nl: int, axes, times=None) -> None:
+        """The slices of another cube from now on (a linked cube's slit, Session.set_path): its t and lambda axes;
+        times: the axes whose times label its t, when not its own (a map with the main cube's times). The slices shown
+        go, the next slit's come. The same cube again changes nothing."""
+        times = times if times is not None else axes
+        if (max(1, nt), max(1, nl)) == (self.nt, self.nl) and axes is self.ax and times is self.tax:
+            return
+        self._cube(nt, nl, axes, times)
+        self.ts.setAxisItems({"left": self._t_axis()})
+        self.sl.setAxisItems({"left": self._l_axis()})
+        self._left_labels()
+        for pl in (self.ts, self.sl):
+            self._axis_style(pl.getAxis("left"))
+        style.default_axes(self.w)                      # the new axes in this theme's ink
+        self.clear()
+        self._ranges(max(1, self.n))
+
     # ---------------------------------------------------------------- labels (as lambda-t's)
     def lam_label(self, i: int) -> str:
         return fmt_signed(self.xl[i], 2) if self.physical else str(i)
 
     def t_label(self, i: int) -> str:
-        u = self.ax.utc_str(i, seconds=False) if self.timed else None
+        u = self.tax.utc_str(i, seconds=False) if self.timed else None
         return u or str(i)
 
     def t_label_fine(self, i: int) -> str:
-        u = self.ax.utc_str(i, seconds=True) if self.timed else None
+        u = self.tax.utc_str(i, seconds=True) if self.timed else None
         return u or str(i)
 
     # ---------------------------------------------------------------- what the core gives

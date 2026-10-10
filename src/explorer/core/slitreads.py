@@ -7,7 +7,10 @@ _slit_ready (1852), _slit_paint (1877).
 The slit shown is the one being drawn once it has two points (the points clicked and the pointer's pixel,
 ViewState.draft), else the finished one (ViewState.path); its pixels are the path sampled every pixel, each sample's
 nearest pixel (data.slits). Two slices along it share the position axis: the time slice (t x position, at this Stokes
-and lambda) and the spectral slice (lambda x position, at this Stokes and t).
+and lambda) and the spectral slice (lambda x position, at this Stokes and t). They are the slices of the cube the slit
+was drawn on (ViewState.path_cube, draft_cube): with linked cubes (ROADMAP E8.1) on the main cube's grid, the same
+pixels of that member, at its own t, lambda and Stokes (Session.member_state); a map without lambda gives a spectral
+slice of one row. Another cube is another slit: its results for the one before are dropped.
 
 With a per-pixel file:
 - the (s, t, lambda) block of each pixel along the slit, read in runs of neighbouring pixels in a row on the slab
@@ -62,6 +65,7 @@ class SlitReads:
     def __init__(self, session, sink, track, when_read):
         """track(fut) -> fut and when_read(fut, fn): the Scheduler's, so its in_flight() covers the slit's work."""
         self.session, self.sink = session, sink
+        self.cube = 0                                   # the member read: the one the slit shown was drawn on
         self.ds = session.main
         self.loop = session.store.loop
         self._track, self._when_read = track, when_read
@@ -71,8 +75,7 @@ class SlitReads:
         self.path_id = 0                                # changes with the pixels: a result for another slit is dropped
         self._drafts: set[int] = set()                  # the path_ids that were stages of a slit being drawn
         # (y, x) -> (s, t, lambda) float32 with a per-pixel file: the Dataset's, counted in its memory
-        cache = getattr(self.ds, "slit_cache", None)
-        self.blocks: SlitCache = cache if cache is not None else SlitCache(max_blocks=SLIT_BLOCKS)
+        self.blocks: SlitCache = self._blocks_of(self.ds)
         self._want: tuple | None = None                 # pixels whose missing blocks are read next
         self._busy = False                              # a block read in flight
         self._bands: OrderedDict = OrderedDict()        # (path_id, kind, s, u) -> (slice, levels); slit thread only
@@ -81,6 +84,11 @@ class SlitReads:
         self._front = False
         self._closed = False
         self.reads: list[dict] = []                     # the block reads: pixels, runs, ms (benches, diagnostics)
+
+    @staticmethod
+    def _blocks_of(ds) -> SlitCache:
+        cache = getattr(ds, "slit_cache", None)
+        return cache if cache is not None else SlitCache(max_blocks=SLIT_BLOCKS)
 
     @property
     def per_pixel(self) -> bool:
@@ -96,7 +104,7 @@ class SlitReads:
             return
         front = "slit" in st.panels
         came, self._front = front and not self._front, front
-        if changed & {"path", "draft"} and self._set_path(st):
+        if changed & {"path", "draft", "path_cube", "draft_cube"} and self._set_path(st):
             self._rest += 1                             # a rest timer for an older slit does nothing
             if self.pix is None:
                 return
@@ -113,7 +121,8 @@ class SlitReads:
             return
         if not front:
             return
-        if came or ("playing" in changed and not st.playing) or changed & {"t", "s", "l"}:
+        if came or ("playing" in changed and not st.playing) or changed & ({"t", "s", "l", "own"} if self.cube
+                                                                           else {"t", "s", "l"}):
             self._refresh(st)
 
     def _drawing(self, st: ViewState) -> bool:
@@ -126,17 +135,24 @@ class SlitReads:
     def _set_path(self, st: ViewState) -> bool:
         """The slit shown, from the state; True when its pixels changed (the sink then has them)."""
         pts = st.draft if self._drawing(st) else st.path
+        cube = (st.draft_cube if self._drawing(st) else st.path_cube) if pts is not None else self.cube
         if not self._drawing(st):
             self._drafts = set()                        # drawn or given up: no late result of its stages any more
-        if pts == self.pts:
+        if pts == self.pts and cube == self.cube:
             return False
         self.pts = pts
+        other = cube != self.cube
+        if other:                                       # the same pixels on another cube: another slit
+            self.cube, self.ds = cube, self.session.members[cube].dataset
+            self.blocks, self._want = self._blocks_of(self.ds), None
+            self._drafts = set()
         pix = None
         if pts is not None:
             pix = slit_pixels(slit_path(np.asarray(pts, np.float64)), self.ds.ny, self.ds.nx)
         old = self.pix
-        if (pix is None and old is None) or (pix is not None and old is not None and len(pix[0]) == len(old[0])
-                                              and np.array_equal(pix[0], old[0]) and np.array_equal(pix[1], old[1])):
+        if not other and ((pix is None and old is None) or (
+                pix is not None and old is not None and len(pix[0]) == len(old[0])
+                and np.array_equal(pix[0], old[0]) and np.array_equal(pix[1], old[1]))):
             return False
         self.pix = pix
         self.path_id += 1
@@ -158,7 +174,8 @@ class SlitReads:
 
     def _slices(self, st: ViewState) -> None:
         g = self.gens.new("slit")
-        args = (g, self.path_id, self.pix, st.t, st.s, st.l, st.playing)
+        mine = self.session.member_state(self.cube, st)  # its t, lambda and Stokes
+        args = (g, self.path_id, self.pix, mine.t, mine.s, mine.l, st.playing, self.ds, self.blocks)
         job = self._from_blocks if self.per_pixel else self._from_bands
         counter("core.slit.requests")
 
@@ -187,12 +204,13 @@ class SlitReads:
         self._busy = True
         q = time.perf_counter()
         fut = self.ds.slit_blocks(miss)
+        blocks = self.blocks                            # this cube's: the slit may move to another before they come
 
         def done(f) -> None:                            # on the thread that read them
             if not f.cancelled() and f.exception() is None:
                 got, runs = f.result()
                 ms = (time.perf_counter() - q) * 1e3
-                self.blocks.add(got)                    # over its bounds, the shown slit's only (_slit_ready, 1857)
+                blocks.add(got)                         # over its bounds, the shown slit's only (_slit_ready, 1857)
                 self.reads = self.reads[-999:] + [dict(pixels=len(miss), runs=runs, ms=round(ms, 2))]
                 counter("core.slit.block_reads")
             elif not f.cancelled():
@@ -210,11 +228,11 @@ class SlitReads:
             self._slices(st)
         self._kick()
 
-    def _from_blocks(self, g, pid, pix, t, s, l, playing) -> None:  # noqa: E741
+    def _from_blocks(self, g, pid, pix, t, s, l, playing, ds, blocks) -> None:  # noqa: E741
         """Both slices from the blocks kept (the prototype's _slitc_slices, 1709), on the slit thread; one made from
         the same blocks kept (SlitCache.version) for the same slit, Stokes and lambda (or t) is reused."""
-        ver, got = self.blocks.along(zip(pix[0].tolist(), pix[1].tolist(), strict=True))
-        r, n = self.ds.roles, len(pix[0])
+        ver, got = blocks.along(zip(pix[0].tolist(), pix[1].tolist(), strict=True))
+        r, n = ds.roles, len(pix[0])
         out = {}
         for kind, rows, u in (("ts", max(1, r.nt), l), ("sl", max(1, r.nl), t)):
             key = (pid, ver, s, u)
@@ -231,11 +249,11 @@ class SlitReads:
         self.loop.post(lambda: self._show(g, pid, s, out["ts"], out["sl"]))
 
     # ---------------------------------------------------------------- no per-pixel file: rows per frame
-    def _from_bands(self, g, pid, pix, t, s, l, playing) -> None:  # noqa: E741
+    def _from_bands(self, g, pid, pix, t, s, l, playing, ds, blocks) -> None:  # noqa: E741
         """Each slice from those kept or read now (the prototype's _slit_band_job, 1842), the time slice first; the
         spectral slice not read while playing. Each is shown as it comes."""
-        r = self.ds.roles
-        nlead = len(self.ds.shape) - 2
+        r = ds.roles
+        nlead = len(ds.shape) - 2
         for kind, u in (("ts", l), ("sl", t)):
             key = (pid, kind, s, u)
             hit = self._bands.get(key)
@@ -250,7 +268,7 @@ class SlitReads:
                 idxs = ([frame_index(nlead, r, t=k, s=s, l=l) for k in range(max(1, r.nt))] if kind == "ts"
                         else [frame_index(nlead, r, t=t, s=s, l=k) for k in range(max(1, r.nl))])
                 q = time.perf_counter()
-                a = self.ds.read_bands(idxs, *pix)
+                a = ds.read_bands(idxs, *pix)
                 self.reads = self.reads[-999:] + [dict(kind=kind, frames=len(idxs),
                                                        ms=round((time.perf_counter() - q) * 1e3, 2))]
                 counter("core.slit.band_reads")

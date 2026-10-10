@@ -22,7 +22,8 @@ Results come back from other threads through Loop.post, and the Sink is called o
 The slit panel's reads and slices are SlitReads' (core.slitreads), which sees every notice first.
 A linked cube (ROADMAP E8.1) has a scheduler of its own (member=k): it reads the state as its cube does
 (Session.member_state: its lambda and Stokes, its panels), and a change reaches it only when its frame or its
-cursor changes (a single frame does not move with t). No slit and no 2x2 view: those are the main cube's. Its
+cursor changes (a single frame does not move with t). No slit reads and no 2x2 view: those are the main cube's
+scheduler's, whose slit reads follow the cube the slit was drawn on (ViewState.path_cube). Its
 image is a panel that can be closed: then no image is read nor read ahead, and the cursor's panels go on from the
 last image (for the padding under the cursor); shown again, the image of now.
 The spectra's reads that are not the cursor's (the first block for the units, the y-range sample) wait for the

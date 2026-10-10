@@ -130,6 +130,8 @@ class _Sink:
             self.shell.grid.set_image(s, img, levels)
 
     def slit_path(self, pix):
+        reads = self.shell.scheduler.slit               # the main cube's scheduler has them
+        self.shell.slit_cube(reads.cube if reads is not None else 0)   # the cube it was drawn on
         self.shell.slit_panel.set_path(pix)
 
     def slit(self, ts, sl, s, ts_levels, sl_levels):
@@ -183,6 +185,9 @@ class Shell(QtWidgets.QMainWindow):
         slit_dock = docks.dock(self, "Slit", self.slit_panel.widget, "slit", cls=docks.GatedDock)
         assert isinstance(slit_dock, docks.GatedDock)
         self.slit_dock = slit_dock
+        self._slit_on = 0                               # the cube whose slices the slit panel shows (slit_cube)
+        if linked:
+            self.slit_dock.setWindowTitle(f"Slit: {names[0]}")
         # lambda-t's tab from the start, as the prototype makes it (1047): its first show as a third panel resized
         # the spectra and back, and their ResizeFreezer's grab cost the first slit ~40 ms
         self.tabifyDockWidget(self.lt_dock, self.slit_dock)
@@ -282,7 +287,7 @@ class Shell(QtWidgets.QMainWindow):
             self.spec_dock.hide()
         if self.lambda_t is None and self.lt_tabs is None:
             self.lt_dock.hide()
-        self.slit_panel.set_markers(st.t, st.l)
+        self._slit_markers()
         self.slit_panel.set_cursor(*st.cursor)
         self._mem = QtCore.QTimer(self)
         self._mem.setInterval(int(MEMORY_S * 1000))
@@ -885,7 +890,8 @@ class Shell(QtWidgets.QMainWindow):
 
     def _slit_pick(self, pos, now: bool = True) -> None:
         """A click or drag on the slit panel: the cursor to that point of the slit, locked there as a click on the image
-        does, and t (time slice) or lambda (spectral slice) from y (the prototype's _slit_pick, 1932)."""
+        does, and t (time slice) or lambda (spectral slice) from y (the prototype's _slit_pick, 1932): of the cube the
+        slices are of."""
         hit = self.slit_panel.point_at(pos)
         if hit is None or self.slit_panel.pix is None:
             return
@@ -894,8 +900,11 @@ class Shell(QtWidgets.QMainWindow):
         self.session.lock(False)
         self.session.hover(int(iy[i]), int(ix[i]))
         self.session.lock(True)
-        if self.session.present[axis]:
-            self.main.want({axis: v}, now)
+        if self._slit_on and axis == "t":               # its t nearest the main cube's (Member.t)
+            mt = self.session.members[self._slit_on].t
+            v = min(range(len(mt)), key=lambda i: abs(mt[i] - v))
+        if self.session.present[axis] or (axis == "l" and self._slit_on):
+            self.cubes[self._slit_on].want({axis: v}, now)
 
     # ---------------------------------------------------------------- playback
     def set_playing(self, on: bool) -> None:
@@ -1074,6 +1083,27 @@ class Shell(QtWidgets.QMainWindow):
     def toggle_slit_mode(self) -> None:
         self.set_slit_mode(not self.slit_tool.mode)
 
+    def slit_cube(self, k: int) -> None:
+        """The slit panel on cube k's slices, the one the slit was drawn on: its axes, its markers and, with linked
+        cubes, its name in the panel's title. A cube without times of its own whose frames are the main cube's t
+        (data.link: Blos and Vlos of 6173) has its t labelled with the main cube's times."""
+        if k == self._slit_on:
+            return
+        self._slit_on = k
+        m = self.session.members[k]
+        axes, r = getattr(m.dataset, "axes", None), m.dataset.roles
+        times = None
+        if getattr(axes, "t_sec", None) is None and m.t == tuple(range(r.nt)):
+            times = self.dataset.axes
+        self.slit_panel.set_cube(r.nt, r.nl, axes, times)
+        if self.linked:
+            self.slit_dock.setWindowTitle(f"Slit: {self.cubes[k].name}")
+        self._slit_markers()
+
+    def _slit_markers(self) -> None:
+        st = self.session.member_state(self._slit_on)
+        self.slit_panel.set_markers(st.t, st.l)
+
     def clear_slit(self) -> None:
         """⌫: the finished slit removed, from the image and from the session."""
         self.slit_tool.clear()
@@ -1209,8 +1239,8 @@ class Shell(QtWidgets.QMainWindow):
                 self._slit_shown(st.path is not None)
         if "locked" in changed and self.grid is not None:
             self.grid.set_locked(st.locked)
-        if changed & {"t", "l"}:
-            self.slit_panel.set_markers(st.t, st.l)
+        if changed & {"t", "l", "own"}:
+            self._slit_markers()
         self.update_status()
 
     def update_status(self) -> None:

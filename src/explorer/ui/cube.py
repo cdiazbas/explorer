@@ -65,7 +65,7 @@ class CubeSink:
     def grid_image(self, s, idx, img, levels):          # the 2x2 view is the main cube's
         pass
 
-    def slit_path(self, pix):                           # and so is the slit
+    def slit_path(self, pix):                           # and so is the slit panel, whichever cube it reads
         pass
 
     def slit(self, ts, sl, s, ts_levels, sl_levels):
@@ -201,7 +201,7 @@ class CubeView:
     def _click(self, ev) -> None:
         """A click locks the cursor there, a right click releases it, a double click shows the whole image (in all of
         them); while a slit is drawn, the click is the slit's (the prototype's _image_click)."""
-        if self.shell.slit_tool.click(ev, self.view.vb):
+        if self.shell.slit_tool.click(ev, self.view.vb, self.k):
             return
         if ev.button() == QtCore.Qt.MouseButton.RightButton:
             self.session.lock(False)

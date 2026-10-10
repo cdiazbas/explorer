@@ -86,7 +86,8 @@ class Session:
     def member_state(self, member: int, state: ViewState | None = None) -> ViewState:
         """The state as member k reads it: its t nearest in time to the main cube's (Member.t; a single frame at every
         t), its lambda and Stokes (the main's when linked), its panels ("spectra:k" as "spectra"; "image:k" as
-        "image", its image shown), no slit (the slit is the main cube's). The main cube's state as it is."""
+        "image", its image shown), no slit (the slit panel is the main cube's window's, whichever cube it reads:
+        core.slitreads). The main cube's state as it is."""
         st = state or self.store.state
         if member == 0:
             return st
@@ -165,23 +166,32 @@ class Session:
     def lock(self, on: bool = True) -> None:
         self.store.set(locked=bool(on))
 
-    def set_path(self, points) -> None:
+    def set_path(self, points, cube: int | None = None) -> None:
         """The slit: the points clicked, (x, y) in the main cube's view coordinates (pixel centres at .5), two at
         least, each clipped to the image; None removes it. Straight through two points, a curve through more
-        (data.slits.slit_path); the prototype's Viewer.slit (app/viewer.py:1228, set in _slit_finish 1571)."""
+        (data.slits.slit_path); the prototype's Viewer.slit (app/viewer.py:1228, set in _slit_finish 1571). cube: the
+        member it was drawn on, whose slices the slit panel shows (the grids are the same, so the points are too);
+        None leaves it as it is."""
         if points is None:
             self.store.set(path=None)
             return
         pts = self._clip(points)
         if len(pts) < 2:
             raise ValueError(f"a slit needs two points at least, not {len(pts)}")
-        self.store.set(path=pts)
+        self.store.set(path=pts, **self._cube("path_cube", cube))
 
-    def set_draft(self, points) -> None:
+    def set_draft(self, points, cube: int | None = None) -> None:
         """The slit being drawn: the points clicked so far and the pointer's pixel, (x, y) as set_path's, any number
         (its slices follow it once it has two); None when no slit is being drawn. The prototype's variant D draws
-        its live slices from the same points (_slitd_preview, app/viewer.py:1664)."""
-        self.store.set(draft=None if points is None else self._clip(points))
+        its live slices from the same points (_slitd_preview, app/viewer.py:1664). cube: as set_path's."""
+        self.store.set(draft=None if points is None else self._clip(points), **self._cube("draft_cube", cube))
+
+    def _cube(self, field: str, cube: int | None) -> dict:
+        if cube is None:
+            return {}
+        if not 0 <= int(cube) < len(self.members):
+            raise ValueError(f"no cube {cube}: the session has {len(self.members)}")
+        return {field: int(cube)}
 
     def _clip(self, points) -> tuple:
         return tuple((float(np.clip(x, 0, self.main.nx)), float(np.clip(y, 0, self.main.ny))) for x, y in points)

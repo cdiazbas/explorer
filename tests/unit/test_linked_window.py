@@ -226,6 +226,81 @@ def test_the_slit_is_on_every_image_and_can_be_drawn_on_any(window):
     w.set_slit_mode(False)
 
 
+class _Click:                                           # pyqtgraph's scene click, as the slit tool reads it
+    def __init__(self, vb, x, y, double=False):
+        from PySide6 import QtCore
+        self._p, self._double = vb.mapViewToScene(QtCore.QPointF(x, y)), double
+
+    def button(self):
+        from PySide6 import QtCore
+        return QtCore.Qt.MouseButton.LeftButton
+
+    def double(self):
+        return self._double
+
+    def scenePos(self):
+        return self._p
+
+
+def draw_slit(w, cube, a, b):
+    """A slit from a to b, (x, y), drawn with clicks on cube's image (a CubeView), finished with a double click."""
+    w.set_slit_mode(True)
+    cube._click(_Click(cube.view.vb, *a))
+    cube._click(_Click(cube.view.vb, *b))
+    cube._click(_Click(cube.view.vb, *b, double=True))
+
+
+def slices_along(ds, session, k, pix):
+    """Cube k's time slice along pix at its own lambda and Stokes, read frame by frame (Dataset.image), and its
+    spectral slice at its t."""
+    import dataclasses
+    st = session.member_state(k)
+    r, iy, ix = ds.roles, *pix
+    ts = np.stack([ds.image(session.index_of(k, dataclasses.replace(st, t=t))).result()[iy, ix]
+                   for t in range(max(1, r.nt))])
+    sl = np.stack([ds.image(session.index_of(k, dataclasses.replace(st, l=lam))).result()[iy, ix]
+                   for lam in range(max(1, r.nl))])
+    return ts, sl
+
+
+@pytest.mark.parametrize("k", [2, 1, 0])
+def test_a_slit_drawn_on_a_cube_s_image_shows_that_cube_s_slices(window, k):
+    """A slit drawn on Blos gave the main cube's slices (the user, 2026-10-10): the slit panel shows the slices of the
+    cube whose image took the slit, at its own lambda and Stokes; on a map, a spectral slice of one row. The slit is
+    still on every image; a map without times of its own has its t in the main cube's times. k: the Blos map, the
+    other line (7 tunings, its own lambda), the main cube."""
+    w, qapp = window
+    cube = w.cubes[k]
+    when = w.slit_panel.t_label_fine(1)               # the main cube's times
+    w.set_slit_mode(True)
+    w.set_slit_mode(False)
+    if k:                                               # the slit on the main cube first: the panel moves off it
+        draw_slit(w, w.main, (3.5, 4.5), (20.5, 30.5))
+    draw_slit(w, cube, (5.2, 6.7), (30.4, 40.1))
+    panel = w.slit_panel
+    assert spin(qapp, lambda: panel.pix is not None and len(panel.pix[0]) > 30), "no slit"
+    ts, sl = slices_along(cube.dataset, w.session, k, panel.pix)
+
+    def same(img, want):
+        return img is not None and img.shape == want.shape and np.array_equal(img, want, equal_nan=True)
+    spin(qapp, lambda: same(panel.ts_img.image, ts) and same(panel.sl_img.image, sl))
+    a, b = panel.ts_img.image, panel.sl_img.image
+    diff = np.nanmax(np.abs(a - ts)) if a is not None and a.shape == ts.shape else None
+    title = w.slit_dock.windowTitle()
+    print(f"cube {k} ({cube.name}): path_cube {getattr(w.session.state, 'path_cube', None)}, panel nt x nl "
+          f"{panel.nt} x {panel.nl}, time slice {None if a is None else a.shape} (the cube's {ts.shape}), spectral "
+          f"{None if b is None else b.shape} (the cube's {sl.shape}), max |time slice - the cube's| {diff}, "
+          f"title {title!r}, t 1 at {panel.t_label_fine(1)!r} (main {when!r})")
+    assert same(a, ts) and same(b, sl)
+    assert w.session.state.path_cube == k
+    assert (panel.nt, panel.nl) == (max(1, cube.dataset.roles.nt), max(1, cube.dataset.roles.nl))
+    assert title == f"Slit: {cube.name}"
+    if k != 1:                                          # the map has no times: the main cube's label its t
+        assert panel.t_label_fine(1) == when
+    assert all(len(m.line.getData()[0]) > 0 for m in w.slit_tool.marks)
+    w.clear_slit()
+
+
 def test_after_the_window_changes_size_the_images_are_one_width(window):
     """reset_sizes resized the spectra, then shared the images' widths out from widths Qt had not applied yet: the
     main image 223 px against 362 for each linked one (real cubes, the start's size, bellatrix)."""

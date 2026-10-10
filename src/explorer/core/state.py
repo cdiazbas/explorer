@@ -29,6 +29,8 @@ class ViewState:
     locked: bool = False                                # the mouse no longer moves the cursor
     path: Path2D | None = None                          # the slit, when there is one
     draft: Path2D | None = None                         # the slit being drawn, to the pointer; None: not drawing
+    path_cube: int = 0                                  # the member whose image the slit was drawn on: its slices
+    draft_cube: int = 0                                 # are that cube's; the same for the slit being drawn
     playing: bool = False
     panels: frozenset[str] = field(default=PANELS)      # shown: nothing is read for a hidden panel ("spectra:k":
                                                         # linked cube k's)

@@ -6,7 +6,9 @@ pans and the wheel still zooms: only the click changes. The mode shows that it i
 pencil for the pointer and a line inside the image saying how to draw; with a slit drawn, that line says how to
 walk along it (A/D) and remove it. The finished slit is the session's (ViewState.path, the points clicked); the
 slit being drawn is too, with the pixel under the pointer as its free end (ViewState.draft, once per pixel the
-pointer enters), and the slit panel (ui.slitpanel, core.slitreads) shows its slices while it is drawn.
+pointer enters), and the slit panel (ui.slitpanel, core.slitreads) shows its slices while it is drawn. With linked
+cubes the slit is on every image and is the cube's whose image took its first point: the panel shows that cube's
+slices (ViewState.path_cube, draft_cube).
 
 This is the prototype's variant D (its audit's F74): A's drawing and erasing, with C's live slices while drawing. From
 the prototype's app/viewer.py: SlitHint (836), the class comment on the variants (869-875), the slit's items
@@ -14,7 +16,7 @@ the prototype's app/viewer.py: SlitHint (836), the class comment on the variants
 _slit_hover (1596-1604), _slit_draw_band to _slit_style (1721-1739); app/icons.py pencil_cursor (219).
 
     tool = SlitTool(session, view, hint)        view: the ImageView to draw on; attach() adds the 2x2 view's
-    tool.set_mode(True); tool.click(ev, vb); tool.hover(y, x); tool.clear()
+    tool.set_mode(True); tool.click(ev, vb, cube); tool.hover(y, x); tool.clear()
 """
 import math
 
@@ -133,6 +135,7 @@ class SlitTool(QtCore.QObject):
         self.mode = False
         self.pts: list[tuple[float, float]] = []        # the slit being drawn: points clicked, view coordinates (x, y)
         self.free: tuple[float, float] | None = None     # its free end: the centre of the pixel under the pointer
+        self.cube = 0                                   # the member whose image took its first point
         self.colour = QtGui.QColor(colour) if colour is not None else QtGui.QColor(255, 80, 80)
         self.views: list = []
         self.marks: list[SlitMarks] = []
@@ -196,9 +199,10 @@ class SlitTool(QtCore.QObject):
         self.hint.raise_()
 
     # ---------------------------------------------------------------- the gestures
-    def click(self, ev, vb) -> bool:
+    def click(self, ev, vb, cube: int = 0) -> bool:
         """A click on an image view (pyqtgraph's scene event) while the mode is on: left adds a point, double finishes,
-        right removes the last. False when the mode is off: the click is the cursor's."""
+        right removes the last. False when the mode is off: the click is the cursor's. cube: the member whose image
+        vb shows (the 2x2 view's are the main cube's)."""
         if not self.mode:
             return False
         B = QtCore.Qt.MouseButton
@@ -209,15 +213,17 @@ class SlitTool(QtCore.QObject):
                 self.finish()
             elif vb.sceneBoundingRect().contains(ev.scenePos()):
                 p = vb.mapSceneToView(ev.scenePos())
-                self.add(p.x(), p.y())
+                self.add(p.x(), p.y(), cube)
         return True
 
-    def add(self, x: float, y: float) -> None:
+    def add(self, x: float, y: float, cube: int = 0) -> None:
         """A point on the centre of the pixel under (x, y); the same pixel twice in a row counts once (the double
-        click's second press)."""
+        click's second press). The first point's cube is the slit's."""
         p = (float(np.clip(math.floor(x), 0, self.nx - 1)) + 0.5, float(np.clip(math.floor(y), 0, self.ny - 1)) + 0.5)
         if self.pts and self.pts[-1] == p:
             return
+        if not self.pts:
+            self.cube = int(cube)
         self.pts.append(p)
         self.free = p
         self._push_draft()
@@ -242,7 +248,7 @@ class SlitTool(QtCore.QObject):
             self.hint_text("A slit needs two points at least: click another one")
             return
         pts, self.pts = tuple(self.pts), []
-        self.session.set_path(pts)
+        self.session.set_path(pts, self.cube)
         self.set_mode(False)
         self.show_path(self.path)                      # now, not at the state's notice a pass later
 
@@ -270,7 +276,7 @@ class SlitTool(QtCore.QObject):
         pts = list(self.pts)
         if pts and self.free is not None and self.free != pts[-1]:
             pts.append(self.free)
-        self.session.set_draft(tuple(pts))
+        self.session.set_draft(tuple(pts), self.cube)
 
     # ---------------------------------------------------------------- drawing
     def show_path(self, path) -> None:

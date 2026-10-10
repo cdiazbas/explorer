@@ -5,8 +5,9 @@ floated four panels in one column, 120 px each, or two columns that left no room
 main cube's cursor, lock and t; its lambda (and its Stokes, when the two cubes do not have the same number) are its
 own (core.session.Member), picked on its own panels and kept in the state, so that its panels' markers and reads
 follow as the main cube's do. Its reads are a scheduler of its own (core.scheduler, member=k) on the main cube's
-threads (data.dataset: one thread runs parallel numba for all). The slit and the 2x2 view are the main cube's; the
-slit is drawn on every image, and can be drawn on any of them (ui.slit attaches each).
+threads (data.dataset: one thread runs parallel numba for all). The 2x2 view and the slit panel are the main
+window's; the slit is drawn on every image, can be drawn on any of them (ui.slit attaches each), and its panel shows
+the slices of the cube whose image took it (core.slitreads).
 
 Each image carries its cube's name above it (data.names: the line, and the quantity of a map; ImageTitle; the file
 in its tooltip): a linked image is a panel of its own, between the main image and the spectra, that floats and docks
