@@ -169,3 +169,18 @@ def test_axes_read_names_t_and_no_lambda(tmp_path):
     assert (r.t, r.s, r.l, r.nt, r.how) == (0, None, None, 5, "header")
     assert ax.lam_nm is None and str(ax.utc(4))[:19] == "2026-06-07T06:52:49"
 
+
+def test_the_command_without_series_links_as_before(tmp_path, monkeypatch):
+    from explorer import cli
+    from explorer.ui import app
+
+    paths, _ = series(tmp_path, n=3)
+    seen: dict = {}
+    monkeypatch.setattr(app, "run", lambda p, **kw: seen.update(kw, path=p) or 0)    # the window, not opened here
+    assert cli.main(paths) == 0
+    assert seen["path"] == paths[0] and seen["linked"] == paths[1:] and seen["series"] is None
+    assert cli.main(["--series", *paths]) == 0
+    assert seen["series"] == paths and seen["linked"] == []
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["--series", "aia_*.fits"]) == 0                # a quoted pattern, expanded in name order
+    assert seen["series"] == ["aia_00.fits", "aia_01.fits", "aia_02.fits"]

@@ -31,6 +31,8 @@ def _parser() -> argparse.ArgumentParser:
                                                 linked cubes: the first leads; the others, on its pixels, show beside
                                                 it and follow its cursor and t (their times nearest to its), each at
                                                 its own λ (other pixels: not linked yet, and said why)
+  explorer --series aia*.fits                   one image per file (e.g. SDO/AIA), the files as one cube's t, in
+                                                the order of their header times (T_OBS, DATE-AVG or DATE-OBS)
   explorer stokes_6173_im.fits --mask spots.fits
                                                 the outline of a 0/1 mask on the first cube's pixels over every
                                                 image: one frame at every t, or one per t
@@ -44,6 +46,10 @@ explorer --demo is explorer demo""")
                          "to it. More cubes: linked to the first (the same pixels; at each of its times, their "
                          "nearest; without times, as many as its; a map of one frame is shown at every t); a cube that "
                          "cannot be linked yet is left out, with the reason")
+    ap.add_argument("--series", action="store_true",
+                    help="the files given are one cube, one image (y, x) per file, its t in their header times' "
+                         "order (T_OBS, else DATE-AVG, else DATE-OBS; without times, their names'); a quoted "
+                         "pattern (\"aia*.fits\") is expanded here, in name order")
     ap.add_argument("--sp", help="this per-pixel file instead of the one found next to the (first) cube")
     ap.add_argument("--nosp", action="store_true", help="read without the per-pixel files")
     ap.add_argument("--axes", help="what the (first) cube's leading axes are, slowest first: t,s,l, s,l, t,l, or t "
@@ -108,6 +114,10 @@ def main(argv: list[str] | None = None) -> int:
     if not a.cubes:
         _parser().print_help()
         return 0
+    if a.series:                                        # a pattern the shell left alone (quoted, or no match)
+        import glob
+
+        a.cubes = [f for c in a.cubes for f in (sorted(glob.glob(c)) if glob.has_magic(c) else [c])] or a.cubes
     for c in a.cubes + ([a.mask] if a.mask else []):
         if not os.path.exists(c):
             print(f"{APP_NAME}: no such file: {c}", file=sys.stderr)
@@ -115,5 +125,5 @@ def main(argv: list[str] | None = None) -> int:
     from .ui.app import run
 
     return run(a.cubes[0], sp=a.sp, no_sp=a.nosp, axes=a.axes, x11=a.x11, theme=a.theme, look=a.look,
-               reset_layout=a.reset_layout, traces=a.log, quit_after=a.quit_after, linked=a.cubes[1:],
-               mask=a.mask)
+               reset_layout=a.reset_layout, traces=a.log, quit_after=a.quit_after,
+               linked=[] if a.series else a.cubes[1:], mask=a.mask, series=a.cubes if a.series else None)

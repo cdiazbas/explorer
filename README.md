@@ -60,6 +60,18 @@ window closes, the terminal names the files (in `~/.cache/explorer/logs/`): send
   is needed; among linked cubes, that one is left out. `--sp` naming a FITS image cube is refused (`explorer
   c_sp.fits --sp c_im.fits` is taken the right way round). A cube whose header gives other times or wavelengths
   than its frames hold is refused when opened.
+- **A series of FITS images, one per file** (SDO/AIA, HMI: `--series`): the files are one cube whose t is the files,
+  read where they are, without building a cube first. Plain and tile-compressed (JSOC's) files are both read; a
+  compressed frame is decompressed at each read (~9x a plain frame's read).
+
+  ```bash
+  explorer --series aia*.fits                # or "aia*.fits", quoted: the pattern is expanded by explorer
+  ```
+
+  t follows the header times (`T_OBS`, else `DATE-AVG`, else `DATE-OBS`: the first every file has), not the names;
+  the terminal says when the two orders differ. Without a time in every file, t is the name order and an index.
+  Files at the same time, or of another shape, stored type, scaling, `WAVELNTH`, `INSTRUME` or `BUNIT`, are refused,
+  with the files of each group. Without `--series`, several files are linked cubes, as below.
 
 ### Linked cubes
 

@@ -170,7 +170,7 @@ def given_cubes(path, sp, no_sp, linked) -> tuple[str, str | None, list[str], di
 
 
 def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False, traces=False,
-          saved_layout=True, linked=(), mask=None) -> Started | None:
+          saved_layout=True, linked=(), mask=None, series=None) -> Started | None:
     """Everything `explorer cube` does before its event loop: the display plan, the themed application, the cube,
     the Shell with its title bar, its saved layout, the display's attachment, the terminal's keys and the link probe.
     The self-test (bench/explorer_selftest.py) goes through it too, so it measures the window as it is shown (as the
@@ -179,7 +179,8 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     traces: the session's traces (TRACES: the geometry's and, through the bridge, the bridge's), as --log asks.
     linked: other cubes, linked to this one (ROADMAP E8.1) where data.link finds they can be, each with its own
     per-pixel file unless no_sp; sp and axes are the first cube's. mask: a mask file outlined on every image
-    (ROADMAP E8.2, data.mask), left out with the reason when it does not fit the first cube. None (and why, on
+    (ROADMAP E8.2, data.mask), left out with the reason when it does not fit the first cube. series: FITS files,
+    one image each, opened as one cube along t (data.formats.series_layout) instead of path. None (and why, on
     stderr) when there is no display or the first cube cannot be read."""
     t0 = time.perf_counter()
     if traces:                                          # before the bridge and the window, which read them once
@@ -199,7 +200,8 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
 
     q = time.perf_counter()
     try:
-        path, sp, linked, linked_sp = given_cubes(path, sp, no_sp, linked)
+        path, sp, linked, linked_sp = (given_cubes(path, sp, no_sp, linked) if series is None
+                                       else (path, None, [], {}))
     except (ValueError, OSError) as e:                  # a per-pixel file without its image cube: what is needed
         print(f"[{APP_NAME}] {e}", file=sys.stderr)
         return None
@@ -231,10 +233,13 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     # linked cubes: one memory budget shared, the first cube's threads (one runs parallel numba for all)
     guard = GuardShare(MemoryGuard(), 1 + len(links)) if links else None
     try:
-        ds = Dataset.open(path, sp=sp, no_sp=no_sp, axes=axes, guard=guard)
+        ds = Dataset.open(path, sp=sp, no_sp=no_sp, axes=axes, guard=guard, series=series)
     except (ValueError, OSError) as e:                  # a file it cannot read as a cube: say so, no traceback
-        print(f"[{APP_NAME}] cannot open {path}: {e}", file=sys.stderr)
+        print(f"[{APP_NAME}] cannot open {'the series' if series is not None else path}: {e}", file=sys.stderr)
         return None
+    if series is not None:
+        for note in getattr(ds.layout, "notes", ()):
+            print(f"[{APP_NAME}] {note}", file=sys.stderr)
     others: list = []
     try:
         for link in links:
@@ -259,7 +264,10 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         from . import geomtrace
 
         tracer = geomtrace.install_from_env()           # EXPLORER_GEOMETRY_TRACE=1: before the window, to see it all
-        names = " + ".join(os.path.basename(str(p)) for p in [path, *(lk.path for lk in links)])
+        series_paths: tuple[str, ...] = getattr(ds.layout, "paths", ())
+        names = (" + ".join(os.path.basename(str(p)) for p in [path, *(lk.path for lk in links)]) if series is None
+                 else f"{os.path.basename(ds.path)} … {os.path.basename(series_paths[-1])} "
+                      f"({len(series_paths)} files)")
         shell = Shell(ds, title=f"{names} — {APP_NAME}", t0=t0, look=get_look(look), linked=others, mask=masked)
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
@@ -293,11 +301,11 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
 
 
 def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False, traces=False,
-        quit_after: float | None = None, linked=(), mask=None) -> int:
+        quit_after: float | None = None, linked=(), mask=None, series=None) -> int:
     """Open path (and the cubes linked to it) and run the event loop until the window closes; returns the exit
     code. quit_after: seconds after the first image, then quit (measurements, as the prototype's --quit-after)."""
     s = start(path, sp=sp, no_sp=no_sp, axes=axes, x11=x11, theme=theme, look=look, reset_layout=reset_layout,
-              traces=traces, linked=linked, mask=mask)
+              traces=traces, linked=linked, mask=mask, series=series)
     if s is None:
         return 1
     try:
