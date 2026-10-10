@@ -8,6 +8,7 @@ In a cube of 4 Stokes every value read leaves with the negative-I rule applied (
 where I is negative. read_raw and row_band give the values as stored; whoever converts them applies it.
 """
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -53,6 +54,11 @@ class FrameReader:
         if len(idx) != len(self.strides) or any(not 0 <= i < n for i, n in zip(idx, self.shape[:-2], strict=True)):
             raise IndexError(f"frame index {idx} outside {self.shape[:-2]}")
         return self.layout.offset + sum(i * s for i, s in zip(idx, self.strides, strict=True)) * self.frame_bytes
+
+    def playback_cap(self) -> float | None:
+        """Frames a second that reading can deliver when that, not the screen, bounds playback; None when the
+        reads overlap (preads on the read-ahead's threads) and nothing is known to bound it."""
+        return None
 
     def sample_at(self, k: int, y: int, x: int) -> tuple[int, int]:
         """(file descriptor, byte offset) of pixel (y, x) of frame number k (file order): where the storage probe
@@ -334,6 +340,7 @@ class FrameReader:
 # (3900 AIA files of 1986x1986 held 4.9 GB, 1.3 MB a file), so the latest few, not all; another is opened again
 # (astropy reads its header: 7-10 ms)
 KEEP_OPEN = 16
+DECODES_KEPT = 8            # whole-frame decompressions the playback cap is the median of
 
 
 def _room_for_files(n: int, spare: int = 256) -> None:
@@ -368,13 +375,16 @@ class SeriesReader(FrameReader):
         # plain: a descriptor per file (layout.path is the first); compressed: astropy's, opened at the first read
         self.fds = [self.fd] + ([] if layout.compressed else [os.open(p, os.O_RDONLY) for p in layout.paths[1:]])
         self.threads = max(1, int(threads))
+        self._decode_s: list[float] = []               # the latest whole-frame decompressions, seconds
         if layout.compressed:
             import threading
             from collections import OrderedDict
 
-            self._open: OrderedDict = OrderedDict()     # t -> its HDUList, idle, the latest used last
-            self._open_lock = threading.Lock()
-            self._locks = [threading.Lock() for _ in layout.paths]
+            self._open: OrderedDict = OrderedDict()     # t -> its HDUList, the latest used last
+            # one decompression at a time: astropy's holds the GIL, and several at once slowed each other down far
+            # beyond their sum (playing 300 AIA files: a frame read took 2.6 s, 3.7 images a second shown, against
+            # 0.12 s a frame one at a time; bellatrix, 2026-10-10)
+            self._decoding = threading.Lock()
 
     def _t(self, idx) -> int:
         idx = tuple(int(i) for i in np.atleast_1d(idx))
@@ -390,32 +400,39 @@ class SeriesReader(FrameReader):
             return self.fd, self.layout.offsets[0]
         return self.fds[k], self.layout.offsets[k] + (y * self.nx + x) * self.layout.dtype.itemsize
 
-    def _decompressed(self, t: int, rows: slice | None = None, x: int | None = None) -> np.ndarray:
+    def _decompressed(self, t: int, rows: slice | None = None, x: int | None = None, timed=False) -> np.ndarray:
         """File t's image as stored (BSCALE, BZERO not applied), its rows `rows` (all when None), or its pixel x
-        of those rows."""
+        of those rows. timed: a whole frame, its time (once its turn came) kept for playback_cap."""
         from astropy.io import fits
 
-        with self._locks[t]:
-            with self._open_lock:
-                h = self._open.pop(t, None)             # out of the idle ones while in use: never closed under it
+        with self._decoding:
+            q = time.perf_counter()
+            h = self._open.pop(t, None)
             if h is None:
                 h = fits.open(self.layout.paths[t], memmap=False, do_not_scale_image_data=True)
-            try:
-                # through section, never .data: astropy keeps .data (a whole image per file, outside the cache's
-                # budget: +1044 MB after 30 frames of 4096x4096, against +37 MB through section)
-                sec = h[self.layout.hdus[t]].section
-                a = sec[:, :] if rows is None else sec[rows] if x is None else sec[rows, x]
-            finally:
-                with self._open_lock:
-                    self._open[t] = h
-                    while len(self._open) > KEEP_OPEN:
-                        self._open.popitem(last=False)[1].close()
+            self._open[t] = h                           # the latest used last
+            while len(self._open) > KEEP_OPEN:
+                self._open.popitem(last=False)[1].close()
+            # through section, never .data: astropy keeps .data (a whole image per file, outside the cache's
+            # budget: +1044 MB after 30 frames of 4096x4096, against +37 MB through section)
+            sec = h[self.layout.hdus[t]].section
+            a = sec[:, :] if rows is None else sec[rows] if x is None else sec[rows, x]
+            if timed:
+                self._decode_s = (self._decode_s + [time.perf_counter() - q])[-DECODES_KEPT:]
         return np.asarray(a).astype(self.layout.dtype, copy=False)
 
     def _read_raws(self, idxs, chunks: int | None = None) -> list[np.ndarray]:
         if not self.layout.compressed:
             return [self._read_plain(i, chunks) for i in idxs]
-        return [self._decompressed(self._t(i)).reshape(self.ny, self.nx) for i in idxs]
+        return [self._decompressed(self._t(i), timed=True).reshape(self.ny, self.nx) for i in idxs]
+
+    def playback_cap(self) -> float | None:
+        """Compressed: one over the median of the latest frames' decompression, one at a time whatever the
+        threads (astropy's Rice decompression holds the GIL: 8 AIA frames of 1986x1986 took 996 ms one after
+        another, 1207 ms on 4 threads; bellatrix, 2026-10-10). None before a frame is read, and for plain files."""
+        if not self._decode_s:
+            return None
+        return 1.0 / max(1e-6, float(np.median(self._decode_s)))
 
     def _read_plain(self, idx, chunks):
         t = self._t(idx)
