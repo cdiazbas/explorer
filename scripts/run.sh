@@ -2,7 +2,8 @@
 # Run explorer from this directory with the environment built by scripts/setup_env.sh (macOS or Linux):
 #   scripts/run.sh <cube_im.fits> [options]      scripts/run.sh doctor      scripts/run.sh --version
 # - picks the environment that runs on this machine: $EXPLORER_VENV, else .venv-<OS>-<arch>;
-# - rebuilds it (setup_env.sh) when the pinned versions changed since it was built, if it can write it;
+# - rebuilds it (setup_env.sh) when the pinned versions changed since it was built, only if it is this tree's own
+#   .venv-<OS>-<arch> and this user may write it: another tree's, shared on StorNext, is never changed;
 # - drops an inherited LD_LIBRARY_PATH (another env's Qt breaks PySide6) and adds .qtlibs/only on Linux
 #   (libxcb-cursor for X11, see setup_env.sh);
 # - more reader threads than cores: scattered reads wait on the disk, not on the CPU (docs/measured.md).
@@ -22,9 +23,21 @@ if ! { [ -x "$venv/bin/python" ] && "$venv/bin/python" -c "" 2>/dev/null; }; the
   echo "no environment for $plat in $venv: run $here/setup_env.sh first" >&2
   exit 1
 fi
-# the pins changed since the environment was built: update it if this user may (only its owner can)
+# this tree's own environment: .venv-<OS>-<arch> in this folder, compared on disk, so that a link there to another
+# tree's environment is that tree's. Only this one is rebuilt or added to: another tree's, named by $EXPLORER_VENV
+# or linked, may be shared by everyone, and an old or experimental copy would install its pins under them
+own=0 venv_on_disk="$(cd -P "$venv" && pwd)"
+[ "$venv_on_disk" = "$(cd -P "$root" && pwd)/.venv-$plat" ] && own=1
+# the pins changed since the environment was built: update it if it is this tree's and this user may write it.
+# Another tree's is left as it is, and this code runs on the versions of that tree's uv.lock
 if [ "$(cksum < "$root/uv.lock")" != "$(cat "$venv/.lock.cksum" 2>/dev/null)" ]; then
-  if [ -w "$venv" ]; then
+  if [ "$own" = 0 ]; then
+    first=""                                        # setup_env.sh would build through the link, into that tree's
+    [ -L "$root/.venv-$plat" ] && first="remove the link $root/.venv-$plat, then "
+    [ -n "${EXPLORER_VENV:-}" ] && first="unset EXPLORER_VENV, then "
+    echo "[run.sh] note: $venv_on_disk is not this tree's environment and was built from another uv.lock:" \
+         "left as it is; this code runs on its versions. For this tree's own: $first$here/setup_env.sh" >&2
+  elif [ -w "$venv" ]; then
     echo "[run.sh] pinned versions changed: updating $venv" >&2
     "$here/setup_env.sh" --venv "$venv" $([ -f "$venv/.dev" ] && echo --dev) >&2 || exit 1
   else
@@ -46,11 +59,12 @@ export PYTHONPATH="$root/src${inherited:+:$inherited}"
 # NUMBA_NUM_THREADS is left to the user: unset, explorer sizes numba's pool for its scattered reads
 # (src/explorer/data/_numba.py, at least 128 threads)
 # macOS: Python started through explorer.app (made by setup_env.sh; here, once, if missing), so that the Dock shows
-# explorer's icon from launch: a bare executable's is a blank document until the window sets its own.
+# explorer's icon from launch: a bare executable's is a blank document until the window sets its own; in this tree's
+# environment only (above).
 # __PYVENV_LAUNCHER__ tells that Python its environment; Python unsets it, so nothing started from explorer sees it
 if [ "$(uname -s)" = Darwin ]; then
   app="$venv/explorer.app"
-  if [ ! -x "$app/Contents/MacOS/explorer" ] && [ -w "$venv" ]; then
+  if [ ! -x "$app/Contents/MacOS/explorer" ] && [ "$own" = 1 ] && [ -w "$venv" ]; then
     "$venv/bin/python" "$root/tools/icons/export.py" --app "$app" --exe "$venv/bin/python" >/dev/null 2>&1 || true
   fi
   if [ -x "$app/Contents/MacOS/explorer" ]; then
