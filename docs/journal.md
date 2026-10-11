@@ -4652,3 +4652,33 @@ Las suites completas de la rama juntada encontraron dos fallos más (bellatrix, 
   expectativa, actualizada.
 
 Con los dos arreglos: unit y golden 899 pasan (15 saltadas), `tests/real` 40, `tests/xvfb` 39 (2 saltadas).
+
+### 2026-10-11 (9): los arreglos de la tarde; la leyenda según el usuario
+
+Seis ramas de arreglos sobre `main` (`c223b26`), cada una con pruebas que fallan antes y pasan después, juntas en
+`integ-1011c`; las suites completas en bellatrix: unit y golden 929 pasan (15 saltadas), `tests/real` 40, `tests/xvfb`
+39 (2 saltadas).
+- **Paneles:** en la ventana de un cubo, su panel de rendija solo con rendija; un cubo de una sola λ en su ventana, su
+  Spectrum solo desde Panels; la I de glass trae el Spectrum de una sola λ cerrado con su ✕; la hoja `?` explica el
+  número de pasos de t; la piel de glass se borra al quitarla (antes, una por cada flotar y acoplar).
+- **Nombres:** el eje x del Spectrum y la línea de estado nombran la magnitud cuando no hay λ o no hay Stokes («Blos
+  62.83 G», no «I»); `BUNIT` y `BTYPE` solo como texto (`BUNIT = T` de BIFROST se leía True); la leyenda dice la
+  regla de Q U V como es («auto |x| 99 %»).
+- **Lecturas:** cerrar la ventana para las lecturas largas en curso (AIA, 300 ficheros, con la rendija leyéndose: 9.0
+  → 0.04-0.10 s); en un `_sp` solo, los pasos de t rápidos se juntan en una pasada (Hα real: 77.6 → 27.3 s).
+- **Máscara:** su lectura y su contorno fuera del hilo de la interfaz y por adelantado: paso de t con máscara por t
+  54-56 → 29-33 ms (sin máscara 28-34; bellatrix, ABBA, nodo 0, carga 6-17).
+- **Pruebas que fallaban a veces:** la barra estrecha (X.16: estado heredado de `apply_theme`, no carga) y X.15 (glass
+  ajustaba la ventana antes de la primera imagen si llegaba tarde: arreglado en el código). La higiene revisa todas
+  las ramas y el stash (X.17); `compare-bridges` se borró y su objeto se purgó del repositorio del Mac.
+- **La γ:** «γ = 0.79» (dos cifras) con la γ en cursiva serif sobre la imagen (STIX Two Text, también en el Mac; en
+  Noto Sans a 11 px era una «y»). Comparadas 23 candidatas sobre AIA 171.
+
+Al juntarlas, dos choques: la leyenda (cortar el título y la γ legible: se conservan los dos) y una prueba de anchos
+que no veía los textos con γ, dibujados por trozos (ahora los lee enteros). La γ más ancha cortaba la regla de Q U V en
+la leyenda abierta: allí se escribe ahora solo cuando no es 1.
+
+**La leyenda, según el usuario (2026-10-11):** sin menú en el clic derecho por ahora (`KEY_MENU`; el de las etiquetas
+de la 2×2 sigue); el doble clic vuelve a los límites automáticos y a γ = 1; la γ y su valor solo en la leyenda abierta,
+y en reposo durante un segundo tras G, ⇧G o ⌘G, en todos los aspectos. Estos tres cambios pasaron los grupos de la
+leyenda, el gamma y glass (124 y 87 pruebas), no la suite completa.
