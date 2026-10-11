@@ -35,6 +35,8 @@ from .windows import ATOMS, MOVERESIZE, MOVERESIZE_MOVE, Windows, XWin
 log = get_logger("platform.xbridge")
 Qt, E = QtCore.Qt, QtCore.QEvent
 MAX_RECTS = 8                                           # pieces of a repaint grabbed apart; more: one bounding box
+MAX_PIECES = 16                                         # widgets' repaints shown apart in one update; more: the rest
+#                                                         together, after them
 CHECK_S = 1.0                                           # every window grabbed whole this often: the tile comparison
 #                                                         sends only what Qt changed without a Paint event
 EXTENSIONS = ("XINERAMA", "SHAPE", "XFIXES", "RENDER", "Apple-WM")
@@ -241,6 +243,8 @@ class Bridge(QtCore.QObject):
                     if obj is not top:
                         reg = reg.translated(obj.mapTo(top, QtCore.QPoint(0, 0)))
                     rec.dirty += reg
+                    if len(rec.pieces) < MAX_PIECES:
+                        rec.pieces.append(reg)
                     self._schedule()
             return False
         if t not in (E.Type.Show, E.Type.Hide, E.Type.Move, E.Type.Resize, E.Type.WindowStateChange,
@@ -350,28 +354,31 @@ class Bridge(QtCore.QObject):
                 continue
             d = rec.dirty.intersected(QtGui.QRegion(w.rect()))
             rec.dirty = QtGui.QRegion()
+            painted, rec.pieces = rec.pieces, []
             check, rec.check = rec.check, False
             if d.isEmpty():
                 continue
-            rects = list(d)
-            if len(rects) > MAX_RECTS:
-                rects = [d.boundingRect()]
             W, H = w.width(), w.height()
             if self.trace is not None:
                 b = d.boundingRect()
-                self.trace.write("GRAB", rec.xid, f"{len(rects)} rects in ({b.x()}, {b.y()}, {b.width()}, "
-                                                  f"{b.height()}) of {W}x{H}{', the periodic check' if check else ''}")
-            for r in rects:
-                img = self._grab(w, r)
-                if img is None:
-                    if w.isVisible():
-                        rec.dirty += r                  # no backing store yet (just shown)
-                    if self.trace is not None:
-                        self.trace.write("GRAB", rec.xid, "nothing: no backing store yet" if w.isVisible()
-                                         else "nothing: hidden")
-                    continue
-                a = _pixels(img)
-                items.append((rec.xid, W, H, r.x(), r.y(), a, img, False, check))
+                self.trace.write("GRAB", rec.xid, f"{len(list(d))} rects in ({b.x()}, {b.y()}, {b.width()}, "
+                                                  f"{b.height()}) of {W}x{H}, {len(painted)} pieces"
+                                                  f"{', the periodic check' if check else ''}")
+            for piece in _pieces(d, painted):
+                rects = list(piece)
+                if len(rects) > MAX_RECTS:
+                    rects = [piece.boundingRect()]
+                for i, r in enumerate(rects):
+                    img = self._grab(w, r)
+                    if img is None:
+                        if w.isVisible():
+                            rec.dirty += r              # no backing store yet (just shown)
+                        if self.trace is not None:
+                            self.trace.write("GRAB", rec.xid, "nothing: no backing store yet" if w.isVisible()
+                                             else "nothing: hidden")
+                        continue
+                    a = _pixels(img)
+                    items.append((rec.xid, W, H, r.x(), r.y(), a, img, False, check, i == len(rects) - 1))
         if items:
             self.transport.submit(items)
             self.stats["flushes"] += 1
@@ -716,6 +723,21 @@ class Bridge(QtCore.QObject):
         return (f"X11 bridge: {d['updates']} updates, {d['bytes_per_update'] / 1e3:.0f} kB of pixels each "
                 f"({d['wire_per_update'] / 1e3:.0f} kB on the wire), send {d['send_ms']} ms, confirmed "
                 f"{d['ack_ms']} ms median")
+
+
+def _pieces(dirty: QtGui.QRegion, painted: list) -> list:
+    """dirty split into what each repaint added, in the order Qt painted them (each piece without what an earlier
+    one has), and the rest (dirty without a Paint event: a child moved, a resize, the periodic check) last."""
+    out, covered = [], QtGui.QRegion()
+    for reg in painted:
+        p = reg.intersected(dirty).subtracted(covered)
+        if not p.isEmpty():
+            out.append(p)
+            covered += p
+    rest = dirty.subtracted(covered)
+    if not rest.isEmpty():
+        out.append(rest)
+    return out
 
 
 def _pixels(img: QtGui.QImage):

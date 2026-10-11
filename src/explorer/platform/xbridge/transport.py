@@ -9,6 +9,11 @@ the server has, 32x32 tile by tile; only the tiles that changed go, grey ones at
 At most MAX_UNACKED updates travel unconfirmed: before sending another, the sender waits for the server's answer to
 the marker sent after the one before last. Updates are not queued behind a slow link: the interface grabs the next
 one only when the sender is ready for it (on_ready), so the latest pixels always win.
+
+An update may come in pieces (the bridge's: what each widget repainted, in the order Qt painted them): each piece is
+shown with its own CopyArea as soon as its bytes are sent, so a small change painted first (the image's crosshair,
+a new image) is on the screen before a large one painted after it in the same pass (a panel) has crossed the link.
+Between two pieces the screen shows the first new and the second old, for the time the second's bytes take.
 """
 import collections
 import queue
@@ -136,15 +141,17 @@ class Transport:
         self._unacked: collections.deque = collections.deque()
         self.stats: dict[str, Any] = dict(updates=0, bytes=0, wire=0, pieces=0, grey_px=0, colour_px=0,
                                           diff_ms=[], encode_ms=[], send_ms=[], ack_ms=[], acked=0, last_ack=0.0,
-                                          check_hits=0, copies=0)
+                                          check_hits=0, copies=0, shown=0)
         self.acked = threading.Condition()
         self._thread = threading.Thread(target=self._run, name="xbridge-sender", daemon=True)
         self._thread.start()
 
     # ---- interface thread
     def submit(self, items: list) -> None:
-        """One update: items (xid, W, H, x, y, pixels uint32 [h, w], owner of the pixels, force, check); check: a
-        whole-window grab of the periodic check (counted when it finds something the Paint events missed)."""
+        """One update: items (xid, W, H, x, y, pixels uint32 [h, w], owner of the pixels, force, check[, ends]);
+        check: a whole-window grab of the periodic check (counted when it finds something the Paint events missed);
+        ends: the item closes a piece, shown (CopyArea) right after its bytes; without it, each window's pixels are
+        shown together after the whole update's."""
         self.ready.clear()
         self._pending += 1
         self._q.put(("update", items))
@@ -280,21 +287,29 @@ class Transport:
         assert c is not None
         t0 = time.perf_counter()
         work = []
+        ends: list[bool] = []                           # per item of work: show its piece right after it
         fresh = set()
-        for xid, W, H, x, y, a, _owner, force, check in items:
+        for it in items:
+            xid, W, H, x, y, a, _owner, force, check = it[:9]
+            end = len(it) > 9 and bool(it[9])
             b, new = self._back(xid, W, H)
             if new:
                 fresh.add(xid)
             h, w = a.shape
             x1, y1 = min(W, x + w), min(H, y + h)
             if x1 <= x or y1 <= y:
+                if end and ends:
+                    ends[-1] = True                     # the piece ends with what was sent before it
                 continue
             a = a[: y1 - y, : x1 - x]
             rects = k.changed_pieces(a, b.last[y:y1, x:x1], force or new, self.grey is not None)
             if len(rects):
                 work.append((b, x, y, a, rects))
+                ends.append(end)
                 if check and not new:
                     self.stats["check_hits"] += 1
+            elif end and ends:
+                ends[-1] = True
         t1 = time.perf_counter()
         # the grey mask, once for the whole update, as large as its largest window that has grey pieces: grown for a
         # later window, the mask the earlier ones were encoded for was freed before they were sent, and their grey
@@ -304,9 +319,10 @@ class Transport:
         if self.grey is not None and grey:
             mask = self.grey.mask_for(max(s[0] for s in grey), max(s[1] for s in grey))
         bufs: list = []
-        touched: dict[int, tuple] = {}
+        touched: dict[int, tuple] = {}                 # per window, what all the update changed (the trace)
+        piece: dict[int, tuple] = {}                    # per window, what its piece being sent changed
         nbytes = npieces = 0
-        for b, x, y, a, rects in work:
+        for (b, x, y, a, rects), end in zip(work, ends, strict=True):
             ids = np.zeros(9, np.int64)
             ids[k.BACK], ids[k.BACK_GC], ids[k.DEPTH] = b.pixmap, b.gc, self.depth
             if self.grey is not None and mask is not None and (rects[:, 0] == 1).any():
@@ -326,11 +342,15 @@ class Transport:
             npieces += len(rects)
             bx0, by0 = x + int(rects[:, 1].min()), y + int(rects[:, 2].min())
             bx1, by1 = x + int((rects[:, 1] + rects[:, 3]).max()), y + int((rects[:, 2] + rects[:, 4]).max())
-            t = touched.get(b.xid)
-            touched[b.xid] = (b, min(t[1], bx0), min(t[2], by0), max(t[3], bx1), max(t[4], by1)) if t else \
-                (b, bx0, by0, bx1, by1)
+            for box in (touched, piece):
+                t = box.get(b.xid)
+                box[b.xid] = (b, min(t[1], bx0), min(t[2], by0), max(t[3], bx1), max(t[4], by1)) if t else \
+                    (b, bx0, by0, bx1, by1)
+            if end:
+                bufs.append(piece.pop(b.xid))           # its CopyArea, in the stream after its bytes
+        bufs.extend(piece.values())                     # what no piece closed: shown at the end
         t2 = time.perf_counter()
-        if not bufs:
+        if not work:
             self._stat(t0, t1, t2, t2, 0, 0, None)
             return
         while self._unacked and self._unacked[0].done:
@@ -338,10 +358,15 @@ class Transport:
         while len(self._unacked) >= MAX_UNACKED:        # backpressure: the link, not a queue, sets the pace
             self._unacked.popleft().result(60.0)
         wire0 = c.bytes_out
-        for buf, nreq in bufs:
-            c.send_raw(buf, nreq)
-        for b, x0, y0, x1, y1 in touched.values():
-            c.copy_area(b.pixmap, b.xid, b.wgc, x0, y0, x0, y0, x1 - x0, y1 - y0)
+        ncopies = 0
+        for job in bufs:
+            if len(job) == 2:
+                c.send_raw(*job)
+            else:
+                b, x0, y0, x1, y1 = job
+                c.copy_area(b.pixmap, b.xid, b.wgc, x0, y0, x0, y0, x1 - x0, y1 - y0)
+                ncopies += 1
+        self.stats["shown"] += ncopies
         marker = c.get_input_focus()                    # flushes; its answer says the server has the update
         if self.trace is not None:
             self._traced(work, touched, fresh)

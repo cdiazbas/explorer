@@ -81,6 +81,7 @@ class XWin:
     def __init__(self, w: QtWidgets.QWidget, xid: int, popup: bool, owner: "XWin | None"):
         self.w, self.xid, self.popup, self.owner = w, xid, popup, owner
         self.dirty = QtGui.QRegion(w.rect())
+        self.pieces: list[QtGui.QRegion] = []           # what each Paint event repainted, in order (bridge._flush)
         self.check = False                              # the next grab is the periodic whole-window check
         self.cfg_seq: int | None = None                 # our last ConfigureWindow
         self.want = QtCore.QRect(w.geometry())          # the whole geometry last asked for
