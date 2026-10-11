@@ -84,10 +84,36 @@ def _slit(g):                                           # the slit tool: two poi
     g.line(5.4, 12.6, 12.6, 5.4)
 
 
+# the t steps beside the number in the titles of the temporal panels (ui.titlebar.StepsButton), on a 12-unit grid:
+# at the height of the title's digits that is 1 px strokes at 1x, 2 at 2x, as the digits' own stems
+def _rows(g):                                           # the rows a lambda-t shows, one per t step read
+    for y in (2, 6, 10):
+        g.line(1.5, y, 10.5, y)
+
+
+def _comb(g):                                           # a sampling comb along t: a spine, a tooth per step
+    g.line(2, 1, 2, 11)
+    for y in (1, 4.33, 7.67, 11):
+        g.line(2, y, 10, y)
+
+
+def _dots(g):                                           # the steps as points along t
+    for y in (1.5, 4.5, 7.5, 10.5):
+        g.ring(6, y, 0.6)
+
+
+def _grid(g):                                           # a lambda-t image cut in rows
+    g.poly(((1, 1.5), (11, 1.5), (11, 10.5), (1, 10.5)))
+    g.line(1, 4.5, 11, 4.5)
+    g.line(1, 7.5, 11, 7.5)
+
+
 # name: (grid width, grid height, draw(Pen)). Play and pause drawn as the others: the font's ▶ and ⏸ were another
 # style beside them, and over X11 another font's
-GLYPHS = {"arrow": (18, 18, _arrow), "play": (18, 18, _play), "pause": (18, 18, _pause), "slit": (18, 18, _slit)}
+GLYPHS = {"arrow": (18, 18, _arrow), "play": (18, 18, _play), "pause": (18, 18, _pause), "slit": (18, 18, _slit),
+          "rows": (12, 12, _rows), "comb": (12, 12, _comb), "dots": (12, 12, _dots), "grid": (12, 12, _grid)}
 RESET = "arrow"                                         # the usual sign for "back to how it was"
+STEPS = "grid"                                          # t steps shown at most: a lambda-t cut in rows
 
 
 class GlyphEngine(QtGui.QIconEngine):
@@ -127,31 +153,7 @@ class GlyphEngine(QtGui.QIconEngine):
         return c
 
     def scaledPixmap(self, size, mode, state, scale):
-        gw, gh, draw = GLYPHS[self.glyph]
-        W, H = max(1, math.ceil(size.width() * scale - 1e-6)), max(1, math.ceil(size.height() * scale - 1e-6))
-        pm = QtGui.QPixmap(W, H)
-        pm.fill(QtCore.Qt.GlobalColor.transparent)
-        u = min(W / gw, H / gh)
-        w = max(1, int(1.35 * u + 0.5))                 # 1 px at 1x, 2 at 1.5x, 3 at 2x, 4 at 3x (18-unit glyph)
-        p = QtGui.QPainter(pm)
-        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        p.translate(round((W - gw * u) / 2), round((H - gh * u) / 2))       # whole pixels: the snap holds
-        col = self._color(mode)
-        alpha = col.alphaF()
-        col.setAlphaF(1.0)
-        pen = QtGui.QPen(col, w)
-        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        draw(Pen(p, u, w))
-        # opaque strokes, then one alpha for all: translucent strokes showed brighter dots where two met
-        p.resetTransform()
-        p.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_DestinationIn)
-        p.fillRect(pm.rect(), QtGui.QColor(0, 0, 0, round(alpha * 255)))
-        p.end()
-        pm.setDevicePixelRatio(scale)
-        return pm
+        return glyph_pixmap(self.glyph, size, self._color(mode), scale)
 
     def pixmap(self, size, mode, state):
         return self.scaledPixmap(size, mode, state, 1.0)
@@ -159,6 +161,35 @@ class GlyphEngine(QtGui.QIconEngine):
     def paint(self, p, rect, mode, state):
         dpr = p.device().devicePixelRatioF() if p.device() is not None else 1.0
         p.drawPixmap(rect.topLeft(), self.scaledPixmap(rect.size(), mode, state, dpr))
+
+
+def glyph_pixmap(glyph, size, colour, scale) -> QtGui.QPixmap:
+    """The glyph in colour at size (logical px) and device pixel ratio scale, centred on whole device pixels."""
+    gw, gh, draw = GLYPHS[glyph]
+    W, H = max(1, math.ceil(size.width() * scale - 1e-6)), max(1, math.ceil(size.height() * scale - 1e-6))
+    pm = QtGui.QPixmap(W, H)
+    pm.fill(QtCore.Qt.GlobalColor.transparent)
+    u = min(W / gw, H / gh)
+    w = max(1, int(1.35 * u + 0.5))                     # 1 px at 1x, 2 at 1.5x, 3 at 2x, 4 at 3x (18-unit glyph)
+    p = QtGui.QPainter(pm)
+    p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+    p.translate(round((W - gw * u) / 2), round((H - gh * u) / 2))           # whole pixels: the snap holds
+    col = QtGui.QColor(colour)
+    alpha = col.alphaF()
+    col.setAlphaF(1.0)
+    pen = QtGui.QPen(col, w)
+    pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+    draw(Pen(p, u, w))
+    # opaque strokes, then one alpha for all: translucent strokes showed brighter dots where two met
+    p.resetTransform()
+    p.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_DestinationIn)
+    p.fillRect(pm.rect(), QtGui.QColor(0, 0, 0, round(alpha * 255)))
+    p.end()
+    pm.setDevicePixelRatio(scale)
+    return pm
 
 
 def glyph_icon(glyph, widget=None) -> QtGui.QIcon:

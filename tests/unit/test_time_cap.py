@@ -294,6 +294,51 @@ def test_the_number_in_the_titles_changes_the_steps(qapp, cube):
         ds.close()
 
 
+def test_the_number_in_the_titles_has_a_glyph_that_says_t_steps(qapp, cube):
+    """Before the number, the glyph icons.STEPS (a lambda-t cut in rows) in the number's ink, as high as its digits;
+    the tooltip says what the number is: t steps shown at most."""
+    from PySide6 import QtGui
+
+    from explorer.ui import icons
+    from explorer.ui.shell import Shell
+    from explorer.ui.titlebar import StepsButton
+
+    ds = Dataset.open(cube[0], no_sp=True)
+    w = Shell(ds)
+    try:
+        w.resize(1200, 640)
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        b = w.lt_dock.titleBarWidget().findChild(StepsButton, "time_steps")
+        assert b is not None
+        print("tooltip:", repr(b.toolTip()))
+        assert b.toolTip().startswith("t steps shown at most")
+        assert icons.STEPS in icons.GLYPHS
+        img = b.grab().toImage()
+        dpr = img.devicePixelRatio()
+        fm = QtGui.QFontMetrics(b.font())
+        tw = fm.horizontalAdvance("100")
+        x0 = round((b.width() - (b.glyph + b.GAP + tw)) / 2)
+        bg = QtGui.QColor(img.pixel(0, 0)).lightness()
+
+        def ink(x_from, x_to):
+            return [(x, y) for x in range(int(x_from * dpr), int(x_to * dpr)) for y in range(img.height())
+                    if abs(QtGui.QColor(img.pixel(x, y)).lightness() - bg) > 60]
+
+        glyph, text = ink(x0, x0 + b.glyph), ink(x0 + b.glyph + b.GAP, b.width())
+        per_row: dict[int, int] = {}
+        for _, y in glyph:
+            per_row[y] = per_row.get(y, 0) + 1
+        full = sorted(y for y, n in per_row.items() if n >= 0.7 * b.glyph * dpr)      # strokes across the glyph
+        runs = sum(1 for k, y in enumerate(full) if k == 0 or y != full[k - 1] + 1)
+        print(f"glyph {icons.STEPS!r} {b.glyph} px: {len(glyph)} ink px, rows across it {full} ({runs} apart); "
+              f"number {len(text)} ink px")
+        assert glyph and text and runs >= 3                                 # rows, apart
+    finally:
+        w.close()
+        ds.close()
+
+
 def test_the_sheet_says_what_the_number_in_the_titles_does(qapp, small):
     """The ? sheet has a row for the number in the titles of lambda-t and the slit: what it is and how it changes."""
     w, close = window(qapp, small[0], no_sp=True)

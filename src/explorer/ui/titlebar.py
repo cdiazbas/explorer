@@ -17,6 +17,7 @@ import sys
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..data import tsample
+from . import icons
 
 Qt = QtCore.Qt
 E = QtCore.QEvent.Type
@@ -548,8 +549,10 @@ class TimeSteps(QtCore.QObject):
 
 
 class StepsButton(QtWidgets.QAbstractButton):
-    """The t steps shown, a small number beside the close and float marks: a click opens the choices, the wheel
-    steps through them. ink: the colour of its number (None: the palette's text); the glass title sets its own."""
+    """The t steps shown, a small number beside the close and float marks after a glyph that says what it counts
+    (icons.STEPS, the digits' height): a click opens the choices, the wheel steps through them. ink: the colour of the
+    glyph and the number (None: the palette's text); the glass title sets its own."""
+    GAP = 3                                             # px between the glyph and the number
 
     def __init__(self, steps: TimeSteps, parent, size: QtCore.QSize):
         super().__init__(parent)
@@ -558,12 +561,14 @@ class StepsButton(QtWidgets.QAbstractButton):
         self.setObjectName("time_steps")
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip("Time steps shown along t, read evenly spread (click: choose; wheel: change).\n"
+        self.setToolTip("t steps shown at most, read evenly spread over t (click: choose; wheel: change).\n"
                         "Fewer read faster; \"all\" reads every t.")
         f = QtGui.QFont(self.font())
         f.setPointSizeF(max(6.0, f.pointSizeF() * 0.85))
         self.setFont(f)
-        w = QtGui.QFontMetrics(f).horizontalAdvance("100") + 8
+        fm = QtGui.QFontMetrics(f)
+        self.glyph = round(fm.capHeight()) + 1          # px: the glyph's square, as high as the digits and a pixel
+        w = self.glyph + self.GAP + max(fm.horizontalAdvance(t) for t in ("100", "all")) + 8
         self.setFixedSize(max(size.width(), w), size.height())
         self.clicked.connect(self.choose)
         steps.changed.connect(lambda _v: self.update())
@@ -594,9 +599,16 @@ class StepsButton(QtWidgets.QAbstractButton):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(c)
             p.drawRoundedRect(QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 3, 3)
+        text = tsample.label(self.steps.value)
+        fm = QtGui.QFontMetrics(self.font())
+        g = self.glyph
+        x = round((self.width() - (g + self.GAP + fm.horizontalAdvance(text))) / 2)
+        base = (self.height() - fm.height()) / 2 + fm.ascent()     # where AlignCenter puts the baseline
+        y = round(base - fm.capHeight() / 2 - g / 2)                # the glyph centred on the digits
+        p.drawPixmap(x, y, icons.glyph_pixmap(icons.STEPS, QtCore.QSize(g, g), ink, self.devicePixelRatioF()))
         p.setPen(ink)
         p.setFont(self.font())
-        p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, tsample.label(self.steps.value))
+        p.drawText(QtCore.QPointF(x + g + self.GAP, base), text)
 
     def enterEvent(self, e):
         self.update()
