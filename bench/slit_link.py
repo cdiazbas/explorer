@@ -37,6 +37,7 @@ MOVE_S = 0.016
 QUIET_S = 0.150
 STEP_TIMEOUT_S = 1.5
 BOX = 4                                                 # half side of the box read around the pointer's new place
+CROSS_IN = 14                                           # px inside the viewport's edge: the cross's lines start ~9 in
 
 
 def args():
@@ -146,12 +147,15 @@ def run_app(a):
 
     class Paints(QtCore.QObject):
         def eventFilter(self, obj, e):
+            if every and e.type() != QtCore.QEvent.Type.Paint:
+                events.append((time.time(), f"event {int(e.type())} {type(obj).__name__}"))
             if e.type() == QtCore.QEvent.Type.Paint and isinstance(obj, QtWidgets.QWidget):
                 r = e.region().boundingRect()
                 if r.width() * r.height() > 0:
                     events.append((time.time(), f"paint {type(obj).__name__} {r.width()}x{r.height()}"))
             return False
     paints = Paints()
+    every = bool(os.environ.get("SLITLINK_EVENTS"))     # every event's type and receiver, to trace a wait
 
     st = start_app(a.cube, x11="bridge", look=a.look, saved_layout=False, linked=[a.link] if a.link else ())
     app, w = st.app, st.shell
@@ -324,6 +328,26 @@ class Driver:
         with open(path, "wb") as f:
             f.write(b"P6 %d %d 255\n" % (w, h) + np.ascontiguousarray(a).tobytes())
 
+    def cross(self):
+        """Where the cursor's cross is on the screen: the column of its vertical line along the viewport's top, the
+        row of its horizontal one along its left edge (None where not one line of the slit's colour)."""
+        import numpy as np
+
+        x, y, w, h = self.viewport
+        R, G, B = self.colour
+
+        def red(raw, rows, cols):
+            a = np.frombuffer(raw, np.uint8).reshape(rows, -1, 4)[:, :cols, :3].astype(int)
+            return (abs(a[..., 2] - R) + abs(a[..., 1] - G) + abs(a[..., 0] - B)) < 120
+
+        top = red(self.grab(x, y + CROSS_IN, w, 4), 4, w).any(axis=0)
+        left = red(self.grab(x + CROSS_IN, y, 4, h), h, 4).any(axis=1)
+        out = []
+        for m, o in ((top, x), (left, y)):
+            idx = np.flatnonzero(m)
+            out.append(o + float(idx.mean()) if len(idx) and idx.max() - idx.min() <= 3 else None)
+        return out
+
     def panel(self):
         x, y, w, h = self.panel_rect
         return b"".join(self.grab(x + 2, y + int(h * f), w - 4, 2) for f in (0.25, 0.5, 0.75))
@@ -365,6 +389,7 @@ def run_one(a):
         p = drv.cmd("plan", timeout=120)
         time.sleep(3.0)                                 # the first image and the side panels through the link
         drv.colour = p["colour"]
+        drv.viewport = p["viewport_global"]
         slits = []
         for i, pts in enumerate(p["points"]):
             res = dict(slit=i)
@@ -436,14 +461,18 @@ def settled(drv, pts):
 
 
 def paced(drv, pts):
+    """The moves 16 ms apart. Per step: when the box at its place first shows more of the slit's colour than before
+    the moves (line_ms: early when the cursor's cross of an earlier step crosses that box), and when the cursor's cross
+    is shown at its place (cross_ms: the cross's vertical line read in a strip along the viewport's top, its
+    horizontal one in a strip along its left edge; drawn in the same repaint of the viewport as the draft line). A
+    step whose cross is never shown was skipped on the screen (the bridge sends only the latest pixels)."""
     n = len(pts) - 1
-    t0 = time.time()
-    due = [t0 + (k - 1) * MOVE_S for k in range(1, n + 1)]
     base = [drv.reds(*pts[k]) for k in range(1, n + 1)]
     t0 = time.time()
     due = [t0 + (k - 1) * MOVE_S for k in range(1, n + 1)]
-    moved = [None] * n
-    line = [None] * n
+    moved: list = [None] * n
+    line: list = [None] * n
+    cross: list = [None] * n
     pan = drv.panel()
     pchanges = []
     nxt = 0
@@ -457,12 +486,20 @@ def paced(drv, pts):
         for k in range(nxt):
             if line[k] is None and drv.reds(*pts[k + 1]) > base[k]:
                 line[k] = time.time()
+        xc, yc = drv.cross()
+        if xc is not None and yc is not None:
+            t = time.time()
+            for k in range(nxt - 1, -1, -1):
+                if abs(pts[k + 1][0] - xc) <= 2 and abs(pts[k + 1][1] - yc) <= 2:
+                    if cross[k] is None:
+                        cross[k] = t
+                    break
         q = drv.panel()
         if q != pan:
             pan = q
             pchanges.append(time.time())
-    return dict(moved=moved, line=line, line_ms=[ms(line[k], moved[k]) for k in range(n)], panel_changes=pchanges,
-                t_last_move=moved[-1])
+    return dict(moved=moved, line=line, line_ms=[ms(line[k], moved[k]) for k in range(n)],
+                cross_ms=[ms(cross[k], moved[k]) for k in range(n)], panel_changes=pchanges, t_last_move=moved[-1])
 
 
 def ms(t, t0):
@@ -483,6 +520,8 @@ def summarize(out):
     line, pfirst, plast, missed = [], [], [], 0
     by_step = []
     pline = []
+    pcross: list = []
+    pshown: list = []
     p_painted = []
     ev = out["events"]
     for s in out["slits"]:
@@ -510,6 +549,8 @@ def summarize(out):
                                 carrier_panel_kB=carrier["split"]["panel"] / 1e3 if carrier else None))
         pace = s["paced"]
         pline += pace["line_ms"]
+        pcross += pace.get("cross_ms", [])
+        pshown.append(sum(v is not None for v in pace.get("cross_ms", [])))
         p_painted.append(len([t for t in pace["panel_changes"] if t <= pace["t_last_move"] + 0.05]))
     out["steps"] = by_step
 
@@ -522,6 +563,7 @@ def summarize(out):
                 band_ms=tot("band_ms"), slice_paint_ms=tot("slice_paint_ms"), grab_ms=tot("grab_ms"),
                 carrier_sent_ms=tot("carrier_sent_ms"), carrier_kB=tot("carrier_kB"),
                 carrier_panel_kB=tot("carrier_panel_kB"), paced_line_ms=med(pline), paced_line_p90=pct(pline, 90),
+                paced_cross_ms=med(pcross), paced_cross_p90=pct(pcross, 90), paced_cross_shown=med(pshown),
                 paced_panel_changes=med(p_painted), load=out["load"])
 
 
