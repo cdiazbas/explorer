@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Repository hygiene: what must never be committed, checked on the tree, the history, or the staged changes.
 
-    python3 scripts/hygiene.py              # tracked files and the whole history
+    python3 scripts/hygiene.py              # tracked files and the whole history: every local branch and the stash
     python3 scripts/hygiene.py --staged     # only what is staged (the pre-commit hook)
     python3 scripts/hygiene.py --message F  # a commit message (the commit-msg hook): the words, and the subject's form
 
@@ -118,25 +118,37 @@ def check_files(names):
     return out
 
 
+def revs() -> list[str]:
+    """What the history scans walk: HEAD, every local branch and every stash entry. A leak on a branch that is not
+    checked out is in the repository all the same, and a push of that branch publishes it."""
+    return ["HEAD", "--branches", *git("stash", "list", "--format=%H").split()]
+
+
+# a merge's own diff against its first parent: what a merge resolution brought in, and a stash entry's working tree
+# (git stores it as a merge of HEAD and the index), which a plain log -p never shows
+_MERGES = "--diff-merges=first-parent"
+
+
 def check_history():
     out = []
-    for n, line in enumerate(git("log", "--format=%h %B").splitlines(), 1):
+    r = revs()
+    for n, line in enumerate(git("log", "--format=%h %B", *r).splitlines(), 1):
         if _ASSISTANT.search(line) or _COAUTHOR.search(line):
             out.append((f"commit messages, line {n}", "assistant or co-author mention", line.strip()[:60]))
         for kind, rx in _OBSERVATIONS:
             if rx.search(line):
                 out.append((f"commit messages, line {n}", kind, line.strip()[:60]))
-    if _ASSISTANT.search(git("log", "-p", "--format=")):
-        for c in git("log", "--format=%h").split():
-            if _ASSISTANT.search(git("show", "--format=", c)):
+    if _ASSISTANT.search(git("log", "-p", _MERGES, "--format=", *r)):
+        for c in git("log", "--format=%h", *r).split():
+            if _ASSISTANT.search(git("show", _MERGES, "--format=", c)):
                 out.append((f"commit {c}", "assistant mention in its diff", ""))
     return out
 
 
 def history_binaries():
-    """(path, blob id, bytes) for every binary version in the history, each blob once."""
+    """(path, blob id, bytes) for every binary version in the history (revs), each blob once."""
     paths: dict[str, str] = {}
-    for line in git("rev-list", "--objects", "HEAD").splitlines():
+    for line in git("rev-list", "--objects", *revs()).splitlines():
         sha, _, path = line.partition(" ")
         if path:
             paths.setdefault(sha, path)
@@ -223,7 +235,7 @@ def main() -> int:
     else:
         tracked = [n for n in git("ls-files", "-z").split("\0") if n]
         findings = check_files(tracked) + check_history() + check_history_binaries()
-        what = f"{len(tracked)} tracked files and {len(git('log', '--format=%h').split())} commits"
+        what = f"{len(tracked)} tracked files and {git('rev-list', '--count', *revs()).strip()} commits"
     for where, kind, excerpt in findings:
         print(f"  FAIL  {kind:32s} {where}  {excerpt}")
     print(f"hygiene: {'FAILED' if findings else 'ok'} ({what}, {len(findings)} findings)")
