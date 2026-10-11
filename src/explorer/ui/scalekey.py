@@ -3,7 +3,7 @@ image made interactive, and a card with the numbers.
 
 - ScaleKey: the colour key (ui.overlays.ColourKey) of one cube's image, the same at rest. Under the pointer it grows
   into the histogram of the frame (its [::8, ::8] subsample, the one the automatic levels read: data.stats.limits)
-  with the transfer curve over it, so gamma shows, and a handle at each limit.
+  with the transfer curve over it, so gamma shows, and a handle at each limit, both in the look's accent (accent).
   An overlay of its image (ui.overlays.OverImage): the pointer over it is off the image. Dragging a handle fixes that
   limit (Session.set_scale "fixed"; Q U V move both ends, symmetric about 0); the wheel steps gamma as G and Shift+G
   do; a double click gives the image its automatic levels and gamma 1 again. It takes the image's width when narrower
@@ -22,7 +22,8 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.levels import RULE_DEFAULT, gamma_step
-from . import style
+from . import glass, style
+from .imageview import CURSOR_PEN
 from .overlays import GAMMA, ColourKey, _num, _sci, draw_text, gamma_font, gamma_number, gamma_text
 
 STOKES = "IQUV"
@@ -48,6 +49,16 @@ def gamma_of_slider(v: int) -> float:
 
 def slider_of_gamma(g: float) -> int:
     return int(round(500.0 * (np.log10(g) + 1.0)))
+
+
+def accent(look, light: bool) -> QtGui.QColor:
+    """The hot key's handles and transfer curve in the look's accent, the markers' (Shell.set_look): classic's the
+    cursor's red, glass's its orange, the modern look's blue (darker on the light key)."""
+    if look.has("glass"):
+        return glass.accent()
+    if look.has("marks"):
+        return QtGui.QColor("#0063d1") if light else QtGui.QColor("#0a84ff")
+    return CURSOR_PEN.color()
 
 
 def rule_texts(sym: bool) -> dict[str, str]:
@@ -295,7 +306,7 @@ class ScaleKey(ColourKey):
         ink = QtGui.QColor(0, 0, 0, 217) if lt else QtGui.QColor(255, 255, 255, 215)
         faint = QtGui.QColor(ink)
         faint.setAlpha(130)
-        acc = QtGui.QColor("#0063d1") if lt else QtGui.QColor("#0a84ff")
+        acc = accent(self.shell.look, lt)
         f = QtGui.QFont(p.font())
         f.setPixelSize(self.TEXT_PX)
         p.setFont(f)

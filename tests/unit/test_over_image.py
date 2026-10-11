@@ -1,6 +1,7 @@
 """What is drawn over an image (ui.overlays.OverImage), offscreen: every overlay registered with its image; the pointer
 over one is off the image, so the crosshair stays where the pointer left the image; the hot colour key shrinking as
-the pointer leaves it onto the image leaves no pixel of the old crosshair on screen."""
+the pointer leaves it onto the image leaves no pixel of the old crosshair on screen; the hot key in the look's
+accent, through a look or theme switch."""
 import time
 
 import numpy as np
@@ -141,3 +142,38 @@ def test_leaving_the_hot_key_onto_the_image_leaves_no_old_crosshair(window, them
     ys, xs = np.nonzero(on_screen != drawn)
     assert old == 0 and ys.size == 0, dict(old_line_px=old, differ=int(ys.size),
                                            box=(xs.min(), ys.min(), xs.max(), ys.max()) if ys.size else None)
+
+
+def accent_px(key, colour: QtGui.QColor) -> int:
+    """Pixels of the hot key (its handle under the pointer filled) within 30 of colour in each channel. Hot again: a
+    look switch may hide and show it, which offscreen sends it a leave."""
+    key.set_hot(True)
+    key.near = "lo"
+    a = pixels(key.grab().toImage())
+    key.near = None
+    c = np.array([colour.red(), colour.green(), colour.blue()])
+    rgb = np.stack([(a >> 16) & 255, (a >> 8) & 255, a & 255], -1).astype(int)
+    return int((np.abs(rgb - c).max(-1) <= 30).sum())
+
+
+def test_the_hot_key_takes_the_look_s_accent_through_a_look_and_a_theme_switch(window):
+    from explorer.look import get_look
+    from explorer.ui import glass
+    from explorer.ui.imageview import CURSOR_PEN
+
+    w, qapp = window
+    key = w.main.key
+    red, blue = CURSOR_PEN.color(), QtGui.QColor("#0a84ff")
+    assert accent_px(key, red) > 20 and accent_px(key, blue) == 0               # classic: the cursor's red
+    w.set_look(get_look("modern", {}))
+    spin(qapp, passes=20)
+    assert accent_px(key, blue) > 20 and accent_px(key, red) == 0               # modern: its blue, as before
+    w.set_theme("light")
+    spin(qapp, passes=20)
+    assert accent_px(key, QtGui.QColor("#0063d1")) > 20
+    w.set_look(get_look("classic", {}))
+    spin(qapp, passes=20)
+    assert accent_px(key, red) > 20                                             # classic light: the same red
+    w.set_look(get_look("glass", {}))
+    spin(qapp, passes=40)
+    assert accent_px(key, glass.accent()) > 20 and accent_px(key, red) == 0     # glass: its orange

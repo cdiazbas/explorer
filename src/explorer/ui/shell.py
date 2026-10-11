@@ -427,6 +427,8 @@ class Shell(QtWidgets.QMainWindow):
             self.glass.apply()
         # the slit in the markers' colour: the cursor's in the classic look (the prototype's _slit_style, 1733)
         self.slit_tool.set_colour(acc if L.has("marks") or L.has("glass") else CURSOR_PEN.color())
+        for c in self.cubes:                            # a hot key in the look's accent (ui.scalekey.accent)
+            c.key.update()
         self._place_slit_hint()
         if self.mask_outlines is not None:
             self.mask_outlines.set_colour(mask_colour(L))
