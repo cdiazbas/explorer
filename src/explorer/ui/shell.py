@@ -1026,9 +1026,10 @@ class Shell(QtWidgets.QMainWindow):
     def reset_panels(self) -> None:
         """Every panel docked where it started and shown, and the whole image in view again (the prototype's
         reset_panels: one button brings everything back). In the glass look its panels float, placed again. A panel
-        shown only on request (docks.GatedDock.on_request) is hidden again."""
-        if isinstance(self.spec_dock, docks.GatedDock):
-            self.spec_dock.forget()
+        shown only on request (docks.GatedDock.on_request) is hidden again, here and in the cubes' windows."""
+        for d in (self.spec_dock, *(p for c in self.linked for p in c.panes.values())):
+            if isinstance(d, docks.GatedDock):
+                d.forget()
         if self.glass is not None:
             self.glass.reset()
             self.statusBar().showMessage("panels and zoom back to the start", 4000)

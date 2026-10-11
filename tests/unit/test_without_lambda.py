@@ -267,3 +267,28 @@ def test_a_2d_map_s_slit_is_a_curve_along_it(qapp, cubes, tmp_path):
         assert np.allclose(got, want)
     finally:
         close()
+
+
+def test_a_single_tuning_linked_cube_in_its_own_window_opens_its_spectrum_only_from_panels(qapp, cubes):
+    """A linked cube with one lambda point, in a window of its own: its Spectrum is not shown there (as the main
+    window's, E8.7), it is offered in Panels and opens from there; a cube with several points keeps its own."""
+    w, close = open_window(qapp, cubes["spec"], linked=[cubes["one"]])
+    try:
+        w.detach_action.setChecked(True)
+        spin(qapp, lambda: False, timeout=0.6)
+        c = w.linked[0]
+        pane = c.panes["spectra:1"]
+        at_start = pane.isHidden()
+        menu = w.nav.panels.menu()
+        menu.aboutToShow.emit()
+        entry = [a for a in menu.actions() if a.text() == f"{c.name} · Spectrum"]
+        entry[0].trigger()                              # Panels → its Spectrum
+        spin(qapp, lambda: False, timeout=0.3)
+        asked = not pane.isHidden()
+        print("its own window: Spectrum hidden at start", at_start, "in the menu", len(entry), "shown from it", asked,
+              "main Spectrum shown", not w.spec_dock.isHidden())
+        assert at_start and len(entry) == 1 and asked and not w.spec_dock.isHidden()
+        w.detach_action.setChecked(False)
+        spin(qapp, lambda: False, timeout=0.3)
+    finally:
+        close()

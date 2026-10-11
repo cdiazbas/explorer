@@ -395,12 +395,15 @@ class LinkedCube(CubeView):
     def _pane(self, key: str, title: str) -> QtWidgets.QDockWidget:
         """The dock of one of its panels in its frame, made the first time: below the one before it (lambda-t below
         the spectra), right of the image; dressed as the main window's panels (Shell.dress). Gated (docks.GatedDock) as
-        the main window's: its slit panel shown only while offered (show_slit), not by a saved layout's restore."""
+        the main window's: its slit panel shown only while offered (show_slit), not by a saved layout's restore; the
+        spectra of a single lambda point only on request from Panels."""
         d = docks.dock(self.frame, title, None, key, cls=docks.GatedDock)
         assert isinstance(d, docks.GatedDock)
         if key.startswith("slit"):
             d.toggleViewAction().setEnabled(False)
             d.allowed = d.toggleViewAction().isEnabled
+        elif key.startswith("spectra") and self.dataset.roles.nl <= 1:
+            d.on_request()
         before = list(self.panes.values())
         if before:
             self.frame.splitDockWidget(before[-1], d, QtCore.Qt.Orientation.Vertical)
