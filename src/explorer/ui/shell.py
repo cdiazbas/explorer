@@ -12,8 +12,9 @@ image again. The keys, from the prototype's _key_table, in one table (ui.actions
 - L: lock or release the cursor; Esc: release it (while a slit is drawn: drop it);
 - S: the slit mode on and off, ⌫ or Delete: the slit removed (ui.slit; a click in the mode adds a point to the slit
   instead of locking the cursor). The slit panel (ui.slitpanel) is a tab beside lambda-t from the first S on, in front
-  while a slit is drawn and when one is finished, gone with the slit; A / D: the cursor to the previous / next point
-  along the slit, locked;
+  while a slit is drawn and when one is finished, gone with the slit; with linked cubes, a tab per cube in it, each
+  its own cube's slices along the slit, the drawn-on cube's in front (Shift+S or Panels: one tab, the drawn-on
+  cube's); A / D: the cursor to the previous / next point along the slit, locked;
 - Ctrl+W close, Ctrl+M minimise, Ctrl+Q quit (Qt reads Ctrl as Cmd on a Mac, where Cmd+Q is the application menu's).
 """
 import math
@@ -205,12 +206,37 @@ class Shell(QtWidgets.QMainWindow):
         if self.main.slices is not None:                # one plane along lambda, or none: the time slice alone
             n = self.main.slices
             self.slit_panel.set_cube(r.nt, r.nl, dataset.axes, None, n.label, n.mapped, n.value)
-        slit_dock = docks.dock(self, "Slit", self.slit_panel.widget, "slit", cls=docks.GatedDock)
+        self.main.slit_panel = self.slit_panel
+        # with linked cubes, a slit tab per cube (ViewState.slit_tabs, on at start; the Panels menu and Shift+S switch
+        # it): each its own cube's slices along the slit, a tab each as the spectra's and lambda-t's; off, the main
+        # cube's tab alone, showing the cube the slit was drawn on (slit_cube)
+        for c in self.linked:
+            m = self.session.members[c.k].dataset
+            c.slit_panel = SlitPanel(m.roles.nt, m.roles.nl, getattr(m, "axes", None))
+            self._slit_axes(c.slit_panel, c.k)
+        self.slit_tabs = PanelTabs(self.session, [(c.name, c.slit_panel.widget, f"slit:{c.k}" if c.k else "slit")
+                                                  for c in self.cubes if c.slit_panel is not None],
+                                   closing=lambda: self._closing) if self.linked else None
+        if self.slit_tabs is not None:
+            self.slit_tabs.set_shown(False)             # behind lambda-t until a slit is drawn
+            for i, c in enumerate(self.cubes):
+                self.slit_tabs.setTabToolTip(i, os.path.basename(str(getattr(c.dataset, "path", ""))))
+            self.slit_tabs.currentChanged.connect(lambda _i: self._slit_title())
+        slit_dock = docks.dock(self, "Slit", self.slit_tabs or self.slit_panel.widget, "slit", cls=docks.GatedDock)
         assert isinstance(slit_dock, docks.GatedDock)
         self.slit_dock = slit_dock
         self._slit_on = 0                               # the cube whose slices the slit panel shows (slit_cube)
+        self.slit_tabs_action: QtGui.QAction | None = None
         if linked:
             self.slit_dock.setWindowTitle(f"Slit: {names[0]}")
+            act = QtGui.QAction("A slit tab per cube", self)
+            act.setCheckable(True)
+            act.setToolTip("Each cube's slices along the same slit, a tab each (Shift+S). Unticked, one tab: the "
+                           "cube the slit is drawn on")
+            act.setChecked(True)
+            act.toggled.connect(self.set_slit_tabs)
+            self.slit_tabs_action = act
+            self.session.set_slit_tabs(True)
         # lambda-t's tab from the start, as the prototype makes it (1047): its first show as a third panel resized
         # the spectra and back, and their ResizeFreezer's grab cost the first slit ~40 ms
         self.tabifyDockWidget(self.lt_dock, self.slit_dock)
@@ -320,7 +346,8 @@ class Shell(QtWidgets.QMainWindow):
         if self.lambda_t is None and self.lt_tabs is None:
             self.lt_dock.hide()
         self._slit_markers()
-        self.slit_panel.set_cursor(*st.cursor)
+        for p in self.slit_panels:
+            p.set_cursor(*st.cursor)
         self._mem = QtCore.QTimer(self)
         self._mem.setInterval(int(MEMORY_S * 1000))
         self._mem.timeout.connect(self._memory)
@@ -329,7 +356,8 @@ class Shell(QtWidgets.QMainWindow):
         self._sized = False
         self._ratio_followed = False
         self._separators()
-        panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel, self.slit_panel.w) if p is not None]
+        panels = [self.view.widget] + [p for p in (self.spec_panel, self.lt_panel, *(q.w for q in self.slit_panels))
+                                       if p is not None]
         self._rounders = [Rounder(w) for w in panels]   # 6-px corners on the panels, in both looks
         self.set_look(self.look)
 
@@ -355,7 +383,8 @@ class Shell(QtWidgets.QMainWindow):
             self.grid.set_reticle(L.has("reticle"))
         self.nav.set_stokes_drop(L.has("stokes"))
         self._reticle_colours()
-        self.slit_panel.set_marks(acc) if L.has("marks") else self.slit_panel.clear_marks()
+        for p in self.slit_panels:
+            p.set_marks(acc) if L.has("marks") else p.clear_marks()
         if L.has("colour") and self.colours is None:
             self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light)
             self.colour_key = ColourKey(self.view.widget, unit_text(getattr(self.dataset.axes, "bunit", None) or ""))
@@ -373,13 +402,17 @@ class Shell(QtWidgets.QMainWindow):
             self.lambda_t.set_lut(cols.lut(lt[2]) if cols is not None and lt is not None else None)
         cols = self.colours if L.has("colour") else None
         self.slit_panel.set_lut(cols.lut(self.last.get("slit", self.session.state.s)) if cols is not None else None)
+        for c in self.linked:
+            if c.slit_panel is not None:
+                c.slit_panel.set_lut(cols.lut(c.slit_s) if cols is not None else None)
         if st.name() == "macos" and self._seams is None:   # the native style's light lines under the panel titles
             self._seams = MacSeams()                    # and on the separators: in the window's colour, in both looks
             for w in self._seamed():
                 w.setStyle(self._seams)
         card = (CARD_LIGHT if light else CARD) if L.has("cards") else pg.getConfigOption("background")
         if self.glass is None:                          # worn, glass keeps it clear over its slab
-            self.slit_panel.w.setBackground(card)
+            for p in self.slit_panels:
+                p.w.setBackground(card)
         if L.has("glass") and self.glass is None:       # its own parts last, over the modern look's (ui.glass); the
             self.glass = glass.GlassChrome(self)        # slit's panel, if shown, among the panels it floats
             self.glass.apply()
@@ -409,7 +442,8 @@ class Shell(QtWidgets.QMainWindow):
         self.slit_tool.set_light(light)
         if self.grid is not None:
             self.grid.set_light(light)
-        self.slit_panel.set_light(light)
+        for p in self.slit_panels:
+            p.set_light(light)
         if self.colours is not None:
             self.colours.set_light(light)
         self.nav.restyle()
@@ -609,6 +643,9 @@ class Shell(QtWidgets.QMainWindow):
         slit_s = self.last.get("slit")
         if slit_s is not None:
             self.slit_panel.show(None, None, gamma=self.session.gamma(self._slit_on, slit_s))
+        for c in self.linked:
+            if c.slit_panel is not None:
+                c.slit_panel.show(None, None, gamma=self.session.gamma(c.k, c.slit_s))
         self._paint_colour()
 
     def cycle_colours(self, step: int) -> None:
@@ -632,7 +669,7 @@ class Shell(QtWidgets.QMainWindow):
     def _panel_shown(self, panel: str, on: bool) -> None:
         """A dock shown, closed or hidden: the core reads nothing for a hidden panel, and fills a shown one; with
         linked cubes, only for the tab in front (PanelTabs)."""
-        tabs = {"spectra": self.spec_tabs, "lambda_t": self.lt_tabs}.get(panel)
+        tabs = {"spectra": self.spec_tabs, "lambda_t": self.lt_tabs, "slit": self.slit_tabs}.get(panel)
         if tabs is not None:
             tabs.set_shown(on)
         elif not self._closing:
@@ -956,35 +993,44 @@ class Shell(QtWidgets.QMainWindow):
         """The slit panel's picks (each cube's image and panels have their own: ui.cube); a right click on it releases
         the cursor. No context menus: QMainWindow's (toolbar and docks on/off) over the toolbar, the dock titles and
         the sliders; an open one also left the next keys unanswered (the prototype's app/viewer.py:1018-1028)."""
-        vp = self.slit_panel.w.viewport()               # picks two things, as lambda-t (the prototype's 1975)
-        vp.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)
-        self.slit_panel.w.scene().sigMouseClicked.connect(self.main.panel_click)
+        picks = {}
+        for c in self.cubes:                            # each slit tab's panel, of its cube (slit_tabs)
+            if c.slit_panel is None:
+                continue
+            vp = c.slit_panel.w.viewport()              # picks two things, as lambda-t (the prototype's 1975)
+            vp.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)
+            c.slit_panel.w.scene().sigMouseClicked.connect(self.main.panel_click)
+            picks[vp] = (lambda pos, now=True, k=c.k: self._slit_pick(pos, now, k)) if c.k else self._slit_pick
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
-        self._gestures = Gestures(self, {vp: self._slit_pick})
-        vp.installEventFilter(self._gestures)
+        self._gestures = Gestures(self, picks)
+        for vp in picks:
+            vp.installEventFilter(self._gestures)
 
     @property
     def cubes(self) -> list:
         """Every cube's views (ui.cube): the main cube's first."""
         return [self.main, *self.linked]
 
-    def _slit_pick(self, pos, now: bool = True) -> None:
-        """A click or drag on the slit panel: the cursor to that point of the slit, locked there as a click on the image
+    def _slit_pick(self, pos, now: bool = True, tab: int = 0) -> None:
+        """A click or drag on a slit panel: the cursor to that point of the slit, locked there as a click on the image
         does, and t (time slice) or lambda (spectral slice) from y (the prototype's _slit_pick, 1932): of the cube the
-        slices are of."""
-        hit = self.slit_panel.point_at(pos)
-        if hit is None or self.slit_panel.pix is None:
+        slices are of. tab: the cube of a linked cube's slit tab; 0: the main cube's tab."""
+        panel = self.cubes[tab].slit_panel
+        assert panel is not None
+        k = tab or self._slit_on
+        hit = panel.point_at(pos)
+        if hit is None or panel.pix is None:
             return
         i, axis, v = hit
-        iy, ix = self.slit_panel.pix
+        iy, ix = panel.pix
         self.session.lock(False)
         self.session.hover(int(iy[i]), int(ix[i]))
         self.session.lock(True)
-        if self._slit_on and axis == "t":               # its t nearest the main cube's (Member.t)
-            mt = self.session.members[self._slit_on].t
+        if k and axis == "t":                           # its t nearest the main cube's (Member.t)
+            mt = self.session.members[k].t
             v = min(range(len(mt)), key=lambda i: abs(mt[i] - v))
-        if self.session.present[axis] or (axis == "l" and self._slit_on):
-            self.cubes[self._slit_on].want({axis: v}, now)
+        if self.session.present[axis] or (axis == "l" and k):
+            self.cubes[k].want({axis: v}, now)
 
     # ---------------------------------------------------------------- playback
     def set_playing(self, on: bool) -> None:
@@ -1130,6 +1176,9 @@ class Shell(QtWidgets.QMainWindow):
                  ("\u232b", "remove the slit", ((K.Key_Backspace, self.clear_slit), (K.Key_Delete, self.clear_slit))),
                  ("A  D", "along the slit: previous, next point (the cursor locked there)",
                   ((K.Key_A, lambda: self.slit_step(-1)), (K.Key_D, lambda: self.slit_step(1))))]
+        if self.linked:
+            rows.append(("\u21e7S", "slit: a tab per cube \u21c4 one tab, of the cube it is drawn on",
+                         (("Shift+S", lambda: self.set_slit_tabs(not self.session.state.slit_tabs)),)))
         if self.spectra is not None:
             rows += [("F", "spectra: fit y to this pixel, and keep it", ((K.Key_F, self.fit_spectra),)),
                      ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
@@ -1234,6 +1283,12 @@ class Shell(QtWidgets.QMainWindow):
         if k == self._slit_on:
             return
         self._slit_on = k
+        self._slit_axes(self.slit_panel, k)
+        self._slit_title()
+        self._slit_markers()
+
+    def _slit_axes(self, panel: SlitPanel, k: int) -> None:
+        """panel on cube k's slices: its t and lambda axes, its names."""
         m = self.session.members[k]
         axes, r = getattr(m.dataset, "axes", None), m.dataset.roles
         times = None
@@ -1242,15 +1297,68 @@ class Shell(QtWidgets.QMainWindow):
         # a linked cube's names (data.names), and a main cube's with one plane along lambda or none; the main
         # cube's with lambda as always
         names = self.cubes[k].slices
-        self.slit_panel.set_cube(r.nt, r.nl, axes, times,
-                                 *((names.label, names.mapped, names.value) if names else ()))
-        if self.linked:
-            self.slit_dock.setWindowTitle(f"Slit: {self.cubes[k].name}")
-        self._slit_markers()
+        panel.set_cube(r.nt, r.nl, axes, times, *((names.label, names.mapped, names.value) if names else ()))
+
+    def _slit_title(self) -> None:
+        """With linked cubes, the slit panel titled with the cube it shows: the tab in front's, with a tab per cube."""
+        if not self.linked:
+            return
+        k = self._slit_on
+        if self.slit_tabs is not None and self.session.state.slit_tabs and self.slit_tabs.count():
+            key = self.slit_tabs.keys[self.slit_tabs.currentIndex()]
+            k = int(key.split(":")[1]) if ":" in key else 0
+        self.slit_dock.setWindowTitle(f"Slit: {self.cubes[k].name}")
 
     def _slit_markers(self) -> None:
         st = self.session.member_state(self._slit_on)
         self.slit_panel.set_markers(st.t, st.l)
+        for c in self.linked:
+            if c.slit_panel is not None:
+                mine = self.session.member_state(c.k)
+                c.slit_panel.set_markers(mine.t, mine.l)
+
+    @property
+    def slit_panels(self) -> list:
+        """Every slit tab's panel: the main cube's first."""
+        return [c.slit_panel for c in self.cubes if c.slit_panel is not None]
+
+    def set_slit_tabs(self, on: bool) -> None:
+        """Shift+S or the Panels menu: with linked cubes, a slit tab per cube (on), each its cube's slices along the
+        same slit, or one tab, of the cube the slit is drawn on."""
+        if self.linked:
+            self.session.set_slit_tabs(on)
+
+    def _slit_tabs_changed(self, on: bool) -> None:
+        """The tabs after ViewState.slit_tabs: the linked cubes' in (on) or out; a cube in a window of its own has
+        its slit panel there, shown while there is a slit (LinkedCube.show_slit)."""
+        a = self.slit_tabs_action
+        if a is not None and a.isChecked() != on:
+            a.blockSignals(True)
+            a.setChecked(on)
+            a.blockSignals(False)
+        tabs = self.slit_tabs
+        if tabs is None:
+            return
+        for c in self.linked:
+            key = f"slit:{c.k}"
+            if c.windowed:
+                c.show_slit(on and self.slit_dock.allowed())
+            elif on and key not in tabs.keys:
+                assert c.slit_panel is not None
+                tabs.give(key, c.slit_panel.widget)
+            elif not on and key in tabs.keys:
+                tabs.take(key).hide()
+        self._slit_front(self.session.state)
+        self._slit_title()
+
+    def _slit_front(self, st: ViewState) -> None:
+        """With a tab per cube, the tab of the cube the slit is drawn on in front."""
+        if self.slit_tabs is None or not st.slit_tabs:
+            return
+        k = st.draft_cube if st.draft is not None else st.path_cube
+        key = f"slit:{k}" if k else "slit"
+        if key in self.slit_tabs.keys:
+            self.slit_tabs.setCurrentIndex(self.slit_tabs.keys.index(key))
 
     def clear_slit(self) -> None:
         """⌫: the finished slit removed, from the image and from the session."""
@@ -1306,6 +1414,8 @@ class Shell(QtWidgets.QMainWindow):
         as lambda-t's tab whenever it comes back, even from a layout that had it as a third panel (its F70b). In
         glass, whose panels float, a floating panel over lambda-t's place."""
         d, lt = self.slit_dock, self.lt_dock
+        for c in self.linked:                           # a cube in a window of its own: its slit panel there
+            c.show_slit(on and self.session.state.slit_tabs)
         d.toggleViewAction().setEnabled(on)
         if on and d.isHidden():
             front = lt.isVisible()
@@ -1380,7 +1490,14 @@ class Shell(QtWidgets.QMainWindow):
         if "cursor" in changed:
             if self.grid is not None:
                 self.grid.set_crosshair(*st.cursor)
-            self.slit_panel.set_cursor(*st.cursor)
+            for p in self.slit_panels:
+                p.set_cursor(*st.cursor)
+        if "slit_tabs" in changed:
+            self._slit_tabs_changed(st.slit_tabs)
+        # the drawn-on cube's tab in front: as a slit is started on an image, and when it is finished
+        started = "draft" in changed and st.draft is not None and len(st.draft) <= 1
+        if changed & {"draft_cube", "path_cube"} or started or ("path" in changed and st.path is not None):
+            self._slit_front(st)
         if "path" in changed:
             self.slit_tool.show_path(st.path)
             if st.path is not None or not self.slit_tool.mode:

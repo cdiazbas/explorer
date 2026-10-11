@@ -7,7 +7,8 @@ own (core.session.Member), picked on its own panels and kept in the state, so th
 follow as the main cube's do. Its reads are a scheduler of its own (core.scheduler, member=k) on the main cube's
 threads (data.dataset: one thread runs parallel numba for all). The 2x2 view and the slit panel are the main
 window's; the slit is drawn on every image, can be drawn on any of them (ui.slit attaches each), and its panel shows
-the slices of the cube whose image took it (core.slitreads).
+the slices of the cube whose image took it (core.slitreads); with a slit tab per cube (ViewState.slit_tabs), each
+cube's own slices in a tab of its own, and as a window of its own the cube's slit panel goes with it, below lambda-t.
 
 Each image carries its cube's name above it (data.names: the line, and the quantity of a map; ImageTitle; the file
 in its tooltip): a linked image is a panel of its own, between the main image and the spectra, that floats and docks
@@ -343,11 +344,12 @@ class LinkedCube(CubeView):
         titlebar.round_window(self.dock, glass.RADIUS_PANEL)
 
     def panels(self) -> list:
-        """(key, panel widget, the main window's tabs, title) of its spectra and lambda-t, those it has."""
+        """(key, panel widget, the main window's tabs, title) of its spectra, lambda-t and slit tab, those it has."""
         out = []
         for key, panel, tabs, title in (("spectra", self.spectra, self.shell.spec_tabs, "Spectrum"),
                                         ("lambda_t", self.lambda_t, self.shell.lt_tabs,
-                                         self.slices.panel if self.slices else "λ–t")):
+                                         self.slices.panel if self.slices else "λ–t"),
+                                        ("slit", self.slit_panel, self.shell.slit_tabs, "Slit")):
             if panel is not None and tabs is not None:
                 out.append((f"{key}:{self.k}", panel.widget, tabs, title))
         return out
@@ -358,20 +360,30 @@ class LinkedCube(CubeView):
         if bool(on) == self.windowed:
             return
         self.windowed = bool(on)
+        slit = self.session.state.slit_tabs             # its slit tab is in the main window's only with a tab per cube
         for key, widget, tabs, title in self.panels():
             if on:
-                tabs.take(key)
+                if key in tabs.keys:
+                    tabs.take(key)
                 pane = self.panes.get(key) or self._pane(key, title)
                 lay = pane.widget().layout()            # its gutter (docks.dock)
                 assert lay is not None
                 lay.addWidget(widget)
                 widget.show()                           # a tab behind was hidden
                 pane.setFloating(False)
-                pane.show()
+                # its slit panel shown while there is a slit (Shell._slit_tab), with a tab per cube
+                pane.setVisible(not key.startswith("slit") or (slit and self.shell.slit_dock.allowed()))
             else:
                 self.panes[key].hide()
-                tabs.give(key, widget)
+                if not key.startswith("slit") or slit:
+                    tabs.give(key, widget)
         self._image_shown(None)
+
+    def show_slit(self, on: bool) -> None:
+        """As a window of its own, its slit panel shown there (on) or not; docked, its slit tab is the main window's."""
+        pane = self.panes.get(f"slit:{self.k}")
+        if self.windowed and pane is not None and pane.isHidden() == bool(on):
+            pane.setVisible(bool(on))
 
     def _pane(self, key: str, title: str) -> QtWidgets.QDockWidget:
         """The dock of one of its panels in its frame, made the first time: below the one before it (lambda-t below

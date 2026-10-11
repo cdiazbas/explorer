@@ -702,7 +702,8 @@ class GlassChrome:
 
     def _tabs(self, on: bool) -> None:
         sheet = self._tabs_sheet() if on else ""
-        for t in (getattr(self.w, "spec_tabs", None), getattr(self.w, "lt_tabs", None)):
+        for t in (getattr(self.w, "spec_tabs", None), getattr(self.w, "lt_tabs", None),
+                  getattr(self.w, "slit_tabs", None)):
             if t is not None:
                 t.setStyleSheet(sheet)
 

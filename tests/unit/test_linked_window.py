@@ -269,8 +269,9 @@ def test_a_slit_drawn_on_a_cube_s_image_shows_that_cube_s_slices(window, k):
     """A slit drawn on Blos gave the main cube's slices (the user, 2026-10-10): the slit panel shows the slices of the
     cube whose image took the slit, at its own lambda and Stokes. The slit is still on every image; a map without
     times of its own has its t in the main cube's times, and no spectral slice. k: the Blos map, the other line (7
-    tunings, its own lambda), the main cube."""
+    tunings, its own lambda), the main cube. One slit tab (Shift+S off): the way it was before a tab per cube."""
     w, qapp = window
+    w.set_slit_tabs(False)
     cube = w.cubes[k]
     when = w.slit_panel.t_label_fine(1)               # the main cube's times
     w.set_slit_mode(True)
@@ -567,7 +568,8 @@ def test_one_entry_puts_every_cube_in_a_window_of_its_own_and_back(window):
     assert tabs == tabs_before[:1] and other.windowed and [p.objectName() for p in panes] == ["spectra:1", "lambda_t:1"]
     assert all(p.window() is other.dock and not p.isFloating() for p in panes)
     assert other.spectra.widget.isVisibleTo(other.dock) and "spectra:1" in w.session.state.panels
-    assert list(blos.panes) == ["lambda_t:2"]           # a map: its image and its curve against t
+    assert list(blos.panes) == ["lambda_t:2", "slit:2"]  # a map: its image, its curve against t, its slit panel
+    assert not other.panes["slit:1"].isVisible()        # no slit drawn: no slit panel
     a.setChecked(False)
     spin(qapp, lambda: False, timeout=0.6)
     sizes = [v.widget.width() for v in views]
@@ -870,7 +872,9 @@ def test_the_saved_layout_keeps_each_cube_s_window_and_its_panels(window, cubes,
         c = win.linked[0]
         return (win.detach_action.isChecked(), c.windowed, [d.isFloating() for d in (cc.dock for cc in win.linked)],
                 c.dock.geometry().getRect(),
-                {k: (p.isVisible(), p.isFloating(), p.geometry().getRect()) for k, p in sorted(c.panes.items())},
+                # a hidden panel (the slit's, no slit drawn) has no place to keep
+                {k: (p.isVisible(), p.isFloating(), p.geometry().getRect() if p.isVisible() else None)
+                 for k, p in sorted(c.panes.items())},
                 c.view.widget.width())
 
     before = arrangement(w)
@@ -947,3 +951,81 @@ def test_in_glass_a_panel_floated_out_of_a_cube_s_window_wears_the_glass_skin(wi
     spin(qapp, lambda: False, timeout=0.4)
     assert c.spectra.w.backgroundBrush() == plot_bg
     assert type(pane.titleBarWidget()).__name__ != "PanelTitle" and pane.widget().autoFillBackground() == fill
+
+
+def test_a_slit_tab_per_cube_each_with_its_cube_s_slices(window):
+    """A tab per cube in the slit panel (the user, 2026-10-11: "each time I draw a slit, as many tabs as cubes"), on
+    at start with linked cubes: drawn on any image, each tab shows its own cube's slices along the same slit (its t,
+    lambda and Stokes; a map its time slice alone), titled Slit: <name>; the drawn-on cube's tab in front, and a tab
+    behind reads nothing until it comes in front. Shift+S (or Panels) off: one tab, the drawn-on cube's slices."""
+    w, qapp = window
+    tabs = w.slit_tabs
+    assert w.session.state.slit_tabs and w.slit_tabs_action.isChecked()
+    other, blos = w.linked
+    draw_slit(w, blos, (5.2, 6.7), (30.4, 40.1))
+    assert spin(qapp, lambda: w.slit_panel.pix is not None and len(w.slit_panel.pix[0]) > 30), "no slit"
+    keys = list(tabs.keys)
+    front = tabs.keys[tabs.currentIndex()]
+    names = [tabs.tabText(i) for i in range(tabs.count())]
+
+    def same(img, want):
+        return img is not None and img.shape == want.shape and np.array_equal(img, want, equal_nan=True)
+
+    def check(c):
+        p = c.slit_panel
+        ts, sl = slices_along(c.dataset, w.session, c.k, p.pix if p.pix is not None else w.slit_panel.pix)
+        if p.flat:                                       # never here: the map has 3 t
+            return False
+        return same(p.ts_img.image, ts) and (not p.spectral or same(p.sl_img.image, sl))
+
+    assert spin(qapp, lambda: check(blos)), "the drawn-on cube's tab without its slices"
+    other_reads = list(other.scheduler.slit.reads)
+    title = w.slit_dock.windowTitle()
+    print("tabs", keys, names, "front", front, "title", repr(title), "reads of the tab behind", other_reads)
+    assert keys == ["slit", "slit:1", "slit:2"] and front == "slit:2" and title == f"Slit: {blos.name}"
+    assert other_reads == [] and other.slit_panel.ts_img.image is None
+    assert not blos.slit_panel.spectral                 # a map: the time slice alone
+    shown = {}
+    for i, c in enumerate(w.cubes):                     # each tab in front in turn: its own cube's slices
+        tabs.setCurrentIndex(i)
+        shown[c.k] = spin(qapp, lambda c=c: check(c))
+        assert w.slit_dock.windowTitle() == f"Slit: {c.name}"
+    print("each tab its own cube's slices along the slit:", shown)
+    assert all(shown.values())
+    assert np.array_equal(other.slit_panel.pix[0], w.slit_panel.pix[0])        # the same slit
+    w.set_slit_tabs(False)                              # one tab: the drawn-on cube's, as before
+    spin(qapp, lambda: same(w.slit_panel.ts_img.image, slices_along(blos.dataset, w.session, 2, w.slit_panel.pix)[0]))
+    off = (tabs.count(), w.slit_dock.windowTitle(), w.slit_tabs_action.isChecked())
+    ts_main = w.slit_panel.ts_img.image
+    print("off: tabs, title, ticked", off)
+    assert off == (1, f"Slit: {blos.name}", False)
+    assert same(ts_main, slices_along(blos.dataset, w.session, 2, w.slit_panel.pix)[0])
+    w.set_slit_tabs(True)
+    assert spin(qapp, lambda: tabs.count() == 3 and tabs.keys[tabs.currentIndex()] == "slit:2" and check(w.main)
+                and check(blos))
+    w.clear_slit()
+
+
+def test_a_cube_in_its_own_window_shows_its_own_slit_panel(window):
+    """Each cube in a window of its own: its slit panel goes with it, below its lambda-t, shown while there is a
+    slit and with its own cube's slices; back in the window, its tab again."""
+    w, qapp = window
+    other, blos = w.linked
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.6)
+    hidden = [c.panes[f"slit:{c.k}"].isVisible() for c in w.linked]
+    draw_slit(w, w.main, (5.2, 6.7), (30.4, 40.1))
+    assert spin(qapp, lambda: w.slit_panel.pix is not None and len(w.slit_panel.pix[0]) > 30), "no slit"
+    pane = other.panes["slit:1"]
+    ts, sl = slices_along(other.dataset, w.session, 1, w.slit_panel.pix)
+    ok = spin(qapp, lambda: pane.isVisible() and other.slit_panel.ts_img.image is not None
+              and np.array_equal(other.slit_panel.ts_img.image, ts, equal_nan=True)
+              and np.array_equal(other.slit_panel.sl_img.image, sl, equal_nan=True))
+    print("apart: slit panels before a slit", hidden, "after", [c.panes[f"slit:{c.k}"].isVisible() for c in w.linked],
+          "main tabs", list(w.slit_tabs.keys), "its slices", ok)
+    assert hidden == [False, False] and ok and pane.window() is other.dock
+    assert list(w.slit_tabs.keys) == ["slit"]
+    w.detach_action.setChecked(False)
+    spin(qapp, lambda: False, timeout=0.6)
+    assert list(w.slit_tabs.keys) == ["slit", "slit:1", "slit:2"] and not pane.isVisible()
+    w.clear_slit()

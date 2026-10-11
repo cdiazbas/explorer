@@ -22,6 +22,7 @@ from .gestures import Gestures
 from .imageview import ImageView
 from .lambda_t import LambdaTPanel, TimeCurve
 from .padlock import PanelLock
+from .slitpanel import SlitPanel
 from .spectra import AxisDrag, SpectraPanel
 
 IMAGE_TIP = ("Image contrast: closed = fixed, open = automatic per image. Click to switch; right click fixes it to "
@@ -66,11 +67,19 @@ class CubeSink:
     def grid_image(self, s, idx, img, levels):          # the 2x2 view is the main cube's
         pass
 
-    def slit_path(self, pix):                           # and so is the slit panel, whichever cube it reads
-        pass
+    def slit_path(self, pix):                           # its slit tab's, with a tab per cube (ViewState.slit_tabs)
+        if self.cube.slit_panel is not None:
+            self.cube.slit_panel.set_path(pix)
 
     def slit(self, ts, sl, s, ts_levels, sl_levels):
-        pass
+        p = self.cube.slit_panel
+        if p is None:
+            return
+        self.cube.slit_s = s
+        p.show(ts, sl, ts_levels, sl_levels, gamma=self.cube.session.gamma(self.cube.k, s))
+        shell = self.cube.shell
+        if shell.colours is not None and shell.look.has("colour"):
+            p.set_lut(shell.colours.lut(s))
 
 
 class CubeView:
@@ -102,6 +111,8 @@ class CubeView:
         elif r.t is not None and r.l is not None:
             self.lambda_t = LambdaTPanel(r.nt, r.nl, ds.axes, *([self.slices.label] if self.slices else []))
         self.last_s = 0                                 # the Stokes of the lambda-t shown (its colour map)
+        self.slit_panel: SlitPanel | None = None        # its slit tab's panel (ui.slitpanel), made by the shell
+        self.slit_s = 0                                 # the Stokes of the slices it shows
         self.ns = r.ns
         # its Stokes named in the image's top left by something else: the main cube's colour key, which glass puts there
         self.named = False
