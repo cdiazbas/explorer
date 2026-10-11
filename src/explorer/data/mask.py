@@ -7,6 +7,7 @@ t_main or 0), contoured at level 1 (CRISPEX_DRAW_MASK_OVERLAYS, crispex.pro:7174
     mask = Mask.open(path, main)        # main: the first cube (a Dataset or link.describe(path)); MaskRefused: why
     mask.frame_at(t)                    # the mask's frame shown at the first cube's t
     mask.outline(t)                     # the edges round its set pixels at t: (n, 2, 2) segments, (x, y) per end
+    mask.kept(t)                        # that outline if it is kept, else None (nothing read)
 
 The file is read as a cube is (FITS or an LP .icube / .fcube, by content: formats.detect), its values as stored
 (FITS BSCALE, BZERO and BLANK applied; never an IDL save file's scale, which belongs to the cube beside it). Its
@@ -24,6 +25,7 @@ from collections import OrderedDict
 
 import numpy as np
 
+from ._numba import numba
 from .formats import detect, fits_layout, lp_single_layout
 from .io import FrameReader
 from .link import frames, other_grid
@@ -36,35 +38,75 @@ class MaskRefused(ValueError):
     """The mask cannot be drawn on the first cube: why, in one line (the file's name first)."""
 
 
-def runs(a: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """The runs of True along each row of a 2-D boolean array: (row, start, end) per run, end exclusive. One flat
-    search for the changes along the rows, the outside False at both ends, so starts and ends alternate in each row
-    (np.nonzero on the 2-D array, once for the starts and once for the ends, took 25 ms for a 2k mask against 2)."""
-    rows, n = a.shape
-    pad = np.zeros((rows, n + 1), bool)
-    pad[:, :-1] = a
-    d = np.empty((rows, n + 1), bool)                   # a change between x - 1 and x; at x = 0, against the outside
-    d[:, 0] = pad[:, 0]
-    np.not_equal(pad[:, 1:], pad[:, :-1], out=d[:, 1:])
-    r, c = np.divmod(np.flatnonzero(d), n + 1)
-    return r[0::2], c[0::2], c[1::2]
+@numba.njit(cache=True, nogil=True)
+def _count(p, per_col):
+    """Pass 1 of outline, on the mask padded by one unset pixel (p, uint8): the horizontal runs (returned), each
+    column's vertical runs into per_col. Branch-free: a run starts where an edge is and the one before it is not."""
+    rows, cols = p.shape
+    nh = np.int64(0)
+    for i in range(rows - 1):                           # the edge at y = i: between p's rows i and i + 1
+        a, b = p[i], p[i + 1]
+        for x in range(1, cols - 1):
+            nh += np.int64((a[x] ^ b[x]) & ~(a[x - 1] ^ b[x - 1]) & 1)
+    prev_row = np.zeros(cols - 1, np.uint8)
+    for y in range(1, rows - 1):                        # the edge at x = j: between p's columns j and j + 1
+        r = p[y]
+        for j in range(cols - 1):
+            d = r[j] ^ r[j + 1]
+            per_col[j] += np.int64(d & ~prev_row[j] & 1)
+            prev_row[j] = d
+    return nh
+
+
+@numba.njit(cache=True, nogil=True)
+def _fill(p, at, seg):
+    """Pass 2 of outline: the horizontal runs in order of y then x, then column j's from at[j] on, in order of y.
+    A run ends at the padding at the latest (unset on both sides: no edge)."""
+    rows, cols = p.shape
+    n = 0
+    for i in range(rows - 1):
+        a, b = p[i], p[i + 1]
+        prev, x0 = np.int64(0), 0
+        for x in range(1, cols):
+            d = np.int64(a[x] ^ b[x])
+            if d != prev:
+                if d:
+                    x0 = x
+                else:
+                    seg[n, 0, 0], seg[n, 0, 1], seg[n, 1, 0], seg[n, 1, 1] = x0 - 1, i, x - 1, i
+                    n += 1
+                prev = d
+    start = np.zeros(cols - 1, np.int64)
+    prev_row = np.zeros(cols - 1, np.uint8)
+    for y in range(1, rows):
+        r = p[y]
+        for j in range(cols - 1):
+            d = np.int64(r[j] ^ r[j + 1])
+            if d != prev_row[j]:
+                if d:
+                    start[j] = y - 1
+                else:
+                    k = at[j]
+                    seg[k, 0, 0], seg[k, 0, 1], seg[k, 1, 0], seg[k, 1, 1] = j, start[j], j, y - 1
+                    at[j] = k + 1
+                prev_row[j] = d
 
 
 def outline(inside: np.ndarray) -> np.ndarray:
     """The edges round the True pixels of a (ny, nx) array, as (n, 2, 2) segments [[x0, y0], [x1, y1]] in pixel-edge
-    coordinates: an edge wherever a pixel and its neighbour (or the outside) differ, straight runs as one segment."""
+    coordinates: an edge wherever a pixel and its neighbour (or the outside) differ, straight runs as one segment;
+    the horizontal ones first, by y then x, then the vertical ones, by x then y. Two passes of a nogil kernel over
+    the mask padded with unset pixels, one counting the runs and one writing them: off the UI thread it runs beside
+    the reads and the drawing instead of holding the interpreter between numpy's steps."""
     m = np.asarray(inside, bool)
     ny, nx = m.shape
-    p = np.zeros((ny + 2, nx + 2), bool)
+    p = np.zeros((ny + 2, nx + 2), np.uint8)
     p[1:-1, 1:-1] = m
-    horiz = p[1:, 1:-1] != p[:-1, 1:-1]                 # (ny + 1, nx): the edge at y = i over x .. x + 1
-    vert = p[1:-1, 1:] != p[1:-1, :-1]                  # (ny, nx + 1): the edge at x = j over y .. y + 1
-    hy, hx0, hx1 = runs(horiz)
-    vx, vy0, vy1 = runs(vert.T)
-    seg = np.empty((len(hy) + len(vx), 2, 2), np.float64)
-    n = len(hy)
-    seg[:n, 0, 0], seg[:n, 0, 1], seg[:n, 1, 0], seg[:n, 1, 1] = hx0, hy, hx1, hy
-    seg[n:, 0, 0], seg[n:, 0, 1], seg[n:, 1, 0], seg[n:, 1, 1] = vx, vy0, vx, vy1
+    per_col = np.zeros(nx + 1, np.int64)
+    nh = _count(p, per_col)
+    at = (nh + np.cumsum(per_col) - per_col).astype(np.int64)
+    seg = np.empty((nh + int(per_col.sum()), 2, 2), np.float64)
+    _fill(p, at, seg)
     return seg
 
 
@@ -118,14 +160,22 @@ class Mask:
         with np.errstate(invalid="ignore"):
             return self.reader.read(tuple(idx)) >= LEVEL
 
-    def outline(self, t: int) -> np.ndarray:
-        """The outline of the mask's frame at the first cube's t (outline()), kept for the last KEPT frames."""
+    def kept(self, t: int) -> np.ndarray | None:
+        """The outline at the first cube's t when it is kept (outline()), else None: nothing is read."""
         k = self.frame_at(t)
         with self._lock:
             seg = self._kept.get(k)
             if seg is not None:
                 self._kept.move_to_end(k)
-                return seg
+            return seg
+
+    def outline(self, t: int) -> np.ndarray:
+        """The outline of the mask's frame at the first cube's t (outline()), kept for the last KEPT frames. Safe
+        from any thread; two threads asking for the same frame at once both compute it."""
+        seg = self.kept(t)
+        if seg is not None:
+            return seg
+        k = self.frame_at(t)
         seg = outline(self.inside(k))
         with self._lock:
             self._kept[k] = seg

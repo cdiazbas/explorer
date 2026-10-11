@@ -4,7 +4,7 @@ Threads (from the prototype's Viewer and viewer.py):
 - numba: one thread runs every parallel numba call (gather). With the 'workqueue' threading layer two parallel
   regions at once abort the process, and numba's thread count is set per calling thread, so it is set on this
   one. Scattered reads wait on the disk, so the count comes from the storage probe (64 on StorNext, 16 on SSD).
-- io: preads of frame chunks and frames read ahead.
+- io: a mask's outlines, read and computed off the UI thread (ui.mask).
 - strips: serial nogil kernels (reduction to u8, running maxima) split in row strips; never parallel numba.
 - background: long jobs (Q U V ranges from whole frames, slabs along a slit) on a thread of their own, so they
   never delay the reads the cursor waits for.

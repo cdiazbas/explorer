@@ -51,7 +51,8 @@ def window(qapp, cubes):
     w = Shell(ds, linked=[linked], mask=mask)
     w.resize(1400, 600)
     w.show()
-    assert spin(qapp, lambda: w.first_image_s is not None and all(c.scheduler.img is not None for c in w.linked))
+    assert spin(qapp, lambda: w.first_image_s is not None and all(c.scheduler.img is not None for c in w.linked)
+                and w.mask_outlines.frame is not None)      # the outline comes from a worker (ui.mask)
     yield w
     w.close()
     for c in (mask, linked, ds):
@@ -83,6 +84,7 @@ def test_on_every_image_following_t(qapp, window, cubes):
     assert len(images(w)) == 6
     for t in (0, 2, 3, 1):
         w.session.set_index("t", t)
+        assert spin(qapp, lambda t=t: w.mask_outlines.frame == t)
         qapp.processEvents()
         want = outline(cubes["boxes"][t] >= 1)
         got = drawn(w)
@@ -90,6 +92,34 @@ def test_on_every_image_following_t(qapp, window, cubes):
         for g in got:
             np.testing.assert_array_equal(g, want)
         assert float(got[0][:, :, 0].min()) == 5 + 3 * t
+
+
+def test_outline_computed_off_the_ui_thread_and_ahead(qapp, window, cubes, monkeypatch):
+    """A step in t to a frame whose outline is not kept: set_index returns without reading or outlining it on the UI
+    thread; the outline comes from a worker and is drawn, and the next t's (2 and 3 after 1, AHEAD) are kept."""
+    import threading
+
+    from explorer.data import mask as dm
+
+    w = window
+    mo = w.mask_outlines
+    assert spin(qapp, lambda: not getattr(mo, "_busy", set()))
+    mo.mask._kept.clear()
+    threads = []
+    real = dm.outline
+
+    def recorded(m):
+        threads.append(threading.current_thread() is threading.main_thread())
+        return real(m)
+    monkeypatch.setattr(dm, "outline", recorded)
+    w.session.set_index("t", 1)
+    on_ui = list(threads)
+    assert spin(qapp, lambda: mo.frame == 1 and not getattr(mo, "_busy", set()))
+    print("outlines computed during set_index:", len(on_ui), "on the UI thread:", sum(on_ui),
+          "| then:", len(threads), "in all, on the UI thread:", sum(threads), "| kept:", sorted(mo.mask._kept))
+    assert not any(threads)
+    np.testing.assert_array_equal(drawn(w)[0], real(cubes["boxes"][1] >= 1))
+    assert {1, 2, 3} <= set(mo.mask._kept)
 
 
 def test_in_the_looks_accent(qapp, window):

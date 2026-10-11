@@ -278,7 +278,10 @@ class Shell(QtWidgets.QMainWindow):
             for c in self.linked:                       # the slit on every image, drawn on any of them (as the
                 self.slit_tool.attach(c.view)           # 2x2 view's panels)
         # the mask's outline on every image (ui.mask), the 2x2 view's when it is made (set_grid)
-        self.mask_outlines: MaskOutlines | None = MaskOutlines(self.session, mask) if mask is not None else None
+        self.mask_outlines: MaskOutlines | None = None
+        if mask is not None:                            # its outlines computed on the main cube's io thread
+            ex = getattr(dataset, "executors", None)
+            self.mask_outlines = MaskOutlines(self.session, mask, ex.io if ex is not None else None)
         if self.mask_outlines is not None:
             for v in [self.view, *(c.view for c in self.linked)]:
                 self.mask_outlines.attach(v)

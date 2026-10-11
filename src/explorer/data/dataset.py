@@ -155,7 +155,8 @@ class Dataset:
                 self.probe.read_ahead, self.probe.readers = 0, 1
             self.guard = guard if guard is not None else MemoryGuard()
             self.frames.gather_threads = self.probe.gather_threads
-            self.executors = (Executors(gather_threads=self.probe.gather_threads, io_threads=1) if executors is None
+            # io: a mask's outlines (ui.mask), the one of the t shown and the one ahead at once
+            self.executors = (Executors(gather_threads=self.probe.gather_threads, io_threads=2) if executors is None
                               else executors)
             self._images = ThreadPoolExecutor(max(1, self.probe.readers), thread_name_prefix="images")
             self._passes: ImagePasses | None = None
