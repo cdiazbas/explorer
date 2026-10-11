@@ -308,6 +308,52 @@ def test_started_in_glass_classic_comes_as_at_a_fresh_start(qapp, cube):
 
 
 
+def test_started_in_glass_the_window_fits_an_image_that_comes_late(qapp, cube, monkeypatch):
+    """The window is fitted to the image once there is an image. Placed at the event loop's first turn after the
+    show, a first image read later than that (a loaded machine) left the window at its size before glass, 1000 x 700
+    around a 0.83:1 image, and the panels and the bar sized for it."""
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    from explorer.core.scheduler import Scheduler
+    from explorer.data.dataset import Dataset
+    from explorer.look import get_look
+    from explorer.ui import style
+    from explorer.ui.shell import Shell
+
+    ready, held = Scheduler._image_ready, []
+
+    def late(self, *a):                                 # the first image comes 300 ms after it was read
+        if not held:
+            held.append(a)
+            QtCore.QTimer.singleShot(300, lambda: ready(self, *a))
+            return
+        ready(self, *a)
+    monkeypatch.setattr(Scheduler, "_image_ready", late)
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    style.apply_theme(qapp, "dark")
+    ds = Dataset.open(cube)
+    w = Shell(ds, title="c_im.fits", look=get_look("glass"))
+    try:
+        w.setGeometry(60, 50, 1000, 700)
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None and "lambda_t" in w.last)
+        assert held
+
+        def seen():
+            view = w.view.widget
+            return view.size(), view.mapFromScene(w.view.img.sceneBoundingRect()).boundingRect().size()
+
+        def fits():
+            view, img = seen()
+            return abs(img.width() - view.width()) <= 2 and abs(img.height() - view.height()) <= 2
+        assert spin(qapp, fits, timeout=3), dict(seen=seen(), window=w.geometry())
+    finally:
+        w.close()
+        ds.close()
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+
+
 def test_the_bar_buttons_are_flat_whatever_the_style_and_given_back(qapp, shell):
     """Out of a toolbar a Mac's native style drew every button of the bar in a grey box (seen by the user): in glass
     they carry a sheet of their own, flat; out of it, the sheet they had."""

@@ -444,6 +444,7 @@ class GlassChrome:
         self.w = shell
         self.on = False
         self.changing = False
+        self._place_on_image = False                    # first_place came before the first image: placed with it
         self.over_image = False
         self.bar: Bar                               # made by apply()
         self.autohide: AutoHide | None = None
@@ -773,6 +774,9 @@ class GlassChrome:
         fitted window now covers them or they were docked (look_glass.py:539-551)."""
         if not self.on:
             return
+        if self.w.scheduler.img is None:            # fit_window needs it: without it the window kept its size
+            self._place_on_image = True             # before glass (a first image read after the loop's first turn)
+            return
         shown = [d for d in self.docks() if not d.isHidden()]
         if not all(d.isFloating() for d in shown):
             self.place_panels()
@@ -909,6 +913,9 @@ class GlassChrome:
     def image_changed(self) -> None:
         self.changing = True
         self._rest.start()
+        if self._place_on_image:
+            self._place_on_image = False
+            QtCore.QTimer.singleShot(0, self.first_place)
 
     def _rested(self) -> None:
         self.changing = False
