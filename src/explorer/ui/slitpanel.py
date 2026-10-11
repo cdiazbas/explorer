@@ -17,7 +17,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtWidgets
 
 from ..core.levels import gamma_panel
-from ..data.axes import fmt_signed
+from ..data.axes import dlam_label, fmt_signed
 from ..data.tsample import nearest_sample, time_samples
 from . import pens, style
 from .imageview import CURSOR_PEN
@@ -99,7 +99,7 @@ class SlitPanel:
 
     def _left_labels(self) -> None:
         self.ts.setLabel("left", self.value if self.flat else "t [UT]" if self.timed else "t index")
-        self.sl.setLabel("left", "Δλ [Å]" if self.physical else self.label)
+        self.sl.setLabel("left", dlam_label(self.ax) if self.physical else self.label)
 
     @staticmethod
     def _axis_style(a: pg.AxisItem) -> None:

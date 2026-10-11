@@ -7,7 +7,7 @@ From the prototype's app/viewer.py: the toolbar (913-960), JumpSlider (364), _sl
 """
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..data.axes import STOKES, fmt_signed
+from ..data.axes import STOKES, fmt_offset, lam0_text
 from . import icons
 
 SLIDER_W = (86, 209)                                    # px, 0.95 of the prototype's: the sliders give way first
@@ -175,6 +175,9 @@ class NavBar:
                 lab.setText(self.text(axis, self.n[axis] - 1))
                 lab.setFixedWidth(lab.sizeHint().width() + 8)
             lab.setText(self.text(axis, getattr(st, axis)))
+            if axis == "l" and lam0_text(self.ax):        # what the readout's λ₀ is
+                lab.setToolTip(f"λ₀ = {lam0_text(self.ax)}, the line centre Δλ and v are measured from: "
+                               f"{self.ax.line}, laboratory, in air")
             tb.addWidget(sl)
             tb.addWidget(lab)
             self.sliders[axis], self.labels[axis] = sl, lab
@@ -249,8 +252,8 @@ class NavBar:
             self.set_stokes_drop(True)
 
     def text(self, axis: str, v: int) -> str:
-        """A slider's label: t in UT with the frame index quieter beside it; lambda as delta-lambda, the continuum
-        tuning marked; the index of n otherwise."""
+        """A slider's label: t in UT with the frame index quieter beside it; lambda as the line centre and its offset
+        ("λ₀ − 0.031 Å", λ₀ in the tooltip), the continuum tuning marked; the index of n otherwise."""
         n = self.n[axis]
         if axis == "t":
             u = self.ax.utc_str(v) if self.ax is not None and self.ax.t_sec is not None else None
@@ -261,7 +264,7 @@ class NavBar:
             return f'{u}&nbsp;UT&nbsp;&nbsp;<span style="color:{dim}; font-size:small">{v}/{n - 1}</span>'
         dl = self.ax.dlam_A() if self.ax is not None else None
         if dl is not None and len(dl) == n:
-            return f"Δλ {fmt_signed(dl[v], 3)}\u00a0Å" + ("  (cont.)" if v == self.ax.cont else "")
+            return fmt_offset(dl[v], 3) + ("  (cont.)" if v == self.ax.cont else "")
         return f"{v}/{n - 1}"
 
     def set_stokes_drop(self, on: bool) -> None:

@@ -455,6 +455,31 @@ def fmt_sig(v, n=4) -> str:
     return f"{v / 10 ** k:.{n - 1}f} × 10{str(k).translate(SUP)}".replace("-", "−")
 
 
+LAM0_DECIMALS = 3       # λ₀ in Å as the readouts give lambda and delta-lambda: λ₀ + Δλ adds up to the λ shown
+
+
+def lam0_text(ax) -> str:
+    """'6173.341 Å', the laboratory line centre delta-lambda and the Doppler velocity are measured from (lam0_nm); ''
+    when it is not known."""
+    lam0 = getattr(ax, "lam0_nm", None)
+    return "" if lam0 is None else f"{float(lam0) * 10.0:.{LAM0_DECIMALS}f}\u00a0Å"
+
+
+def dlam_label(ax) -> str:
+    """The label of an axis in delta-lambda, with the line centre it is measured from: 'Δλ [Å] from λ₀ = 6173.341 Å'
+    ('Δλ [Å]' when that is not known)."""
+    lam0 = lam0_text(ax)
+    return f"Δλ [Å] from λ₀ = {lam0}" if lam0 else "Δλ [Å]"
+
+
+def fmt_offset(v, nd=3) -> str:
+    """A wavelength as the line centre and its offset, λ = λ₀ + Δλ: 'λ₀ + 0.031 Å', 'λ₀ − 0.031 Å' (the operator
+    spaced and a typographic minus), 'λ₀ + 0.000 Å' at the centre."""
+    s = f"{v:.{nd}f}"
+    neg = s.startswith("-") and float(s) != 0
+    return f"λ₀ {'−' if neg else '+'} {s.lstrip('-')}\u00a0Å"
+
+
 def fmt_signed(v, nd=1) -> str:
     """+1.3 / −1.3 with a typographic minus; 0 stays 0."""
     s = f"{v:+.{nd}f}"

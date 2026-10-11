@@ -47,7 +47,35 @@ def test_sliders_and_combo_move_the_cube_and_follow_it(qapp, shell):
     s.set_index("s", 1)
     assert spin(qapp, lambda: nav.sliders["t"].value() == 4 and nav.stokes.currentIndex() == 1)
     assert "UT" in nav.labels["t"].text() and "4/5" in nav.labels["t"].text()
-    assert nav.labels["l"].text().startswith("Δλ") and "(cont.)" in nav.labels["l"].text()   # tuning 20
+    assert nav.labels["l"].text().startswith("λ₀ ") and "(cont.)" in nav.labels["l"].text()   # tuning 20
+
+
+def test_the_lambda_readout_is_the_line_centre_and_its_offset(qapp, shell):
+    """λ as λ₀ and its offset, the operator spaced and signed ("λ₀ − 0.031 Å", "λ₀ + 0.031 Å"), adding up to the λ
+    the status bar gives; the tooltip says what λ₀ is: the header's line centre, to three decimals."""
+    import re
+
+    nav, ax = shell.nav, shell.dataset.axes
+    lab = nav.labels["l"]
+    tip = lab.toolTip()
+    print("tooltip:", repr(tip))
+    assert tip.startswith("λ₀ = 6173.341\u00a0Å, the line centre Δλ and v are measured from") and "Fe I" in tip
+    seen = []
+    for v in (0, 9, 10, 20):
+        nav.sliders["l"].setValue(v)
+        assert spin(qapp, lambda v=v: shell.session.state.l == v and lab.text() == nav.text("l", v))
+        t = lab.text()
+        seen.append(t)
+        m = re.fullmatch(r"λ₀ ([+−]) (\d+\.\d{3})\u00a0Å(  \(cont\.\))?", t)
+        assert m, t
+        dl = (-1 if m.group(1) == "−" else 1) * float(m.group(2))
+        assert abs(dl - ax.dlam_A(v)) <= 5e-4
+        assert abs(ax.lam0_nm * 10 + dl - ax.lam_A(v)) <= 1e-3          # λ₀ + Δλ is the status bar's λ
+    print("readouts:", seen)
+    from explorer.data.axes import fmt_offset
+
+    assert fmt_offset(-0.0312) == "λ₀ − 0.031\u00a0Å" and fmt_offset(0.0312) == "λ₀ + 0.031\u00a0Å"
+    assert fmt_offset(-0.0001) == "λ₀ + 0.000\u00a0Å"                  # no "−0.000"
 
 
 def test_a_click_on_the_track_jumps_there(qapp, shell):

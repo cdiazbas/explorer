@@ -16,7 +16,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import APP_NAME
-from ..data.axes import C_KMS, STOKES, SUP, fmt_signed, unit_text
+from ..data.axes import C_KMS, STOKES, SUP, dlam_label, fmt_signed, unit_text
 from . import pens, style
 from .imageview import CURSOR_PEN
 from .padlock import PanelLock
@@ -252,7 +252,7 @@ class SpectraPanel:
         # last velocity label and the top-right axis title
         self.w.ci.setContentsMargins(9, 9, PanelLock.SIZE + PanelLock.MARGIN, 9)
         for p in self.plots[-ncol:]:
-            p.setLabel("bottom", "Δλ [Å]" if self.physical else label or "λ index")
+            p.setLabel("bottom", dlam_label(self.ax) if self.physical else label or "λ index")
         if vk:
             for p in self.plots[:ncol]:
                 p.setLabel("top", "v [km s⁻¹]")      # Unicode, as every other unit: <sup> drew thinner digits

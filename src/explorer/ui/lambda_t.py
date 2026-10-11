@@ -18,7 +18,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.levels import gamma_panel
-from ..data.axes import fmt_signed
+from ..data.axes import dlam_label, fmt_signed
 from ..data.tsample import nearest_sample, time_samples
 from . import pens, style
 from .imageview import CURSOR_PEN
@@ -132,7 +132,7 @@ class LambdaTPanel:
         pi.setMenuEnabled(False)
         pi.vb.setMenuEnabled(False)
         pi.hideButtons()
-        self.w.setLabel("bottom", "Δλ [Å]" if self.physical else label)
+        self.w.setLabel("bottom", dlam_label(axes) if self.physical else label)
         self.w.setLabel("left", "t [UT]" if self.timed else "t index")
         self.t_line = pg.InfiniteLine(angle=0)
         self.l_line = pg.InfiniteLine(angle=90)
