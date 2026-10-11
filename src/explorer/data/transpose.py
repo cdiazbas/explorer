@@ -115,7 +115,7 @@ def estimate(frames: PerPixelFrames, command: str = "explorer") -> Estimate:
         free = None
     size = os.path.getsize(sp.path)
     return Estimate(image_s, how, n, size, n, out, free,
-                    f"{command} transpose {_quoted(sp.path)} {_quoted(out)}")
+                    f"{command} transpose {_quoted(os.path.abspath(sp.path))} {_quoted(out)}")
 
 
 def _quoted(p: str) -> str:

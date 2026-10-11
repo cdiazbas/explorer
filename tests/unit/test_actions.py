@@ -184,3 +184,24 @@ def test_a_failing_action_is_said_in_the_log_and_the_status_bar_not_lost(qapp):
     finally:
         logger.removeHandler(handler)
         win.close()
+
+
+def test_the_per_pixel_sheet_says_the_cost_the_copy_and_the_command(qapp, shell):
+    """The sheet over a window whose images come from a per-pixel file alone (data.transpose.Estimate): what an
+    image costs and how that was found, the copy's size, the speed-up as an estimate, the command; none over a cube
+    read from its image cube."""
+    from PySide6 import QtGui
+
+    from explorer.data.transpose import Estimate
+    from explorer.ui.actions import per_pixel_sheet_html
+
+    est = Estimate(image_s=12.3, how="the file's 13.2 GB at 1070 MB/s", frames=735, copy_bytes=13_150_000_000,
+                   factor=735, out_dir="/tmp/x", free_bytes=500_000_000_000,
+                   command="explorer transpose a_sp.fits /tmp/x")
+    text = per_pixel_sheet_html(est, "a_sp.fits", QtGui.QPalette())
+    print(text)
+    for want in ("Images from a per-pixel file", "a_sp.fits", "<b>12.3 s</b>", "13.2 GB at 1070 MB/s",
+                 "<b>13.2 GB</b> on disk (500.0 GB free there)", "<b>735× faster</b> (17 ms an image)", "an estimate",
+                 "<code>explorer transpose a_sp.fits /tmp/x</code>", "never beside the per-pixel file"):
+        assert want in text
+    assert shell.sp_sheet is None

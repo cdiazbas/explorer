@@ -36,7 +36,7 @@ from ..data.names import cube_names
 from ..look import LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
 from . import docks, glass, icons, pens, style, titlebar
-from .actions import ActionRegistry, KeySheet, mod_key
+from .actions import ActionRegistry, KeySheet, mod_key, per_pixel_sheet_html
 from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
 from .cube import CubeView
 from .gestures import Gestures
@@ -66,6 +66,7 @@ DETACHED_MIN_W = 160       # px: a detached image no narrower than this to fit a
 CASCADE = 28               # px each detached image is moved down and left when there is no room for a row
 WIDTHS_MS = 150            # the images share the window's width this long after its size last changed
 SLIT_FLOAT_H = 320          # px: the slit panel floating below lambda-t in glass (the prototype's look_glass.py:615)
+SP_SHEET_WIDTH = 560        # px: the sheet over a per-pixel file alone, its paragraphs wrapped to this
 
 
 class _Follow(QtCore.QObject):
@@ -408,6 +409,8 @@ class Shell(QtWidgets.QMainWindow):
             self.colours.set_light(light)
         self.nav.restyle()
         self.sheet.setText(self.action_registry.sheet_html(self.palette()))
+        if self.sp_sheet is not None:
+            self.sp_sheet.setText(self.per_pixel_sheet_html())
         self.set_look(self.look)                        # marks, cards and colour maps in the new theme
         if self.glass is not None:
             self.glass.retheme()
@@ -1164,6 +1167,28 @@ class Shell(QtWidgets.QMainWindow):
         self.action_registry = ActionRegistry(self.key_table(), self.mouse_table())     # not `actions`: QWidget's
         self.action_registry.install(self)
         self.sheet = KeySheet(self, self.action_registry.sheet_html(self.palette()))
+        self.sp_sheet: KeySheet | None = None
+        if getattr(self.dataset, "images_from_sp", False):     # shown at once: the first image takes seconds
+            self.sp_sheet = KeySheet(self, self.per_pixel_sheet_html())
+            self.sp_sheet.setWordWrap(True)             # paragraphs, not the ? sheet's table: a column to read
+            self.sp_sheet.setFixedWidth(SP_SHEET_WIDTH)
+            self.sp_sheet.set_shown(True)
+            self.after_first_image(0, self._refresh_sp_sheet)
+
+    def per_pixel_sheet_html(self) -> str:
+        """The sheet over the window when the images come from a per-pixel file alone (data.transpose.estimate)."""
+        from ..data.transpose import estimate
+
+        if getattr(self, "_sp_estimate", None) is None or self.dataset.frames.passes:
+            self._sp_estimate = estimate(self.dataset.frames)
+        return per_pixel_sheet_html(self._sp_estimate, os.path.basename(self.dataset.path), self.palette())
+
+    def _refresh_sp_sheet(self) -> None:
+        """The first image's pass measured: the sheet says that instead of the estimate it opened with."""
+        if self.sp_sheet is not None:
+            self.sp_sheet.setText(self.per_pixel_sheet_html())
+            if self.sp_sheet.isVisible():
+                self.sp_sheet.set_shown(True)          # its size and place for the new text
 
     def toggle_sheet(self) -> None:
         self.sheet.toggle()
@@ -1173,6 +1198,8 @@ class Shell(QtWidgets.QMainWindow):
         being drawn (a finished one stays), or else releases the cursor."""
         if self.sheet.isVisible():
             self.sheet.set_shown(False)
+        elif self.sp_sheet is not None and self.sp_sheet.isVisible():
+            self.sp_sheet.set_shown(False)
         elif self.slit_tool.mode:
             self.set_slit_mode(False)
         else:

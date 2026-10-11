@@ -195,8 +195,44 @@ def test_start_opens_the_image_cube_with_the_per_pixel_file_given(qapp, pair, tm
         print(capsys.readouterr().err)
         assert s.ds.path == pair["im"] and s.ds.pixel is not None and s.ds.pixel.layout.path == pair["sp"]
         assert s.ds.axes.utc_str(s.ds.roles.nt - 1) is not None
-        assert not s.ds.images_from_sp
+        assert not s.ds.images_from_sp and s.shell.sp_sheet is None     # with its image cube: no sheet
     finally:
         s.shell.close()
         s.close()
 
+
+def test_start_opens_a_per_pixel_file_alone_with_its_sheet(qapp, pair, monkeypatch, capsys):
+    """`explorer c_sp.fits` without c_im.fits: before, nothing opened (exit 1). Now the window opens, its images read
+    from the per-pixel file, and a sheet as the ? one says what an image costs here, what a transposed copy would
+    take and give, and the command; once the first image is shown it says that image's time. Esc closes it."""
+    import time
+
+    from explorer.ui.app import start
+
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    s = start(pair["sp_alone"], saved_layout=False)
+    assert s is not None
+    try:
+        print(capsys.readouterr().err)
+        assert s.ds.images_from_sp and s.ds.path == pair["sp_alone"] and s.ds.pixel is not None
+        sheet = s.shell.sp_sheet
+        assert sheet is not None and sheet.isVisibleTo(s.shell)
+        text = sheet.text()
+        print(text)
+        size = os.path.getsize(pair["sp_alone"])
+        assert "Images from a per-pixel file" in text and f"<b>{size / 1e6:.0f} MB</b> on disk" in text
+        assert f"{SHAPE[0] * SHAPE[1] * SHAPE[2]}× faster" in text and "MB/s" in text
+        assert f"explorer transpose {os.path.abspath(pair['sp_alone'])} " in text
+        s.shell.show()
+        end = time.perf_counter() + 20
+        while (s.shell.first_image_s is None or "latest image took" not in sheet.text()) and time.perf_counter() < end:
+            qapp.processEvents()
+            time.sleep(0.01)
+        print(sheet.text())
+        assert s.ds.frames.passes and "the latest image took this long" in sheet.text()
+        s.shell._escape()                                # what the Esc shortcut runs
+        assert not sheet.isVisible()
+    finally:
+        s.shell.close()
+        s.close()

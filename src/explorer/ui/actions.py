@@ -80,6 +80,40 @@ class ActionRegistry:
                 + f'<p align="right" style="color:{dim}"><i>{CREDIT}</i></p>')
 
 
+
+def _seconds(s: float) -> str:
+    if s < 1e-3:
+        return "under 1 ms"
+    return f"{s * 1e3:.0f} ms" if s < 1 else f"{s:.1f} s" if s < 60 else f"{s / 60:.1f} min"
+
+
+def _size(n: float) -> str:
+    return f"{n / 1e12:.1f} TB" if n >= 1e12 else f"{n / 1e9:.1f} GB" if n >= 1e9 else f"{n / 1e6:.0f} MB"
+
+
+def per_pixel_sheet_html(est, name: str, palette: QtGui.QPalette) -> str:
+    """The sheet shown over the window when the images come from a per-pixel file alone (data.transpose.Estimate
+    est): what an image costs here and how that was found, what a transposed copy would take and give (an
+    estimate, said so), and the command that writes it. Written as the ? sheet."""
+    dim = palette.color(QtGui.QPalette.ColorRole.PlaceholderText).name()
+    free = "" if est.free_bytes is None else f" ({_size(est.free_bytes)} free there)"
+    after = est.image_s / max(1, est.factor)
+    return (f"<p><b>Images from a per-pixel file</b></p>"
+            f"<p>{html.escape(name)} holds each pixel's spectra together, and its image cube (_im) is not beside it: "
+            f"each image is read from all of the file.<br>"
+            f"Here an image takes about <b>{_seconds(est.image_s)}</b> "
+            f'<span style="color:{dim}">({html.escape(est.how)})</span>.<br>'
+            f"Spectra, λ–t and slits are as fast as usual.</p>"
+            f"<p>Consider a transposed copy (_im): <b>{_size(est.copy_bytes)}</b> on disk{free}; each image then about "
+            f"<b>{est.factor}× faster</b> ({_seconds(after)} an image) "
+            f'<span style="color:{dim}">(an estimate: an image of the copy is one of its {est.frames} images, '
+            f"1/{est.factor} of the bytes read now)</span>.<br>"
+            f"Written by reading this file once, with:</p>"
+            f'<p><code>{html.escape(est.command)}</code></p>'
+            f'<p style="color:{dim}">or into another directory of yours with room (never beside the per-pixel file '
+            f"nor where its data are); then open the copy. Esc or a click closes this</p>")
+
+
 class KeySheet(QtWidgets.QLabel):
     """The ? sheet over the image, until ? or Esc (a click on it closes it too). Non-modal: a child label on a rounded,
     slightly translucent card, painted when shown; nothing in it follows the mouse or animates (over X11 every
