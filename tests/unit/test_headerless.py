@@ -52,7 +52,7 @@ def bare(tmp_path, shape):
     ((5, 7, 16, 12), None, "default (t, lambda)", [("spectra", (1, 7)), ("lambda_t", (5, 7))]),
     ((4, 7, 16, 12), "s,l", "--axes", [("spectra", (4, 7))]),                      # (s, lambda): no t, no lambda-t
     ((7, 16, 12), None, "unknown", [("spectra", (1, 7))]),                          # a profile, in indices
-    ((7, 16, 12), "t", "--axes", []),                                               # a time series: image only
+    ((7, 16, 12), "t", "--axes", [("lambda_t", (7, 1))]),                         # a time series: its curve in t
     ((5, 4, 7, 16, 12), None, "SOLARNET order", [("spectra", (4, 7)), ("lambda_t", (5, 7))]),
 ])
 def test_cubes_without_a_header(tmp_path, shape, axes, how, want):
