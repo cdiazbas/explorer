@@ -4682,3 +4682,28 @@ la leyenda abierta: allí se escribe ahora solo cuando no es 1.
 de la 2×2 sigue); el doble clic vuelve a los límites automáticos y a γ = 1; la γ y su valor solo en la leyenda abierta,
 y en reposo durante un segundo tras G, ⇧G o ⌘G, en todos los aspectos. Estos tres cambios pasaron los grupos de la
 leyenda, el gamma y glass (124 y 87 pruebas), no la suite completa.
+
+### 2026-10-11 (10): la leyenda abierta en el acento del aspecto; la cruz que se quedaba (ROADMAP E5.33)
+
+**La cruz** (el usuario, en classic: al entrar en la leyenda y salir por otro sitio, la cruz roja seguía donde había
+entrado el puntero). Era una zona sin repintar, y de Qt, no del puente: al salir de la leyenda abierta, la leyenda
+encoge y la cruz se mueve en la misma vuelta del bucle, y la imagen repinta solo lo que la leyenda destapa; las líneas
+viejas se quedan en la memoria de la ventana y el puente manda exactamente esos píxeles. Medido sin pantalla (661 px
+distintos de un dibujo nuevo) y por el puente en un Xvfb privado (452 px de la línea vieja en la ventana X, que es
+igual a la de Qt). El disparador, medido: un cambio de geometría de un widget sobre la imagen en la misma vuelta que
+mueve un elemento de la escena; por qué Qt no repinta es inferencia.
+
+**Un solo mecanismo** para todo lo que flota sobre una imagen (`overlays.OverImage`, `ImageView.over`): un elemento
+que cambia de tamaño, de sitio o de visibilidad repinta la imagen entera, y el puntero sobre él cuenta como fuera de
+la imagen (la cruz se queda donde estaba, como al salir de la imagen). Lo usan la leyenda, el candado, el rótulo de
+Stokes (también en la 2×2) y el aviso de la rendija; un panel futuro entra con `view.over.add(...)`.
+
+**El acento:** la leyenda abierta toma el del aspecto: rojo en classic (el del cursor), naranja en glass, azul en
+modern; sigue a un cambio de aspecto o de tema.
+
+**Medido** (bellatrix): 5 pruebas nuevas fallan antes (452/451 px de la línea vieja en oscuro/claro; 0 px rojos en
+classic) y pasan después; grupos de la leyenda, el aspecto, glass, enlazadas, candado y rendija: 196 pasan;
+`tests/xvfb`: 40 pasan. Sin nada abierto, los 12 escenarios: 0 px frente a la base.
+
+**Por decidir:** glass pasa de azul a su naranja en la leyenda abierta; la cruz ya no sigue al puntero bajo el rótulo
+de Stokes ni bajo el aviso de la rendija (con una rendija a medio dibujar tampoco).
