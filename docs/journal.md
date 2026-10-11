@@ -4707,3 +4707,19 @@ classic) y pasan después; grupos de la leyenda, el aspecto, glass, enlazadas, c
 
 **Por decidir:** glass pasa de azul a su naranja en la leyenda abierta; la cruz ya no sigue al puntero bajo el rótulo
 de Stokes ni bajo el aviso de la rendija (con una rendija a medio dibujar tampoco).
+
+### 2026-10-11 (11): los mapas de color en todos los aspectos (ROADMAP E5.34)
+
+**El problema** (el usuario): en classic, C y ⇧C no hacían nada y la imagen se quedaba gris. Classic no tenía ninguna parte, y "colour" decidía dos cosas a la vez: si C cambia el mapa y con qué mapa se empieza. En la práctica modern también empieza en gris; Q U V solo empiezan en otro mapa con `EXPLORER_DIVERGING`.
+
+**Ahora:**
+- **Dos partes:** `cmap` (C/⇧C; un Stokes fuera del gris se dibuja con su mapa) y `colour` (empezar en los mapas del aspecto). Classic tiene `cmap`.
+- **Una sola regla, `Shell.maps_for(s)`,** para la imagen, las enlazadas, la 2×2, λ–t, las rendijas y la leyenda. En classic, un Stokes en gris sigue el camino gris de siempre (`base_lut`), así que el arranque es el mismo código.
+- **Un juego de mapas por ventana:** el mapa elegido sigue tras M y T. Un Stokes que nunca se tocó toma el arranque del aspecto. `EXPLORER_LOOK_OFF=colour` ya no quita C; `cmap` sí.
+
+**Medido** (bellatrix, sin pantalla):
+- 11 pruebas fallan con el código de main y pasan con la rama;
+- 16 grupos: 248 pasan, más `test_look` (19) tras corregir dos pruebas;
+- 12 escenarios: 0 px frente a la base (la base contra sí misma: el fichero ruidoso de siempre, 865 px).
+
+**Por decidir:** la leyenda de classic en el tema claro empieza en blanco (la entrada 0 de `base_lut` es el relleno). Se deja así para no cambiar el arranque.
