@@ -82,10 +82,18 @@ def test_the_panels_menu_and_reset(qapp, shell):
 
 
 def test_the_sliders_give_way_in_a_narrow_window(qapp, shell):
+    """The narrow width comes from the toolbar itself, halfway between its sliders' two widths. What the rest of it
+    needs depends on the application's look, which style.apply_theme sets for the whole application, so an earlier
+    test leaves it changed: at a fixed 900 px the toolbar fitted in Fusion's look and not in ours (spacing 6 against
+    3, its font), where the sliders stopped at their narrowest and the toolbar still asked for 915."""
     from explorer.ui.toolbar import SLIDER_W
 
+    nav = shell.nav
     shell.resize(1400, 900)
-    assert spin(qapp, lambda: shell.nav.sliders["t"].width() == SLIDER_W[1])
-    shell.resize(900, 700)
-    assert spin(qapp, lambda: shell.nav.sliders["t"].width() < SLIDER_W[1])
-    assert shell.nav.tb.sizeHint().width() <= 900 + 8
+    assert spin(qapp, lambda: nav.sliders["t"].width() == SLIDER_W[1])
+    n = len(nav.sliders)
+    width = nav.tb.sizeHint().width() - n * SLIDER_W[1] + n * (SLIDER_W[0] + SLIDER_W[1]) // 2 + 8
+    shell.resize(width, 700)
+    assert spin(qapp, lambda: nav.sliders["t"].width() < SLIDER_W[1])
+    assert all(SLIDER_W[0] < sl.width() < SLIDER_W[1] for sl in nav.sliders.values())
+    assert nav.tb.sizeHint().width() <= width + 8
