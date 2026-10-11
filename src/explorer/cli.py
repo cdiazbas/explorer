@@ -14,6 +14,7 @@ from ._name import APP_NAME, ENV_PREFIX
 SUBCOMMANDS = {
     "doctor": ("doctor", "check that this user can run explorer here (environment, numba, Qt, a cube)"),
     "demo": ("demo", "try what explorer can do so far, on a cube (default: a small synthetic one)"),
+    "transpose": ("transpose", "write the image cube (_im.fits) of a per-pixel file (_sp.fits) alone, once"),
 }
 
 
@@ -34,7 +35,8 @@ def _parser() -> argparse.ArgumentParser:
   explorer --series aia*.fits                   one image per file (e.g. SDO/AIA), the files as one cube's t, in
                                                 the order of their header times (T_OBS, DATE-AVG or DATE-OBS)
   explorer stokes_6173_sp.fits                  a per-pixel file: its _im beside it is opened with it; without one,
-                                                its images are read from it (slow: each one a pass over the file)
+                                                its images are read from it (slow: each one a pass over the file;
+                                                explorer transpose writes its _im once)
   explorer stokes_6173_im.fits --mask spots.fits
                                                 the outline of a 0/1 mask on the first cube's pixels over every
                                                 image: one frame at every t, or one per t
