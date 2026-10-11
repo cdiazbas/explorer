@@ -177,8 +177,8 @@ def test_a_and_d_on_the_sheet_and_from_the_terminal(qapp, shell):
 
     w, K = shell, QtCore.Qt.Key
     rows = {k: what for k, what, _b in w.action_registry.rows}
-    assert "previous, next point" in rows.get("A  D", "")
-    assert "A&nbsp;&nbsp;D" in w.sheet.text() or "A  D" in w.sheet.text()
+    assert "slit point" in rows.get("A D", "")
+    assert "<b>A D</b>" in w.sheet.text()
     acts = termkeys.actions_of(w)
     none = QtCore.Qt.KeyboardModifier.NoModifier
     make(qapp, w, A)

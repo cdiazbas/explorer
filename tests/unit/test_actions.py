@@ -69,7 +69,8 @@ def test_the_registry_installs_every_sequence_and_its_sheet_lists_them(qapp):
     page = reg.sheet_html(QtGui.QPalette())
     for text in ("λ: previous, next", "quit", "&lt;b&gt;", "lock &amp; go", "Keys", "Mouse", "? or Esc closes this"):
         assert text in page
-    assert page.rstrip().endswith("Designed and implemented by C. J. Díaz Baso</i></p>")   # the sheet's last line
+    assert page.rstrip().endswith(      # the sheet's last line, on the right
+        '<td align="right"><i>Designed and implemented by C. J. Díaz Baso</i></td></tr></table>')
     w.close()
 
 
@@ -114,7 +115,7 @@ def test_a_mac_shows_the_command_key(qapp, cube, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     with Dataset.open(cube) as ds:
         w = Shell(ds)
-        shown = [k for k, _w, _b in w.action_registry.rows]
+        shown = " ".join(k for k, _w, _b in w.action_registry.rows).split()
         assert "⌘W" in shown and "⌘Q" in shown and not any(k.startswith("Ctrl+") for k in shown)
         w.close()
 
@@ -205,3 +206,60 @@ def test_the_per_pixel_sheet_says_the_cost_the_copy_and_the_command(qapp, shell)
                  "<code>explorer transpose a_sp.fits /tmp/x</code>", "never beside the per-pixel file"):
         assert want in text
     assert shell.sp_sheet is None
+
+
+SHOWN = {"Left": "←", "Right": "→", "Down": "↓", "Up": "↑", "Backspace": "⌫", "Del": "⌫", "Shift+?": "?"}
+
+
+def shown_as(seq) -> str:
+    """How the sheet writes a bound key sequence: arrows and ⌫ as symbols, Shift as ⇧, Ctrl as mod_key()."""
+    from PySide6 import QtGui
+
+    from explorer.ui.actions import mod_key
+
+    text = seq if isinstance(seq, str) else QtGui.QKeySequence(seq).toString()
+    text = SHOWN.get(text, text)
+    return text.replace("Shift+", "⇧").replace("Ctrl+", mod_key())
+
+
+@pytest.fixture
+def linked_shell(qapp, cube, tmp_path):
+    """Four Stokes, t, lambda and a linked cube: every row the sheet can have."""
+    from explorer.data.dataset import Dataset
+    from explorer.ui.shell import Shell
+
+    other = synth.write_dataset(tmp_path, "o", shape=SHAPE, seed=2, sp=False, icube=False)["im"]
+    ds = Dataset.open(cube)
+    lk = Dataset.open(other, executors=ds.executors)
+    w = Shell(ds, linked=[lk])
+    w.resize(1440, 900)
+    w.show()
+    assert spin(qapp, lambda: w.first_image_s is not None)
+    yield w
+    w.close()
+    lk.close()
+    ds.close()
+
+
+def test_every_bound_key_is_shown_on_its_row(linked_shell):
+    """Grouped rows ("G ⇧G · ⌘G") still show every key they bind, so nothing bound is missing from the sheet."""
+    w = linked_shell
+    missing = [(k, shown_as(seq)) for k, _w, binds in w.action_registry.rows for seq, _fn in binds
+               if shown_as(seq) not in k.replace("–", " ").replace("·", " ").split()
+               and not (k.startswith("1–") and shown_as(seq).isdigit())]
+    assert not missing, missing
+
+
+def test_the_sheet_is_a_few_short_lines_and_fits_a_laptop_window(qapp, linked_shell):
+    """At most 16 lines a column and 6 words an entry; the card under 600 px high at the default font, so it fits
+    over the image of a 900-px-high window without scrolling."""
+    w = linked_shell
+    rows = [(k, what) for k, what, _b in w.action_registry.rows] + list(w.action_registry.mouse)
+    long = [r for r in rows if len(r[1].replace("·", " ").split()) > 6]
+    w.toggle_sheet()
+    qapp.processEvents()
+    h = w.sheet.sizeHint().height()
+    print("key rows", len(w.action_registry.rows), "mouse rows", len(w.action_registry.mouse), "sheet", h, "px")
+    w.toggle_sheet()
+    assert max(len(w.action_registry.rows), len(w.action_registry.mouse)) <= 16 and not long, long
+    assert h < 600, h

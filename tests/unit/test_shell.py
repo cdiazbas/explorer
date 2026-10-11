@@ -108,7 +108,7 @@ def test_stokes_keys_without_t(qapp, tmp_path):
     fits.PrimaryHDU(np.random.default_rng(0).uniform(1, 2, (4, 7, 16, 12)).astype(np.float32)).writeto(p)
     with Dataset.open(p, axes="s,l") as ds:
         w = Shell(ds)
-        keys = [row[0] for row in w.key_table()]
+        keys = " · ".join(row[0] for row in w.key_table())
         assert "1–4" in keys and "↓ ↑" not in keys          # Stokes keys, no t keys
         w.close()
 

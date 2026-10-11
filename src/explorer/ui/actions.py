@@ -64,21 +64,21 @@ class ActionRegistry:
         return out
 
     def sheet_html(self, palette: QtGui.QPalette) -> str:
+        """The keys on the left, the mouse on the right, a line per row: short enough to read at a glance and to fit a
+        laptop's window without scrolling; under them, how it closes and the credit."""
         dim = palette.color(QtGui.QPalette.ColorRole.PlaceholderText).name()
 
-        def row(k, w):
-            return (f'<tr><td align="right"><b>{html.escape(k)}</b></td><td>&nbsp;&nbsp;&nbsp;</td>'
-                    f'<td>{html.escape(w)}</td></tr>')
-
-        def head(t):
-            return f'<tr><td colspan="3" style="color:{dim}">{t}</td></tr>'
-        return ('<table cellspacing="0" cellpadding="2">' + head("Keys")
-                + "".join(row(k, w) for k, w, _b in self.rows)
-                + '<tr><td colspan="3">&nbsp;</td></tr>' + head("Mouse")
-                + "".join(row(k, w) for k, w in self.mouse) + "</table>"
-                + f'<p style="color:{dim}">? or Esc closes this</p>'
-                + f'<p align="right" style="color:{dim}"><i>{CREDIT}</i></p>')
-
+        def column(title, rows):
+            return ('<table cellspacing="0" cellpadding="2">'
+                    f'<tr><td colspan="3" style="color:{dim}">{title}</td></tr>'
+                    + "".join(f'<tr><td align="right"><b>{html.escape(k)}</b></td><td>&nbsp;&nbsp;</td>'
+                              f'<td>{html.escape(w)}</td></tr>' for k, w in rows) + "</table>")
+        return ('<table cellspacing="0" cellpadding="0"><tr>'
+                f'<td valign="top">{column("Keys", [(k, w) for k, w, _b in self.rows])}</td>'
+                '<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>'
+                f'<td valign="top">{column("Mouse", self.mouse)}</td></tr></table>'
+                f'<table width="100%" cellspacing="0" cellpadding="2" style="color:{dim}"><tr>'
+                f'<td>? or Esc closes this</td><td align="right"><i>{CREDIT}</i></td></tr></table>')
 
 
 def _seconds(s: float) -> str:

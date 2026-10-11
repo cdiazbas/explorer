@@ -1234,83 +1234,75 @@ class Shell(QtWidgets.QMainWindow):
 
     def key_table(self):
         """(keys as shown, what they do, ((key sequence, action), ...)) for this cube: the shortcuts, the terminal's
-        keys and the ? sheet all come from it (ui.actions)."""
+        keys and the ? sheet all come from it (ui.actions). A row is a line of the sheet: related keys share one, " · "
+        between them as between what each does."""
         K, s = QtCore.Qt.Key, self.session
         mod = mod_key()
         rows: list[tuple[str, str, tuple]] = []
-        if s.present["l"]:
-            rows.append(("← →", "λ: previous, next tuning",
-                         ((K.Key_Left, lambda: s.step("l", -1)), (K.Key_Right, lambda: s.step("l", 1)))))
-        if s.present["t"]:
-            rows.append(("↓ ↑", "t: previous, next frame",
-                         ((K.Key_Down, lambda: s.step("t", -1)), (K.Key_Up, lambda: s.step("t", 1)))))
+        arrows = [(keys, name, binds) for ax, keys, name, binds in (
+            ("l", "← →", "λ", ((K.Key_Left, lambda: s.step("l", -1)), (K.Key_Right, lambda: s.step("l", 1)))),
+            ("t", "↓ ↑", "t", ((K.Key_Down, lambda: s.step("t", -1)), (K.Key_Up, lambda: s.step("t", 1)))))
+            if s.present[ax]]
+        if arrows:
+            rows.append((" · ".join(a[0] for a in arrows), " · ".join(a[1] for a in arrows) + ": previous, next",
+                         tuple(b for a in arrows for b in a[2])))
         if s.present["s"] and s.sizes["s"] > 1:
             n = s.sizes["s"]
-            rows.append((f"1–{n}", "Stokes " + " ".join(STOKES[:n]),
-                         tuple((str(k + 1), lambda k=k: self.pick_stokes(k)) for k in range(n))))
-            rows.append((str(n + 1), " ".join(STOKES[:n]) + " side by side, zoom linked; again: one Stokes",
-                         ((str(n + 1), self.toggle_grid),)))
+            rows.append((f"1–{n} · {n + 1}", "one Stokes · all side by side",
+                         (*((str(k + 1), lambda k=k: self.pick_stokes(k)) for k in range(n)),
+                          (str(n + 1), self.toggle_grid))))
         if s.present["t"] and s.sizes["t"] > 1:
-            rows.append(("Space", "play, pause t", ((K.Key_Space, lambda: self.nav.play.toggle()),)))
-        rows.append(("L", "lock, release the cursor", ((K.Key_L, lambda: s.lock(not s.state.locked)),)))
-        # A and D walk along the slit: the left hand on them, the right on the mouse (the prototype's 1324-1327, F75)
-        rows += [("S", "draw a slit on the image (again: cancel)", ((K.Key_S, self.toggle_slit_mode),)),
-                 ("\u232b", "remove the slit", ((K.Key_Backspace, self.clear_slit), (K.Key_Delete, self.clear_slit))),
-                 ("A  D", "along the slit: previous, next point (the cursor locked there)",
+            rows.append(("Space", "play, pause", ((K.Key_Space, lambda: self.nav.play.toggle()),)))
+        rows += [("L", "lock, release the cursor", ((K.Key_L, lambda: s.lock(not s.state.locked)),)),
+                 ("Esc", "close sheet, cancel slit, release", ((K.Key_Escape, self._escape),)),
+                 ("S · \u232b", "slit: draw · remove",
+                  ((K.Key_S, self.toggle_slit_mode), (K.Key_Backspace, self.clear_slit),
+                   (K.Key_Delete, self.clear_slit))),
+                 # A and D walk along the slit: the left hand on them, the right on the mouse (the prototype's
+                 # 1324-1327, F75)
+                 ("A D", "previous, next slit point",
                   ((K.Key_A, lambda: self.slit_step(-1)), (K.Key_D, lambda: self.slit_step(1))))]
         if self.linked:
-            rows.append(("\u21e7S", "slit: a tab per cube \u21c4 one tab, of the cube it is drawn on",
+            rows.append(("\u21e7S", "slit tabs: per cube \u21c4 one",
                          (("Shift+S", lambda: self.set_slit_tabs(not self.session.state.slit_tabs)),)))
         if self.spectra is not None:
-            rows += [("F", "spectra: fit y to this pixel, and keep it", ((K.Key_F, self.fit_spectra),)),
-                     ("\u21e7F", "spectra: fixed range (I: 100 random profiles; Q U V: the whole image)",
-                      (("Shift+F", self.spectra_to_sample),))]
-        # provisional, until the colour key takes the scaling (the user decides where its controls go)
-        rows += [("G  \u21e7G", "contrast \u03b3: lower, higher, on the image under the pointer (its Stokes)",
-                  (("G", lambda: self.step_gamma(-1)), ("Shift+G", lambda: self.step_gamma(1)))),
-                 (mod + "G", "contrast \u03b3 back to 1 (linear) on the image under the pointer",
-                  (("Ctrl+G", self.reset_gamma),))]
+            rows.append(("F · \u21e7F", "spectra y: this pixel · fixed",
+                         ((K.Key_F, self.fit_spectra), ("Shift+F", self.spectra_to_sample))))
         # always bound: the terminal's keys are read once, and the look can change while the window runs
-        rows += [("M", "look: classic \u2192 modern \u2192 glass", ((K.Key_M, self.toggle_look),)),
-                 ("T", "theme: dark \u21c4 light", ((K.Key_T, self.toggle_theme),)),
-                 ("C  \u21e7C", "colours: next, previous map for the Stokes shown",
-                  (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1))))]
-        rows += [("Esc", "release the cursor; while a slit is drawn, cancel it (first closes this sheet)",
-                  ((K.Key_Escape, self._escape),)),
-                 (mod + "W", "close the window", (("Ctrl+W", self.close),)),
-                 (mod + "M", "minimise", (("Ctrl+M", self.showMinimized),)),
-                 # on a Mac the application menu's own, which closes through closeEvent and keeps the layout
-                 (mod + "Q", "quit", () if sys.platform == "darwin" else (("Ctrl+Q", self.close),)),
-                 ("F12", "the cube, storage and memory in the status bar",
+        rows += [(f"G \u21e7G · {mod}G", "\u03b3: lower, higher · back to 1",
+                  (("G", lambda: self.step_gamma(-1)), ("Shift+G", lambda: self.step_gamma(1)),
+                   ("Ctrl+G", self.reset_gamma))),
+                 ("C \u21e7C", "colour map: next, previous",
+                  (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1)))),
+                 ("M · T", "look · dark \u21c4 light", ((K.Key_M, self.toggle_look), (K.Key_T, self.toggle_theme))),
+                 ("F12", "status: cube, storage, memory",
                   ((K.Key_F12, lambda: self.set_diagnostics(not self.diagnostics)),)),
+                 # Q: on a Mac the application menu's own, which closes through closeEvent and keeps the layout
+                 (f"{mod}W {mod}M {mod}Q", "close · minimise · quit",
+                  (("Ctrl+W", self.close), ("Ctrl+M", self.showMinimized),
+                   *(() if sys.platform == "darwin" else (("Ctrl+Q", self.close),)))),
                  # "?" alone misses Shift+/ on the offscreen platform, so through the X11 bridge
                  ("?", "this sheet", (("?", self.toggle_sheet), ("Shift+?", self.toggle_sheet)))]
         return rows
 
     def mouse_table(self):
-        """(gesture, what it does) for the ? sheet; the handlers are ui.gestures and _click."""
-        rows = [("click on the image", "lock the cursor there"), ("right click on the image", "release it"),
-                ("S, then click on the image", "slit: a point per click; double click ends it, right click removes "
-                                               "the last point, Esc cancels")]
+        """(gesture, what it does) for the ? sheet, a line each as the keys' rows; the handlers are ui.gestures and
+        _click."""
+        rows = [("image: click · right click", "lock · release the cursor"),
+                ("S, then: click · double · right", "slit: point · finish · undo")]
+        picks = [(where, what) for where, what, has in (("spectrum", "λ", self.spectra is not None),
+                                                        ("λ–t", "t and λ", self.lambda_t is not None)) if has]
+        if picks:
+            rows.append(("click: " + " · ".join(p[0] for p in picks), "pick " + " · ".join(p[1] for p in picks)))
         if self.spectra is not None:
-            rows += [("click on a spectrum", "pick λ"),
-                     ("drag on a spectrum's y axis", "move its range; right drag or wheel: stretch it; "
-                                                     "double click: automatic again")]
-        if self.lambda_t is not None:
-            rows.append(("click on λ–t", "pick t and λ"))
-        rows.append(("click on the slit panel", "the cursor to that point of the slit; t or λ from the height"))
+            rows.append(("spectrum's y axis: drag · wheel · double", "move · stretch (or right drag) · automatic"))
+        rows.append(("slit panel: click", "cursor, t or λ there"))
         if self.session.present["t"]:
-            rows.append(("number in the λ–t and Slit titles",
-                         "t steps shown at most: 25, 50, 100, all; click: choose; wheel: change"))
-        ns = self.session.sizes["s"] if self.session.present["s"] else 1
-        if ns > 1:
-            rows.append(("click on a panel of the side-by-side view", "lock the cursor there; λ–t shows its Stokes"))
-        rows.append(("padlock, top right of the image and of the spectra",
-                     "fixed ⇄ automatic scale; right click: fit it to what is shown"))
-        rows.append(("colour key of an image (pointer on it)",
-                     "histogram: drag ▲ for min, max; wheel: γ; double click: automatic levels, γ = 1"))
-        if ns > 1:
-            rows.append(("right click on a side-by-side panel's Stokes label", "that panel's limits, γ, Scale…"))
+            rows.append(("number in λ–t, Slit titles: click · wheel", "t steps: 25, 50, 100, all"))
+        if self.session.present["s"] and self.session.sizes["s"] > 1:
+            rows.append(("side by side: click · right click label", "lock there · limits, γ, Scale…"))
+        rows += [("padlock: click · right click", "fixed \u21c4 automatic · fit to view"),
+                 ("colour key: drag ▲ · wheel · double", "min, max · γ · automatic")]
         return rows
 
     def _keys(self) -> None:

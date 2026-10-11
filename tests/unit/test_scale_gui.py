@@ -299,7 +299,7 @@ def test_the_g_keys_are_on_the_sheet(window):
     w, _ = window
     html = w.action_registry.sheet_html(w.palette())
     assert "G" in html and "⇧G" in html and f"{mod_key()}G" in html and "γ" in html
-    assert "colour key of an image" in html                              # and what the mouse does on the key
+    assert "colour key: drag ▲" in html                                 # and what the mouse does on the key
 
 
 # ---------------------------------------------------------------------------------------------- its texts

@@ -261,12 +261,12 @@ def test_the_keys_are_in_the_one_table_with_a_d_along_the_slit(qapp, shell):
 
     w, K = shell, QtCore.Qt.Key
     rows = {k: what for k, what, _b in w.key_table()}
-    assert "S" in rows and "⌫" in rows and "slit" in rows["Esc"]
+    assert "slit" in rows["S · ⌫"] and "slit" in rows["Esc"]
     seqs = [QtGui.QKeySequence(seq) for seq, _fn in w.action_registry.binds()]
     for k in (K.Key_S, K.Key_Backspace, K.Key_Delete, K.Key_A, K.Key_D):   # A, D: along the slit (F75)
         assert QtGui.QKeySequence(k) in seqs
     html = w.action_registry.sheet_html(w.palette())
-    assert "draw a slit" in html and "remove the slit" in html and "S, then click on the image" in html
+    assert "slit: draw · remove" in html and "S, then: click" in html
 
 
 def test_the_slit_takes_the_looks_colour_and_the_theme(qapp, shell):

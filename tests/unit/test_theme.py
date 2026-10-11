@@ -137,7 +137,7 @@ def test_t_switches_the_theme(restore, cube):
     style.apply_theme(qapp, "dark")
     w, ds = window(qapp, cube, "classic")
     try:
-        assert "T" in [k for k, _w, _b in w.key_table()]
+        assert "T" in " ".join(k for k, _w, _b in w.key_table()).split()
         w.toggle_theme()
         assert style.is_light() and "light theme" in w.statusBar().currentMessage()
         w.toggle_theme()

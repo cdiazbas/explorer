@@ -162,7 +162,7 @@ def test_a_panel_of_the_2x2_view_is_its_stokes_and_the_key_at_rest_never_says_ga
 def test_the_keys_are_on_the_sheet(window):
     w, _ = window
     keys = [k for k, _what, _b in w.action_registry.rows]
-    assert "G  ⇧G" in keys and any(k.endswith("G") and k != "G  ⇧G" for k in keys)
+    assert any(k.startswith("G ⇧G · ") and k.endswith("G") for k in keys)
 
 
 def test_after_g_the_key_says_the_gamma_for_a_second(window):

@@ -307,8 +307,8 @@ def test_the_help_button_opens_and_closes_the_sheet(themed, cube):
     w, ds = make(themed, cube, "classic")
     try:
         w.nav.help.click()
-        assert w.sheet.isVisible() and "look: classic" in w.sheet.text()
-        row = next(r for r in w.sheet.text().split("<tr") if "colours: next, previous map" in r)
+        assert w.sheet.isVisible() and "look · dark" in w.sheet.text()
+        row = next(r for r in w.sheet.text().split("<tr") if "colour map: next, previous" in r)
         assert "modern" not in row                                      # C in every look
         w.nav.help.click()
         assert not w.sheet.isVisible()
