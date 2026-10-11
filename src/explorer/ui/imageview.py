@@ -243,7 +243,7 @@ class ViewGuard(QtCore.QObject):
     def __init__(self, vb, nx, ny, floor: Callable[[], float | None] | None = None):
         super().__init__(vb)
         self.vb, self.nx, self.ny = vb, nx, ny
-        self.floor = floor                              # the lowest magnification, if not this view's own fit
+        self.floor = floor                              # a lower magnification it may go down to, below its own fit
         self._busy = False
         self._last: tuple | None = None                 # (scale, panel width, panel height, centre x, centre y)
         vb.sigRangeChanged.connect(self._check)
@@ -266,8 +266,11 @@ class ViewGuard(QtCore.QObject):
             return
         s = min(W / w, H / h)                           # screen px per data px (the aspect is locked)
         fit = min(W / self.nx, H / self.ny)
+        # the floor lets a view zoom out below its own fit, never stops it short of it: a linked image smaller than
+        # the main one still shows itself whole
         low = self.floor() if self.floor is not None else None
-        new = min(max(s, fit * self.ZOOM_OUT if low is None else low), min(W, H) / self.MIN_PIXELS)
+        own = fit * self.ZOOM_OUT
+        new = min(max(s, own if low is None else min(low, own)), min(W, H) / self.MIN_PIXELS)
         cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
         last = self._last
         same = last is not None and abs(last[1] - W) < 1 and abs(last[2] - H) < 1
