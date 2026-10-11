@@ -4776,3 +4776,44 @@ Dibujada sobre el principal: 32.2 / 30.3 ms, 40 de 40.
 - el valor de `LIVE_MS`;
 - si el primer paso de un cubo también se lee al momento;
 - comprobar con el usuario que dibujaba sobre el mapa. A través del puente X no se ha medido.
+
+### 2026-10-11 (14): la línea de la rendija esperaba al panel de la rendija, en el puente (ROADMAP E6.22)
+
+**La pregunta** (el usuario): «¿puede ser que el dibujo de la rendija espere de algún modo al del diagrama en la subventana?».
+Trabaja por ssh -Y hacia XQuartz: 32-61 MB/s y 12-15 ms de ida y vuelta medidos hoy.
+
+**Medido** con `bench/slit_link.py` (nuevo):
+- explorer de verdad por el puente, sobre un Xvfb privado, con el enlace emulado de `bench/xlink.py`;
+- el puntero se mueve con XTEST desde el lado del servidor;
+- en cada paso se lee con GetImage cuándo llega la línea a su sitio y cuándo cambia el panel de la rendija;
+- la aplicación anota cada actualización del puente (bytes por región) y cada pintado.
+
+Condiciones: el 6173 solo, classic, en bellatrix, nodo 0, con el cerrojo, ABBA.
+
+**Resultado:**
+- `0712b98` y `4dfe362` dan lo mismo: del movimiento a la línea, 72.5 / 72.9 ms a 30 MB/s y 104.3 / 105.7 ms a 10 MB/s.
+- Sin los cortes en vivo, 61.6 y 79.8 ms.
+
+**Por qué espera:**
+- El movimiento llega a Qt a los 6 ms y la línea se pinta a los 19.
+- El puente no la captura hasta los ~46 ms: su temporizador de 0 ms no salta mientras corren los repintados del panel (tres por paso) y los resultados de las lecturas. Una traza de todos los eventos no muestra ningún temporizador entre medias.
+- Después la línea sale en la misma actualización que los cortes, y una sola copia por ventana la muestra al final: 486 kB, 258 del panel.
+
+**Ahora** el puente captura con una llamada encolada, que corre tras lo ya encolado:
+- de la línea, 73 → 57 ms a 30 MB/s y 105 → 84 ms a 10 MB/s (tres series ABBA);
+- a ritmo de puntero, el panel se ve 0 → 28 veces de 40 a 30 MB/s;
+- a 10 MB/s, la cruz del cursor llega igual (170 → 167 ms), pero se ven 14.5 posiciones de 40 en lugar de 5.5;
+- cuesta un 26 % más de bytes por paso (664 → 839 kB), porque los repintados intermedios del panel ahora salen.
+
+**No se pudo:**
+- reproducir la espera con un bucle sintético (el temporizador saltó a los 6.5 ms): por eso no hay una prueba que falle antes;
+- el caso enlazado: la imagen del Blos está en otra ventana y el instrumento suponía una sola.
+
+**Pruebas:** `tests/xvfb`, 39 pasan; grupos de la rendija, `over_image` y `xbridge`, 156 pasan.
+
+**Por decidir:**
+- limitar el panel mientras se dibuja, o una copia por región, con las regiones pequeñas primero;
+- si la cruz debe seguir al puntero mientras se dibuja (unos 210 kB por paso con los espectros);
+- con qué versión iba más rápido.
+
+**En la pantalla del usuario** (ssh -Y a XQuartz, enlace medido ~34 MB/s y 10.8 ms): «la rendija funciona mucho más suave y rápida». Llevado a `main`.
