@@ -90,6 +90,8 @@ class Started:
         if self.tracer is not None:
             self.tracer.stop()
             print(f"[geometry] the trace of this session: {self.tracer.path}", file=sys.stderr)
+        for d in [*self.linked, self.ds]:               # the long reads in flight stop first: no close waits for one
+            d.abort()
         for d in self.linked:                           # first: they run on the main cube's threads
             d.close()
         if self.mask is not None:

@@ -4,6 +4,7 @@ whose times or wavelengths do not match the data is refused at opening: `explore
 header's 35 times for 2028 steps along the image's rows, and the toolbar indexed time 2027."""
 import os
 import shutil
+import time
 
 import numpy as np
 import pytest
@@ -257,3 +258,39 @@ def test_start_opens_a_per_pixel_file_alone_with_its_sheet(qapp, pair, monkeypat
     finally:
         s.shell.close()
         s.close()
+
+
+def _slow_passes(monkeypatch, ds, seconds=0.1, rows=4):
+    """A pass over the per-pixel file in blocks of `rows` rows, each `seconds` more (16 rows: 4 blocks, 0.4 s): long
+    enough for requests to come while it runs, as the 20-26 s passes of Halpha 6563 on bellatrix. The rows read,
+    counted."""
+    from explorer.data.io import PerPixelFrames
+
+    orig, read = PerPixelFrames.rows_raw, []
+
+    def slow(self, y0, y1):
+        time.sleep(seconds)
+        read.append(y1 - y0)
+        return orig(self, y0, y1)
+
+    monkeypatch.setattr(PerPixelFrames, "rows_raw", slow)
+    ds.frames.block_rows = rows
+    return read
+
+
+def test_closing_stops_a_pass_in_flight(pair, monkeypatch):
+    """An image of a per-pixel file alone is a pass over the whole file: closing stops it at its next block, instead
+    of waiting for the pass (20-26 s for Halpha)."""
+    ds = Dataset.open(pair["renamed"], no_sp=True)
+    _slow_passes(monkeypatch, ds, seconds=0.2, rows=1)             # 16 blocks: 3.2 s a pass
+    fut = ds.image((2, 0, 3))
+    time.sleep(0.5)
+    assert not fut.done()
+    q = time.perf_counter()
+    ds.close()
+    took = time.perf_counter() - q
+    print(f"close with a pass in flight: {took * 1e3:.0f} ms")
+    assert took < 0.6
+    from explorer.data.io import ReadAborted
+
+    assert isinstance(fut.exception(timeout=1), ReadAborted)

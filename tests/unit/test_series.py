@@ -1,6 +1,7 @@
 """A file series (--series): FITS images, one per file, read as the t axis of one cube, in header time order; the
 files refused when they are not one series; every read equal to the images stacked; compressed as plain."""
 import os
+import time
 
 import numpy as np
 import pytest
@@ -199,3 +200,72 @@ def test_header_blocks_read_as_astropy_reads_them(tmp_path, monkeypatch, compres
 
     monkeypatch.setattr(_series, "_image_cards", refuse)
     assert series_layout(paths) == fast and fast.compressed == compressed and fast.blank == -500
+
+
+def _slow_decompression(monkeypatch, seconds=0.1):
+    """Each file's decompression takes `seconds` more, as AIA's 1986x1986 Rice frames take ~0.1 s (bellatrix): the
+    calls counted, so that a test knows a read is in flight."""
+    from explorer.data.io import SeriesReader
+
+    orig, calls = SeriesReader._decompressed, []
+
+    def slow(self, *a, **k):
+        calls.append(1)
+        out = orig(self, *a, **k)
+        time.sleep(seconds)
+        return out
+
+    monkeypatch.setattr(SeriesReader, "_decompressed", slow)
+    return calls
+
+
+def test_closing_stops_a_slit_read_in_flight(tmp_path, monkeypatch):
+    """A slit's rows along t on a compressed series is a decompression per file (0.1 s each on AIA): before, closing
+    waited for the read to finish (minutes on 3900 files); now the read stops at its next file and the close takes
+    about one file's decompression."""
+    calls = _slow_decompression(monkeypatch)
+    paths, _ = series(tmp_path, n=40, compressed=True)
+    ds = Dataset.open(None, series=paths)
+    ds.frames.threads = 1                                           # one file at a time, as the decompression lock does
+    fut = ds.bands([(t,) for t in range(40)], np.array([2, 3]), np.array([5, 6]))
+    end = time.perf_counter() + 5
+    while len(calls) < 3 and time.perf_counter() < end:
+        time.sleep(0.01)
+    assert len(calls) >= 3 and not fut.done()                       # in flight: 37 files to go, ~3.7 s
+    q = time.perf_counter()
+    ds.close()
+    took = time.perf_counter() - q
+    print(f"close with a slit read in flight: {took * 1e3:.0f} ms, after {len(calls)} of 40 files")
+    assert took < 0.5
+    from explorer.data.io import ReadAborted
+
+    assert isinstance(fut.exception(timeout=1), ReadAborted)
+
+
+def test_closing_the_window_stops_a_slit_read_in_flight(qapp, tmp_path, monkeypatch, capsys):
+    """The window as `explorer --series` opens it, a slit on it and its time slice being read: the window and its
+    cubes close in about one file's decompression, not after every file."""
+    from explorer.ui.app import start
+
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    paths, _ = series(tmp_path, n=40, compressed=True)
+    s = start(paths[0], series=paths, saved_layout=False)
+    assert s is not None
+    s.ds.frames.threads = 1
+    calls = _slow_decompression(monkeypatch)
+    sess = s.shell.session
+    sess.show("slit")
+    sess.set_path([(1.5, 2.5), (12.5, 9.5)])
+    end = time.perf_counter() + 5
+    while len(calls) < 5 and time.perf_counter() < end:
+        qapp.processEvents()
+        time.sleep(0.01)
+    assert len(calls) >= 5                                          # the slice's files are being decompressed
+    q = time.perf_counter()
+    s.shell.close()
+    s.close()
+    took = time.perf_counter() - q
+    print(capsys.readouterr().err)
+    print(f"window closed with a slit read in flight: {took * 1e3:.0f} ms, after {len(calls)} files")
+    assert took < 1.0

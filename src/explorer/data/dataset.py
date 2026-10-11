@@ -12,6 +12,7 @@ Which thread does what (explorer.data.executors):
 - per-pixel blocks: the I/O pool; slabs along a slit: a pool of the probe's gather threads, kept open (starting
   64 threads per slit cost 10-16 % of a warm slab, docs/measured.md).
 Latest-wins (Executors.submit_latest) is for the caller to use: the Dataset serves every request it gets.
+Closing first aborts the reads in flight (FrameReader.abort): a long read stops at its next step.
 """
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
@@ -266,8 +267,15 @@ class Dataset:
         return (f"{self.layout.kind} {tuple(self.shape)} {self.layout.dtype}{sp}; {self.probe.describe()}; "
                 f"{self.guard.describe()}")
 
+    def abort(self) -> None:
+        """Stop the long reads in flight at their next step (io.FrameReader.abort): before closing, so that a window
+        closed during a slit over a compressed series, or a pass over a per-pixel file, does not wait for it."""
+        if getattr(self, "frames", None) is not None:
+            self.frames.abort()
+
     def close(self) -> None:
-        """Stop the pools (reads in flight finish, queued ones are dropped), then close the files."""
+        """Abort the reads in flight and stop the pools (queued reads are dropped), then close the files."""
+        self.abort()
         for name in ("_images", "_slab_pool", "_io"):
             p = getattr(self, name, None)
             if p is not None:

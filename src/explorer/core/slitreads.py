@@ -200,8 +200,8 @@ class SlitReads:
                 return
             job(*args)
 
-        def failed(f) -> None:
-            if not f.cancelled() and f.exception() is not None:
+        def failed(f) -> None:                          # closing: a read aborted is no failure
+            if not self._closed and not f.cancelled() and f.exception() is not None:
                 log.warning("slit slices not made: %r", f.exception())
 
         self._track(self.ds.executors.slit.submit(run)).add_done_callback(failed)

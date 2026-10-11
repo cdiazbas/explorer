@@ -6,8 +6,11 @@ read in `chunks` parts at once, the calling thread taking the first and a pool t
 never waits on the pool; more than 4 parts does not help on StorNext.
 In a cube of 4 Stokes every value read leaves with the negative-I rule applied (masking.py): NaN at every Stokes
 where I is negative. read_raw and row_band give the values as stored; whoever converts them applies it.
+abort() stops the reads made of many steps (a pass over a per-pixel file, the files of a series, the frames along
+a slit) at their next step: a window closed with one of them in flight closes without waiting for it.
 """
 import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -21,6 +24,10 @@ from .formats import Layout, SeriesLayout
 
 class ShortRead(OSError):
     """The file returned fewer bytes than asked for: truncated file, or an I/O error on network storage."""
+
+
+class ReadAborted(Exception):
+    """A read stopped between two of its steps: its reader was aborted (FrameReader.abort), the cube is closing."""
 
 
 def _preadv_exact(fd, view, offset):
@@ -49,6 +56,17 @@ class FrameReader:
         self._own_pool = pool is None
         self.pool = pool if pool is not None else ThreadPoolExecutor(max(1, self.chunks - 1),
                                                                    thread_name_prefix="frames")
+        self._aborted = threading.Event()
+
+    def abort(self) -> None:
+        """From now on every read of many steps raises ReadAborted at its next step, and every new one at once:
+        closing does not wait for a long read in flight. For good: the reader is being closed."""
+        self._aborted.set()
+
+    def _step(self) -> None:
+        """Between two steps of a long read: raise ReadAborted once abort() was called."""
+        if self._aborted.is_set():
+            raise ReadAborted(f"reading {self.layout.path} stopped: closing")
 
     def frame_offset(self, idx) -> int:
         idx = tuple(int(i) for i in idx)
@@ -181,6 +199,7 @@ class FrameReader:
         fd, dt = self.fd, self.layout.dtype
 
         def one(j):
+            self._step()
             b = os.pread(fd, n, self.frame_offset(j) + skip)
             if len(b) != n:
                 raise ShortRead(f"read {len(b)} of {n} bytes of frame {j} in {self.layout.path}")
@@ -408,6 +427,7 @@ class PerPixelFrames(FrameReader):
         q = time.perf_counter()
         with span("data.sp_frames.pass"):
             for a in range(y0, y1, self.block_rows):
+                self._step()
                 b = min(y1, a + self.block_rows)
                 out[:, a - y0:b - y0] = self.rows_raw(a, b)[:, :, pos].transpose(2, 0, 1)
         if y1 - y0 == self.ny:
@@ -547,7 +567,9 @@ class SeriesReader(FrameReader):
         of those rows. timed: a whole frame, its time (once its turn came) kept for playback_cap."""
         from astropy.io import fits
 
+        self._step()
         with self._decoding:
+            self._step()                                # the threads that waited for the lock stop here
             q = time.perf_counter()
             h = self._open.pop(t, None)
             if h is None:
@@ -615,10 +637,15 @@ class SeriesReader(FrameReader):
 
     def _map(self, fn, items) -> list:
         items = list(items)
+
+        def step(i):
+            self._step()
+            return fn(i)
+
         if len(items) <= 1:
-            return [fn(i) for i in items]
+            return [step(i) for i in items]
         with ThreadPoolExecutor(min(self.threads, len(items))) as ex:
-            return list(ex.map(fn, items))
+            return list(ex.map(step, items))
 
     def band_values(self, idxs, y0: int, y1: int, at, threads: int = 8) -> np.ndarray:
         at = np.asarray(at, np.int64)
