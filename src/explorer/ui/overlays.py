@@ -1,5 +1,18 @@
 """What the modern look draws over the views (ROADMAP E5.5), from the prototype's app/look.py: ColourKey (217) and
-Reticle (390)."""
+Reticle (390); and what every overlay on an image shares (OverImage).
+
+An overlay on an image is anything drawn over it that is not the image: the colour key, the padlock, the Stokes label,
+the slit's hint, and whatever comes next. Each one opts in once, through its image's ImageView.over (OverImage.add),
+and gets two things:
+- the pointer over it is off the image: the image's hover (the crosshair, the slit being drawn) stays where the
+  pointer left the image, as when it leaves the image altogether, and follows it again once it is back on the image.
+  An overlay that takes the mouse (the key, the padlock) keeps the moves from the image anyway; one that lets them
+  through (the label, the hint) would otherwise move the crosshair under itself;
+- a widget overlay that changes its size, place or visibility repaints the whole image. Its own change repaints only
+  the area it uncovers, and an item of the scene moved in the same pass of the event loop (the crosshair, when the
+  pointer leaves the hot key onto the image) could lose its own repaint there: the old crosshair stayed on screen.
+    view.over.add(widget_or_item)
+"""
 import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -238,3 +251,36 @@ class Reticle(pg.GraphicsObject):
     def set_colour(self, c) -> None:
         self.colour = QtGui.QColor(c)
         self.update()
+
+
+class OverImage(QtCore.QObject):
+    """The overlays of one image's view (an ImageView's QGraphicsView): see the module."""
+    REPAINT = (QtCore.QEvent.Type.Resize, QtCore.QEvent.Type.Move, QtCore.QEvent.Type.Show, QtCore.QEvent.Type.Hide)
+
+    def __init__(self, view: QtWidgets.QGraphicsView):
+        super().__init__(view)
+        self.view = view
+        self.items: list = []
+
+    def add(self, overlay) -> None:
+        """overlay over this image from now on: a QWidget child of the view, or a QGraphicsItem on its scene."""
+        self.items.append(overlay)
+        if isinstance(overlay, QtWidgets.QWidget):
+            overlay.installEventFilter(self)
+
+    def covers(self, at: QtCore.QPoint) -> bool:
+        """Whether at, in the viewport's pixels, is on a shown overlay."""
+        vp = self.view.viewport()
+        for o in self.items:
+            if isinstance(o, QtWidgets.QWidget):
+                if o.isVisible() and o.geometry().contains(vp.mapTo(self.view, at)):
+                    return True
+            elif o.isVisible() and o.sceneBoundingRect().isValid() and \
+                    self.view.mapFromScene(o.sceneBoundingRect()).boundingRect().contains(at):
+                return True
+        return False
+
+    def eventFilter(self, obj, e) -> bool:
+        if e.type() in self.REPAINT:
+            self.view.viewport().update()
+        return False

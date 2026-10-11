@@ -3,7 +3,7 @@ as the user runs it (BridgeDisplay, Shell) and answers commands on stdin, one pe
 
     python tests/xvfb/bridge_app.py <cube_im.fits> [--size 800x600]
     state | grab | copy TEXT | bigcopy N | panel | popup | mask | look NAME | theme NAME | stokes | where NAME | menu
-    | idle | quit
+    | key | idle | quit
 """
 import argparse
 import json
@@ -200,6 +200,10 @@ def main():
             b = getattr(w.nav, arg)
             settle()
             out(dict(centre=b.mapToGlobal(b.rect().center()).toTuple()))
+        elif cmd == "key":                              # the main image's colour key, on the screen, hot or not
+            k = w.main.key
+            settle()
+            out(dict(rect=[*k.mapToGlobal(QtCore.QPoint(0, 0)).toTuple(), k.width(), k.height()], hot=k.hot))
         elif cmd == "menu":                             # the open menu's items: text and centre on the screen
             m = QtWidgets.QApplication.activePopupWidget()
             items = [] if not isinstance(m, QtWidgets.QMenu) else [

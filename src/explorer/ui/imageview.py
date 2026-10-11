@@ -9,6 +9,7 @@ go on 1..255, so the colour table decides how padding looks. Zooming in renders 
 detail, down to full resolution; range changes in a burst render once (a 0-ms timer).
 The mouse over the image gives (y, x) in data pixels to on_hover, at every move the view receives (_Moves); the
 crosshair is drawn where the core's cursor is; "Stokes Q" at the top left when its owner gives a Stokes (set_stokes).
+What is drawn over the image registers in over (overlays.OverImage): a move over it is not one over the image.
 """
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -20,6 +21,7 @@ from PySide6 import QtCore
 from ..core.levels import symmetric_levels
 from ..data.kernels import gamma_table, reduce_u8
 from . import pens
+from .overlays import OverImage
 from .stokeslabel import StokesLabel
 
 if TYPE_CHECKING:
@@ -48,7 +50,9 @@ class _Moves(QtCore.QObject):
 
     def eventFilter(self, obj, e) -> bool:
         if e.type() == QtCore.QEvent.Type.MouseMove:
-            self.view._moved(self.view.widget.mapToScene(e.position().toPoint()))
+            at = e.position().toPoint()
+            if not self.view.over.covers(at):           # over the key, the label...: off the image
+                self.view._moved(self.view.widget.mapToScene(at))
         return False
 
 
@@ -71,7 +75,9 @@ class ImageView:
         self.reticle: Reticle | None = None
         self._locked = False
         self.base_lut: np.ndarray | None = None          # the look's grey: pyqtgraph's own, or the light theme's
+        self.over = OverImage(self.widget)              # what is drawn over the image (ui.overlays)
         self.stokes = StokesLabel(self.vb, light)       # the Stokes shown, once set_stokes gives it
+        self.over.add(self.stokes)
         self.set_light(light)
         if reticle:
             self.set_reticle(True)

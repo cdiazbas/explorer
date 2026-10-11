@@ -179,6 +179,7 @@ class Shell(QtWidgets.QMainWindow):
         self.setCentralWidget(docks.gutter(self.view.widget))
         # the slit (S): drawn on the image, the finished one the session's path (ui.slit)
         self.slit_hint = SlitHint(self.view.widget, light=light)
+        self.view.over.add(self.slit_hint)              # over the image (ui.overlays)
         self.slit_tool = SlitTool(self.session, self.view, self.slit_hint, CURSOR_PEN.color())
         self.slit_tool.modeChanged.connect(self._slit_mode_changed)
         r = dataset.roles

@@ -128,6 +128,7 @@ class CubeView:
         self.image_lock = PanelLock(self.view.widget, IMAGE_TIP, light=light)
         self.image_lock.toggled.connect(lambda on: self.scheduler.fix_levels(on))
         self.image_lock.refit.connect(self.image_refit)
+        self.view.over.add(self.image_lock)             # over the image (ui.overlays)
         # its colour key, interactive (ui.scalekey): the main cube's is the window's colour_key, which glass moves
         self.key = ScaleKey(self, unit_text(getattr(ds.axes, "bunit", None) or ""))
         self.spec_lock: PanelLock | None = None

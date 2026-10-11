@@ -3,9 +3,10 @@ image made interactive, and a card with the numbers.
 
 - ScaleKey: the colour key (ui.overlays.ColourKey) of one cube's image, the same at rest. Under the pointer it grows
   into the histogram of the frame (its [::8, ::8] subsample, the one the automatic levels read: data.stats.limits)
-  with the transfer curve over it, so gamma shows, and a handle at each limit. Dragging a handle fixes that limit
-  (Session.set_scale "fixed"; Q U V move both ends, symmetric about 0); the wheel steps gamma as G and Shift+G do;
-  a double click gives the image its automatic levels and gamma 1 again. It takes the image's width when narrower
+  with the transfer curve over it, so gamma shows, and a handle at each limit.
+  An overlay of its image (ui.overlays.OverImage): the pointer over it is off the image. Dragging a handle fixes that
+  limit (Session.set_scale "fixed"; Q U V move both ends, symmetric about 0); the wheel steps gamma as G and Shift+G
+  do; a double click gives the image its automatic levels and gamma 1 again. It takes the image's width when narrower
   than its own. A right click on it opens nothing for now (KEY_MENU): it reaches the image below, which releases the
   cursor.
 - scale_menu: on a right click over the Stokes label of a panel of the 2x2 view (and over a key, with KEY_MENU): the
@@ -109,6 +110,7 @@ class ScaleKey(ColourKey):
         self._hist: tuple | None = None                 # (frame id, axis, symmetric, counts)
         self.name = ""                                  # what it names (set), without the gamma the rest key adds
         self._fit(cube.view.widget)
+        cube.view.over.add(self)                        # over the image (ui.overlays)
 
     # ---------------------------------------------------------------- what it describes
     def target(self) -> tuple[int, int]:
