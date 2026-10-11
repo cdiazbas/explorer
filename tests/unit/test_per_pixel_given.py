@@ -231,6 +231,14 @@ def test_start_opens_a_per_pixel_file_alone_with_its_sheet(qapp, pair, monkeypat
             time.sleep(0.01)
         print(sheet.text())
         assert s.ds.frames.passes and "the latest image took this long" in sheet.text()
+        capsys.readouterr()
+        monkeypatch.setattr(s.ds.frames, "playback_cap", lambda: 0.1)   # a pass of 10 s, as on a real file
+        s.shell.nav.fps.setValue(s.shell._fps_default)
+        s.shell._fps_auto.clear()
+        s.shell.cap_fps_by_frames()                     # playback bounded by a pass: said as such
+        err = capsys.readouterr().err
+        print(err)
+        assert "frames read from the per-pixel file in ~" in err and "decompressed" not in err
         s.shell._escape()                                # what the Esc shortcut runs
         assert not sheet.isVisible()
     finally:

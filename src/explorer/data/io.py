@@ -359,6 +359,7 @@ class PerPixelFrames(FrameReader):
     per-pixel reader's. passes: seconds of each pass, the latest last."""
 
     BLOCK = 64 << 20
+    cap_reason = "frames read from the per-pixel file in"      # what bounds playback (playback_cap), for the window
 
     def __init__(self, sp: Layout, pool: ThreadPoolExecutor | None = None, chunks: int = 4, block: int = BLOCK):
         super().__init__(image_of_per_pixel(sp), pool=pool, chunks=chunks)
@@ -503,6 +504,7 @@ class SeriesReader(FrameReader):
     from in one request."""
 
     layout: SeriesLayout
+    cap_reason = "frames decompressed in"
 
     def __init__(self, layout: SeriesLayout, pool: ThreadPoolExecutor | None = None, chunks: int = 4,
                  threads: int = 16):

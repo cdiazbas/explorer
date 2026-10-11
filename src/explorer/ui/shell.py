@@ -1024,7 +1024,8 @@ class Shell(QtWidgets.QMainWindow):
             return
         fps, before = max(1, int(cap)), self.nav.fps.value()
         if self.auto_fps("frames", fps) == fps and fps != before:
-            msg = f"frames decompressed in ~{1000 / cap:.0f} ms each, one at a time: playback at {fps} fps"
+            what = getattr(self.dataset.frames, "cap_reason", "frames read in")
+            msg = f"{what} ~{1000 / cap:.0f} ms each, one at a time: playback at {fps} fps"
             self.statusBar().showMessage(msg, 10000)
             print(f"[{APP_NAME}] {msg}", file=sys.stderr)
 
