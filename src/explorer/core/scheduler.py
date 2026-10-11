@@ -8,7 +8,8 @@ the Store:
 - the cursor moved (or a panel was shown): the cursor's panels, at once; for a panel shown, only that one: a tab
   brought in front (the slit's, beside lambda-t) or a panel closed leaves the others as they are.
 What each change asks of the panels: the cursor -> spectra and lambda-t; t -> spectra (the lambda-t already holds
-every t); Stokes -> lambda-t; lambda -> nothing (the markers are the UI's). Nothing is read for a hidden panel,
+every t); Stokes -> lambda-t; lambda -> nothing (the markers are the UI's); the cap of t steps (ViewState.t_cap) ->
+lambda-t, which reads only the steps it shows (data.tsample). Nothing is read for a hidden panel,
 nor on padding (the image NaN at the cursor, or exactly 0 in Stokes I): the panels are cleared once, and after
 padding the next valid pixel fills both panels whatever changed. The prototype refilled both only with a
 per-pixel file; without one, a t or Stokes step back from padding left the other panel empty.
@@ -44,6 +45,7 @@ import numpy as np
 
 from ..data.executors import Generations, ShownGate
 from ..data.stats import quv_amplitude_ranges, quv_threads, sample_pixels, sample_profiles
+from ..data.tsample import time_samples
 from ..obs import counter, get_logger
 from .levels import Levels, panel_levels
 from .session import Session
@@ -191,33 +193,34 @@ class Scheduler:
                 self._first_units(st)
             self._start_sample_once()
         moved = changed & {"t", "s", "l"}
+        here = changed & {"cursor", "t_cap"}            # what the cursor's panels read changed, not the image
         if not self._image_shown(st):                   # its image closed: the panels only, from the last image
-            if moved or "cursor" in changed or came:
-                self._evaluate(st, set(moved | (changed & {"cursor"})) | {f"show:{p}" for p in came})
+            if moved or here or came:
+                self._evaluate(st, set(moved | here) | {f"show:{p}" for p in came})
             return
         if "image" in came and not moved:               # shown again: the image of now, then the panels
             self._pending |= {"cursor"} | {f"show:{p}" for p in came}
             self._request_image(st)
             return
         if moved:
-            self._pending |= moved | (changed & {"cursor"}) | {f"show:{p}" for p in came}
+            self._pending |= moved | here | {f"show:{p}" for p in came}
             self._request_image(st)
             if self.grid and moved & {"t", "l"}:        # a change of Stokes alone: the same frames
                 self._request_grid(st)
             # on the loop's next pass, after this frame is painted: started here, the reads ahead slowed the paint
             # (step in t, real cube, bellatrix: median 17.9-19.3 ms -> 13.8-15.0, the prototype 15.8)
             self.loop.call_soon(lambda: self._prefetch(st, moved))
-        elif "cursor" in changed or came:
+        elif here or came:
             # only the panels that came: the spectra shown again when the slit's tab came in front cost 3.5-17 ms of
             # the UI thread between a finished slit and its slices (6173, bellatrix)
-            self._evaluate(st, set(changed & {"cursor"}) | {f"show:{p}" for p in came})
+            self._evaluate(st, set(here) | {f"show:{p}" for p in came})
 
     def _as_member(self, st: ViewState) -> tuple[ViewState, frozenset]:
         """The notice as the linked cube reads it: its state, and what changed of it since its last notice (a t of
         the main cube that shows the same of its frames is no change: a single frame, or its nearest time again)."""
         mine, seen = self.session.member_state(self.member, st), self._seen
         self._seen = mine
-        fields = ("t", "s", "l", "cursor", "panels", "locked", "playing")
+        fields = ("t", "s", "l", "cursor", "panels", "locked", "playing", "t_cap")
         return mine, frozenset(f for f in fields if getattr(mine, f) != getattr(seen, f))
 
     def _request_image(self, st: ViewState) -> None:
@@ -331,7 +334,7 @@ class Scheduler:
         want_spec = (r.l is not None and "spectra" in st.panels     # lambda, one column: the value against t)
                      and bool(kinds & {"cursor", "t", "show:spectra"} or refill))
         want_lt = (r.t is not None and "lambda_t" in st.panels
-                   and bool(kinds & {"cursor", "s", "show:lambda_t"} or refill))
+                   and bool(kinds & {"cursor", "s", "t_cap", "show:lambda_t"} or refill))
         if not (want_spec or want_lt):
             if "cursor" in kinds:
                 counter("core.cursor.skipped_hidden")
@@ -372,14 +375,21 @@ class Scheduler:
             self.levels.fix(self.img, sym)
         self._show_image()
 
+    def _steps(self, st: ViewState) -> np.ndarray | None:
+        """The t steps lambda-t reads and shows (data.tsample), or None: every t."""
+        nt = self.ds.roles.nt
+        ts = time_samples(nt, st.t_cap)
+        return ts if len(ts) < nt else None
+
     def _read_block(self, g: int, st: ViewState, want_spec: bool, want_lt: bool) -> None:
         y, x = st.cursor
+        ts = self._steps(st)
 
         def deliver(blk):
             if want_spec:
                 self._show("spectra", g, blk[:, st.t, :], (y, x), st.t)
             if want_lt:
-                self._show("lambda_t", g, blk[st.s], (y, x), st.s)
+                self._show("lambda_t", g, blk[st.s] if ts is None else blk[st.s][ts], (y, x), st.s)
 
         blk = self.ds.peek_block(y, x)
         if blk is not None:
@@ -396,11 +406,12 @@ class Scheduler:
         fut = self._track(self.ds.pixel_block(y, x))
         fut.add_done_callback(lambda f: self.loop.post(lambda: arrived(f)))
 
-    def _as(self, arr, axes, want) -> np.ndarray:
+    def _as(self, arr, axes, want, nt: int | None = None) -> np.ndarray:
         """arr, read along `axes` in the cube's order, as an array over the axes in `want` (the panels' order):
-        a cube keeping lambda before t or Stokes (--axes l,t) gave lambda-t transposed and the spectra scrambled."""
+        a cube keeping lambda before t or Stokes (--axes l,t) gave lambda-t transposed and the spectra scrambled.
+        nt: the steps of t read, when not all."""
         r = self.ds.roles
-        size = {r.t: r.nt, r.s: r.ns, r.l: r.nl}
+        size = {r.t: r.nt if nt is None else nt, r.s: r.ns, r.l: r.nl}
         a = np.asarray(arr).reshape([size[ax] for ax in axes])
         want = [ax for ax in want if ax is not None]
         return a if list(axes) == want else a.transpose([list(axes).index(ax) for ax in want])
@@ -410,10 +421,11 @@ class Scheduler:
         r = self.ds.roles
         return self._as(arr, spec_axes, (r.s, r.l)).reshape(r.ns, r.nl)
 
-    def _lt(self, arr, lt_axes) -> np.ndarray:
-        """lambda-t as (t, lambda); a cube without lambda as one column."""
+    def _lt(self, arr, lt_axes, nt: int | None = None) -> np.ndarray:
+        """lambda-t as (t, lambda), nt steps of t (all when None); a cube without lambda as one column."""
         r = self.ds.roles
-        return self._as(arr, lt_axes, (r.t, r.l)).reshape(r.nt, r.nl)
+        nt = r.nt if nt is None else nt
+        return self._as(arr, lt_axes, (r.t, r.l), nt).reshape(nt, r.nl)
 
     def _read_series(self, g: int, st: ViewState, want_spec: bool, want_lt: bool) -> None:
         r, (y, x) = self.ds.roles, st.cursor
@@ -421,12 +433,15 @@ class Scheduler:
         spec_axes = sorted(a for a in (r.s, r.l) if a is not None)
         lt_axes = sorted(a for a in (r.t, r.l) if a is not None) if r.t is not None else None
         want_lt = want_lt and lt_axes is not None
+        ts = self._steps(st) if want_lt else None
+        # only the t steps shown are read (data.tsample); every t as before when they are all
+        lt_kw, n_lt = ({} if ts is None else {"at": {r.t: ts}}), (None if ts is None else len(ts))
         spec = self.ds.peek_series(y, x, idx, spec_axes) if want_spec else None
-        lt = self.ds.peek_series(y, x, idx, lt_axes) if want_lt else None
+        lt = self.ds.peek_series(y, x, idx, lt_axes, **lt_kw) if want_lt else None
         if spec is not None:
             self._show("spectra", g, self._spec(spec, spec_axes), (y, x), st.t)
         if lt is not None:
-            self._show("lambda_t", g, self._lt(lt, lt_axes), (y, x), st.s)
+            self._show("lambda_t", g, self._lt(lt, lt_axes, n_lt), (y, x), st.s)
         need_spec, need_lt = want_spec and spec is None, want_lt and lt is None
         if not (need_spec or need_lt):
             return
@@ -439,7 +454,7 @@ class Scheduler:
                 sp = self._spec(self.ds.read_series(y, x, idx, spec_axes), spec_axes)
                 self.loop.post(lambda: self._show("spectra", g, sp, (y, x), st.t))
             if need_lt and not self.gens.stale("cursor", g):
-                lt_ = self._lt(self.ds.read_series(y, x, idx, lt_axes), lt_axes)
+                lt_ = self._lt(self.ds.read_series(y, x, idx, lt_axes, **lt_kw), lt_axes, n_lt)
                 self.loop.post(lambda: self._show("lambda_t", g, lt_, (y, x), st.s))
 
         def failed(f: Future) -> None:

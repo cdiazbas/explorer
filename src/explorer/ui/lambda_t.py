@@ -7,6 +7,9 @@ The Stokes it shows ("Stokes Q") at the top left, when the cube has the four (se
 A cube with one plane along its other axis (a map, a single tuning: data.names.SliceNames.mapped) has a lambda-t one
 cell wide: TimeCurve draws it as what it is, the cursor's value against t, the current t as a line; a click picks t.
 
+Fewer rows than t (a cap on the t steps, data.tsample): each row is drawn over the t it stands for, the axes and the
+current t's line stay in the cube's own t, and a click picks the nearest t shown.
+
 Its levels are the core's (levels.panel_levels: Q U V symmetric about 0). From the prototype's app/viewer.py: the
 lambda-t dock (846-866), TuningAxis (315), IndexAxis (384), _lam_label and _t_label (1099-1104), _set_lt (2165).
 """
@@ -16,6 +19,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.levels import gamma_panel
 from ..data.axes import fmt_signed
+from ..data.tsample import nearest_sample, time_samples
 from . import pens, style
 from .imageview import CURSOR_PEN
 from .spectra import SignedAxis
@@ -121,6 +125,7 @@ class LambdaTPanel:
         self.img = pg.ImageItem()
         self.gamma = 1.0                                # its cube's at the Stokes shown (Session.gamma)
         self._shown: tuple | None = None                # (lt, levels) as the core gave them
+        self.steps: np.ndarray | None = None            # the t of its rows when fewer than nt (data.tsample)
         self.w.addItem(self.img)
         pi = self.w.getPlotItem()
         pi.setMouseEnabled(x=False, y=False)            # the whole (t, lambda) grid always in view; a click picks
@@ -166,18 +171,19 @@ class LambdaTPanel:
         return u or str(i)
 
     def show(self, lt: np.ndarray, levels, gamma: float | None = None) -> None:
-        """lt: (nt, nl); levels: the core's; gamma: its cube's at its Stokes (None: the one it has). With nothing
-        finite (padding), an empty grid."""
+        """lt: (nt, nl), or fewer rows: the t steps of data.tsample; levels: the core's; gamma: its cube's at its
+        Stokes (None: the one it has). With nothing finite (padding), an empty grid."""
         self._shown = (lt, levels)
         if gamma is not None:
             self.gamma = float(gamma)
-        nt, nl = lt.shape
+        n, nl = lt.shape
+        self.steps = time_samples(self.nt, n) if n < self.nt else None
         if not np.isfinite(lt).any():
-            self.img.setImage(np.zeros((nt, nl), np.float32), levels=(0, 1))
+            self.img.setImage(np.zeros((n, nl), np.float32), levels=(0, 1))
         else:
             a, lv = gamma_panel(lt, levels, self.gamma)
             self.img.setImage(a, levels=(float(lv[0]), float(lv[1])))
-        self.img.setRect(QtCore.QRectF(0, 0, nl, nt))
+        self.img.setRect(QtCore.QRectF(0, 0, nl, max(n, self.nt)))   # the rows over every t
 
     def set_gamma(self, gamma: float) -> None:
         """What it shows drawn again with this gamma; nothing when it already has it."""
@@ -211,8 +217,9 @@ class LambdaTPanel:
         self.l_line.setValue(l + 0.5)
 
     def pick(self, q) -> dict:
-        """The indices under q, a point in the plot's coordinates: t from y, lambda from x."""
-        return {"l": int(np.clip(int(q.x()), 0, self.nl - 1)), "t": int(np.clip(int(q.y()), 0, self.nt - 1))}
+        """The indices under q, a point in the plot's coordinates: t from y (the nearest shown), lambda from x."""
+        t = (int(np.clip(int(q.y()), 0, self.nt - 1)) if self.steps is None else nearest_sample(self.steps, q.y()))
+        return {"l": int(np.clip(int(q.x()), 0, self.nl - 1)), "t": t}
 
     def reset_view(self) -> None:
         self.w.setRange(xRange=(0, max(1, self.nl)), yRange=(0, max(1, self.nt)), padding=0)
@@ -242,6 +249,7 @@ class TimeCurve:
         pens.mark(self.t_line, CURSOR_PEN.color())
         self.w.addItem(self.t_line)
         self.x = np.arange(nt) + 0.5                    # cell centres, where t's ticks are
+        self.steps: np.ndarray | None = None            # the t of its points when fewer than nt (data.tsample)
         self.stokes = StokesLabel(pi.vb, light)
         self.reset_view()
         pi.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
@@ -271,14 +279,15 @@ class TimeCurve:
         return u or str(i)
 
     def show(self, lt: np.ndarray, levels=None, gamma: float | None = None) -> None:
-        """lt: (nt, 1) or (nt,); the y range its finite values' (nothing finite: the curve empty). A curve has no
-        gamma."""
+        """lt: (nt, 1) or (nt,), or fewer: the t steps of data.tsample, each at its t; the y range its finite values'
+        (nothing finite: the curve empty). A curve has no gamma."""
         v = np.asarray(lt, float).reshape(-1)[:self.nt]
+        self.steps = time_samples(self.nt, len(v)) if len(v) < self.nt else None
         ok = np.isfinite(v)
         if not ok.any():
             self.curve.setData([], [])
             return
-        self.curve.setData(self.x[:len(v)], v, connect="finite")
+        self.curve.setData(self.x[:len(v)] if self.steps is None else self.steps + 0.5, v, connect="finite")
         lo, hi = float(v[ok].min()), float(v[ok].max())
         pad = (hi - lo) * 0.05 if hi > lo else max(abs(lo) * 0.05, 1e-12)
         self.w.setYRange(lo - pad, hi + pad, padding=0)
@@ -303,7 +312,9 @@ class TimeCurve:
         self.t_line.setValue(t + 0.5)
 
     def pick(self, q) -> dict:
-        """t under q, a point in the plot's coordinates (from x)."""
+        """t under q, a point in the plot's coordinates (from x; the nearest shown)."""
+        if self.steps is not None:
+            return {"t": nearest_sample(self.steps, q.x())}
         return {"t": int(np.clip(int(q.x()), 0, self.nt - 1))}
 
     def reset_view(self) -> None:

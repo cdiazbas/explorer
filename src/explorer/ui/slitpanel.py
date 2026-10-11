@@ -18,6 +18,7 @@ from PySide6 import QtCore, QtWidgets
 
 from ..core.levels import gamma_panel
 from ..data.axes import fmt_signed
+from ..data.tsample import nearest_sample, time_samples
 from . import pens, style
 from .imageview import CURSOR_PEN
 from .lambda_t import MARGIN, IndexAxis, TimeCurve, TuningAxis
@@ -75,6 +76,7 @@ class SlitPanel:
 
     def _cube(self, nt: int, nl: int, axes, times=None, label: str = "λ index") -> None:
         self.nt, self.nl, self.ax, self.label = max(1, nt), max(1, nl), axes, label
+        self.steps: np.ndarray | None = None            # the time slice's t when fewer than nt (data.tsample)
         self.tax = times if times is not None else axes  # whose times label t
         dl = axes.dlam_A() if axes is not None else None
         self.physical = dl is not None and len(dl) == nl
@@ -196,7 +198,10 @@ class SlitPanel:
             else:
                 a, lv = gamma_panel(a, lv, self.gamma)
                 item.setImage(a, levels=(float(lv[0]), float(lv[1])))
-            item.setRect(QtCore.QRectF(0, 0, a.shape[1], a.shape[0]))
+            # the time slice's rows over every t: fewer rows than t are the t steps of data.tsample
+            if k == 0:
+                self.steps = time_samples(self.nt, a.shape[0]) if a.shape[0] < self.nt else None
+            item.setRect(QtCore.QRectF(0, 0, a.shape[1], max(a.shape[0], self.nt) if k == 0 else a.shape[0]))
 
     def _show_curve(self, a) -> None:
         """A 2D map's one-row slice: its values along the slit, the y range theirs."""
@@ -242,7 +247,9 @@ class SlitPanel:
         for pl, axis, n in ((self.ts, "t", self.nt), (self.sl, "l", self.nl)):
             if (pl is self.ts or self.spectral) and pl.vb.sceneBoundingRect().contains(pos):
                 q = pl.vb.mapSceneToView(pos)
-                return int(np.clip(int(q.x()), 0, self.n - 1)), axis, int(np.clip(int(q.y()), 0, n - 1))
+                v = (nearest_sample(self.steps, q.y()) if axis == "t" and self.steps is not None
+                     else int(np.clip(int(q.y()), 0, n - 1)))
+                return int(np.clip(int(q.x()), 0, self.n - 1)), axis, v
         return None
 
     # ---------------------------------------------------------------- the look and the theme

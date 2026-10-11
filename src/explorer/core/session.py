@@ -167,6 +167,10 @@ class Session:
     def lock(self, on: bool = True) -> None:
         self.store.set(locked=bool(on))
 
+    def set_t_cap(self, cap: int | None) -> None:
+        """The t steps the temporal panels read and show at most (data.tsample), every cube's; None: every t."""
+        self.store.set(t_cap=None if cap is None else max(1, int(cap)))
+
     def set_path(self, points, cube: int | None = None) -> None:
         """The slit: the points clicked, (x, y) in the main cube's view coordinates (pixel centres at .5), two at
         least, each clipped to the image; None removes it. Straight through two points, a curve through more

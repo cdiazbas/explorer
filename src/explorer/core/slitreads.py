@@ -48,6 +48,7 @@ import numpy as np
 
 from ..data.executors import Generations, ShownGate
 from ..data.slits import SLIT_BLOCKS, SlitCache, frame_index, slit_path, slit_pixels
+from ..data.tsample import time_samples
 from ..obs import counter, get_logger
 from .levels import panel_levels
 from .state import ViewState
@@ -121,8 +122,8 @@ class SlitReads:
             return
         if not front:
             return
-        if came or ("playing" in changed and not st.playing) or changed & ({"t", "s", "l", "own"} if self.cube
-                                                                           else {"t", "s", "l"}):
+        if came or ("playing" in changed and not st.playing) or changed & ({"t", "s", "l", "own", "t_cap"} if self.cube
+                                                                           else {"t", "s", "l", "t_cap"}):
             self._refresh(st)
 
     def _drawing(self, st: ViewState) -> bool:
@@ -175,7 +176,9 @@ class SlitReads:
     def _slices(self, st: ViewState) -> None:
         g = self.gens.new("slit")
         mine = self.session.member_state(self.cube, st)  # its t, lambda and Stokes
-        args = (g, self.path_id, self.pix, mine.t, mine.s, mine.l, st.playing, self.ds, self.blocks)
+        # the time slice's t steps (data.tsample): only those are read and shown
+        steps = time_samples(self.ds.roles.nt, st.t_cap)
+        args = (g, self.path_id, self.pix, mine.t, mine.s, mine.l, st.playing, self.ds, self.blocks, steps)
         job = self._from_blocks if self.per_pixel else self._from_bands
         counter("core.slit.requests")
 
@@ -228,14 +231,16 @@ class SlitReads:
             self._slices(st)
         self._kick()
 
-    def _from_blocks(self, g, pid, pix, t, s, l, playing, ds, blocks) -> None:  # noqa: E741
+    def _from_blocks(self, g, pid, pix, t, s, l, playing, ds, blocks, steps) -> None:  # noqa: E741
         """Both slices from the blocks kept (the prototype's _slitc_slices, 1709), on the slit thread; one made from
-        the same blocks kept (SlitCache.version) for the same slit, Stokes and lambda (or t) is reused."""
+        the same blocks kept (SlitCache.version) for the same slit, Stokes and lambda (or t) is reused. The time
+        slice at the t steps `steps` (data.tsample)."""
         ver, got = blocks.along(zip(pix[0].tolist(), pix[1].tolist(), strict=True))
         r, n = ds.roles, len(pix[0])
+        every = len(steps) >= r.nt
         out = {}
-        for kind, rows, u in (("ts", max(1, r.nt), l), ("sl", max(1, r.nl), t)):
-            key = (pid, ver, s, u)
+        for kind, rows, u in (("ts", len(steps), l), ("sl", max(1, r.nl), t)):
+            key = (pid, ver, s, u) if kind == "sl" or every else (pid, ver, s, u, len(steps))
             made = self._made.get(kind)
             if made is not None and made[0] == key:
                 out[kind] = made[1:]
@@ -243,19 +248,21 @@ class SlitReads:
             a = np.full((rows, n), np.nan, np.float32)
             for i, b in enumerate(got):
                 if b is not None:
-                    a[:, i] = b[s, :, l] if kind == "ts" else b[s, t, :]
+                    a[:, i] = (b[s, :, l] if every else b[s, steps, l]) if kind == "ts" else b[s, t, :]
             out[kind] = (a, panel_levels(a, symmetric=s > 0))
             self._made[kind] = (key, *out[kind])
         self.loop.post(lambda: self._show(g, pid, s, out["ts"], out["sl"]))
 
     # ---------------------------------------------------------------- no per-pixel file: rows per frame
-    def _from_bands(self, g, pid, pix, t, s, l, playing, ds, blocks) -> None:  # noqa: E741
-        """Each slice from those kept or read now (the prototype's _slit_band_job, 1842), the time slice first; the
-        spectral slice not read while playing. Each is shown as it comes."""
+    def _from_bands(self, g, pid, pix, t, s, l, playing, ds, blocks, steps) -> None:  # noqa: E741
+        """Each slice from those kept or read now (the prototype's _slit_band_job, 1842), the time slice first, at
+        the t steps `steps` alone (data.tsample); the spectral slice not read while playing. Each is shown as it
+        comes."""
         r = ds.roles
         nlead = len(ds.shape) - 2
+        every = len(steps) >= r.nt
         for kind, u in (("ts", l), ("sl", t)):
-            key = (pid, kind, s, u)
+            key = (pid, kind, s, u) if kind == "sl" or every else (pid, kind, s, u, len(steps))
             hit = self._bands.get(key)
             if hit is not None:
                 self._bands.move_to_end(key)
@@ -265,7 +272,8 @@ class SlitReads:
                 if self.gens.stale("slit", g):
                     counter("core.slit.skipped_stale")
                     return
-                idxs = ([frame_index(nlead, r, t=k, s=s, l=l) for k in range(max(1, r.nt))] if kind == "ts"
+                idxs = ([frame_index(nlead, r, t=k, s=s, l=l) for k in (range(max(1, r.nt)) if every else steps)]
+                        if kind == "ts"
                         else [frame_index(nlead, r, t=t, s=s, l=k) for k in range(max(1, r.nl))])
                 q = time.perf_counter()
                 a = ds.read_bands(idxs, *pix)
