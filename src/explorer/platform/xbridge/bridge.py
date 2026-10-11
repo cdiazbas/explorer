@@ -111,6 +111,7 @@ class Bridge(QtCore.QObject):
     _wake = QtCore.Signal()
     _call = QtCore.Signal(object, object)
     _sender_ready = QtCore.Signal()
+    _repainted = QtCore.Signal()
 
     def __init__(self, link: XLink, app: QtWidgets.QApplication):
         super().__init__()
@@ -119,6 +120,7 @@ class Bridge(QtCore.QObject):
         self._wake.connect(self._drain, Qt.ConnectionType.QueuedConnection)
         self._call.connect(self._run_call, Qt.ConnectionType.QueuedConnection)
         self._sender_ready.connect(self._flush, Qt.ConnectionType.QueuedConnection)
+        self._repainted.connect(self._flush, Qt.ConnectionType.QueuedConnection)
         link.events._wake = self._wake.emit
         link.ready_cb = self._sender_ready.emit
         self.transport = link.transport
@@ -147,10 +149,7 @@ class Bridge(QtCore.QObject):
             QtGui.QCursor.setPos(*struct.unpack_from("<hh", p, 16))     # windows open on the monitor under it
         except (X.XError, TimeoutError):
             pass
-        self._flush_timer = QtCore.QTimer(self)
-        self._flush_timer.setSingleShot(True)
-        self._flush_timer.setInterval(0)
-        self._flush_timer.timeout.connect(self._flush)
+        self._flush_posted = False                      # a grab is queued (_schedule)
         self._check = QtCore.QTimer(self)
         self._check.setInterval(int(CHECK_S * 1000))
         self._check.timeout.connect(self._check_all)
@@ -321,8 +320,12 @@ class Bridge(QtCore.QObject):
 
     # ---------------------------------------------------------------- pixels
     def _schedule(self) -> None:
-        if not self._flush_timer.isActive():
-            self._flush_timer.start()
+        """A grab queued behind the events posted before it. A 0-ms timer instead also waited for the events posted
+        after the repaint: a panel repainting its slices three times per pointer move kept a line painted before
+        them off the screen until they were done, and the line then went out in one update with them."""
+        if not self._flush_posted:
+            self._flush_posted = True
+            self._repainted.emit()
 
     def _check_all(self) -> None:
         """Grab each window whole when nothing is pending for it: what the comparison then finds is what Qt changed
@@ -335,6 +338,7 @@ class Bridge(QtCore.QObject):
 
     def _flush(self) -> None:
         """Grab what Qt repainted and hand it to the sender, if it can take it; otherwise it asks again when free."""
+        self._flush_posted = False
         if self.dead or not self.transport.ready.is_set():
             return
         t0 = time.perf_counter()

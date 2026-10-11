@@ -74,7 +74,7 @@ def main():
         while time.perf_counter() < end:
             app.processEvents()
             busy = bridge.transport.busy or any(not r.dirty.isEmpty() for r in bridge.windows) \
-                or bridge._flush_timer.isActive()
+                or bridge._flush_posted
             quiet = 0 if busy else quiet + 1
             if quiet > 20:
                 return True
