@@ -67,7 +67,8 @@ def test_the_rate_follows_the_frames_and_the_link_the_lowest(shell, monkeypatch)
     w._fps_auto.clear()
     w.nav.fps.setValue(default)
     w.cap_fps_by_frames()
-    assert w.nav.fps.value() == default
+    assert w.nav.fps.value() == default == 10                                 # the default (the user, 2026-10-11)
+    assert w.auto_fps("link", 30) == 10 and w.nav.fps.value() == 10          # a fast link never raises it
 
 
 def test_a_cube_is_not_capped(qapp, tmp_path):

@@ -36,6 +36,6 @@ def test_the_link_and_what_it_reports():
     assert remote.link().bytes_per_px == 4.8 and remote.link().fps_cap == 30      # Qt's own X11
     assert remote.stats()["remote"] and not remote.stats()["bridge"]
     bridged = for_plan(choose_display({"DISPLAY": "localhost:10.0", **SSH}, "linux"))
-    assert bridged.link().bytes_per_px == 1.3 and bridged.link().fps_cap == 12    # the bridge, over ssh by default
+    assert bridged.link().bytes_per_px == 1.3 and bridged.link().fps_cap == 10    # the bridge, over ssh by default
     local = Display(choose_display({"DISPLAY": ":0"}, "linux"))
     assert local.link().fps_cap is None and local.kind == "xcb"

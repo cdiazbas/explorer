@@ -1152,14 +1152,14 @@ class Shell(QtWidgets.QMainWindow):
         return (len(f) - 1) / (f[-1] - f[0]) if len(f) > 2 and f[-1] > f[0] else None
 
     def auto_fps(self, why: str, fps: int) -> int | None:
-        """The playback rate from what was measured (why: "link", "frames"): the lowest of them, set while the
-        rate box holds the default or the last rate set this way (one the user chose stays). The rate set, or
-        None."""
+        """The playback rate from what was measured (why: "link", "frames"): the lowest of them, never above the
+        default (toolbar.FPS: a measure only lowers it), set while the rate box holds the default or the last rate
+        set this way (one the user chose stays). The rate set, or None."""
         held = self.nav.fps.value()
         if held != self._fps_default and held != min(self._fps_auto.values(), default=held + 1):
             return None
         self._fps_auto[why] = int(fps)
-        rate = min(self._fps_auto.values())
+        rate = min(min(self._fps_auto.values()), self._fps_default)
         self.nav.fps.setValue(rate)
         return rate
 

@@ -11,7 +11,7 @@ from ..data.axes import STOKES, fmt_offset, lam0_text
 from . import icons
 
 SLIDER_W = (86, 209)                                    # px, 0.95 of the prototype's: the sliders give way first
-FPS = (1, 120, 20)                                      # the rate box: minimum, maximum, default
+FPS = (1, 120, 10)                                      # the rate box: minimum, maximum, default
 ALL = "All"                                             # every Stokes side by side (the 2x2 view, ui.stokesgrid)
 
 
