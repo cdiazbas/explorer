@@ -648,9 +648,8 @@ class Shell(QtWidgets.QMainWindow):
         ns = self.cubes[k].ns
         what = " ".join(t for t in (self.cubes[k].name if self.linked else "",
                                     f"Stokes {STOKES[s]}" if ns == len(STOKES) else "") if t)
+        # the colour key at rest never says gamma: its hot view does (the user, 2026-10-11)
         self.statusBar().showMessage(f"{gamma_text(g)}{': ' + what if what else ''}  (G \u21e7G {mod_key()}G)", 3000)
-        if not self.statusBar().isVisibleTo(self):     # glass without F12: on the image's colour key, as C's map name
-            self.cubes[k].key.flash(gamma_text(g))
 
     # ---------------------------------------------------------------- the scale's menu and card (ui.scalekey)
     def scale_levels(self, k: int, s: int) -> tuple[float, float]:

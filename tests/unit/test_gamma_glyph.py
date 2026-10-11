@@ -104,7 +104,8 @@ def test_text_without_gamma_is_drawtext_s_pixels(qapp):
 
 
 def test_the_key_paints_its_gamma_note_through_draw_text(qapp, monkeypatch):
-    """The colour key's note after G and its name row with a gamma: both painted by draw_text."""
+    """A note with gamma on the colour key is painted by draw_text; its name row never carries gamma (the hot key
+    does)."""
     from PySide6 import QtWidgets
 
     from explorer.ui import overlays
@@ -119,5 +120,5 @@ def test_the_key_paints_its_gamma_note_through_draw_text(qapp, monkeypatch):
     key.flash(overlays.gamma_text(10 ** -0.1))
     key.grab()
     print("painted:", seen)
-    assert "γ = 0.79" in seen and any(t.endswith("γ = 0.5") for t in seen)
+    assert "γ = 0.79" in seen and not any(t.endswith("γ = 0.5") for t in seen)
     host.deleteLater()

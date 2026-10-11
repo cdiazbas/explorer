@@ -138,7 +138,7 @@ def test_lambda_t_and_the_slit_follow_their_cube_s_gamma_at_the_stokes_they_show
     assert np.array_equal(w.slit_panel.ts_img.image, ts, equal_nan=True)
 
 
-def test_a_panel_of_the_2x2_view_is_its_stokes_and_the_colour_key_says_gamma(window):
+def test_a_panel_of_the_2x2_view_is_its_stokes_and_the_key_at_rest_never_says_gamma(window):
     from explorer.look import get_look
 
     w, qapp = window
@@ -153,7 +153,7 @@ def test_a_panel_of_the_2x2_view_is_its_stokes_and_the_colour_key_says_gamma(win
     w.set_look(get_look("modern"))
     w.session.set_gamma(0, w.session.state.s, 0.5)
     qapp.processEvents()
-    assert "γ = 0.5" in w.colour_key.state[0]
+    assert "γ" not in w.colour_key.state[0]            # the hot key only (the user, 2026-10-11)
     w.session.set_gamma(0, w.session.state.s, 1.0)
     qapp.processEvents()
     assert "γ" not in w.colour_key.state[0]
@@ -165,9 +165,9 @@ def test_the_keys_are_on_the_sheet(window):
     assert "G  ⇧G" in keys and any(k.endswith("G") and k != "G  ⇧G" for k in keys)
 
 
-def test_in_glass_the_image_s_colour_key_says_the_new_gamma(window):
-    """In glass the status bar shows only with F12, so the message after G was never seen there: the colour key of the
-    image under the pointer says it for a moment, as it says C's map name; F12 off."""
+def test_in_glass_the_key_at_rest_does_not_say_the_new_gamma(window):
+    """Gamma is written on the hot key only (the user, 2026-10-11: "only when I pass the mouse over the new panel"):
+    G in glass leaves the key at rest as it was, main and linked."""
     from explorer.look import get_look
 
     w, qapp = window
@@ -182,6 +182,7 @@ def test_in_glass_the_image_s_colour_key_says_the_new_gamma(window):
     fire(w, "Shift+G")
     qapp.processEvents()
     print("glass: main key", main_note, "linked key", w.linked[0].key.note)
-    assert main_note == "γ = 0.79" and w.linked[0].key.note == "γ = 1.3"
+    assert main_note is None and w.linked[0].key.note is None
+    assert w.session.gamma(0, w.session.state.s) == pytest.approx(10 ** -0.1)
     w.set_look(get_look("classic"))
     spin(qapp, lambda: False, timeout=0.4)              # glass's deferred calls done before the window closes
