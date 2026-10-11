@@ -482,6 +482,63 @@ def test_a_smaller_image_keeps_the_same_zoom_factor(window):
 
 
 
+def test_a_cube_s_window_larger_than_the_main_image_keeps_the_one_magnification(window):
+    """A cube's window larger than the main image at its fit showed another magnification (3.24 px per pixel on the
+    main image against 7.95): its guard held it at its own fit. A linked image zooms out as far as the main one, below
+    its own fit: one magnification however large the window, after a double click on either image too (the whole
+    main image, everyone at its magnification); on the wheel it stops where the main image stops."""
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    w, qapp = window
+    other = w.linked[0]
+
+    def mag(v):
+        r = v.vb.viewRect()
+        return v.vb.width() / r.width(), v.vb.height() / r.height()
+
+    def fit(v):
+        return min(v.vb.width() / v.guard.nx, v.vb.height() / v.guard.ny)
+
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.6)
+    other.dock.resize(1500, 1000)                       # its image panel larger than the main one
+    spin(qapp, lambda: False, timeout=0.6)
+    w.view.show_all()
+    spin(qapp, lambda: False, timeout=0.4)
+    (m0, _), (m1, m1y) = mag(w.view), mag(other.view)
+    print(f"main {m0:.2f} px/pixel (its fit {fit(w.view):.2f}, box {w.view.vb.width():.0f}x{w.view.vb.height():.0f}); "
+          f"cube window {m1:.2f} (its fit {fit(other.view):.2f}, box {other.view.vb.width():.0f}x"
+          f"{other.view.vb.height():.0f})")
+    assert fit(other.view) > 1.5 * fit(w.view)          # the case: its own fit well above the main one's
+    assert abs(m0 / fit(w.view) - 1) < 0.01 and abs(m1 / m0 - 1) < 0.02 and abs(m1y / m0 - 1) < 0.02
+    # zoomed in on the main image, then a double click on the cube's image: the whole main image again, one zoom
+    w.view.vb.setRange(QtCore.QRectF(6, 8, 12, 12), padding=0)
+    spin(qapp, lambda: False, timeout=0.3)
+    assert mag(w.view)[0] > 2 * fit(w.view)
+    pos = other.view.vb.mapViewToScene(QtCore.QPointF(20.5, 20.5))
+    ev = type("Click", (), dict(scenePos=lambda self: pos, double=lambda self: True,
+                                button=lambda self: QtCore.Qt.MouseButton.LeftButton))()
+    other.view.widget.scene().sigMouseClicked.emit(ev)
+    spin(qapp, lambda: False, timeout=0.4)
+    (m0, _), (m1, _) = mag(w.view), mag(other.view)
+    print(f"after the double click on the cube's image: main {m0:.2f}, cube window {m1:.2f} px/pixel")
+    assert abs(m0 / fit(w.view) - 1) < 0.01 and abs(m1 / m0 - 1) < 0.02
+    # the wheel out over the cube's image, already at the main fit: nobody goes below it
+    vp = other.view.widget.viewport()
+    at = QtCore.QPointF(vp.width() / 2, vp.height() / 2)
+    for _ in range(3):
+        ev = QtGui.QWheelEvent(at, vp.mapToGlobal(at), QtCore.QPoint(0, 0), QtCore.QPoint(0, -120),
+                               QtCore.Qt.MouseButton.NoButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                               QtCore.Qt.ScrollPhase.NoScrollPhase, False)
+        QtWidgets.QApplication.sendEvent(vp, ev)
+        spin(qapp, lambda: False, timeout=0.2)
+    (m0, _), (m1, _) = mag(w.view), mag(other.view)
+    print(f"after the wheel out on the cube's image: main {m0:.2f}, cube window {m1:.2f} px/pixel")
+    assert abs(m0 / fit(w.view) - 1) < 0.01 and abs(m1 / m0 - 1) < 0.02
+    w.detach_action.setChecked(False)
+    spin(qapp, lambda: False, timeout=0.6)
+
+
 def test_one_entry_puts_every_cube_in_a_window_of_its_own_and_back(window):
     """Panels → "Each cube in a window of its own" (the user's mock of a cube apart, 2026-10-07): each linked cube's
     image floats with its spectra and lambda-t beside it, out of the main window's tabs; the window gives up the

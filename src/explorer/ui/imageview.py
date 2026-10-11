@@ -82,6 +82,9 @@ class ImageView:
         self._gamma = 1.0                               # its cube's at its Stokes (Session.gamma); 1: straight
         self._first = True
         self.guard: ViewGuard | None = None
+        # the lowest magnification (screen px per data pixel) its guard allows, when not its own fit: a linked image
+        # takes the main one's (ViewSync), so that one magnification holds however large its panel is
+        self.zoom_floor: Callable[[], float | None] | None = None
         self._pending = QtCore.QTimer(self.widget)
         self._pending.setSingleShot(True)
         self._pending.setInterval(0)
@@ -122,9 +125,12 @@ class ImageView:
         if self._first:
             ny, nx = img.shape
             self.vb.setRange(QtCore.QRectF(0, 0, nx, ny), padding=0)
-            self.guard = ViewGuard(self.vb, nx, ny)
+            self.guard = ViewGuard(self.vb, nx, ny, floor=self._floor)
             self._first = False
         self.render()
+
+    def _floor(self) -> float | None:
+        return None if self.zoom_floor is None else self.zoom_floor()
 
     def set_gamma(self, gamma: float) -> None:
         """The image drawn again with this gamma; nothing when it already has it."""
@@ -221,7 +227,8 @@ class ImageView:
 class ViewGuard(QtCore.QObject):
     """Keeps the image in sight: without limits one zooms or drags it out of view and is lost.
     - zoom out down to ZOOM_OUT of the whole-image fit: 1, the whole image and no further, as CRISPEX (0.25 and 0.5
-      were tried and had no use);
+      were tried and had no use); with a floor (a linked image's: the main image's lowest), down to that instead,
+      below its own fit when its panel is larger than the main one;
     - zoom in until MIN_PIXELS x MIN_PIXELS data pixels fill the view;
     - each zoom-out step moves the view's centre towards the image's centre by the share of the way to the fit that
       the step covers, in log scale as the wheel steps: at 1x the image is centred, and below it stays centred.
@@ -233,12 +240,20 @@ class ViewGuard(QtCore.QObject):
     ZOOM_OUT = 1.0
     MIN_PIXELS = 3
 
-    def __init__(self, vb, nx, ny):
+    def __init__(self, vb, nx, ny, floor: Callable[[], float | None] | None = None):
         super().__init__(vb)
         self.vb, self.nx, self.ny = vb, nx, ny
+        self.floor = floor                              # the lowest magnification, if not this view's own fit
         self._busy = False
-        self._last = None                               # (scale, panel width, panel height, centre x, centre y)
+        self._last: tuple | None = None                 # (scale, panel width, panel height, centre x, centre y)
         vb.sigRangeChanged.connect(self._check)
+
+    def lowest(self) -> float | None:
+        """The lowest magnification (screen px per data pixel) this view zooms out to on its own: its fit's."""
+        W, H = self.vb.width(), self.vb.height()
+        if W < 2 or H < 2:
+            return None
+        return min(W / self.nx, H / self.ny) * self.ZOOM_OUT
 
     def _check(self, *args):
         if self._busy:
@@ -251,7 +266,8 @@ class ViewGuard(QtCore.QObject):
             return
         s = min(W / w, H / h)                           # screen px per data px (the aspect is locked)
         fit = min(W / self.nx, H / self.ny)
-        new = min(max(s, fit * self.ZOOM_OUT), min(W, H) / self.MIN_PIXELS)
+        low = self.floor() if self.floor is not None else None
+        new = min(max(s, fit * self.ZOOM_OUT if low is None else low), min(W, H) / self.MIN_PIXELS)
         cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
         last = self._last
         same = last is not None and abs(last[1] - W) < 1 and abs(last[2] - H) < 1

@@ -211,6 +211,9 @@ class ViewSync(QtCore.QObject):
       magnification again, and moves nothing else. On the loop's next pass: pyqtgraph tells a wheel's change
       (sigRangeChanged) before saying it was the mouse's (sigRangeChangedManually), and taken back at once the
       wheel zoomed nothing on a linked image.
+    A linked image zooms out as far as the main one and no further (its guard's floor: the main image's fit), below
+    its own fit when its panel is the larger: held at its own fit, a cube's window larger than the main image showed
+    another magnification (7.95 px per pixel against 3.24).
     Sharing the region instead (the 2x2 view's _follow, whose panels are one size) showed a squeezed image at half
     the zoom (9.4 px per pixel against 18.4). Not pyqtgraph's setXLink/setYLink: with the aspect locked, views of
     different sizes drifted apart (after glass and back, Blos 57-1974 in x against 0-2031)."""
@@ -224,8 +227,14 @@ class ViewSync(QtCore.QObject):
         self._timer.timeout.connect(self._realign_now)
         self.main.vb.sigRangeChanged.connect(lambda *_a: self._lead(self.main))
         for v in self.others:
+            v.zoom_floor = self._lowest
             v.vb.sigRangeChangedManually.connect(lambda *_a, v=v: self._lead(v))
             v.vb.sigRangeChanged.connect(lambda *_a, v=v: self._realign(v))
+
+    def _lowest(self) -> float | None:
+        """The main image's lowest magnification, every linked image's floor; None before its first image."""
+        g = self.main.guard
+        return None if g is None else g.lowest()
 
     @staticmethod
     def _place(dst, centre: QtCore.QPointF, sx: float, sy: float) -> None:
