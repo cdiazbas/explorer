@@ -1,8 +1,9 @@
 """Cubes without lambda, or with a single tuning, main or linked, offscreen: no Spectrum panel without lambda (absent
 after reset_panels and a saved layout's restore too, and not in the Panels menu); lambda-t, one cell wide, a curve of
 the cursor's value against t, named by what the cube shows, its unit on the y axis, the current t marked and a click
-on it setting t; the slit's one-row spectral slice left out, for the main cube as for a linked one. A cube with
-lambda keeps its panels as they were. Each test prints what it measured."""
+on it setting t; the slit's one-row spectral slice left out, for the main cube as for a linked one; a single
+tuning's Spectrum only from the Panels menu. A cube with lambda keeps its panels as they were. Each test prints
+what it measured."""
 import time
 
 import numpy as np
@@ -156,14 +157,55 @@ def test_the_slit_of_a_main_cube_with_one_plane_or_none_shows_its_time_slice_alo
         close()
 
 
-def test_a_single_tuning_keeps_its_spectra_and_has_a_curve_for_lambda_t(qapp, cubes):
+def test_a_single_tuning_has_its_spectra_and_a_curve_for_lambda_t(qapp, cubes):
     from explorer.ui.lambda_t import TimeCurve
 
     w, close = open_window(qapp, cubes["one"])
     try:
         print("spectra", type(w.spectra).__name__, "lambda-t", type(w.lambda_t).__name__, w.lt_dock.windowTitle())
-        assert w.spectra is not None and not w.spec_dock.isHidden()
+        assert w.spectra is not None
         assert isinstance(w.lambda_t, TimeCurve) and w.lt_dock.windowTitle() == "Fe I 617.3–t"
+    finally:
+        close()
+
+
+@pytest.mark.parametrize("look", ["classic", "glass"])
+def test_a_single_tuning_s_spectrum_opens_only_from_panels(qapp, cubes, tmp_path, look):
+    """One lambda point: its Spectrum (one point per Stokes) is not shown at start, after reset_panels or a saved
+    layout's restore, in classic or glass; it is offered in the Panels menu and opens from there, until the next
+    reset. Linked to a cube with several points, it is shown as ever."""
+    from explorer.look import get_look
+    from explorer.ui.layout import LayoutStore
+
+    w, close = open_window(qapp, cubes["one"], look=get_look(look))
+    try:
+        spin(qapp, lambda: False, timeout=0.3)
+        at_start = w.spec_dock.isHidden()
+        offered = w.spec_dock.toggleViewAction().isVisible() and w.spec_dock.toggleViewAction().isEnabled()
+        w.reset_panels()
+        spin(qapp, lambda: False, timeout=0.3)
+        after_reset = w.spec_dock.isHidden()
+        store = LayoutStore("onel", path=str(tmp_path / "layout.ini"))
+        store.save(w)
+        store.restore(w, qapp)
+        qapp.processEvents()
+        after_restore = w.spec_dock.isHidden()
+        w.spec_dock.toggleViewAction().trigger()        # Panels → Spectrum
+        spin(qapp, lambda: False, timeout=0.3)
+        asked = not w.spec_dock.isHidden()
+        w.reset_panels()
+        spin(qapp, lambda: False, timeout=0.3)
+        reset_again = w.spec_dock.isHidden()
+        print(look, "Spectrum hidden at start", at_start, "after reset", after_reset, "after restore", after_restore,
+              "in the menu", offered, "shown from it", asked, "hidden after the next reset", reset_again)
+        assert at_start and after_reset and after_restore and offered and asked and reset_again
+    finally:
+        close()
+    w, close = open_window(qapp, cubes["one"], linked=[cubes["spec"]], look=get_look(look))
+    try:
+        spin(qapp, lambda: False, timeout=0.3)
+        print(look, "linked to 7 points: Spectrum hidden", w.spec_dock.isHidden())
+        assert not w.spec_dock.isHidden()
     finally:
         close()
 

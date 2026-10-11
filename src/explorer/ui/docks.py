@@ -68,11 +68,35 @@ class GatedDock(QtWidgets.QDockWidget):
     def __init__(self, *a):
         super().__init__(*a)
         self.allowed = lambda: True
+        self.asked = False                              # on_request: opened from the Panels menu
+
+    def on_request(self) -> None:
+        """Shown only once asked for from the Panels menu: not by the start, a saved layout, reset_panels or glass
+        (the spectra of a single lambda point). Closed, or after forget(), only on request again. Hidden from here on:
+        a child never hidden is shown with its window without going through setVisible."""
+        self.allowed = lambda: self.asked
+        self.hide()
+        self.toggleViewAction().triggered.connect(self._asked)
+
+    def forget(self) -> None:
+        """Not asked for any more (reset_panels): hidden again if only a request showed it."""
+        self.asked = False
+        if not self.allowed():
+            self.hide()
+
+    def _asked(self, on: bool) -> None:
+        self.asked = bool(on)
+        if self.asked:                                  # the dock's own slot ran first, and was refused
+            self.show()
 
     def setVisible(self, visible: bool) -> None:
         if visible and not self.allowed():
             return
         super().setVisible(visible)
+
+    def closeEvent(self, e) -> None:
+        self.asked = False
+        super().closeEvent(e)
 
 
 class DockHome(QtCore.QObject):

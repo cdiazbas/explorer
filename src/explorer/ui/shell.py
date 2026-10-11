@@ -192,6 +192,12 @@ class Shell(QtWidgets.QMainWindow):
             assert isinstance(d, docks.GatedDock)
             d.allowed = (lambda: True) if has else (lambda: False)
             d.toggleViewAction().setVisible(has)
+        # every cube with spectra at a single lambda point: its Spectrum (one point per Stokes) only on request from
+        # Panels, as a 4-Stokes point still compares I, Q, U and V; one cube with more points, shown as ever
+        nls = [c.dataset.roles.nl for c in (self.main, *self.linked) if c.spectra is not None]
+        if nls and max(nls) <= 1:
+            assert isinstance(self.spec_dock, docks.GatedDock)
+            self.spec_dock.on_request()
         # the slit's slices: lambda-t's tab, there from the first S on and only with a slit or one being drawn
         # (_slit_tab; the prototype's 1046-1052)
         self.slit_panel = SlitPanel(r.nt, r.nl, dataset.axes)
@@ -906,7 +912,10 @@ class Shell(QtWidgets.QMainWindow):
 
     def reset_panels(self) -> None:
         """Every panel docked where it started and shown, and the whole image in view again (the prototype's
-        reset_panels: one button brings everything back). In the glass look its panels float, placed again."""
+        reset_panels: one button brings everything back). In the glass look its panels float, placed again. A panel
+        shown only on request (docks.GatedDock.on_request) is hidden again."""
+        if isinstance(self.spec_dock, docks.GatedDock):
+            self.spec_dock.forget()
         if self.glass is not None:
             self.glass.reset()
             self.statusBar().showMessage("panels and zoom back to the start", 4000)
