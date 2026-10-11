@@ -1,6 +1,7 @@
 """The image's limits and gamma on the image itself, offscreen (ui.scalekey): min, max and the limit rule per (cube,
 Stokes) in the session next to gamma; the key of every image dragged, wheeled and double-clicked; its menu; the card;
-the layout keeping them; the G keys on the sheet."""
+the layout keeping them; the G keys on the sheet; its title saying the rule Q U V get (of |value|) and its last line
+fitting its width."""
 import time
 
 import pytest
@@ -298,3 +299,70 @@ def test_the_g_keys_are_on_the_sheet(window):
     html = w.action_registry.sheet_html(w.palette())
     assert "G" in html and "⇧G" in html and f"{mod_key()}G" in html and "γ" in html
     assert "colour key of an image" in html                              # and what the mouse does on the key
+
+
+# ---------------------------------------------------------------------------------------------- its texts
+class Recording(QtGui.QPainter):
+    """A QPainter that keeps every drawText(rect, flags, text) it is asked for."""
+    texts: list = []
+
+    def drawText(self, *a):
+        if len(a) == 3 and isinstance(a[2], str):
+            Recording.texts.append((QtCore.QRectF(a[0]), a[2], QtGui.QFontMetrics(self.font())))
+        return super().drawText(*a)
+
+
+def painted(key, monkeypatch):
+    """The texts the hot key draws: (rect, text, font metrics)."""
+    Recording.texts = []
+    monkeypatch.setattr(QtGui, "QPainter", Recording)
+    key.grab()
+    monkeypatch.undo()
+    return list(Recording.texts)
+
+
+@pytest.mark.parametrize("s, rule, want", [(0, "auto 1–99 %", None), (1, "auto |x| 99 %", "1–99")])
+def test_the_hot_key_says_the_rule_its_stokes_gets(window, monkeypatch, s, rule, want):
+    """I: the 1-99 percentiles; Q U V: symmetric at the 99th percentile of |value| (data.stats.limits), which the
+    title says, and the menu too."""
+    from explorer.ui.scalekey import scale_menu
+
+    w, qapp = window
+    w.session.set_index("s", s)
+    assert spin(qapp, lambda: w.main.scheduler.img_idx is not None and w.main.scheduler.img_idx[1] == s)
+    key = w.main.key
+    key.set_hot(True)
+    qapp.processEvents()
+    texts = painted(key, monkeypatch)
+    title = texts[0][1]
+    print("title", texts[0][2].horizontalAdvance(title), "px, gamma", texts[1][2].horizontalAdvance(texts[1][1]),
+          "px, in", texts[0][0].width(), "px")
+    menu = [a.text() for a in scale_menu(w, 0, s).actions()
+            if isinstance(a.data(), tuple) and a.data()[0] == "rule"]
+    print("Stokes", "IQUV"[s], "title", repr(title), "menu", menu)
+    assert rule in title and (want is None or want not in title)
+    assert (s == 0) == ("Automatic, 1–99 % per frame" in menu)
+
+
+@pytest.mark.parametrize("width", [320, 260, 230, 150])
+def test_the_key_s_last_line_fits_its_width(window, monkeypatch, width):
+    """The hot key's hint, the longest of its forms that fits; none below the shortest, never cut at the edge. Its
+    title stops short of gamma, cut (…) when it has to be."""
+    w, qapp = window
+    key = w.main.key
+    key.set_hot(True)
+    key.resize(width, key.H_HOT)
+    qapp.processEvents()
+    texts = painted(key, monkeypatch)
+    last = [(r, t, fm) for r, t, fm in texts if r.top() >= key.height() - 20]
+    print(width, [(t, fm.horizontalAdvance(t), r.width()) for r, t, fm in last])
+    title, gamma = texts[0], texts[1]
+    print(width, "title", repr(title[1]), title[2].horizontalAdvance(title[1]), "px + gamma",
+          gamma[2].horizontalAdvance(gamma[1]), "px in", title[0].width(), "px")
+    assert last and all(fm.horizontalAdvance(t) <= r.width() for r, t, fm in last)
+    assert title[2].horizontalAdvance(title[1]) + gamma[2].horizontalAdvance(gamma[1]) < title[0].width()
+    from explorer.ui.scalekey import HINTS
+
+    shown = last[0][1]                                  # the longest form that fits: every longer one does not
+    longer = HINTS[:HINTS.index(shown)] if shown in HINTS else HINTS
+    assert all(last[0][2].horizontalAdvance(h) > last[0][0].width() for h in longer)

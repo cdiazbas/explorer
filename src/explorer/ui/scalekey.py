@@ -26,6 +26,13 @@ STOKES = "IQUV"
 RULE_TEXT = {"p1": "Automatic, 1–99 % per frame", "p05": "0.5–99.5 % per frame",
              "minmax": "Min–max per frame", "fixed": "Frozen to this frame"}
 RULE_SHORT = {"p1": "auto 1–99 %", "p05": "auto 0.5–99.5 %", "minmax": "min–max", "fixed": "fixed"}
+# Q U V, symmetric about 0: each rule keeps its upper percentile, of |value| (data.stats.limits)
+RULE_TEXT_SYM = {"p1": "Automatic, 99 % of |value| per frame", "p05": "99.5 % of |value| per frame",
+                 "minmax": "Max |value| per frame", "fixed": "Frozen to this frame"}
+RULE_SHORT_SYM = {"p1": "auto |x| 99 %", "p05": "auto |x| 99.5 %", "minmax": "max |x|", "fixed": "fixed"}
+# the hot key's last line, the longest that fits its width (a cube's window may be 230 px wide); none: left out
+HINTS = ("drag ▲ · wheel γ · double click auto · right click menu", "drag ▲ · wheel γ · right click menu",
+         "right click: menu")
 GAMMAS = (1.0, 0.7, 0.5, 0.3)
 HIST_BINS = 128
 
@@ -37,6 +44,16 @@ def gamma_of_slider(v: int) -> float:
 
 def slider_of_gamma(g: float) -> int:
     return int(round(500.0 * (np.log10(g) + 1.0)))
+
+
+def rule_texts(sym: bool) -> dict[str, str]:
+    """The limit rules as the menu and the card list them: of |value| for Q U V (sym)."""
+    return RULE_TEXT_SYM if sym else RULE_TEXT
+
+
+def hint(fm: QtGui.QFontMetrics, width: float) -> str:
+    """The longest of HINTS that fits width in fm, else ""."""
+    return next((h for h in HINTS if fm.horizontalAdvance(h) <= width), "")
 
 
 def transfer(v, lo: float, hi: float, g: float, sym: bool):
@@ -282,9 +299,14 @@ class ScaleKey(ColourKey):
         unit = (f"[{pw.replace(' ×', '')} {self.unit}]" if pw else f"[{self.unit}]") if self.unit else \
             pw.replace(" ×", "×")
         p.setPen(ink)
-        p.drawText(QtCore.QRectF(12, 3, W - 24, 16), AL.AlignLeft | AL.AlignVCenter,
-                   "   ".join(t for t in (name, unit, RULE_SHORT[rule]) if t))
-        draw_text(p, QtCore.QRectF(12, 3, W - 24, 16), AL.AlignRight | AL.AlignVCenter, gamma_text(g))
+        fm = QtGui.QFontMetrics(f)
+        gtext = gamma_text(g)
+        gw = QtGui.QFontMetrics(gamma_font(f)).horizontalAdvance(GAMMA) + fm.horizontalAdvance(gtext[1:])
+        title = "   ".join(t for t in (name, unit, (RULE_SHORT_SYM if sym else RULE_SHORT)[rule]) if t)
+        # cut at its end (…) short of gamma: on a narrow key the two ran into each other
+        title = fm.elidedText(title, QtCore.Qt.TextElideMode.ElideRight, W - 24 - gw - 8)
+        p.drawText(QtCore.QRectF(12, 3, W - 24, 16), AL.AlignLeft | AL.AlignVCenter, title)
+        draw_text(p, QtCore.QRectF(12, 3, W - 24, 16), AL.AlignRight | AL.AlignVCenter, gtext)
         band, bar = self._band(), self._bar()
         a0, a1 = self.axis()
         h = self._counts((a0, a1))
@@ -332,8 +354,7 @@ class ScaleKey(ColourKey):
             r.moveLeft(min(max(r.left(), 4), W - 84))
             p.drawText(r, AL.AlignHCenter | AL.AlignTop, ("+" if sym and which == "hi" else "") + _num(v / kpow))
         p.setPen(faint)
-        draw_text(p, QtCore.QRectF(8, self.height() - 16, W - 16, 14), AL.AlignHCenter,
-                  f"drag ▲ · wheel {GAMMA} · double click auto · right click menu")
+        draw_text(p, QtCore.QRectF(8, self.height() - 16, W - 16, 14), AL.AlignHCenter, hint(fm, W - 16))
         p.end()
 
 
@@ -350,7 +371,7 @@ def scale_menu(shell, k: int, s: int, parent: QtWidgets.QWidget | None = None) -
     m.addAction("Limits").setEnabled(False)
     rule = sess.scale(k, s)[0]
     rules = QtGui.QActionGroup(m)
-    for r, text in RULE_TEXT.items():
+    for r, text in rule_texts(s > 0).items():
         a = m.addAction(text)
         a.setCheckable(True)
         a.setChecked(r == rule)
@@ -444,7 +465,7 @@ class ScaleCard(QtWidgets.QFrame):
         row = QtWidgets.QHBoxLayout()
         row.addWidget(QtWidgets.QLabel("limits"))
         self.rule = QtWidgets.QComboBox()
-        for r, text in RULE_TEXT.items():
+        for r, text in rule_texts(s > 0).items():
             self.rule.addItem(text, r)
         self.rule.activated.connect(lambda i: set_rule(shell, k, s, self.rule.itemData(i)))
         row.addWidget(self.rule, 1)
