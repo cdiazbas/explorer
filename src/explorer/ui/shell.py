@@ -217,6 +217,11 @@ class Shell(QtWidgets.QMainWindow):
         self.slit_dock.hide()
         self.slit_dock.allowed = lambda: self.session.state.path is not None or self.slit_tool.mode
         self.slit_dock.toggleViewAction().setEnabled(False)
+        # the t steps the temporal panels show at most (data.tsample), one number for every cube: a number in the
+        # titles of lambda-t and the slit, there in every look (a title of our own where Qt's would be)
+        self.t_steps = titlebar.TimeSteps(self.session.state.t_cap, self.session.set_t_cap, self)
+        for d in (self.lt_dock, self.slit_dock):
+            self.give_steps(d)
         self.image_title: ImageTitle | None = None
         if self.linked:
             # the linked images as panels between this image and the spectra, in order; this one with the same title
@@ -426,6 +431,13 @@ class Shell(QtWidgets.QMainWindow):
         """What MacSeams is set on: the window, its panels, and each cube's window's frame and panels."""
         return [self, self.spec_dock, self.lt_dock, self.slit_dock,
                 *(w for c in self.linked for w in (c.frame, *c.panes.values()))]
+
+    def give_steps(self, dock: QtWidgets.QDockWidget) -> None:
+        """The number of t steps (titlebar.StepsButton) in a temporal panel's title, with our title where it has
+        Qt's (a local Mac's native frame): the number is then there too."""
+        dock.steps = self.t_steps  # type: ignore[attr-defined]
+        if dock.titleBarWidget() is None:
+            dock.setTitleBarWidget(titlebar.DockTitle(dock))
 
     def dress(self, dock: QtWidgets.QDockWidget) -> None:
         """A panel made after the window (a cube's spectra and lambda-t in its window, ui.linked) dressed as the
@@ -1379,6 +1391,8 @@ class Shell(QtWidgets.QMainWindow):
             self._slit_markers()
         if "gamma" in changed:                          # each cube's image and lambda-t: CubeView.follow
             self._gamma_changed()
+        if "t_cap" in changed:
+            self.t_steps.update(st.t_cap)
         self.update_status()
 
     def update_status(self) -> None:

@@ -384,6 +384,8 @@ class LinkedCube(CubeView):
         d.visibilityChanged.connect(lambda _on: self._image_shown(None))
         d.topLevelChanged.connect(lambda floating: self.shell.pane_floated(d, floating))
         self.panes[key] = d
+        if key.startswith("lambda_t"):                  # its number of t steps, as the main window's lambda-t
+            self.shell.give_steps(d)
         self.shell.dress(d)
         return d
 

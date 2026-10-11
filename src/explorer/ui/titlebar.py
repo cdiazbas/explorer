@@ -16,6 +16,8 @@ import sys
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..data import tsample
+
 Qt = QtCore.Qt
 E = QtCore.QEvent.Type
 ENV = "EXPLORER_TITLEBAR"
@@ -521,9 +523,91 @@ class EdgeResizer(QtCore.QObject):
 # not be dragged back nor docked again. A title bar widget of our own makes Qt draw and handle it as on xcb. It only
 # paints (with the style's dock title) and holds the buttons; presses and double clicks are left to QDockWidget,
 # which drags, floats and docks as usual (Qt's documented contract).
+class TimeSteps(QtCore.QObject):
+    """The number of t steps the temporal panels show at most (data.tsample), as their titles show it: set(v) asks
+    for it (the session's), update(v) says what it is now (changed then repaints the numbers)."""
+    changed = QtCore.Signal(object)
+
+    def __init__(self, value, ask, parent=None):
+        super().__init__(parent)
+        self.value, self.ask = value, ask
+
+    def set(self, v) -> None:
+        self.ask(v)
+
+    def update(self, v) -> None:
+        if v != self.value:
+            self.value = v
+            self.changed.emit(v)
+
+    def step(self, d: int) -> None:
+        """The next choice up (d > 0) or down: 25 50 100 200 all."""
+        ch = list(tsample.CHOICES)
+        i = ch.index(self.value) if self.value in ch else ch.index(tsample.CAP)
+        self.set(ch[min(len(ch) - 1, max(0, i + d))])
+
+
+class StepsButton(QtWidgets.QAbstractButton):
+    """The t steps shown, a small number beside the close and float marks: a click opens the choices, the wheel
+    steps through them. ink: the colour of its number (None: the palette's text); the glass title sets its own."""
+
+    def __init__(self, steps: TimeSteps, parent, size: QtCore.QSize):
+        super().__init__(parent)
+        self.steps = steps
+        self.ink: QtGui.QColor | None = None
+        self.setObjectName("time_steps")
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Time steps shown along t, read evenly spread (click: choose; wheel: change).\n"
+                        "Fewer read faster; \"all\" reads every t.")
+        f = QtGui.QFont(self.font())
+        f.setPointSizeF(max(6.0, f.pointSizeF() * 0.85))
+        self.setFont(f)
+        w = QtGui.QFontMetrics(f).horizontalAdvance("200") + 8
+        self.setFixedSize(max(size.width(), w), size.height())
+        self.clicked.connect(self.choose)
+        steps.changed.connect(lambda _v: self.update())
+
+    def choose(self) -> None:
+        m = QtWidgets.QMenu(self)
+        for v in tsample.CHOICES:
+            a = m.addAction(tsample.label(v))
+            a.setCheckable(True)
+            a.setChecked(v == self.steps.value)
+            a.triggered.connect(lambda _on=False, v=v: self.steps.set(v))
+        m.popup(self.mapToGlobal(QtCore.QPoint(0, self.height())))
+
+    def wheelEvent(self, e):
+        d = e.angleDelta().y()
+        if d:
+            self.steps.step(1 if d > 0 else -1)
+        e.accept()
+
+    def paintEvent(self, e):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        ink = (QtGui.QColor(self.ink) if self.ink is not None
+               else self.palette().color(QtGui.QPalette.ColorRole.WindowText))
+        if self.underMouse() or self.isDown():
+            c = QtGui.QColor(ink)
+            c.setAlpha(40)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(c)
+            p.drawRoundedRect(QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 3, 3)
+        p.setPen(ink)
+        p.setFont(self.font())
+        p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, tsample.label(self.steps.value))
+
+    def enterEvent(self, e):
+        self.update()
+
+    def leaveEvent(self, e):
+        self.update()
+
+
 class DockTitle(QtWidgets.QWidget):
     """Close and float buttons at the left, the title centred: what macOS draws on a local Mac, so every path looks
-    and works the same."""
+    and works the same. A temporal panel's (dock.steps, a TimeSteps) has the number of its t steps after them."""
 
     def __init__(self, dock):
         super().__init__(dock)
@@ -555,8 +639,17 @@ class DockTitle(QtWidgets.QWidget):
             b.clicked.connect(fn)
             lay.addWidget(b, 0, Qt.AlignmentFlag.AlignVCenter)
             self.buttons.append(b)
+        steps = getattr(dock, "steps", None)
+        self.steps_button = StepsButton(steps, self, size) if isinstance(steps, TimeSteps) else None
+        if self.steps_button is not None:
+            lay.addSpacing(2)
+            lay.addWidget(self.steps_button, 0, Qt.AlignmentFlag.AlignVCenter)
         lay.addStretch(1)
         self.button = self.buttons[1]                    # the float button
+
+    def left_end(self) -> int:
+        """Where the marks at the left end, x: the title stays clear of them on both sides."""
+        return (self.steps_button or self.buttons[-1]).geometry().right()
 
     def sizeHint(self):
         # Qt's rule (QDockWidgetLayout::titleHeight): the button plus 2, or the dock's font plus the margins
@@ -576,7 +669,7 @@ class DockTitle(QtWidgets.QWidget):
         f = QtGui.QFont(self.d.font())
         f.setWeight(QtGui.QFont.Weight.DemiBold)
         p.setFont(f)
-        side = self.buttons[-1].geometry().right() + 6   # clear of the buttons on both sides: centred
+        side = self.left_end() + 6                       # clear of the buttons on both sides: centred
         r = self.rect().adjusted(side, 0, -side, 0)
         text = QtGui.QFontMetrics(f).elidedText(self.d.windowTitle(), Qt.TextElideMode.ElideRight, max(0, r.width()))
         R = QtGui.QPalette.ColorRole

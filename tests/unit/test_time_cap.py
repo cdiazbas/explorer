@@ -199,3 +199,67 @@ def test_the_panels_draw_the_steps_at_their_t_and_a_click_picks_the_nearest(qapp
     s.show(np.ones((100, 8), np.float32), np.ones((NL, 8), np.float32), (0.0, 2.0), (0.0, 2.0))
     r = s.ts_img.mapRectToParent(s.ts_img.boundingRect())
     assert r.height() == pytest.approx(NT) and np.array_equal(s.steps, ts)
+
+
+# ---------------------------------------------------------------- the number in the titles
+def spin(qapp, until, timeout=20.0):
+    end = time.perf_counter() + timeout
+    while not until() and time.perf_counter() < end:
+        qapp.processEvents()
+        time.sleep(0.002)
+    return until()
+
+
+def test_the_number_in_the_titles_changes_the_steps(qapp, cube):
+    from PySide6 import QtCore, QtGui
+
+    from explorer.ui import glass
+    from explorer.ui.shell import Shell
+    from explorer.ui.titlebar import StepsButton
+
+    ds = Dataset.open(cube[0], no_sp=True)
+    w = Shell(ds)
+    try:
+        w.resize(1200, 640)
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        w.session.hover(Y, X)
+        assert spin(qapp, lambda: w.last.get("lambda_t") is not None and len(w.last["lambda_t"][0]) == 100)
+        buttons = [d.titleBarWidget().findChild(StepsButton, "time_steps") for d in (w.lt_dock, w.slit_dock)]
+        assert all(b is not None for b in buttons)
+        b = buttons[0]
+
+        def wheel(up):
+            pos = QtCore.QPointF(b.rect().center())
+            e = QtGui.QWheelEvent(pos, b.mapToGlobal(pos), QtCore.QPoint(), QtCore.QPoint(0, 120 if up else -120),
+                                  QtCore.Qt.MouseButton.NoButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                                  QtCore.Qt.ScrollPhase.NoScrollPhase, False)
+            QtCore.QCoreApplication.sendEvent(b, e)
+            qapp.processEvents()
+
+        wheel(True)
+        assert spin(qapp, lambda: w.session.state.t_cap == 200 and len(w.last["lambda_t"][0]) == 200)
+        wheel(True)
+        assert spin(qapp, lambda: w.session.state.t_cap is None and len(w.last["lambda_t"][0]) == NT)
+        wheel(True)                                     # "all" is the end
+        assert w.session.state.t_cap is None and w.t_steps.value is None
+        for _ in range(3):
+            wheel(False)
+        assert spin(qapp, lambda: w.session.state.t_cap == 50 and len(w.last["lambda_t"][0]) == 50)
+        print("wheel: 100 -> 200 -> all -> all -> 200 -> 100 -> 50; lambda-t rows", len(w.last["lambda_t"][0]))
+        b.choose()                                      # the menu of choices: 25 picked
+        acts = [a for a in b.findChildren(QtGui.QAction) if a.text() == "25"]
+        assert acts
+        acts[-1].trigger()
+        assert spin(qapp, lambda: w.session.state.t_cap == 25 and w.t_steps.value == 25)
+        img = b.grab().toImage()
+        assert not img.isNull() and w.t_steps.value == 25
+        g = glass.PanelTitle(w.lt_dock)                 # the glass look's title: the number there too
+        g.resize(300, 20)
+        g.layout().activate()
+        assert g.steps_button is not None and g.left_end() > g.buttons[-1].geometry().right()
+        g.deleteLater()
+        print("titles with the number:", [type(d.titleBarWidget()).__name__ for d in (w.lt_dock, w.slit_dock)])
+    finally:
+        w.close()
+        ds.close()
