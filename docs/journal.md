@@ -4300,3 +4300,342 @@ entre dos tandas). Grupos de la rendija, el enlazado, la sesión, los nombres y 
 **Por decidir:** la palabra para el eje que no se sabe λ; un panel de rendija por ventana de cubo (ahora uno, en la
 principal); qué clic decide el cubo (ahora el primero); si el cubo principal sigue la misma regla; si «default (t,
 lambda)» sin fichero de λ cuenta como λ. Sin ver: los colores en modern y glass.
+
+### 2026-10-10 (13): series de ficheros FITS, `--series` (ROADMAP E1.26)
+
+**El problema:** una carpeta de imágenes AIA (una por fichero) solo se abría como cubos enlazados de un cuadro.
+
+**Ahora** `explorer --series aia*.fits` lee los ficheros como un cubo (t, y, x), sin construirlo:
+- t va por la hora de la cabecera (`T_OBS`, si no `DATE-AVG`, si no `DATE-OBS`), no por el nombre: los nombres de JSOC son la hora pedida, no la observada;
+- sin horas, orden de nombre y t es un índice;
+- se rechazan las horas repetidas y los ficheros de otra forma, tipo, escala, `WAVELNTH`, `INSTRUME` o `BUNIT`, con los ficheros de cada grupo;
+- un fichero normal se lee con un pread en su desplazamiento; uno comprimido (Rice, como los sirve JSOC), descomprimiendo con astropy.
+
+**Medido** (bellatrix, nodo NUMA 0, cerrojo, carga 0.6–2.9):
+- sintético, 4096² int16: el cuadro de la serie cuesta lo que el del cubo (47.8 frente a 51.4 ms en caliente, 85.5 frente a 86.0 ms en frío); Rice, 429 ms;
+- real, 3900 ficheros AIA 171 Rice de 1986²:
+  - las cabeceras leídas por astropy tardan 46 s (66 s en 16 hilos, por el GIL); leídas de sus bloques, 3.4 s; primera imagen a los 6.0 s del comando, antes 53.9 s;
+  - el cuadro, 0.12 s, y no va más rápido en hilos (996 frente a 1207 ms ocho cuadros);
+  - la reproducción decía 12 fps (el enlace X11) y mostraba 3.7 imágenes/s; ahora una descompresión a la vez, y el fps automático sale de lo que cuesta un cuadro: 6 fps y 5.8 imágenes/s.
+- Memoria: astropy guarda la tabla comprimida de cada fichero abierto (4.9 GB con 3900); se dejan abiertos 16.
+
+**Por decidir:**
+- la rendija y el píxel en t de una serie comprimida son lentos (40 s para 600 filas × 300 ficheros; 3 s un píxel en 300 t): ¿caché descomprimida en disco (30.8 GB para los 3900)?
+- enlazar una serie con otros cubos desde la línea de órdenes.
+
+### 2026-10-10 (14): los paneles de un cubo sin λ o con una sola λ (ROADMAP E8.7)
+
+**El problema** (el usuario): un cubo sin λ no debe abrir el panel de espectros; con una sola λ, o ninguna, un panel 2D de una sola columna o fila debe ser 1D. Antes, un mapa principal escondía al arrancar sus paneles Spectrum y λ–t vacíos, pero «reset» y la disposición guardada los volvían a mostrar vacíos, y el menú Panels los ofrecía. Un cubo de una λ tenía una λ–t de una columna, y la rendija un corte espectral de una fila. Un mapa enlazado no tenía λ–t.
+
+**Ahora:**
+- Un panel que ningún cubo tiene es un `GatedDock` que nada muestra, y no aparece en el menú.
+- Con t y nl ≤ 1, la λ–t es una curva del valor en el cursor frente a t (`ui/lambda_t.py` `TimeCurve`), con el nombre que da `slice_names` (ahora también para el principal cuando tiene un plano o ninguno) y BUNIT en el eje y; el clic fija t. El núcleo la lee aunque el cubo no tenga λ.
+- La rendija pierde el corte espectral de una fila en el principal, igual que en el enlazado; un mapa 2D dibuja su única fila como curva a lo largo de la rendija.
+
+**Medido** (bellatrix, sin pantalla, carga 0.5-1.5):
+- La curva en (20, 13) coincide exactamente con el fichero; un clic en x = 3.5 da t = 3.
+- La curva de rendija del mapa 2D coincide con la imagen (|Δ| = 0 en 34 puntos).
+- Un cubo espectral, idéntico píxel a píxel (0 px, classic y modern).
+- Pruebas nuevas: 8 fallan antes y pasan después; la novena, la del cubo con λ, pasa antes y después.
+- Grupos de shell, docks, layout, linked, λ–t, espectros, rendija, nombres, glass, tema, look, arranque, scheduler, sesión, 2×2, toolbar y etiqueta de Stokes: 257 pasan.
+- El Blos real abierto solo sin `--axes` sigue tomando su eje «unknown» como λ: sin cambio.
+
+**Por decidir:** el Spectrum para una sola λ; t en horizontal; el nombre y la escala del eje y en cubos Stokes; el título «λ–t» con pestañas; el eje «unknown» de un mapa LP.
+
+### 2026-10-10 (15): escala de color: lo que hacía CRISPEX y qué cuesta una gamma (ROADMAP E5.32)
+
+**Qué hacía el CRISPEX de IDL** (leído en `crispex.pro`). Una pestaña *Scaling* con un combo de imagen (principal,
+referencia, Doppler, slit-jaw), un combo de modo de límites («first non-zero image», «current image», «per time
+step»), un campo *Histogram optimisation* (1e-4), dos deslizadores *Image minimum/maximum [%]* y un deslizador
+*Gamma* de 0 a 1000 que da γ = 10^(v/500 − 1), de 0.1 a 10 (24405–24448). γ se aplica al dato conservando el signo
+(8027–8036); los límites son MIN/MAX tras `IRIS_HISTO_OPT` (de SolarSoft, no está en el árbol: su efecto se infiere)
+de la primera imagen, recortados por los %, y luego `BYTSCL` (8043–8047). Todo va por tipo de imagen y ventana
+espectral (7956–7960). Por defecto, γ = 1: lineal. Ni ecualización ni log. La sesión guarda la estructura entera
+(17521) y las preferencias la γ por defecto (14705–14708). Ninguna tecla.
+
+**Medido** (bellatrix, sin pantalla). Tres imágenes, `scaling_aia171.png`, `scaling_sst6563.png` y
+`scaling_aia171_lut_banding.png`:
+
+- **AIA 171:** con los límites de ahora (1–99 pct) el disco queda oscuro y la corona fuera del limbo no se ve; γ 0.5
+  o log la sacan.
+- **SST Hα:** lineal va bien. γ < 1 lava la imagen porque el relleno lleva el límite inferior a 0.
+- **LUT sobre los bytes:** una LUT de 256 sobre los bytes de explorer con γ 0.3 deja 9 niveles en un recorte fuera
+  del limbo, frente a 35 con γ sobre el dato. El byte 1 va a 1 y el 2 a ~48 (pendiente infinita de x^0.3 en 0; un
+  byte son ~5 cuentas y el fondo tiene 4–6). Una tabla de 65536 da 42 niveles.
+
+**Coste** (nodo 0 fijado, en serie, carga 0.7–1.2, 25 repeticiones, medianas, 2k → 2k):
+
+- el núcleo de hoy, 40.8 ms;
+- la potencia dentro del núcleo, 185.5 ms (no);
+- una tabla de 65536 dentro del núcleo, 35.7 ms: más rápida que hoy, por un mecanismo sin trazar;
+- numpy sobre el fotograma, 8.7 (19.7 con signo);
+- una LUT de numpy después, +13.
+
+**Resultado negativo.** La LUT de 256 «gratis» sobre los bytes no basta con γ < 1.
+
+**Sin decidir.** Las preguntas de la sección 4. Nada se ha tocado en el código.
+
+### 2026-10-10 (16): inventario de los controles del CRISPEX de IDL (ROADMAP E5.31)
+
+**La pregunta.** El CRISPEX de IDL tenía un panel de control enorme; explorer quiere sus capacidades sin llenar la
+interfaz (el usuario): cada opción, una fila de la tabla de acciones, que se alcanza sobre el objeto, por el menú
+contextual o por el buscador, y casi nunca hace falta tocar porque el valor por defecto sale de los datos.
+
+**Lo hecho.** Lectura de la construcción de widgets de `crispex.pro` (panel 23720-25134, preferencias 13924-14116,
+seis ventanas secundarias, ratón 2233-2420, atajos 9909-9937, palabras clave 22002-22019) y de `src/explorer` en
+`main` y en las ramas del día. 144 controles, cada uno con su línea, su estado en explorer, la entrada propuesta y
+una frecuencia estimada (inferencia).
+
+**Medido.** Nada se ejecutó. Recuento: 35 ✅, 28 🟡, 61 ⬜, 20 ⚪ (propios de IDL o resueltos por diseño: modos de
+zoom, ventanas sueltas, preferencias de color que dan el tema y el aspecto). Entradas principales de los 124 que
+aplican: D 26, B 24, C 24, O 19, barra 14, hoja de trabajo 10, tecla 7. Explorer no tiene hoy ningún menú
+contextual ni ningún guardado de imagen.
+
+**Sin resolver.** Si la hoja de exportación basta como único formulario (propuesta: sí, sin inspector lateral); si
+la clave de color pasa a ser interactiva; si IRIS (8 filas ⬜) entra en el alcance; cómo lleva `ActionRegistry`
+argumentos y contexto para B y C.
+
+### 2026-10-10 (17): gamma por cubo y por Stokes, en el núcleo de reducción (ROADMAP E5.32)
+
+**Qué.** Una γ por (cubo, Stokes), 1 por defecto, en el estado del núcleo (`ViewState.gamma`, `Session.set_gamma`).
+Con límites desde 0 (I, AIA), x normalizado entre los límites y luego ^γ; con límites simétricos (Q U V),
+sign(x)·|x/m|^γ, el 0 en el gris medio y x y −x en bytes espejo (b + b' = 256), como CRISPEX conserva el signo
+(`crispex.pro:8027-8036`). La imagen la lee de una tabla de 65535 entradas dentro del núcleo; λ–t y los cortes de la
+rendija, en numpy sobre sus arreglos pequeños.
+
+**γ 1 no cambia nada.** No es «casi igual»: con γ 1 corre `reduce_u8_serial` como antes. Los fotogramas reducidos
+son iguales byte a byte (2k y 4k, en serie y en 8 franjas). Las 36 capturas de los 12 escenarios: base frente a rama,
+0 px; dos tandas de la base difieren en el fichero ruidoso de siempre, 865 px. Golden, 26 de 26.
+
+**Coste** (bellatrix, nodo 0 fijado, ABBA, carga 3.4 → 2.6, 25 repeticiones, medianas):
+- 2k → 2k: 40.9 ms con γ 1 y 34.8 con γ 0.5 en serie; 5.6 y 5.0 con 8 franjas;
+- 4k → 2k: 66.2 y 58.1 ms en serie; 8.7 y 7.7 con franjas.
+
+La tabla es más rápida que la recta, por un mecanismo aún sin trazar.
+
+**Bandas.** En el recorte débil fuera del limbo de AIA 171 con γ 0.3 hay 42 niveles de gris; con una LUT de 256
+sobre los bytes, 9.
+
+**Teclas, provisionales** hasta que la clave de color sea interactiva:
+- G y ⇧G bajan y suben γ en décimas de década (1 → 0.79 → 0.63 → 0.50) y ⌘G la vuelve a 1;
+- actúan sobre la imagen bajo el puntero, su cubo y su Stokes; en la vista 2x2, el Stokes del panel;
+- la barra de estado dice la γ nueva y la clave de color escribe «γ 0.5» mientras no sea 1.
+
+**Visto.**
+- AIA 171 con γ 0.5 saca la corona fuera del limbo.
+- En V de 6173 con γ 0.5 el signo se conserva, pero el ruido en torno a 0 se vuelve sal y pimienta: la pendiente de
+  |u|^γ es infinita en 0. Queda como decisión.
+
+**Sin decidir.** ¿γ por λ? Guardarla con la disposición; la clave interactiva; qué hacer con el ruido de V; el paso
+de las teclas.
+
+### 2026-10-10 (18): dónde van el mínimo, el máximo y la γ: tres prototipos y su coste (ROADMAP E5.33)
+
+**El problema.** La γ por (cubo, Stokes) funciona con G ⇧G ⌘G, pero no hay forma de ajustarla en la interfaz ni
+de elegir el mínimo y el máximo (el usuario). Restricciones acordadas: no abarrotar; las opciones sobre el objeto,
+en un menú contextual, en una paleta de órdenes o por defecto según los datos; la barra de herramientas no cambia;
+nada de inspector fijo.
+
+**La interfaz de hoy** (leída y capturada, `gui_now_*`):
+- Solo la imagen principal tiene clave de color, y solo en modern (abajo a la izquierda) y en glass (arriba a la
+  izquierda). Es de solo lectura (`WA_TransparentForMouseEvents`).
+- Classic, las imágenes enlazadas, la ventana propia de un cubo y la 2×2 no tienen ninguna; todas tienen candado.
+- Los límites fijos son del cubo y solo distinguen I de Q U V (`Levels._fixed`); la γ ya es por (cubo, Stokes).
+- Sobre la imagen:
+  - el clic derecho suelta el cursor;
+  - el arrastre derecho estira el zoom (lo hace pyqtgraph por defecto y no está en la hoja `?`);
+  - no hay ningún menú contextual.
+
+**Prototipos** (copias parcheadas sobre la Shell real, AIA 171 y V de 6173 con Blos enlazado, classic y glass):
+- **A:** la clave se agranda al pasar el ratón, con el histograma, la curva de transferencia y dos asas.
+- **B:** una tarjeta con campos y deslizador.
+- **C:** un menú con reglas de límites y γ predefinidas.
+- **Visto:** en una ventana de cubo de 270 px la clave de 260 se corta; tiene que tomar el ancho del panel.
+
+**Coste** (bellatrix):
+- **Histograma**, con el nodo 0 fijado y carga 0.8:
+  - sobre los datos en `[::8, ::8]`: 1.15 ms (los límites de hoy, 1.62);
+  - sobre el cuadro entero: 65 ms;
+  - sobre los bytes reducidos: 18 ms, y en el eje equivocado.
+- **Arrastrar un límite** vuelve a pasar el núcleo de reducción: 5.4 ms por paso con la imagen en 1024 px y 16.5
+  con 2048 px, pintado incluido.
+- **Por el puente X11** (Xvfb `:158`, traza):
+  - cada paso manda la imagen entera, 731 kB en classic y 890 en glass;
+  - si solo cambia la clave, 20 kB;
+  - el puente no encola: mientras envía, junta las zonas sucias (leído en el código, sin medir con un enlace lento).
+
+**Recomendación.** A sobre cada imagen, C con clic derecho sobre la clave, B desde «Escala…»; G ⇧G ⌘G se quedan; sin
+teclas para mín/máx.
+
+**Sin decidir.** Las doce decisiones del informe `gui.md`.
+
+### 2026-10-11 (1): decisiones del usuario sobre los pendientes del 2026-10-10
+
+Con la página de pendientes (capturas y órdenes por punto), el usuario decidió:
+- **Máscara (E8.2):** el color es el acento del aspecto, no un rojo fijo; el contorno va por los bordes de los píxeles,
+  como ahora.
+- **Aumento de las enlazadas (E8.3):** alejarse por debajo del propio ajuste, para un solo aumento (hecho, (2)).
+- **Colores de IDL (E5.16):** el classic actual es mejor: descartado.
+- **I negativa (E1.24):** por muestra, como ahora.
+- **Rótulo «Stokes» (E4.15):** se lee bien.
+- **Glass por el puente (E5.25) y el puente desde bellatrix (E6.21, E6.11):** sin problemas en su pantalla.
+- **Nombres de un eje que no es λ:** la opción A, a probar con otros FITS ((7)).
+- **Rendija:** una pestaña por cubo ((3)).
+- **Una sola λ:** sin Spectrum al arrancar ((2)).
+- **Gamma (E5.32):** 1 por defecto; una por cubo y por Stokes; con signo y simétrica en Q U V; 0.1 décadas por tecla;
+  guardada con la disposición; no por λ; G ⇧G ⌘G se quedan y van en la hoja `?`.
+- **Series (E1.26):** como mucho 100 pasos de t en los paneles temporales, con un número en el título ((4)).
+- **`_sp` solo (E1.23):** un aviso al estilo de `?` con la copia transpuesta y su factor de velocidad ((5)).
+- **Interfaz de la escala (E5.33):** una demo del diseño A + C + B ((6)).
+
+Las demos 6 y 8 de la página fallaban porque los cubos sintéticos de `/tmp/…demo` no se habían escrito: el
+fragmento que los crea no se ejecutó; ahora existen.
+
+### 2026-10-11 (2): un solo aumento en las ventanas de cubo; el Spectrum de una sola λ, a petición (ROADMAP E8.3, E8.7)
+
+**El aumento.** Una ventana de cubo mayor que la imagen principal ajustada mostraba otro aumento (3.24 px por píxel
+en la principal, 7.95 en la ventana del cubo): su `ViewGuard` no la alejaba por debajo de su propio ajuste y deshacía
+el realineado de `ViewSync`. Ahora el guardián de una imagen enlazada toma como suelo el ajuste de la principal
+(`ViewGuard.floor`, `lowest()`): un solo aumento por grande que sea la ventana, también tras un doble clic en
+cualquiera de las imágenes; la rueda se para donde se para la principal. La principal sola, como estaba. Una enlazada
+más pequeña que la principal se para ahora en el aumento de la principal, no en su propio ajuste.
+
+**Una sola λ.** Con nl = 1 en todos los cubos con espectros, el Spectrum (un punto por Stokes) ya no se abre al
+arrancar, tras «reset», al restaurar la disposición ni en glass: `GatedDock.on_request`, la misma puerta que el
+cubo sin λ, salvo que el menú Panels sí lo abre (cuatro Stokes en un punto aún se comparan); un «reset» o su ✕ lo
+cierran otra vez. Enlazado a un cubo con varias λ, se muestra como siempre.
+
+**Medido** (bellatrix, sin pantalla, carga 0.5-5): las pruebas nuevas fallan con `integ-1011` (7.35 frente a 19.94
+px por píxel; Spectrum visible al arrancar) y pasan con el cambio; grupos linked, glass, glass_zoomed, layout,
+shell, imageview, docks, stokesgrid, toolbar, gestures y without_lambda: 108 pasan. Arranque píxel a píxel (19
+ventanas, clásico y glass, uno y enlazados, restaurado, cubos aparte y de vuelta): 0 px; ruido 0.
+
+**Para decidir** (`help/small_skin_docked_vs_now.png`, datos reales, glass): la piel de glass en los paneles
+acoplados dentro de una ventana de cubo, frente a los títulos del chrome de hoy.
+
+### 2026-10-11 (3): una pestaña de rendija por cubo (ROADMAP E8.9)
+
+**El problema** (el usuario): con cubos enlazados quiere ver la misma rendija en todos a la vez. Desde ayer (E8.6), el panel Slit muestra el cubo en que se dibujó la rendija, uno cada vez: solo el planificador del primer cubo tenía lecturas de rendija (`core/scheduler.py`, `if member == 0`).
+
+**Ahora** cada planificador tiene sus lecturas de rendija, de su cubo (`SlitReads(cube=k)`), y ve el estado entero (el de un miembro no lleva la rendija). Con `ViewState.slit_tabs`, cada una lee su cubo; sin él, la del primero sigue al cubo dibujado como ayer y las demás no muestran nada. En la ventana, el panel Slit lleva un `PanelTabs` con una pestaña por cubo (`"slit"`, `"slit:k"`), y delante va la del cubo en que se dibuja. ⇧S o Panels → «A slit tab per cube» lo apagan. En «cada cubo en su ventana», el panel de rendija del cubo va a su ventana, bajo su λ–t, y se muestra mientras haya rendija.
+
+**Medido** (bellatrix, `stokes_6173_im.icube` + `Blos.6173_map.fcube`, fijado al nodo 0 con el cerrojo, carga 6.6–7.9 por otros usuarios: no es carga baja; 2 tandas de 8 rendijas de 712–1382 px, dibujadas una vez en cada imagen):
+- una pestaña detrás no leyó nada antes de mostrarse (16 de 16, en las dos tandas);
+- traer delante la de Stokes (bloques por píxel) tardó 33–168 ms; la de Blos (cuadros), 18–70 ms;
+- la pestaña del cubo dibujado: Stokes 69–322 ms, Blos 24–41 ms;
+- bloques de rendija guardados tras 8 rendijas: 6975, ≈ 51 MB, acotados como antes.
+
+Por eso solo lee la pestaña delante: cambiar de pestaña cuesta una lectura, menos que la primera de la pestaña dibujada, y leerlas todas gastaría esa lectura en cada rendija aunque no se mire.
+
+**Pruebas:** cada pestaña igual a los datos de su cubo a lo largo de la rendija (núcleo con fichero por píxel y con cuadros; ventana con los tres cubos sintéticos). La pestaña del cubo dibujado va delante. Apagado, la pestaña única es igual a la de ayer. En su ventana, cada cubo tiene su panel. Sin rendija, el arranque es idéntico píxel a píxel (0 px solo y enlazado, 0 px entre dos tandas). Los grupos de rendija, enlazado, sesión, shell, layout, nombres y λ–t pasan en bellatrix. Dos fallos:
+- la prueba de la disposición guardada comparaba la geometría de paneles ocultos (el de rendija sin rendija): ahora solo la de los visibles;
+- una de la barra (`test_the_sliders_give_way_in_a_narrow_window`, 915 > 908 px) falló en el grupo con carga ~7 y pasó sola en las dos ramas: sin trazar.
+
+**Por decidir:** la tecla ⇧S; si leer todas las pestañas al terminar la rendija (cambio instantáneo, lecturas que quizá nadie mire); en «cada cubo en su ventana» todas leen, también al dibujar (sin medir); si se guarda el interruptor con la disposición.
+
+### 2026-10-11 (4): como mucho 100 pasos de t en los paneles temporales (ROADMAP E8.10)
+
+**El problema** (el usuario): en una serie AIA comprimida cada t es un fichero que descomprimir. Un píxel a lo largo de 300 ficheros tardaba 3.2 s, y el corte temporal de una rendija 40.6 s: más de lo que vale mirar el panel.
+
+**Ahora:**
+- **Qué se lee:** la λ–t (o la curva del valor frente a t) y el corte temporal de la rendija leen y muestran como mucho N pasos de t, 100 al empezar. Son los centros de N intervalos iguales de t, los mismos en cada t: un paso de t no relee nada.
+- **Cómo se dibuja:** cada fila se dibuja sobre la t que representa. Los ejes, la línea de la t actual y el clic siguen en la t del cubo; el clic elige el paso más cercano.
+- **El número:** junto a las marcas de cerrar y flotar de los paneles λ–t y Slit, en todos los aspectos. Clic: 25, 50, 100, «all»; la rueda pasa por ellos. Un solo N para todos los cubos; por encima de 100, solo «all».
+- **Lo que se lee de verdad:** la lectura pide solo esos fotogramas (`at` en `series_frames`, `RowBands` y `SeriesReader`). Con fichero por píxel, el bloque trae todas las t y se aclara para mostrarlo.
+
+**Medido** (bellatrix, nodo NUMA 0, cerrojo, carga 3.5–9, más de 20 en la última tanda: valen los cocientes):
+- AIA 171, píxel en t: 300 ficheros 3.4 s → 1.1 s; 3900 ficheros 46 s → 1.4 s.
+- Rendija de 723 px en 300 ficheros: 32 s → 10 s; con N = 25, 2.5 s.
+- **Negativo:** la rendija con 100 pasos sigue en 10 s, porque descomprimir las 600 filas que cruza cuesta unos 0.1 s por fichero.
+- SST nb_6563 (nt 66): igual que antes, 65–88 frente a 69–80 ms.
+- Un cubo con nt ≤ N, idéntico: los paneles λ–t y rendija, 0 px en 10 escenas. Solo cambia la fila del título, por el número.
+
+**Por decidir:**
+- el tope para cubos que leen todas las t sin coste (con fichero por píxel);
+- N = 25 solo para la rendija;
+- el título propio en el Mac local.
+
+### 2026-10-11 (5): un `_sp` sin su `_im` se abre, con una hoja sobre lo que cuesta y la orden para transponerlo (ROADMAP E1.23)
+
+**La petición** (el usuario, 2026-10-11): avisar en pantalla, al estilo de la hoja `?`, de que conviene crear una copia transpuesta, con el factor de velocidad estimado.
+
+**Qué hace.** `explorer x_sp.fits` sin `x_im.fits` al lado ya no se rechaza (FITS; un LP sigue rechazado porque su cabecera no da el tamaño de la imagen). `io.PerPixelFrames` lee cada imagen en una pasada por el fichero, en bloques de 64 MB de filas, y saca de la misma pasada todas las imágenes pedidas a la vez (I con Q/U/V); sin lectura adelantada y con un lector. Los espectros, λ–t y rendijas leen el registro del píxel como con el par. Al abrir, una hoja como la de `?` (no modal; Esc o un clic la cierran) dice el coste de una imagen (tamaño entre el caudal de 4 lecturas de 8 MB; tras la primera imagen, su tiempo), el tamaño de la copia, cuánto más rápida (estimación: el número de imágenes) y la orden `explorer transpose`. Con el `_im` no hay hoja. `--sp` con el mismo fichero lo abre solo aunque tenga `_im` (así se prueba en bellatrix, donde todo `_sp` real tiene su `_im` junto al destino del enlace).
+
+**La copia.** `explorer transpose <sp> <dir>` lee el `_sp` una vez en bloques de 256 MB y escribe en `<dir>/<stem>_im.fits.part` las filas de cada imagen; al acabar la renombra y enlaza el `_sp` a su lado. Cabecera del `_sp` con los ejes renumerados y WCS-TAB tal cual: se empareja con el `_sp` y da los mismos tiempos y λ (pruebas: igual al `_im` byte a byte). No escribe junto al `_sp`, ni en el árbol al que apunta un `_sp` enlazado (para `data/lp/…` → todo d12), ni bajo `EXPLORER_READ_ONLY`; la ruta de los datos de reduc no puede aparecer en el código (`hygiene.py`).
+
+**Medido** (bellatrix, nodo 0, cerrojo; Hα 6563 `_sp.fits`, 12.3 GB, por un enlace; carga 4-6):
+
+| | 1.ª | 2.ª |
+|---|---|---|
+| estimación al abrir | 39 s | 28 s |
+| primera imagen | 26.2 s | 22.6 s |
+| paso en t | 24.4-24.9 s | 20.3 s |
+| bloque del píxel | 2.2 ms | 2.1 ms |
+
+La estimación inicial se pasa por 1.2-1.5×; la hoja la sustituye por el tiempo real tras la primera imagen (19.6 s → «735× más rápida, 27 ms», del orden de los 9-21 ms medidos del `_im`). El transpositor: 470 MB sintéticos en el `/tmp` local, 0.98-1.03 s (457-479 MB/s, fuente en caché). Extrapolado, no medido: unos 30 s para 13 GB en disco local; en StorNext al menos una pasada en frío (20-26 s) más escribir 13 GB, del orden de un minuto o más.
+
+**Pendiente:** pasar t deprisa encola una pasada por paso (no se cancelan); en un `_sp` de 4 Stokes los rangos de Q U V leerían 3 × nl imágenes (inferido, sin medir).
+
+### 2026-10-11 (6): mínimo, máximo y γ sobre la imagen: la clave interactiva, su menú y la tarjeta (ROADMAP E5.33)
+
+**Qué.**
+- Cada imagen tiene su clave de color: la principal, las enlazadas y la ventana propia de un cubo, en classic
+  (nueva, abajo a la izquierda), modern y glass (arriba a la izquierda).
+- Al pasar el ratón se agranda: el histograma del cuadro (`[::8, ::8]`, la muestra de los límites automáticos), la
+  curva de transferencia, en la que se ve la γ, y un asa en cada límite.
+  - Arrastrar un asa fija ese límite y cierra el candado; en Q U V una sola asa mueve los dos extremos.
+  - La rueda cambia la γ con el paso de G.
+  - El doble clic vuelve a los límites automáticos y no toca la γ.
+- El clic derecho sobre la clave abre un menú corto: la regla de límites, γ predefinidas, «Escala…» y reiniciar. En
+  la imagen, el clic derecho sigue soltando el cursor.
+- «Escala…» abre una tarjeta con mín y máx escritos, el deslizador logarítmico de CRISPEX y la regla.
+- En la vista 2x2 no hay clave por panel: el menú se abre con clic derecho en la etiqueta del Stokes.
+
+**Estado.**
+- Regla, mín y máx por (cubo, Stokes) en la sesión, junto a la γ (`ViewState.scale`). Los límites fijos de
+  `Levels`, por cubo y solo I frente a Q U V, se van.
+- El candado fija o suelta el Stokes que se ve, y lo indica al cambiar de Stokes.
+- La disposición guarda regla, límites y γ por nombre de fichero y Stokes, para cualquier forma de mostrar.
+
+**Sin cambios al empezar.** Los 12 escenarios, con las claves ocultas, dan 0 px entre base y rama y entre dos tandas
+de la base. Con las claves visibles, solo difieren las bandas de las claves nuevas (classic y enlazadas). La clave
+de modern es idéntica.
+
+**Por el puente X11** (Xvfb privado, traza, AIA 171, classic):
+- cada paso de arrastre manda la imagen entera, ~0.8 MB;
+- si el enlace da abasto, salen todos (47 MB/s en local);
+- con el emisor retenido 250 ms por envío, 60 pasos dibujados salieron como 5 envíos y el último llegó 0.6 s
+  después de soltar: el puente descarta los intermedios, no los encola.
+
+**Visto.** Dos pruebas de otros ficheros fallaban solo detrás de las nuevas: un `mousePress` sin `mouseRelease` dejaba
+un botón pulsado. Corregido.
+
+**Sin decidir.** El candado por Stokes o por cubo; qué reinicia el doble clic; la clave por panel en la 2x2; «igual
+para los enlazados»; si `--reset-layout` olvida la escala.
+
+### 2026-10-11 (7): el nombre de un eje que no es λ, con ficheros reales (ROADMAP E8.8)
+
+**La pregunta** (el usuario): la opción A (BTYPE, si no la palabra del mapa en el nombre, si no el nombre del fichero) solo se había probado con Blos.
+
+**Medido** (bellatrix, solo cabeceras; las ventanas, sin pantalla):
+- 34 ficheros de 22 tipos.
+- La A da lo esperado en los mapas SST con palabra en el nombre («Blos–t», «Doppler–t») y en todo cubo con λ.
+- Falla:
+  - en AIA, STEREO/EUVI y GONG, el nombre del fichero («aia.lev1_euv_12…171.image–t»);
+  - en EUI, «Intensity–t», porque su BTYPE es genérico;
+  - en BIFROST, «lg(tg) index», aunque su CTYPE3 dice z; y «bz [True]», porque su BUNIT=T se lee como booleano;
+  - en dos inversiones, «λ–t» y «λ index» sobre los parámetros: el `meinv` LP, porque el reparto por su `_sp` llama WAVE a sus 3 planos, y `WFA_inversion_8542.fits` sin cabecera, por el orden SOLARNET, que además pone un eje de 2 parámetros en los botones de Stokes I y Q.
+- El cubo principal nunca usa la A para un eje de varios planos (`cube.py:92`).
+
+**Propuesta P**, probada sobre copias parcheadas, sin commits: «AIA 171 Å–t», «EUI/FSI 174 Å–t», «EUVI 171 Å–t», «GONG Hα–t», «Blos–t» sin cambio, «Fe I 617.3 inversion (parameter–t)» con «parameter index». Una escala de color para tres parámetros satura dos de las tres columnas: mejor un selector al modo de Stokes (sin probar).
+
+**Sin resolver:** no hay en disco ninguna inversión FITS con un EXTNAME por parámetro; qué tres parámetros guarda el `meinv` (el `.pro` que lo escribe no se puede leer).
+
+### 2026-10-11 (8): juntar el trabajo de dos días; el lector de un `_sp` solo y los pasos de t
+
+`integ-1011b`: `main` y las ramas del 2026-10-10 y del 2026-10-11, aplicadas en orden. Dos conflictos de texto
+(`core/scheduler.py` y `core/state.py`: la rendija por cubo y la escala por (cubo, Stokes); `ui/cube.py`: dos
+importaciones) se resolvieron conservando los dos cambios. Uno de comportamiento lo encontró `mypy`: el tope de pasos
+de t pasa `at=` a todo lector, y `PerPixelFrames` (el lector de un `_sp` solo, hecho a la vez) no lo aceptaba: la
+λ–t y la rendija de un `_sp` solo habrían fallado con `TypeError`. Ahora lo pasa a `series_frames`; la prueba nueva
+de `test_per_pixel_given` falla antes y pasa después (bellatrix).
