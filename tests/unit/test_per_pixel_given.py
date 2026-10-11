@@ -2,6 +2,7 @@
 image cube next to it, and the image cube opened with it; refused, with what is needed, when there is none. A header
 whose times or wavelengths do not match the data is refused at opening: `explorer nb_6563_..._sp.fits` read the
 header's 35 times for 2028 steps along the image's rows, and the toolbar indexed time 2027."""
+import concurrent.futures
 import os
 import shutil
 import time
@@ -276,6 +277,79 @@ def _slow_passes(monkeypatch, ds, seconds=0.1, rows=4):
     monkeypatch.setattr(PerPixelFrames, "rows_raw", slow)
     ds.frames.block_rows = rows
     return read
+
+
+class _Sink:
+    def __init__(self):
+        self.images = []
+
+    def image(self, idx, img, levels):
+        self.images.append((idx, img))
+
+    def __getattr__(self, name):                                    # the panels: not looked at here
+        return lambda *a, **k: None
+
+
+def test_quick_t_steps_cost_one_pass_after_the_one_running(pair, monkeypatch):
+    """Three t steps while the first image's pass runs: before, a pass each (each image a pass over the whole file,
+    20-26 s for Halpha), the last image after all of them (3 passes); now a request superseded before its pass starts
+    is dropped, and the last step's image joins the pass that runs: the rows it missed are read after it, less than
+    two passes in all."""
+    from explorer.core.loop import ManualLoop
+    from explorer.core.scheduler import Scheduler
+    from explorer.core.session import Session
+
+    with Dataset.open(pair["renamed"], no_sp=True) as ds, Dataset.open(pair["im"], no_sp=True) as im:
+        read = _slow_passes(monkeypatch, ds)
+        sess, sink = Session(ManualLoop(), ds), _Sink()
+        sched = Scheduler(sess, sink)                               # the first image's pass starts
+        time.sleep(0.15)
+        for t in (1, 2, 1):                                         # quick steps: each notice its own request
+            sess.set_index("t", t)
+            sess.store.loop.pump()
+        want = tuple(sess.index())                                  # t=1 at the lambda shown
+        end = time.perf_counter() + 10
+        while time.perf_counter() < end and not (sink.images and sink.images[-1][0] == want
+                                                 and not sched.in_flight()):
+            concurrent.futures.wait(sched.in_flight(), timeout=1)
+            sess.store.loop.pump()
+        print("rows read:", sum(read), "of", SHAPE[3], "a pass; shown:", [i for i, _ in sink.images])
+        assert want[0] == 1 and sink.images[-1][0] == want
+        assert np.array_equal(sink.images[-1][1], im.image(want).result(), equal_nan=True)
+        assert sum(read) < 2 * SHAPE[3]                             # t=0's pass, t=1 joined it; t=2 dropped
+        sched.close()
+
+
+def test_one_pass_serves_every_image_of_a_request_and_drops_the_older(pair, monkeypatch):
+    """The 2x2 view asks for 4 images at once (one generation): they all come, joining the pass that runs. What the
+    same caller asked before with another generation, still waiting, is dropped, unless another caller still wants
+    it. Six images in less than two passes' reading."""
+    from explorer.data.io import PerPixelFrames
+
+    passes = []
+    orig = PerPixelFrames.read_many
+
+    def many(self, idxs, join=None):
+        got = orig(self, idxs, join)
+        passes.append(list(got))
+        return got
+
+    monkeypatch.setattr(PerPixelFrames, "read_many", many)
+    with Dataset.open(pair["renamed"], no_sp=True) as ds, Dataset.open(pair["im"], no_sp=True) as im:
+        read = _slow_passes(monkeypatch, ds)
+        first = ds.image((0, 0, 0), request=("grid", 1))           # its pass starts at once
+        time.sleep(0.15)
+        old = [ds.image((t, 0, 0), request=("grid", 2)) for t in (1, 2)]
+        kept = ds.image((1, 0, 0))                                  # no caller: never dropped
+        assert kept is old[0]
+        four = [(1, 0, 1), (2, 0, 2), (1, 0, 3), (2, 0, 4)]
+        new = [ds.image(i, request=("grid", 3)) for i in four]
+        assert old[1].cancelled() and not kept.cancelled()
+        for i, f in [((0, 0, 0), first), ((1, 0, 0), kept), *zip(four, new, strict=True)]:
+            assert np.array_equal(f.result(10), im.image(i).result(), equal_nan=True)
+        print("passes:", passes, "rows read:", sum(read))
+        assert passes == [[(0, 0, 0), (1, 0, 0), *four]]          # all in the first pass, its missed rows after it
+        assert sum(read) < 2 * SHAPE[3]
 
 
 def test_closing_stops_a_pass_in_flight(pair, monkeypatch):

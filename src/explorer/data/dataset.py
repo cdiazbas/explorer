@@ -11,9 +11,12 @@ Which thread does what (explorer.data.executors):
   network storage (rowbands.py), so the pixels along the cursor's row come from memory;
 - per-pixel blocks: the I/O pool; slabs along a slit: a pool of the probe's gather threads, kept open (starting
   64 threads per slit cost 10-16 % of a warm slab, docs/measured.md).
-Latest-wins (Executors.submit_latest) is for the caller to use: the Dataset serves every request it gets.
+Latest-wins (Executors.submit_latest) is for the caller to use: the Dataset serves every request it gets, except
+the images of a per-pixel file alone (ImagePasses), a pass over the whole file each: there a request superseded
+before its pass starts is dropped, and the requests waiting are read together by the next pass.
 Closing first aborts the reads in flight (FrameReader.abort): a long read stops at its next step.
 """
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
 
@@ -43,6 +46,73 @@ def _done(value) -> Future:
     f: Future = Future()
     f.set_result(value)
     return f
+
+
+class ImagePasses:
+    """The images of a per-pixel file alone (io.PerPixelFrames), each a pass over the whole file (20-26 s for Halpha
+    6563 on bellatrix): requests wait for the image thread, and the next pass reads every one waiting (PerPixelFrames
+    .read_many: the images asked for together cost one pass). A request names its caller and that caller's
+    generation (e.g. ("image", 7)); a newer generation of the same caller drops what the caller asked before and is
+    still waiting (its future cancelled), so a few quick t steps cost one pass, not one each. The requests of one
+    generation all stand (the 2x2 view asks for 4 images at once); a request without a caller is never dropped. An
+    image wanted by two callers stays while either still wants it. A request that comes while a pass runs joins it
+    from its next block on (PerPixelFrames.read_many)."""
+
+    def __init__(self, cache: FrameCache, frames: PerPixelFrames, pool: ThreadPoolExecutor):
+        self.cache, self.frames, self.pool = cache, frames, pool
+        self._lock = threading.Lock()
+        self._waiting: dict[tuple, tuple[Future, set]] = {}     # idx -> (its future, the callers that want it)
+        self._latest: dict[str, int] = {}                       # caller -> its latest generation
+        self._queued = False                                    # a pass is queued on the image thread
+        self._running: list[tuple[tuple, Future]] = []          # the requests the pass that runs serves
+
+    def image(self, idx: tuple, request: tuple[str, int] | None = None) -> Future:
+        dropped = []
+        with self._lock:
+            if request is not None and self._latest.get(request[0]) != request[1]:
+                self._latest[request[0]] = request[1]
+                for i, (f, who) in list(self._waiting.items()):
+                    who.discard(request[0])
+                    if not who:
+                        del self._waiting[i]
+                        dropped.append(f)
+            fut, who = self._waiting.setdefault(idx, (Future(), set()))
+            who.add(request[0] if request is not None else "")  # "": a caller that is never superseded
+            if not self._queued:
+                self._queued = True
+                self.pool.submit(self._pass)
+        for f in dropped:                                       # outside the lock: their callbacks run here
+            f.cancel()
+        return fut
+
+    def _take(self) -> list[tuple]:
+        """The requests waiting, now part of the pass that runs: the indices to read (those not cached)."""
+        with self._lock:
+            batch = [(i, f) for i, (f, _) in self._waiting.items()]
+            self._waiting.clear()
+        live = [(i, f) for i, f in batch if f.set_running_or_notify_cancel()]
+        self._running += live
+        return [i for i, _ in live if self.cache.peek(i) is None]
+
+    def _pass(self) -> None:
+        with self._lock:
+            self._queued = False                                # what comes from now on joins this pass or the next
+        self._running = []
+        want = self._take()
+        try:
+            # requests that come while it runs join it (PerPixelFrames.read_many)
+            got = self.frames.read_many(want, join=self._take) if want else {}
+        except BaseException as e:                              # ReadAborted when closing
+            for _, f in self._running:
+                f.set_exception(e)
+            return
+        for i, f in self._running:
+            img = got.get(i)
+            if img is None:                                     # cached when asked for: from the cache (read again
+                img = self.cache.get(i)                         # if it was pushed out meanwhile)
+            else:
+                self.cache.put(i, img)
+            f.set_result(img)
 
 
 class Dataset:
@@ -88,9 +158,12 @@ class Dataset:
             self.executors = (Executors(gather_threads=self.probe.gather_threads, io_threads=1) if executors is None
                               else executors)
             self._images = ThreadPoolExecutor(max(1, self.probe.readers), thread_name_prefix="images")
+            self._passes: ImagePasses | None = None
             self._slab_pool: ThreadPoolExecutor | None = None
             self.budgets: Budgets = self._plan()
             self.cache = FrameCache(self.frames, self.budgets.images)
+            if isinstance(self.frames, PerPixelFrames):  # images_from_sp
+                self._passes = ImagePasses(self.cache, self.frames, self._images)
             self.slit_cache = SlitCache(int(self.guard.budget * SLIT_SHARE), SLIT_BLOCKS)
             self.pixel: PixelReader | None = None
             self.calibration = None
@@ -172,12 +245,16 @@ class Dataset:
                 + self.frames.neg_i.nbytes())
 
     # ---------------------------------------------------------------- reads
-    def image(self, idx) -> Future:
-        """The frame at idx (native float32, physical units, (ny, nx)); completed at once when it is cached."""
+    def image(self, idx, request: tuple[str, int] | None = None) -> Future:
+        """The frame at idx (native float32, physical units, (ny, nx)); completed at once when it is cached.
+        request: (caller, generation), for the images of a per-pixel file alone (ImagePasses): what the caller
+        asked before with another generation and is still waiting is dropped. Other cubes serve every request."""
         idx = tuple(int(i) for i in idx)
         hit = self.cache.peek(idx)
         if hit is not None:
             return _done(hit)
+        if self._passes is not None:
+            return self._passes.image(idx, request)
         return self._images.submit(self.cache.get, idx)
 
     def prefetch(self, idx) -> Future | None:

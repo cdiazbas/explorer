@@ -61,6 +61,10 @@ class FrameCache:
         fut.add_done_callback(functools.partial(self._done, idx))
         return fut
 
+    def put(self, idx, img) -> None:
+        """Keep a frame read elsewhere (several in one pass: dataset.ImagePasses)."""
+        self._store(tuple(int(i) for i in idx), img)
+
     def _store(self, idx, img) -> None:
         with self._lock:
             self._pending.pop(idx, None)

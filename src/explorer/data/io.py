@@ -391,6 +391,7 @@ class PerPixelFrames(FrameReader):
         self.record = self.ns * self.nt * self.nl * sp.dtype.itemsize
         self.block_rows = max(1, int(block) // (self.nx * self.record))
         self.passes: list[float] = []
+        self._ready: dict[tuple, np.ndarray] = {}       # frames as stored from the pass of read_many, while it runs
 
     def _record_pos(self, fn) -> np.ndarray:
         """Position in a pixel's record (s, t, lambda) of image frame numbers fn (file order of the _im)."""
@@ -435,7 +436,62 @@ class PerPixelFrames(FrameReader):
         return out
 
     def _read_raws(self, idxs, chunks: int | None = None) -> list[np.ndarray]:
-        return list(self.frames_rows([self._frame_number(i) for i in idxs], 0, self.ny))
+        idxs = [tuple(int(i) for i in j) for j in idxs]
+        ready = self._ready
+        miss = list(dict.fromkeys(j for j in idxs if j not in ready))
+        got = (dict(zip(miss, self.frames_rows([self._frame_number(j) for j in miss], 0, self.ny), strict=True))
+               if miss else {})
+        return [ready[j] if j in ready else got[j] for j in idxs]
+
+    def read_many(self, idxs, join=None) -> dict[tuple, np.ndarray]:
+        """The frames at idxs, each as read() gives it, from one pass over the file, by index; in a cube of 4 Stokes
+        the frames of I their negative-I rule needs come out of the same pass. join: called between two blocks, the
+        frames asked for meanwhile (indices), which join the pass from that block on; their rows before it are read
+        after it. A frame asked for while a pass runs then costs one pass's reading, not the rest of that pass and a
+        whole other one. Called from one thread at a time (the image thread): other threads' reads meanwhile may
+        take frames from this pass, never wrong ones."""
+        def with_i(js) -> list[tuple]:
+            js = [tuple(int(i) for i in j) for j in js]
+            if self.stokes is not None:
+                js += [k for k in (self.i_index(j) for j in js) if k is not None]
+            return js
+
+        asked = [tuple(int(i) for i in j) for j in idxs]
+        raw: dict[tuple, np.ndarray] = {}
+        start: dict[tuple, int] = {}                    # the first row each frame was read from in this pass
+
+        def add(js, a: int) -> None:
+            for j in with_i(js):
+                if j not in raw:
+                    self._frame_number(j)               # an index outside the cube raises here, before any read
+                    raw[j], start[j] = np.empty((self.ny, self.nx), self.sp.dtype), a
+
+        def fill(a: int, b: int, keys) -> None:
+            pos = self._record_pos([self._frame_number(j) for j in keys])
+            block = self.rows_raw(a, b)[:, :, pos]
+            for k, j in enumerate(keys):
+                raw[j][a:b] = block[:, :, k]
+
+        add(asked, 0)
+        q = time.perf_counter()
+        with span("data.sp_frames.pass"):
+            for a in range(0, self.ny, self.block_rows):
+                self._step()
+                if join is not None and a:
+                    more = [tuple(int(i) for i in j) for j in join()]
+                    asked += [j for j in more if j not in asked]
+                    add(more, a)
+                fill(a, min(self.ny, a + self.block_rows), list(raw))
+            self.passes.append(time.perf_counter() - q)
+            late = [j for j in raw if start[j]]
+            for a in range(0, max((start[j] for j in late), default=0), self.block_rows):
+                self._step()                            # the rows the frames that joined missed: the start's blocks
+                fill(a, a + self.block_rows, [j for j in late if start[j] > a])
+        self._ready = raw
+        try:
+            return {j: self.read(j) for j in asked}
+        finally:
+            self._ready = {}
 
     def read_rows_raw(self, idx, y0: int, y1: int) -> np.ndarray:
         if not 0 <= y0 < y1 <= self.ny:

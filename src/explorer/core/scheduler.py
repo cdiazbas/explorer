@@ -233,7 +233,7 @@ class Scheduler:
     def _request_image(self, st: ViewState) -> None:
         g = self.gens.new("image")
         idx = self.session.index_of(self.member, st)
-        fut = self.ds.image(idx)
+        fut = self.ds.image(idx, request=("image", g))   # an image of a per-pixel file alone: the older one dropped
         if fut.done():
             self._image_ready(g, idx, fut)
         else:
@@ -292,7 +292,7 @@ class Scheduler:
         g = self._grid_gen
         for s in range(self.sizes["s"]):
             idx = self.session.index_of(self.member, dataclasses.replace(st, s=s))
-            fut = self.ds.image(idx)
+            fut = self.ds.image(idx, request=("grid", g))  # the 4 together: one generation
             if fut.done():
                 self._grid_ready(g, s, idx, fut)
             else:

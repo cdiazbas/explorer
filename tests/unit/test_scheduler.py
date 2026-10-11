@@ -205,7 +205,7 @@ class SlowCube:
         self.reads: list = []
         self.probe = types.SimpleNamespace(read_ahead=0)
 
-    def image(self, idx):
+    def image(self, idx, request=None):
         return self.images.setdefault(tuple(idx), cf.Future())
 
     def prefetch(self, idx):
