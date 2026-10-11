@@ -51,22 +51,22 @@ def test_sliders_and_combo_move_the_cube_and_follow_it(qapp, shell):
 
 
 def test_the_lambda_readout_is_the_line_centre_and_its_offset(qapp, shell):
-    """λ as λ₀ and its offset, the operator spaced and signed ("λ₀ − 0.031 Å", "λ₀ + 0.031 Å"), adding up to the λ
-    the status bar gives; the tooltip says what λ₀ is: the header's line centre, to three decimals."""
+    """λ as λ₀ and its offset, the sign on the number ("λ₀ −0.031 Å", "λ₀ +0.031 Å"), adding up to the λ the
+    status bar gives; the tooltip says what λ₀ is: the header's line centre, to two decimals."""
     import re
 
     nav, ax = shell.nav, shell.dataset.axes
     lab = nav.labels["l"]
     tip = lab.toolTip()
     print("tooltip:", repr(tip))
-    assert tip.startswith("λ₀ = 6173.341\u00a0Å, the line centre Δλ and v are measured from") and "Fe I" in tip
+    assert tip.startswith("λ₀ = 6173.34\u00a0Å, the line centre Δλ and v are measured from") and "Fe I" in tip
     seen = []
     for v in (0, 9, 10, 20):
         nav.sliders["l"].setValue(v)
         assert spin(qapp, lambda v=v: shell.session.state.l == v and lab.text() == nav.text("l", v))
         t = lab.text()
         seen.append(t)
-        m = re.fullmatch(r"λ₀ ([+−]) (\d+\.\d{3})\u00a0Å(  \(cont\.\))?", t)
+        m = re.fullmatch(r"λ₀ ([+−])(\d+\.\d{3})\u00a0Å(  \(cont\.\))?", t)
         assert m, t
         dl = (-1 if m.group(1) == "−" else 1) * float(m.group(2))
         assert abs(dl - ax.dlam_A(v)) <= 5e-4
@@ -74,8 +74,8 @@ def test_the_lambda_readout_is_the_line_centre_and_its_offset(qapp, shell):
     print("readouts:", seen)
     from explorer.data.axes import fmt_offset
 
-    assert fmt_offset(-0.0312) == "λ₀ − 0.031\u00a0Å" and fmt_offset(0.0312) == "λ₀ + 0.031\u00a0Å"
-    assert fmt_offset(-0.0001) == "λ₀ + 0.000\u00a0Å"                  # no "−0.000"
+    assert fmt_offset(-0.0312) == "λ₀ −0.031\u00a0Å" and fmt_offset(0.0312) == "λ₀ +0.031\u00a0Å"
+    assert fmt_offset(-0.0001) == "λ₀ +0.000\u00a0Å"                  # no "−0.000"
 
 
 def test_a_click_on_the_track_jumps_there(qapp, shell):
