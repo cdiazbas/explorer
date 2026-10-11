@@ -48,7 +48,7 @@ from ..data.executors import Generations, ShownGate
 from ..data.stats import quv_amplitude_ranges, quv_threads, sample_pixels, sample_profiles
 from ..data.tsample import time_samples
 from ..obs import counter, get_logger
-from .levels import Levels, panel_levels
+from .levels import Levels, panel_levels, rule_levels
 from .session import Session
 from .slitreads import SlitReads
 from .state import ViewState
@@ -108,6 +108,7 @@ class Scheduler:
         self._panels = st.panels                        # the panels shown at the last notice
         self._seen = st                                 # a linked cube's state at the last notice
         self._flock = threading.Lock()
+        self._scale_seen = self._my_scale(st)
         self.slit = SlitReads(session, sink, self._track, self._when_read, cube=member)
         self._off = session.store.subscribe(self._on_change)
         self._units_read = False
@@ -182,6 +183,13 @@ class Scheduler:
     # ---------------------------------------------------------------- changes of state
     def _on_change(self, st: ViewState, changed: frozenset) -> None:
         self.slit.on_change(st, changed)               # the whole state: the slit is not in a member's (member_state)
+        if "scale" in changed:                          # its levels' rule or fixed levels: drawn again from memory
+            mine = self._my_scale(st)
+            if mine != self._scale_seen:
+                self._scale_seen = mine
+                self._show_image()
+                if self.grid:
+                    self._request_grid(self.state)
         if self.member:
             st, changed = self._as_member(st)
             if not changed:
@@ -229,8 +237,8 @@ class Scheduler:
         if fut.done():
             self._image_ready(g, idx, fut)
         else:
-            def done(f: Future, sym: bool = st.s > 0) -> None:     # on the thread that read the frame
-                self._levels_ahead(idx, sym, f, lambda: self.gens.stale("image", g))
+            def done(f: Future, s: int = st.s) -> None:     # on the thread that read the frame
+                self._levels_ahead(idx, s, f, lambda: self.gens.stale("image", g))
                 self.loop.post(lambda: self._image_ready(g, idx, f))
             self._when_read(fut, done)
 
@@ -250,16 +258,21 @@ class Scheduler:
                     idx = self.session.index_of(self.member, ahead)
                     fut = self.ds.prefetch(idx)
                     if isinstance(fut, Future):         # None: cached, or outside the cube
-                        fut.add_done_callback(functools.partial(self._levels_ahead, idx, ahead.s > 0))
+                        fut.add_done_callback(functools.partial(self._levels_ahead, idx, ahead.s))
 
-    def _levels_ahead(self, idx: tuple, symmetric: bool, fut: Future, stale=None) -> None:
-        """The levels of the frame fut read, into the cache, on the thread that read it (Levels.ahead); nothing on
-        the main thread, for a read that failed or was cancelled, or a request already stale."""
+    def _levels_ahead(self, idx: tuple, s: int, fut: Future, stale=None) -> None:
+        """The levels of the frame fut read at Stokes s, by its rule now, into the cache, on the thread that read it
+        (Levels.ahead); nothing on the main thread, for a read that failed or was cancelled, or a request already
+        stale, nor while its levels are fixed. The rule is read off the state's latest snapshot (immutable: a
+        reference read); a rule changed meanwhile computes its own when shown."""
         if (self._closed or threading.current_thread() is threading.main_thread() or fut.cancelled()
                 or fut.exception() is not None or (stale is not None and stale())):
             return
+        rule = self.session.scale(self.member, s)[0]
+        if rule == "fixed":
+            return
         try:
-            self.levels.ahead(idx, symmetric, fut.result())
+            self.levels.ahead(idx, s > 0, fut.result(), rule)
         except Exception as e:                          # computed again when shown, where it reports
             log.warning("levels of %s not computed ahead: %r", idx, e)
 
@@ -284,7 +297,7 @@ class Scheduler:
                 self._grid_ready(g, s, idx, fut)
             else:
                 def done(f: Future, s: int = s, idx: tuple = idx) -> None:     # on the thread that read the frame
-                    self._levels_ahead(idx, s > 0, f, lambda: not self.grid or g != self._grid_gen)
+                    self._levels_ahead(idx, s, f, lambda: not self.grid or g != self._grid_gen)
                     self.loop.post(lambda: self._grid_ready(g, s, idx, f))
                 self._when_read(fut, done)
 
@@ -295,7 +308,7 @@ class Scheduler:
             log.warning("image %s not read: %r", idx, fut.exception())
             return
         img = fut.result()
-        self.sink.grid_image(s, idx, img, self.levels.image(idx, s > 0, img))
+        self.sink.grid_image(s, idx, img, self.image_levels(s, idx, img))
 
     def _image_ready(self, g: int, idx: tuple, fut: Future) -> None:
         if self._closed or fut.cancelled():            # closing: nothing more to show nor to read ahead
@@ -359,20 +372,42 @@ class Scheduler:
     def _show_image(self) -> None:
         if self._closed or self.img is None or self.img_idx is None:
             return
-        lim = self.levels.image(self.img_idx, self.state.s > 0, self.img)
-        self.sink.image(self.img_idx, self.img, lim)
+        self.sink.image(self.img_idx, self.img, self.image_levels(self.state.s, self.img_idx, self.img))
+
+    def _my_scale(self, st: ViewState) -> tuple:
+        return tuple(e for e in st.scale if e[0] == self.member)
+
+    def image_levels(self, s: int, idx: tuple, img) -> tuple[float, float]:
+        """The levels of img (the frame at idx, Stokes s) by its cube's rule at s (Session.scale): fixed, or its
+        own by a per-frame rule (cached: Levels)."""
+        rule, lo, hi = self.session.scale(self.member, s)
+        if rule == "fixed":
+            return (lo, hi)
+        return self.levels.image(idx, s > 0, img, rule)
+
+    def levels_now(self) -> tuple[float, float] | None:
+        """The levels of the image on screen; None before the first."""
+        if self.img is None or self.img_idx is None:
+            return None
+        return self.image_levels(self.state.s, self.img_idx, self.img)
 
     def fix_levels(self, on: bool, refit: bool = False) -> None:
-        """The image padlock: on fixes the levels to the image shown (refit: to it again, when already fixed); off
-        lets each image have its own. The image is shown again with them."""
+        """The image padlock, for its cube's Stokes now (Session.scale): on fixes the levels to the image shown, by
+        its rule (refit: to its 1-99 percentiles again, when already fixed); off gives each image its own again (the
+        default rule). The image is shown again with them."""
         if self.img is None:
             return
-        sym = self.state.s > 0
+        s = self.state.s
+        rule = self.session.scale(self.member, s)[0]
         if not on:
-            self.levels.unfix()
-        elif refit or not self.levels.fixed(sym):
-            self.levels.fix(self.img, sym)
+            self.session.set_scale(self.member, s, "p1")
+        elif refit or rule != "fixed":
+            lim = rule_levels(self.img, s > 0, "p1" if rule == "fixed" else rule)
+            self.session.set_scale(self.member, s, "fixed", *lim)
+        self._scale_seen = self._my_scale(self.session.store.state)     # drawn now, not again at the notice
         self._show_image()
+        if self.grid:
+            self._request_grid(self.state)
 
     def _steps(self, st: ViewState) -> np.ndarray | None:
         """The t steps lambda-t reads and shows (data.tsample), or None: every t."""

@@ -90,16 +90,14 @@ def test_a_computation_in_progress_is_waited_for_not_repeated(monkeypatch):
     assert threads == ["reader"] and counters()["core.levels.waited"] == before + 1
 
 
-def test_levels_ahead_compute_nothing_while_fixed_and_a_failure_leaves_nothing_behind(spy, monkeypatch):
+def test_levels_ahead_are_per_rule_and_a_failure_leaves_nothing_behind(spy, monkeypatch):
     rng = np.random.default_rng(5)
-    a, b = rng.normal(5, 1, (32, 32)), rng.normal(9, 2, (32, 32))
+    b = rng.normal(9, 2, (32, 32))
     lv = Levels()
-    fixed = lv.fix(a, False)
+    lv.ahead((3, 0, 0), False, b, "minmax")
     spy.clear()
-    lv.ahead((3, 0, 0), False, b)
-    assert spy == [] and lv.image((3, 0, 0), False, b) == fixed
-    lv.unfix()
-    assert lv.image((3, 0, 0), False, b) == real_levels(b, False)                  # its own, computed when shown
+    assert lv.image((3, 0, 0), False, b) == real_levels(b, False)                  # its own rule, computed when shown
+    assert len(spy) == 1
 
     def broken(img, symmetric):
         raise FloatingPointError("bad frame")

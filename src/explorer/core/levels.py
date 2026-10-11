@@ -12,8 +12,9 @@ Gamma (per cube and Stokes: Session.gamma) bends the line between the levels: li
 put on 0..1 between them; symmetric ones (Q U V, -m..m) go sign(x)|x/m|^gamma, 0 staying in the middle (CRISPEX's
 sign-kept gamma, crispex.pro:8027-8036). The image reads it off a table in the reduce kernel (kernels.gamma_table),
 lambda-t and the slit's slices here (gamma_panel). Gamma 1 is the straight line, by the same code as without it.
-Fixed levels hold the image's levels while the index changes. They are kept for Stokes I and for Q U V apart: the
-prototype held one pair, so levels fixed on I went on drawing Q with I's range.
+How the image's levels are found is a rule per cube and Stokes (Session.scale, next to gamma): the percentiles of
+each frame (1-99, the default, or 0.5-99.5), each frame's min-max, or fixed levels that hold while the index changes
+(the padlock closed, or limits dragged or typed). Q U V stay symmetric about 0 under every rule.
 The image's levels are computed on the thread that read the frame (Levels.ahead), the frames read ahead too, so
 the UI thread finds them cached: with the 2x2 view a step in t computed four on it, ~11 ms of a ~47 ms step on
 bellatrix. A computation in progress on another thread is waited for, never repeated.
@@ -64,8 +65,23 @@ def gamma_panel(a, levels, gamma: float):
         return (u ** gamma).astype(np.float32), (0.0, 1.0)
 
 
+# how the image's levels are found (Session.scale): each frame's percentiles (lo, hi), or fixed levels
+RULES = {"p1": (1.0, 99.0), "p05": (0.5, 99.5), "minmax": (0.0, 100.0), "fixed": None}
+RULE_DEFAULT = "p1"
+
+
 def image_levels(img, symmetric: bool) -> tuple[float, float]:
     return limits(img, symmetric=symmetric)
+
+
+def rule_levels(img, symmetric: bool, rule: str = RULE_DEFAULT) -> tuple[float, float]:
+    """The levels of img by a per-frame rule (RULES): the [::8, ::8] subsample's percentiles, Q U V symmetric at the
+    upper one of |value|; the default rule is image_levels itself."""
+    if rule == RULE_DEFAULT:
+        return image_levels(img, symmetric)
+    pct = RULES[rule]
+    lo, hi = pct if pct is not None else (1.0, 99.0)
+    return limits(img, symmetric=symmetric, lo=lo, hi=hi)
 
 
 def panel_levels(a, symmetric: bool) -> tuple[float, float]:
@@ -82,30 +98,22 @@ def panel_levels(a, symmetric: bool) -> tuple[float, float]:
 
 
 class Levels:
-    """The image's levels for each index, cached, and the fixed levels when fixed. Thread-safe: ahead() fills the
-    cache from the threads that read the frames, image() serves the UI thread."""
+    """The image's levels for each index and per-frame rule, cached (fixed levels are the session's: Session.scale).
+    Thread-safe: ahead() fills the cache from the threads that read the frames, image() serves the UI thread."""
 
     def __init__(self, capacity: int = CACHE):
         self.capacity = capacity
         self._cache: OrderedDict = OrderedDict()
-        self._fixed: dict[bool, tuple[float, float]] = {}
         self._busy: dict[tuple, Future] = {}           # levels being computed, by key
         self._lock = threading.Lock()
 
-    def image(self, idx, symmetric: bool, img) -> tuple[float, float]:
-        """The levels to draw img (the frame at idx) with: the fixed ones when fixed, else its own."""
-        with self._lock:
-            if bool(symmetric) in self._fixed:
-                return self._fixed[bool(symmetric)]
-        return self._levels(_key(idx, symmetric), img, ui=True)
+    def image(self, idx, symmetric: bool, img, rule: str = RULE_DEFAULT) -> tuple[float, float]:
+        """The levels to draw img (the frame at idx) with by a per-frame rule (RULES)."""
+        return self._levels(_key(idx, symmetric, rule), img, ui=True)
 
-    def ahead(self, idx, symmetric: bool, img) -> None:
-        """Compute and cache img's levels before they are drawn (off the UI thread); nothing while fixed, as
-        image() would not use them."""
-        with self._lock:
-            if bool(symmetric) in self._fixed:
-                return
-        self._levels(_key(idx, symmetric), img, ui=False)
+    def ahead(self, idx, symmetric: bool, img, rule: str = RULE_DEFAULT) -> None:
+        """Compute and cache img's levels before they are drawn (off the UI thread)."""
+        self._levels(_key(idx, symmetric, rule), img, ui=False)
 
     def _levels(self, key: tuple, img, ui: bool) -> tuple[float, float]:
         """Counters: computed (every computation), ahead (those off the UI thread); cached and waited count the UI's
@@ -129,7 +137,7 @@ class Levels:
 
     def _compute(self, key: tuple, img, ui: bool, mine: Future) -> tuple[float, float]:
         try:
-            lim = image_levels(img, key[1])
+            lim = rule_levels(img, key[1], key[2])
         except BaseException as e:
             with self._lock:
                 self._busy.pop(key, None)
@@ -146,21 +154,9 @@ class Levels:
         mine.set_result(lim)
         return lim
 
-    def fix(self, img, symmetric: bool) -> tuple[float, float]:
-        """Fix the levels to this image's (the padlock closed, or refitted to the image shown)."""
-        lim = image_levels(img, symmetric)
-        with self._lock:
-            self._fixed[bool(symmetric)] = lim
-        return lim
-
-    def unfix(self) -> None:
-        with self._lock:
-            self._fixed.clear()
-
-    def fixed(self, symmetric: bool) -> bool:
-        with self._lock:
-            return bool(symmetric) in self._fixed
 
 
-def _key(idx, symmetric: bool) -> tuple:
-    return (tuple(int(i) for i in idx), bool(symmetric))
+def _key(idx, symmetric: bool, rule: str = RULE_DEFAULT) -> tuple:
+    if RULES.get(rule) is None:
+        raise ValueError(f"no per-frame rule {rule!r}: one of {[r for r, v in RULES.items() if v]}")
+    return (tuple(int(i) for i in idx), bool(symmetric), rule)

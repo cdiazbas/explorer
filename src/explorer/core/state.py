@@ -42,6 +42,8 @@ class ViewState:
     gamma: tuple[tuple[int, int, float], ...] = ()      # (cube, Stokes, gamma) where gamma is not 1, sorted
     t_cap: int | None = CAP                             # the t steps the temporal panels read and show at most
                                                         # (data.tsample); None: every t
+    scale: tuple[tuple[int, int, str, float, float], ...] = ()  # (cube, Stokes, rule, lo, hi) where the image's
+                                                        # levels are not the default rule's (levels.RULES), sorted
 
 
 FIELDS = frozenset(f.name for f in dataclasses.fields(ViewState))

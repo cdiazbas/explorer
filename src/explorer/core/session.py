@@ -17,7 +17,7 @@ import numpy as np
 from ..data.axes import Roles
 from ..data.link import frames
 from ..obs import counter
-from .levels import GAMMA_MAX, GAMMA_MIN
+from .levels import GAMMA_MAX, GAMMA_MIN, RULE_DEFAULT, RULES
 from .loop import Loop
 from .state import Store, ViewState
 
@@ -223,6 +223,35 @@ class Session:
         g = float(np.clip(float(g), GAMMA_MIN, GAMMA_MAX))
         rest = tuple(e for e in self.store.state.gamma if (e[0], e[1]) != (int(member), s))
         self.store.set(gamma=tuple(sorted(rest + (((int(member), s, g),) if g != 1 else ()))))
+
+    def scale(self, member: int, s: int) -> tuple[str, float, float]:
+        """How cube member's image at Stokes s finds its levels: (rule, lo, hi), lo and hi the fixed levels under
+        the rule "fixed" (levels.RULES); the default rule, each frame's 1-99 percentiles, unless set."""
+        for k, ss, rule, lo, hi in self.store.state.scale:
+            if (k, ss) == (member, s):
+                return rule, lo, hi
+        return RULE_DEFAULT, 0.0, 0.0
+
+    def set_scale(self, member: int, s: int, rule: str, lo: float = 0.0, hi: float = 0.0) -> None:
+        """The rule for the levels of cube member's image at Stokes s, one per cube and Stokes as gamma; "fixed" with
+        its levels lo < hi, symmetric about 0 for Q U V (s > 0: -m..m, m the larger of |lo| and |hi|), as their
+        automatic levels are."""
+        if not 0 <= int(member) < len(self.members):
+            raise ValueError(f"no cube {member}: the session has {len(self.members)}")
+        if rule not in RULES:
+            raise ValueError(f"no rule {rule!r}: one of {sorted(RULES)}")
+        r = self.members[member].dataset.roles
+        s = int(np.clip(int(s), 0, (r.ns if r.s is not None else 1) - 1))
+        lo, hi = (float(lo), float(hi)) if rule == "fixed" else (0.0, 0.0)
+        if rule == "fixed":
+            if s > 0:
+                m = max(abs(lo), abs(hi))
+                lo, hi = -m, m
+            if not (np.isfinite(lo) and np.isfinite(hi) and hi > lo):
+                raise ValueError(f"fixed levels need lo < hi, not {lo}, {hi}")
+        rest = tuple(e for e in self.store.state.scale if (e[0], e[1]) != (int(member), s))
+        new = ((int(member), s, rule, lo, hi),) if rule != RULE_DEFAULT else ()
+        self.store.set(scale=tuple(sorted(rest + new)))
 
     def set_playing(self, on: bool) -> None:
         """Playback on or off: without a per-pixel file the slit's spectral slice waits until it stops (the

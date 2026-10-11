@@ -1,8 +1,9 @@
 """Contrast levels: the image's rule and cache, the panels' rule, fixed levels per Stokes kind; and the scheduler
 hands them with each image and lambda-t."""
 import numpy as np
+import pytest
 
-from explorer.core.levels import Levels, image_levels, panel_levels
+from explorer.core.levels import Levels, image_levels, panel_levels, rule_levels
 from explorer.data.stats import limits
 from explorer.obs import summary
 
@@ -27,7 +28,7 @@ def test_panel_levels_as_the_prototype_lambda_t_and_its_modern_look():
     assert panel_levels(np.zeros((4, 4)), True) == (0.0, 1.0)                        # |v| all 0: not symmetric
 
 
-def test_cache_per_index_and_fixed_levels_kept_apart_for_i_and_quv():
+def test_cache_per_index_and_per_rule():
     rng = np.random.default_rng(2)
     a, b = rng.normal(5, 1, (32, 32)), rng.normal(9, 3, (32, 32))
     lv = Levels(capacity=2)
@@ -38,11 +39,12 @@ def test_cache_per_index_and_fixed_levels_kept_apart_for_i_and_quv():
     lv.image((1, 0, 1), False, b)
     lv.image((2, 0, 1), False, b)                                                   # capacity 2: (0, 0, 1) out
     assert lv.image((0, 0, 1), False, b) == image_levels(b, False)
-    fixed = lv.fix(a, False)
-    assert lv.image((5, 0, 1), False, b) == fixed and lv.fixed(False) and not lv.fixed(True)
-    assert lv.image((5, 1, 1), True, b - 9) == image_levels(b - 9, True)             # Q: not I's fixed levels
-    lv.unfix()
-    assert lv.image((6, 0, 1), False, b) == image_levels(b, False)
+    wide = lv.image((0, 0, 1), False, b, "minmax")                                  # a rule of its own: cached apart
+    assert wide == rule_levels(b, False, "minmax") != image_levels(b, False)
+    assert wide[0] <= float(np.nanmin(b[::8, ::8])) and wide[1] >= float(np.nanmax(b[::8, ::8]))
+    assert lv.image((5, 1, 1), True, b - 9, "p05") == rule_levels(b - 9, True, "p05")  # Q: symmetric
+    with pytest.raises(ValueError):
+        lv.image((6, 0, 1), False, b, "fixed")                                      # fixed levels: the session's
 
 
 def test_the_scheduler_hands_levels_and_fixes_them(tmp_path):
