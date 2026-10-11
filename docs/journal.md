@@ -4639,3 +4639,16 @@ importaciones) se resolvieron conservando los dos cambios. Uno de comportamiento
 de t pasa `at=` a todo lector, y `PerPixelFrames` (el lector de un `_sp` solo, hecho a la vez) no lo aceptaba: la
 λ–t y la rendija de un `_sp` solo habrían fallado con `TypeError`. Ahora lo pasa a `series_frames`; la prueba nueva
 de `test_per_pixel_given` falla antes y pasa después (bellatrix).
+
+Las suites completas de la rama juntada encontraron dos fallos más (bellatrix, unit y golden: 897 pasan, 2 fallan):
+- **La rendija por cubo junto al zoom de las enlazadas:** al entrar en modo rendija los paneles enlazados se encogen un
+  momento; con el suelo nuevo (el ajuste de la principal), una enlazada más pequeña que la principal ya no podía
+  ajustarse a sí misma y quedaba recortada, y el clic de la prueba caía fuera. Aislado probando la rendija por cubo
+  con cada rama por separado: solo con `small-decisions`, y dentro de ella solo con el commit del zoom. El suelo es
+  ahora el menor de los dos ajustes: una ventana de cubo grande se aleja hasta el aumento de la principal, una
+  enlazada pequeña se ve entera otra vez (la prueba de la rendija falla antes y pasa después; la del aumento único
+  sigue pasando).
+- **`test_headerless`** esperaba que una serie temporal sin λ no leyera nada; desde E8.7 lee su curva en t: la
+  expectativa, actualizada.
+
+Con los dos arreglos: unit y golden 899 pasan (15 saltadas), `tests/real` 40, `tests/xvfb` 39 (2 saltadas).
