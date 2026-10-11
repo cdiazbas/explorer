@@ -1295,8 +1295,7 @@ class Shell(QtWidgets.QMainWindow):
         rows.append(("padlock, top right of the image and of the spectra",
                      "fixed ⇄ automatic scale; right click: fit it to what is shown"))
         rows.append(("colour key of an image (pointer on it)",
-                     "histogram: drag ▲ for min, max; wheel: γ; double click: automatic; right click: limits, γ, "
-                     "Scale…"))
+                     "histogram: drag ▲ for min, max; wheel: γ; double click: automatic levels, γ = 1"))
         if ns > 1:
             rows.append(("right click on a side-by-side panel's Stokes label", "that panel's limits, γ, Scale…"))
         return rows

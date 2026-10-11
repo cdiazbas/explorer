@@ -1,13 +1,15 @@
 """The image's levels and gamma set on the image itself (ROADMAP E5, the scale's interface): the colour key of every
-image made interactive, a short menu on a right click over it, and a card with the numbers.
+image made interactive, and a card with the numbers.
 
 - ScaleKey: the colour key (ui.overlays.ColourKey) of one cube's image, the same at rest. Under the pointer it grows
   into the histogram of the frame (its [::8, ::8] subsample, the one the automatic levels read: data.stats.limits)
   with the transfer curve over it, so gamma shows, and a handle at each limit. Dragging a handle fixes that limit
   (Session.set_scale "fixed"; Q U V move both ends, symmetric about 0); the wheel steps gamma as G and Shift+G do;
-  a double click gives the image its automatic levels again. It takes the image's width when narrower than its own.
-- scale_menu: on a right click over a key (a right click on the image releases the cursor), or over the Stokes
-  label of a panel of the 2x2 view: the limit rule, gamma presets, "Scale...", and a reset.
+  a double click gives the image its automatic levels and gamma 1 again. It takes the image's width when narrower
+  than its own. A right click on it opens nothing for now (KEY_MENU): it reaches the image below, which releases the
+  cursor.
+- scale_menu: on a right click over the Stokes label of a panel of the 2x2 view (and over a key, with KEY_MENU): the
+  limit rule, gamma presets, "Scale...", and a reset.
 - ScaleCard: from "Scale...": min and max typed, CRISPEX's logarithmic gamma slider (0.1-10, 10^(v/500 - 1),
   crispex.pro:24436-24441), the limit rule and a reset. A child of the window (one X window less through the bridge);
   Esc or a click outside closes it.
@@ -31,8 +33,9 @@ RULE_TEXT_SYM = {"p1": "Automatic, 99 % of |value| per frame", "p05": "99.5 % of
                  "minmax": "Max |value| per frame", "fixed": "Frozen to this frame"}
 RULE_SHORT_SYM = {"p1": "auto |x| 99 %", "p05": "auto |x| 99.5 %", "minmax": "max |x|", "fixed": "fixed"}
 # the hot key's last line, the longest that fits its width (a cube's window may be 230 px wide); none: left out
-HINTS = ("drag ▲ · wheel γ · double click auto · right click menu", "drag ▲ · wheel γ · right click menu",
-         "right click: menu")
+HINTS = ("drag ▲ · wheel γ · double click: automatic, γ = 1", "drag ▲ · wheel γ · double click: reset",
+         "double click: reset")
+KEY_MENU = False                                        # the menu on a right click over a key: off for now
 GAMMAS = (1.0, 0.7, 0.5, 0.3)
 HIST_BINS = 128
 
@@ -201,7 +204,10 @@ class ScaleKey(ColourKey):
 
     def mousePressEvent(self, e):
         if e.button() == QtCore.Qt.MouseButton.RightButton:
-            self.open_menu(e.globalPosition().toPoint())
+            if KEY_MENU:
+                self.open_menu(e.globalPosition().toPoint())
+            else:
+                e.ignore()                              # to the image below: it releases the cursor
             return
         if e.button() != QtCore.Qt.MouseButton.LeftButton or not self.hot:
             return
@@ -259,8 +265,7 @@ class ScaleKey(ColourKey):
     def mouseDoubleClickEvent(self, e):
         if e.button() == QtCore.Qt.MouseButton.LeftButton:
             self.drag, self._axis = None, None
-            k, s = self.target()
-            self.shell.session.set_scale(k, s, RULE_DEFAULT)
+            reset(self.shell, *self.target())          # automatic levels and gamma 1
 
     def open_menu(self, at: QtCore.QPoint) -> QtWidgets.QMenu:
         m = scale_menu(self.shell, *self.target())
@@ -300,13 +305,16 @@ class ScaleKey(ColourKey):
             pw.replace(" ×", "×")
         p.setPen(ink)
         fm = QtGui.QFontMetrics(f)
-        gtext = gamma_text(g)
-        gw = QtGui.QFontMetrics(gamma_font(f)).horizontalAdvance(GAMMA) + fm.horizontalAdvance(gtext[1:])
+        # gamma only when not 1, as at rest (the transfer curve shows it): the title keeps its room for the rule
+        gtext = gamma_text(g) if g != 1.0 else ""
+        gw = QtGui.QFontMetrics(gamma_font(f)).horizontalAdvance(GAMMA) + fm.horizontalAdvance(gtext[1:]) + 8 \
+            if gtext else 0
         title = "   ".join(t for t in (name, unit, (RULE_SHORT_SYM if sym else RULE_SHORT)[rule]) if t)
         # cut at its end (…) short of gamma: on a narrow key the two ran into each other
-        title = fm.elidedText(title, QtCore.Qt.TextElideMode.ElideRight, W - 24 - gw - 8)
+        title = fm.elidedText(title, QtCore.Qt.TextElideMode.ElideRight, W - 24 - gw)
         p.drawText(QtCore.QRectF(12, 3, W - 24, 16), AL.AlignLeft | AL.AlignVCenter, title)
-        draw_text(p, QtCore.QRectF(12, 3, W - 24, 16), AL.AlignRight | AL.AlignVCenter, gtext)
+        if gtext:
+            draw_text(p, QtCore.QRectF(12, 3, W - 24, 16), AL.AlignRight | AL.AlignVCenter, gtext)
         band, bar = self._band(), self._bar()
         a0, a1 = self.axis()
         h = self._counts((a0, a1))

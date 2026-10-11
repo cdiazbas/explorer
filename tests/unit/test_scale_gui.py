@@ -156,7 +156,7 @@ def test_on_q_one_handle_moves_both_ends(window):
     assert sess.scale(1, 2) == ("fixed", -hi / 2, hi / 2) and sess.scale(0, 2)[0] == "p1"
 
 
-def test_the_wheel_steps_gamma_and_a_double_click_gives_automatic_levels(window):
+def test_the_wheel_steps_gamma_and_a_double_click_gives_automatic_levels_and_gamma_1(window):
     w, qapp = window
     key, sess = w.main.key, w.session
     hot(qapp, key)
@@ -178,10 +178,11 @@ def test_the_wheel_steps_gamma_and_a_double_click_gives_automatic_levels(window)
                       QtCore.QPoint(20, 6))
     qapp.processEvents()
     assert sess.scale(0, 0) == ("p1", 0.0, 0.0) and not w.image_lock.isChecked()
-    assert sess.gamma(0, 0) == pytest.approx(10 ** 0.1)                # the limits only
+    assert sess.gamma(0, 0) == 1.0 and sess.gamma(1, 0) == 1.0        # gamma 1 too (the user, 2026-10-11)
 
 
-def test_a_right_click_on_the_key_opens_its_menu_not_a_release(window):
+def test_a_right_click_on_the_key_opens_no_menu_for_now(window):
+    """The menu over a key is off for now (the user, 2026-10-11: KEY_MENU); the press goes to the image below."""
     w, qapp = window
     w.session.lock(True)
     qapp.processEvents()
@@ -191,9 +192,9 @@ def test_a_right_click_on_the_key_opens_its_menu_not_a_release(window):
     QTest.mouseRelease(w.main.key, QtCore.Qt.MouseButton.RightButton, QtCore.Qt.KeyboardModifier.NoModifier,
                        QtCore.QPoint(20, 6))                     # no button left held for the tests after
     menus = [m for m in w.findChildren(QtWidgets.QMenu) if m.isVisible()]
-    assert menus and w.session.state.locked
     for m in menus:
         m.close()
+    assert not menus
 
 
 # ---------------------------------------------------------------------------------------------- menu and card
@@ -305,17 +306,33 @@ def test_the_g_keys_are_on_the_sheet(window):
 class Recording(QtGui.QPainter):
     """A QPainter that keeps every drawText(rect, flags, text) it is asked for."""
     texts: list = []
+    quiet = False                                       # inside a text with gamma: recorded whole (painted)
 
     def drawText(self, *a):
-        if len(a) == 3 and isinstance(a[2], str):
+        if len(a) == 3 and isinstance(a[2], str) and not Recording.quiet:
             Recording.texts.append((QtCore.QRectF(a[0]), a[2], QtGui.QFontMetrics(self.font())))
         return super().drawText(*a)
 
 
 def painted(key, monkeypatch):
-    """The texts the hot key draws: (rect, text, font metrics)."""
+    """The texts the hot key draws: (rect, text, font metrics); a text with gamma, drawn in runs (overlays.draw_text),
+    as one."""
+    from explorer.ui import scalekey
+
     Recording.texts = []
+    original = scalekey.draw_text
+
+    def whole(p, r, align, text):
+        if scalekey.GAMMA not in text:
+            return original(p, r, align, text)
+        Recording.texts.append((QtCore.QRectF(r), text, QtGui.QFontMetrics(p.font())))
+        Recording.quiet = True
+        try:
+            return original(p, r, align, text)
+        finally:
+            Recording.quiet = False
     monkeypatch.setattr(QtGui, "QPainter", Recording)
+    monkeypatch.setattr(scalekey, "draw_text", whole)
     key.grab()
     monkeypatch.undo()
     return list(Recording.texts)
@@ -350,6 +367,7 @@ def test_the_key_s_last_line_fits_its_width(window, monkeypatch, width):
     title stops short of gamma, cut (…) when it has to be."""
     w, qapp = window
     key = w.main.key
+    w.set_gamma(0, 0, 10 ** -0.1)                       # a gamma, so the title has to make room for it
     key.set_hot(True)
     key.resize(width, key.H_HOT)
     qapp.processEvents()
