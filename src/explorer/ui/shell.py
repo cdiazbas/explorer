@@ -1280,6 +1280,9 @@ class Shell(QtWidgets.QMainWindow):
         if self.lambda_t is not None:
             rows.append(("click on λ–t", "pick t and λ"))
         rows.append(("click on the slit panel", "the cursor to that point of the slit; t or λ from the height"))
+        if self.session.present["t"]:
+            rows.append(("number in the λ–t and Slit titles",
+                         "t steps shown at most: 25, 50, 100, all; click: choose; wheel: change"))
         ns = self.session.sizes["s"] if self.session.present["s"] else 1
         if ns > 1:
             rows.append(("click on a panel of the side-by-side view", "lock the cursor there; λ–t shows its Stokes"))

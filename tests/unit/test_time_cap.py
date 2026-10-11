@@ -292,3 +292,15 @@ def test_the_number_in_the_titles_changes_the_steps(qapp, cube):
     finally:
         w.close()
         ds.close()
+
+
+def test_the_sheet_says_what_the_number_in_the_titles_does(qapp, small):
+    """The ? sheet has a row for the number in the titles of lambda-t and the slit: what it is and how it changes."""
+    w, close = window(qapp, small[0], no_sp=True)
+    try:
+        rows = [(g, what) for g, what in w.action_registry.mouse if "t steps" in what]
+        print("rows on the t steps", rows)
+        assert len(rows) == 1 and "number" in rows[0][0] and "25, 50, 100, all" in rows[0][1]
+        assert "wheel" in rows[0][1] and "t steps shown at most" in w.sheet.text()
+    finally:
+        close()
