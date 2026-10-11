@@ -75,7 +75,7 @@ def test_the_keys_act_on_the_image_under_the_pointer_and_gamma_1_gives_today_s_b
     assert (s.gamma(0, 0), s.gamma(0, 3), s.gamma(1, 1)) == (1.0, 1.0, 1.0)
     assert not np.array_equal(shown(w.view), before)
     assert np.array_equal(shown(w.linked[0].view), other_before)       # the other cube's image as it was
-    assert "γ 0.794" in w.statusBar().currentMessage()
+    assert "γ = 0.79" in w.statusBar().currentMessage()
     fire(w, "Shift+G")
     fire(w, "Shift+G")
     assert s.gamma(0, 1) == pytest.approx(10 ** 0.1)
@@ -153,7 +153,7 @@ def test_a_panel_of_the_2x2_view_is_its_stokes_and_the_colour_key_says_gamma(win
     w.set_look(get_look("modern"))
     w.session.set_gamma(0, w.session.state.s, 0.5)
     qapp.processEvents()
-    assert "γ 0.5" in w.colour_key.state[0]
+    assert "γ = 0.5" in w.colour_key.state[0]
     w.session.set_gamma(0, w.session.state.s, 1.0)
     qapp.processEvents()
     assert "γ" not in w.colour_key.state[0]
@@ -182,6 +182,6 @@ def test_in_glass_the_image_s_colour_key_says_the_new_gamma(window):
     fire(w, "Shift+G")
     qapp.processEvents()
     print("glass: main key", main_note, "linked key", w.linked[0].key.note)
-    assert main_note == "γ 0.794" and w.linked[0].key.note == "γ 1.26"
+    assert main_note == "γ = 0.79" and w.linked[0].key.note == "γ = 1.3"
     w.set_look(get_look("classic"))
     spin(qapp, lambda: False, timeout=0.4)              # glass's deferred calls done before the window closes

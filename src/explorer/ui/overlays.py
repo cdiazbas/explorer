@@ -25,6 +25,67 @@ def _num(x):
     return s.replace("-", "−")
 
 
+# Gamma's letter, wherever the window writes a gamma. In the interface's sans (Noto Sans, DejaVu Sans, SF) γ at 11 px
+# is a y with a short tail; an italic serif γ has the loop that makes it a gamma. STIX Two Text ships with macOS and
+# Linux distributions alike, so both draw the same letter; the others are the serifs a Linux desktop has, Times New
+# Roman a Mac's. A family that is missing falls through to the next, and with none the γ is the run's own font, italic.
+GAMMA = "γ"
+GAMMA_FAMILIES = ["STIX Two Text", "DejaVu Serif", "Noto Serif", "Times New Roman", "Liberation Serif"]
+GAMMA_PX_MORE = 1                                       # its x-height is smaller than the sans's: one pixel larger
+
+
+def gamma_number(g: float) -> str:
+    """g with two significant figures: they tell every step of G apart (levels.GAMMA_STEP, 26 % each: 0.79, 0.63,
+    1.3, 1.6); a third only when two would say 1 for a gamma that is not 1 (the Scale card's slider, 1.03)."""
+    s = f"{g:.2g}"
+    return f"{g:.3g}" if s == "1" and g != 1 else s
+
+
+def gamma_text(g: float) -> str:
+    """'γ = 0.79': the equals sign parts the letter from the digits it otherwise reads as one word with."""
+    return f"{GAMMA} = {gamma_number(g)}"
+
+
+def gamma_font(base: QtGui.QFont) -> QtGui.QFont:
+    """The font of γ in a text drawn with base: GAMMA_FAMILIES, italic, GAMMA_PX_MORE larger, base's families last."""
+    f = QtGui.QFont(base)
+    f.setFamilies(GAMMA_FAMILIES + base.families())
+    f.setItalic(True)
+    if base.pixelSize() > 0:
+        f.setPixelSize(base.pixelSize() + GAMMA_PX_MORE)
+    else:
+        f.setPointSizeF(base.pointSizeF() + GAMMA_PX_MORE)
+    return f
+
+
+def draw_text(p: QtGui.QPainter, r: QtCore.QRectF, align, text: str) -> None:
+    """p.drawText(r, align, text) on one line, its γ in gamma_font on the line's baseline. Text without γ goes to
+    drawText as it is, so its pixels are drawText's."""
+    if GAMMA not in text:
+        p.drawText(r, align, text)
+        return
+    base = p.font()
+    gf = gamma_font(base)
+    fm, gm = QtGui.QFontMetricsF(base), QtGui.QFontMetricsF(gf)
+    runs = [(t, f, m) for part in text.split(GAMMA) for t, f, m in ((GAMMA, gf, gm), (part, base, fm))][1:]
+    runs = [x for x in runs if x[0]]
+    width = sum(m.horizontalAdvance(t) for t, _, m in runs)
+    A = QtCore.Qt.AlignmentFlag
+    x = r.right() - width if align & A.AlignRight else \
+        r.center().x() - width / 2 if align & A.AlignHCenter else r.left()
+    if align & A.AlignVCenter:
+        y = r.top() + (r.height() - fm.height()) / 2 + fm.ascent()
+    elif align & A.AlignBottom:
+        y = r.bottom() - fm.descent()
+    else:
+        y = r.top() + fm.ascent()
+    for t, f, m in runs:
+        p.setFont(f)
+        p.drawText(QtCore.QPointF(x, y), t)
+        x += m.horizontalAdvance(t)
+    p.setFont(base)
+
+
 class ColourKey(QtWidgets.QWidget):
     """The colour scale in the image's bottom-left corner: the bar, its two ends and, for Q U V, the zero. Painted
     only when the limits, the Stokes or the map change, never with the cursor. After C the map's name takes the
@@ -74,7 +135,7 @@ class ColourKey(QtWidgets.QWidget):
     def set(self, name, lim, lut, cmap=None, gamma: float = 1.0):
         """gamma: the image's (core.levels), written after the name when it is not 1."""
         if gamma != 1:
-            name = "   ".join(t for t in (name, f"\u03b3 {gamma:.2g}") if t)
+            name = "   ".join(t for t in (name, gamma_text(gamma)) if t)
         st = (name, round(float(lim[0]), 12), round(float(lim[1]), 12), cmap if cmap is not None else lut is None)
         if st == self.state:
             return
@@ -116,8 +177,8 @@ class ColourKey(QtWidgets.QWidget):
             label = f"×{power}" if power else ""
         A = QtCore.Qt.AlignmentFlag
         p.setPen(QtGui.QColor(0, 0, 0, 217) if lt else QtGui.QColor(255, 255, 255, 215))
-        p.drawText(QtCore.QRectF(12, 3, W - 24, 16), A.AlignLeft | A.AlignVCenter,
-                   "   ".join(t for t in (name, label) if t))
+        draw_text(p, QtCore.QRectF(12, 3, W - 24, 16), A.AlignLeft | A.AlignVCenter,
+                  "   ".join(t for t in (name, label) if t))
         ink = QtGui.QColor(0, 0, 0, 150) if lt else QtGui.QColor(255, 255, 255, 170)
         p.setPen(QtGui.QPen(ink, 1))                    # a short tick under each number's place on the bar
         ticks = [bar.left() + 0.5, bar.right() - 0.5] + ([bar.left() + bar.width() * (-lo) / (hi - lo)]
@@ -128,7 +189,7 @@ class ColourKey(QtWidgets.QWidget):
         p.setPen(ink)
         top = bar.bottom() + 3
         if self.note:
-            p.drawText(QtCore.QRectF(bar.left(), top, bar.width(), 16), A.AlignHCenter, self.note)
+            draw_text(p, QtCore.QRectF(bar.left(), top, bar.width(), 16), A.AlignHCenter, self.note)
             p.end()
             return
         p.drawText(QtCore.QRectF(bar.left(), top, 70, 16), A.AlignLeft, _num(lo / k))

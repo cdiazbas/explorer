@@ -20,7 +20,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.levels import RULE_DEFAULT, gamma_step
 from . import style
-from .overlays import ColourKey, _num, _sci
+from .overlays import GAMMA, ColourKey, _num, _sci, draw_text, gamma_font, gamma_number, gamma_text
 
 STOKES = "IQUV"
 RULE_TEXT = {"p1": "Automatic, 1–99 % per frame", "p05": "0.5–99.5 % per frame",
@@ -284,7 +284,7 @@ class ScaleKey(ColourKey):
         p.setPen(ink)
         p.drawText(QtCore.QRectF(12, 3, W - 24, 16), AL.AlignLeft | AL.AlignVCenter,
                    "   ".join(t for t in (name, unit, RULE_SHORT[rule]) if t))
-        p.drawText(QtCore.QRectF(12, 3, W - 24, 16), AL.AlignRight | AL.AlignVCenter, f"γ {g:.2g}")
+        draw_text(p, QtCore.QRectF(12, 3, W - 24, 16), AL.AlignRight | AL.AlignVCenter, gamma_text(g))
         band, bar = self._band(), self._bar()
         a0, a1 = self.axis()
         h = self._counts((a0, a1))
@@ -332,8 +332,8 @@ class ScaleKey(ColourKey):
             r.moveLeft(min(max(r.left(), 4), W - 84))
             p.drawText(r, AL.AlignHCenter | AL.AlignTop, ("+" if sym and which == "hi" else "") + _num(v / kpow))
         p.setPen(faint)
-        p.drawText(QtCore.QRectF(8, self.height() - 16, W - 16, 14), AL.AlignHCenter,
-                   "drag ▲ · wheel γ · double click auto · right click menu")
+        draw_text(p, QtCore.QRectF(8, self.height() - 16, W - 16, 14), AL.AlignHCenter,
+                  f"drag ▲ · wheel {GAMMA} · double click auto · right click menu")
         p.end()
 
 
@@ -362,7 +362,7 @@ def scale_menu(shell, k: int, s: int, parent: QtWidgets.QWidget | None = None) -
     g_now = sess.gamma(k, s)
     gs = QtGui.QActionGroup(m)
     for g in GAMMAS:
-        a = m.addAction(f"{g:g}" + ("  (linear)" if g == 1 else ""))
+        a = m.addAction(gamma_number(g) + ("  (linear)" if g == 1 else ""))
         a.setCheckable(True)
         a.setChecked(abs(g - g_now) < 0.02)
         a.setActionGroup(gs)
@@ -429,7 +429,9 @@ class ScaleCard(QtWidgets.QFrame):
         row.addStretch(1)
         lay.addLayout(row)
         row = QtWidgets.QHBoxLayout()
-        row.addWidget(QtWidgets.QLabel("γ"))
+        g_name = QtWidgets.QLabel(GAMMA)
+        g_name.setFont(gamma_font(g_name.font()))
+        row.addWidget(g_name)
         self.slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.slider.setRange(0, 1000)
         self.slider.setMinimumWidth(180)
@@ -475,7 +477,7 @@ class ScaleCard(QtWidgets.QFrame):
                 e.setText(f"{v:.6g}")
         g = sess.gamma(self.k, self.s)
         self.slider.setValue(slider_of_gamma(g))
-        self.g_label.setText(f"{g:.3g}")
+        self.g_label.setText(gamma_number(g))
         self.rule.setCurrentIndex(self.rule.findData(sess.scale(self.k, self.s)[0]))
         self._quiet = False
 

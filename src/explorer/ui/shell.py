@@ -46,7 +46,7 @@ from .imageview import CURSOR_PEN
 from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync
 from .loop import QtLoop
 from .mask import MaskOutlines, mask_colour
-from .overlays import ColourKey
+from .overlays import ColourKey, gamma_text
 from .scalekey import ScaleCard, scale_menu
 from .slit import SlitHint, SlitTool
 from .slitpanel import SlitPanel
@@ -644,9 +644,9 @@ class Shell(QtWidgets.QMainWindow):
         ns = self.cubes[k].ns
         what = " ".join(t for t in (self.cubes[k].name if self.linked else "",
                                     f"Stokes {STOKES[s]}" if ns == len(STOKES) else "") if t)
-        self.statusBar().showMessage(f"\u03b3 {g:.3g}{': ' + what if what else ''}  (G \u21e7G {mod_key()}G)", 3000)
+        self.statusBar().showMessage(f"{gamma_text(g)}{': ' + what if what else ''}  (G \u21e7G {mod_key()}G)", 3000)
         if not self.statusBar().isVisibleTo(self):     # glass without F12: on the image's colour key, as C's map name
-            self.cubes[k].key.flash(f"\u03b3 {g:.3g}")
+            self.cubes[k].key.flash(gamma_text(g))
 
     # ---------------------------------------------------------------- the scale's menu and card (ui.scalekey)
     def scale_levels(self, k: int, s: int) -> tuple[float, float]:
