@@ -69,7 +69,7 @@ class ColourKey(QtWidgets.QWidget):
         return False
 
     def _place(self, view):
-        self.move(12, view.height() - self.H - 12)
+        self.move(12, view.height() - self.height() - 12)
 
     def set(self, name, lim, lut, cmap=None, gamma: float = 1.0):
         """gamma: the image's (core.levels), written after the name when it is not 1."""
@@ -93,7 +93,8 @@ class ColourKey(QtWidgets.QWidget):
         # alpha 185: at 150, over the brightest granules the white text stood at 4.3:1; now about 9:1
         p.setBrush(QtGui.QColor(255, 255, 255, 215) if lt else QtGui.QColor(0, 0, 0, 185))
         p.drawRoundedRect(r, 8, 8)
-        bar = QtCore.QRectF(12, 22, self.W - 24, 6)
+        W = self.width()                                # W, or the image's width when narrower (ui.scalekey)
+        bar = QtCore.QRectF(12, 22, W - 24, 6)
         g = QtGui.QLinearGradient(bar.topLeft(), bar.topRight())
         lut = self.lut if self.lut is not None else np.repeat(np.arange(256, dtype=np.uint8)[:, None], 3, 1)
         for i in range(0, 256, 16):
@@ -115,7 +116,7 @@ class ColourKey(QtWidgets.QWidget):
             label = f"×{power}" if power else ""
         A = QtCore.Qt.AlignmentFlag
         p.setPen(QtGui.QColor(0, 0, 0, 217) if lt else QtGui.QColor(255, 255, 255, 215))
-        p.drawText(QtCore.QRectF(12, 3, self.W - 24, 16), A.AlignLeft | A.AlignVCenter,
+        p.drawText(QtCore.QRectF(12, 3, W - 24, 16), A.AlignLeft | A.AlignVCenter,
                    "   ".join(t for t in (name, label) if t))
         ink = QtGui.QColor(0, 0, 0, 150) if lt else QtGui.QColor(255, 255, 255, 170)
         p.setPen(QtGui.QPen(ink, 1))                    # a short tick under each number's place on the bar

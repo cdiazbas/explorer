@@ -284,6 +284,8 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         shell.theme = theme
         if store is not None and store.for_look(look).restore(shell, app):   # the last session's panels, sizes too
             shell._sized = True
+        if store is not None:                           # each cube's limits and gamma, by its file name
+            shell.restore_scale(store.scale())
         disp.attach(app, shell, ops)
         from . import termkeys
 

@@ -9,12 +9,14 @@ The behaviour is the main cube's as it was in ui.shell (from the prototype's app
 _spectrum_click to _pick_flush 1270-1317, _image_click 1419), now one code for every cube.
 """
 import math
+import os
 
 import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore
 
 from ..core.scheduler import Scheduler
+from ..data.axes import STOKES, unit_text
 from ..data.names import slice_names
 from . import glass
 from .cards import CARD, CARD_LIGHT
@@ -22,6 +24,7 @@ from .gestures import Gestures
 from .imageview import ImageView
 from .lambda_t import LambdaTPanel, TimeCurve
 from .padlock import PanelLock
+from .scalekey import ScaleKey
 from .slitpanel import SlitPanel
 from .spectra import AxisDrag, SpectraPanel
 
@@ -121,6 +124,8 @@ class CubeView:
         self.image_lock = PanelLock(self.view.widget, IMAGE_TIP, light=light)
         self.image_lock.toggled.connect(lambda on: self.scheduler.fix_levels(on))
         self.image_lock.refit.connect(self.image_refit)
+        # its colour key, interactive (ui.scalekey): the main cube's is the window's colour_key, which glass moves
+        self.key = ScaleKey(self, unit_text(getattr(ds.axes, "bunit", None) or ""))
         self.spec_lock: PanelLock | None = None
         if self.spectra is not None:
             self.spec_lock = PanelLock(self.spectra.w, SPEC_TIP.format(keys=keys), light=light, backed=False)
@@ -166,6 +171,15 @@ class CubeView:
             self.view.set_gamma(self.gamma_now())
             if self.lambda_t is not None:
                 self.lambda_t.set_gamma(self.session.gamma(self.k, self.last_s))
+        if has("scale", "s", "own"):                    # the padlock says whether its Stokes now is fixed
+            self.image_lock.set_closed(self.session.scale(self.k, st.s)[0] == "fixed")
+        if changed is not None and changed & {"gamma", "scale"}:
+            self.paint_colour()
+            self.key.update()
+
+    def scale_name(self) -> str:
+        """The cube as the saved layout names its scale (ui.layout.LayoutStore.save_scale): its file's base name."""
+        return os.path.basename(str(getattr(self.dataset, "path", "") or self.name).rstrip("/")) or self.name
 
     def gamma_now(self) -> float:
         """Its gamma at the Stokes its image shows (Session.gamma)."""
@@ -216,6 +230,10 @@ class CubeView:
         self.view.set_lut(cols.image_lut(s) if cols is not None else self.view.base_lut)
         if self.lambda_t is not None:
             self.lambda_t.set_lut(cols.lut(self.last_s) if cols is not None else None)
+        if self.view._full is not None:                 # its key: its name, its Stokes, its levels and gamma
+            name = "   ".join(t for t in (self.name, f"Stokes {STOKES[s]}" if self.ns == len(STOKES) else "") if t)
+            self.key.set(name, self.view._lim, cols.lut(s) if cols is not None else self.view.base_lut,
+                         cols.maps[s] if cols is not None else None, gamma=self.session.gamma(self.k, s))
 
     def reset_view(self) -> None:
         """Its spectra's whole lambda range and their y ranges as the padlock says, and its lambda-t's whole range."""

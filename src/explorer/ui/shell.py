@@ -32,10 +32,11 @@ from ..core.levels import gamma_step
 from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
-from ..data.axes import STOKES, unit_text
+from ..data.axes import STOKES
 from ..data.names import cube_names
 from ..look import LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
+from ..obs import get_logger
 from . import docks, glass, icons, pens, style, titlebar
 from .actions import ActionRegistry, KeySheet, mod_key, per_pixel_sheet_html
 from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
@@ -46,11 +47,14 @@ from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync
 from .loop import QtLoop
 from .mask import MaskOutlines, mask_colour
 from .overlays import ColourKey
+from .scalekey import ScaleCard, scale_menu
 from .slit import SlitHint, SlitTool
 from .slitpanel import SlitPanel
 from .status import diagnostics_text, pixel_text
 from .stokesgrid import StokesGrid
 from .toolbar import NavBar
+
+log = get_logger("ui")
 
 if TYPE_CHECKING:
     from ..platform.display import WindowOps
@@ -329,7 +333,8 @@ class Shell(QtWidgets.QMainWindow):
         # what the sink reads, before the scheduler: an image already in the cache (a second window on the same
         # Dataset) is shown inside Scheduler()
         self.colours: ColormapRegistry | None = None    # made the first time the look has colour
-        self.colour_key: ColourKey | None = None
+        self.colour_key: ColourKey | None = self.main.key     # in every look (ui.scalekey), hidden in the 2x2 view
+        self.scale_card: ScaleCard | None = None
         self.grid: StokesGrid | None = None             # the 2x2 view (ui.stokesgrid), made the first time it is asked
         self.pointer = 0                                # the cube whose image the mouse last moved over (CubeView)
         self.glass: glass.GlassChrome | None = None     # the glass look's chrome (ui.glass), while worn
@@ -387,14 +392,12 @@ class Shell(QtWidgets.QMainWindow):
             p.set_marks(acc) if L.has("marks") else p.clear_marks()
         if L.has("colour") and self.colours is None:
             self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light)
-            self.colour_key = ColourKey(self.view.widget, unit_text(getattr(self.dataset.axes, "bunit", None) or ""))
         if self.colour_key is not None:
-            self.colour_key.show_with(L.has("colour"), grid=self.grid is not None and not self.grid.isHidden())
+            self.colour_key.show_with(True, grid=self.grid is not None and not self.grid.isHidden())
         self._shown_lut = object()
-        if L.has("colour"):
-            self._paint_colour()
-        else:
+        if not L.has("colour"):
             self.view.set_lut(self.view.base_lut)
+        self._paint_colour()
         self._grid_luts()
         if self.lambda_t is not None:
             lt = self.last.get("lambda_t")
@@ -538,7 +541,7 @@ class Shell(QtWidgets.QMainWindow):
             self.scheduler.set_grid(False)
             self.view.set_paused(False)
         if self.colour_key is not None:                 # no single Stokes' key over the four panels
-            self.colour_key.show_with(self.look.has("colour"), grid=on)
+            self.colour_key.show_with(True, grid=on)
         self.nav.set_all(on)
         self._place_slit_hint()
         if self.glass is not None:
@@ -565,6 +568,11 @@ class Shell(QtWidgets.QMainWindow):
         if self.grid is None or self.slit_tool.click(ev, self.grid.views[s].vb):
             return
         if ev.button() == QtCore.Qt.MouseButton.RightButton:
+            label = self.grid.views[s].stokes
+            if label.isVisible() and label.sceneBoundingRect().contains(ev.scenePos()):
+                # its scale's menu (ui.scalekey): the 2x2 view's panels have no key of their own
+                scale_menu(self, 0, s).popup(QtGui.QCursor.pos())
+                return
             self.session.lock(False)
             return
         p = self.grid.panel_point(s, ev)
@@ -592,22 +600,25 @@ class Shell(QtWidgets.QMainWindow):
         self.glass.toggle_panels()
 
     def _paint_colour(self) -> None:
-        """The image's colour table and the key, for the Stokes shown (the modern look's colour part)."""
-        if self.colours is None or not self.look.has("colour"):
-            return
-        for c in self.linked:                           # a linked cube with the main cube's Stokes
-            c.paint_colour()
+        """The image's colour table, for the Stokes shown (the modern look's colour part), and the key in every look
+        (in grey without the colour part)."""
+        colour = self.colours is not None and self.look.has("colour")
         s = self.session.state.s
-        tab = self.colours.image_lut(s)
-        if tab is not self._shown_lut:
-            self.view.set_lut(tab)
-            self._shown_lut = tab
+        if colour and self.colours is not None:
+            for c in self.linked:                       # a linked cube with the main cube's Stokes
+                c.paint_colour()
+            tab = self.colours.image_lut(s)
+            if tab is not self._shown_lut:
+                self.view.set_lut(tab)
+                self._shown_lut = tab
         last = self.last.get("image")
         if self.colour_key is not None and last is not None:
             ns = self.session.sizes["s"] if self.session.present["s"] else 1
             # named as the image's label is (ui.stokeslabel): "Stokes Q" with the four, nothing for one plane
-            self.colour_key.set(f"Stokes {STOKES[s]}" if ns == len(STOKES) else "", last[1], self.colours.lut(s),
-                                self.colours.maps[s], gamma=self.session.gamma(0, s))
+            self.colour_key.set(f"Stokes {STOKES[s]}" if ns == len(STOKES) else "", last[1],
+                                self.colours.lut(s) if colour and self.colours is not None else self.view.base_lut,
+                                self.colours.maps[s] if colour and self.colours is not None else None,
+                                gamma=self.session.gamma(0, s))
 
     # ---------------------------------------------------------------- gamma (core.levels; keys G, Shift+G, Ctrl+G)
     def gamma_target(self) -> tuple[int, int]:
@@ -634,6 +645,56 @@ class Shell(QtWidgets.QMainWindow):
         what = " ".join(t for t in (self.cubes[k].name if self.linked else "",
                                     f"Stokes {STOKES[s]}" if ns == len(STOKES) else "") if t)
         self.statusBar().showMessage(f"\u03b3 {g:.3g}{': ' + what if what else ''}  (G \u21e7G {mod_key()}G)", 3000)
+
+    # ---------------------------------------------------------------- the scale's menu and card (ui.scalekey)
+    def scale_levels(self, k: int, s: int) -> tuple[float, float]:
+        """The levels cube k's image at Stokes s is drawn with now: a panel of the 2x2 view's for the main cube when
+        that view is on, else the cube's image."""
+        if k == 0 and self.grid is not None and self.grid.isVisible():
+            v = self.grid.views[s]
+        else:
+            v = self.cubes[k].view
+        return float(v._lim[0]), float(v._lim[1])
+
+    def open_scale_card(self, k: int, s: int) -> ScaleCard:
+        """The card with the numbers of cube k at Stokes s, by its key (or, for the 2x2 view, at the image's top
+        left); one at a time."""
+        if self.scale_card is not None:
+            self.scale_card.close()
+        card = self.scale_card = ScaleCard(self, k, s)
+        key = self.cubes[k].key
+        w = key.parentWidget() if key.isVisible() else self.cubes[k].view.widget
+        at = w.mapTo(self, key.geometry().topLeft() if key.isVisible() else QtCore.QPoint(12, 12))
+        y = at.y() - card.height() - 8 if at.y() > self.height() // 2 else at.y() + key.height() + 8
+        card.move(max(0, min(at.x(), self.width() - card.width())), max(0, min(y, self.height() - card.height())))
+        card.show()
+        card.raise_()
+        card.setFocus()
+        return card
+
+    def scale_settings(self) -> dict:
+        """What the layout keeps of each cube's scale (ui.layout.LayoutStore.save_scale): by the cube's file name and
+        Stokes, (rule, lo, hi, gamma) where not as at start."""
+        st, out = self.session.state, {}
+        for k, s, rule, lo, hi in st.scale:
+            out[(self.cubes[k].scale_name(), s)] = [rule, lo, hi, 1.0]
+        for k, s, g in st.gamma:
+            out.setdefault((self.cubes[k].scale_name(), s), ["p1", 0.0, 0.0, 1.0])[3] = g
+        return {key: tuple(v) for key, v in out.items()}
+
+    def restore_scale(self, kept: dict) -> None:
+        """Each cube's scale as scale_settings() kept it, for the cubes of this session (by file name)."""
+        for c in self.cubes:
+            for s in range(c.ns if c.dataset.roles.s is not None else 1):
+                v = kept.get((c.scale_name(), s))
+                if v is None:
+                    continue
+                rule, lo, hi, g = v
+                try:
+                    self.session.set_scale(c.k, s, rule, lo, hi)
+                    self.session.set_gamma(c.k, s, g)
+                except ValueError as e:                 # a file edited by hand: that entry left out
+                    log.warning("scale of %s Stokes %d not restored: %r", c.name, s, e)
 
     def _gamma_changed(self) -> None:
         """The parts with a gamma that are the window's: the 2x2 view's panels, the slit's slices, the colour key."""
@@ -1587,7 +1648,10 @@ class Shell(QtWidgets.QMainWindow):
             store = self.layout_store.for_look(self.look.name)  # the glass look's own layout
             store.save(self, zoomed=ops is not None and ops.unzoomed is not None, look=self.look.name,
                        theme=self.theme)
+            store.save_scale(self.scale_settings())
         self._closing = True                            # the docks then say hidden: nothing to read any more
+        if self.scale_card is not None:                 # its filter on the application goes with it
+            self.scale_card.close()
         self._play.stop()
         self._mem.stop()
         self._off()

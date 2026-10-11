@@ -14,6 +14,8 @@ local Mac, Qt's own X11, the bridge, ...), as the prototype keeps them (app/view
 - A window with linked cubes (ROADMAP E8.1) keeps its geometry and panels apart: its images side by side want a
   wider window, and its panels have tabs a one-cube window does not (the look and the theme are shared). Its cubes'
   windows too (ROADMAP E8.3): which cubes are apart and the panels inside each one (Shell.cube_windows).
+- Each cube's scale, its limit rule, fixed levels and gamma per Stokes (Shell.scale_settings), by its file's base
+  name: for every way of displaying and every look, and kept for cubes not open now.
 """
 import os
 
@@ -123,6 +125,37 @@ class LayoutStore:
             tb.setVisible(not glass)
         return restored
 
+    SCALE_GROUP = f"scale/v{SCHEMA}"
+
+    def save_scale(self, kept: dict) -> None:
+        """Each cube's scale ({(file name, Stokes): (rule, lo, hi, gamma)}, Shell.scale_settings), the same for every
+        way of displaying and every look: it belongs to the data. A cube's entries are replaced as a whole; other
+        cubes' stay for when they are opened again."""
+        st = self._settings()
+        st.beginGroup(self.SCALE_GROUP)
+        for name in {n for n, _ in kept}:
+            st.remove(_scale_key(name))
+        for (name, s), (rule, lo, hi, g) in kept.items():
+            st.setValue(f"{_scale_key(name)}/{int(s)}", f"{rule} {float(lo)!r} {float(hi)!r} {float(g)!r}")
+        st.endGroup()
+        st.sync()
+
+    def scale(self) -> dict:
+        """What save_scale kept: {(file name, Stokes): (rule, lo, hi, gamma)}; entries that do not read are left
+        out."""
+        st = self._settings()
+        st.beginGroup(self.SCALE_GROUP)
+        out: dict = {}
+        for k in st.allKeys():
+            name, _, s = k.rpartition("/")
+            try:
+                rule, lo, hi, g = str(st.value(k)).split()
+                out[(_scale_name(name), int(s))] = (rule, float(lo), float(hi), float(g))
+            except ValueError:
+                continue
+        st.endGroup()
+        return out
+
     def forget(self) -> None:
         """Back to the first window's size and panel layout, for this way of displaying only (--reset-layout)."""
         st = self._settings()
@@ -130,3 +163,12 @@ class LayoutStore:
         st.remove(self.state_key)
         st.remove(self.cubes_key)
         st.sync()
+
+
+def _scale_key(name: str) -> str:
+    """A file name as one INI key part: its '/' and '\\' escaped (QSettings reads them as groups)."""
+    return name.replace("%", "%25").replace("/", "%2F").replace("\\", "%5C")
+
+
+def _scale_name(key: str) -> str:
+    return key.replace("%5C", "\\").replace("%2F", "/").replace("%25", "%")

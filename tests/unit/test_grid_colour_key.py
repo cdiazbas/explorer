@@ -197,9 +197,9 @@ def test_m_from_classic_in_the_2x2_view_brings_no_key(qapp, shell):
 
 
 def test_started_in_classic_the_key_made_in_the_2x2_view_stays_hidden(qapp, cube):
-    """The key is made the first time a look has colour: made while the 2x2 view is on, it is hidden all the same."""
+    """Every look has the key (ui.scalekey): in the 2x2 view it is hidden all the same, M or not."""
     with made(qapp, cube, "classic") as w:
-        assert w.colour_key is None
+        assert w.colour_key is not None
         fire(w, "5")
         fire(w, "M")                                    # modern: the key made now, over the panels
         settle(qapp, w)
