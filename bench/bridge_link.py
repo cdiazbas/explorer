@@ -57,6 +57,8 @@ def args():
     ap.add_argument("--link", default=None)
     ap.add_argument("--detach", action="store_true", help="the linked cube in a window of its own")
     ap.add_argument("--native", action="store_true", help="no bridge, no link: Qt's xcb straight on the X server")
+    ap.add_argument("--probe", action="store_true", help="after each step, the pixels the server shows that Qt "
+                    "no longer has, per region")
     ap.add_argument("--look", default="classic")
     ap.add_argument("--only", default=",".join(SCENARIOS))
     ap.add_argument("--label", default=None)
@@ -226,6 +228,16 @@ def run_app(a):
             out.update(hot=key.hot, lo=[g.x() + key.x_of(lo), g.y() + r.center().y()],
                        hi=[g.x() + key.x_of(hi), g.y() + r.center().y()],
                        glob=[g.x(), g.y(), key.width(), key.height()])
+        elif op == "probe":                             # what Qt has now, per window, to compare with the server
+            out["files"] = []
+            for rec in (br.windows if br is not None else ()):
+                if rec.w.isVisible():
+                    img = br._grab(rec.w, rec.w.rect())
+                    if img is not None:
+                        fn = os.path.join(io, f"probe_{rec.xid:x}.raw")
+                        with open(fn, "wb") as f:
+                            f.write(BR._pixels(img).copy().tobytes())
+                        out["files"].append([rec.xid, fn, img.width(), img.height()])
         elif op == "mark":
             events.append((time.time(), "mark", cmd.get("what", "")))
         elif op == "quit":
@@ -259,6 +271,7 @@ class Driver:
         self.io = tempfile.mkdtemp(prefix="bridgelink_io_")
         self.n = 0
         self.polls: list = []
+        self.probe = a.probe
 
     def cmd(self, op, timeout=30.0, **k):
         self.n += 1
@@ -320,6 +333,25 @@ class Driver:
         self.polls.append(time.time() - t0)
         return out
 
+    def stale(self):
+        """Pixels the server shows that are not what Qt has now, per region (a missed repaint), right after a step
+        settled (the periodic whole-window check, every second, would send them later)."""
+        np = self.np
+        r = self.cmd("probe")
+        out: dict = {}
+        for xid, fn, w, h in r["files"]:
+            i = next(k for k, ww in enumerate(self.windows) if ww["xid"] == xid)
+            x, y = self.windows[i]["glob"][:2]
+            qt = np.fromfile(fn, np.uint32).reshape(h, w)
+            got = np.frombuffer(self.root.get_image(x, y, w, h, self.X.ZPixmap, 0xFFFFFFFF).data,
+                                np.uint32).reshape(h, -1)[:, :w]
+            bad = ((qt ^ got) & 0xFFFFFF) != 0
+            for name, (j, rx, ry, rw, rh) in self.regions.items():
+                if j == i:
+                    out[name] = int(bad[ry:ry + rh, rx:rx + rw].sum())
+            out[f"window{i}"] = int(bad.sum())
+        return out
+
     def step(self, act, settle=True):
         """Do act() and watch every region until the screen is quiet: per region, first and last change (ms from
         the input) and the number of changes seen."""
@@ -345,7 +377,10 @@ class Driver:
             if (last_change is not None and now - ref > QUIET_S) or now > end or \
                     (last_change is None and now - t0 > 0.8):
                 break
-        return dict(t=t0, regions=seen)
+        out = dict(t=t0, regions=seen)
+        if self.probe:
+            out["stale"] = self.stale()
+        return out
 
 
 def scenario(drv, name, where):
