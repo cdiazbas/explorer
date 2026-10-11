@@ -645,6 +645,8 @@ class Shell(QtWidgets.QMainWindow):
         what = " ".join(t for t in (self.cubes[k].name if self.linked else "",
                                     f"Stokes {STOKES[s]}" if ns == len(STOKES) else "") if t)
         self.statusBar().showMessage(f"\u03b3 {g:.3g}{': ' + what if what else ''}  (G \u21e7G {mod_key()}G)", 3000)
+        if not self.statusBar().isVisibleTo(self):     # glass without F12: on the image's colour key, as C's map name
+            self.cubes[k].key.flash(f"\u03b3 {g:.3g}")
 
     # ---------------------------------------------------------------- the scale's menu and card (ui.scalekey)
     def scale_levels(self, k: int, s: int) -> tuple[float, float]:

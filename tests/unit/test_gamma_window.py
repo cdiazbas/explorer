@@ -163,3 +163,25 @@ def test_the_keys_are_on_the_sheet(window):
     w, _ = window
     keys = [k for k, _what, _b in w.action_registry.rows]
     assert "G  ⇧G" in keys and any(k.endswith("G") and k != "G  ⇧G" for k in keys)
+
+
+def test_in_glass_the_image_s_colour_key_says_the_new_gamma(window):
+    """In glass the status bar shows only with F12, so the message after G was never seen there: the colour key of the
+    image under the pointer says it for a moment, as it says C's map name; F12 off."""
+    from explorer.look import get_look
+
+    w, qapp = window
+    w.set_look(get_look("glass"))
+    spin(qapp, lambda: False, timeout=0.4)
+    assert not w.statusBar().isVisible()
+    w.main._hover(10, 10)
+    fire(w, "G")
+    qapp.processEvents()
+    main_note = w.main.key.note
+    w.linked[0]._hover(10, 10)
+    fire(w, "Shift+G")
+    qapp.processEvents()
+    print("glass: main key", main_note, "linked key", w.linked[0].key.note)
+    assert main_note == "γ 0.794" and w.linked[0].key.note == "γ 1.26"
+    w.set_look(get_look("classic"))
+    spin(qapp, lambda: False, timeout=0.4)              # glass's deferred calls done before the window closes
