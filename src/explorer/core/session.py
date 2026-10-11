@@ -87,8 +87,8 @@ class Session:
     def member_state(self, member: int, state: ViewState | None = None) -> ViewState:
         """The state as member k reads it: its t nearest in time to the main cube's (Member.t; a single frame at every
         t), its lambda and Stokes (the main's when linked), its panels ("spectra:k" as "spectra"; "image:k" as
-        "image", its image shown), no slit (the slit panel is the main cube's window's, whichever cube it reads:
-        core.slitreads). The main cube's state as it is."""
+        "image", its image shown; "slit:k" as "slit", its slit tab in front), no slit (its slit reads take the slit
+        from the whole state: core.slitreads). The main cube's state as it is."""
         st = state or self.store.state
         if member == 0:
             return st
@@ -190,6 +190,11 @@ class Session:
         (its slices follow it once it has two); None when no slit is being drawn. The prototype's variant D draws
         its live slices from the same points (_slitd_preview, app/viewer.py:1664). cube: as set_path's."""
         self.store.set(draft=None if points is None else self._clip(points), **self._cube("draft_cube", cube))
+
+    def set_slit_tabs(self, on: bool) -> None:
+        """A slit tab per cube (on), each reading its own cube's slices along the same slit, or one tab, of the cube
+        the slit was drawn on (core.slitreads)."""
+        self.store.set(slit_tabs=bool(on))
 
     def _cube(self, field: str, cube: int | None) -> dict:
         if cube is None:

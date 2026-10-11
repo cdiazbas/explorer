@@ -23,8 +23,9 @@ Results come back from other threads through Loop.post, and the Sink is called o
 The slit panel's reads and slices are SlitReads' (core.slitreads), which sees every notice first.
 A linked cube (ROADMAP E8.1) has a scheduler of its own (member=k): it reads the state as its cube does
 (Session.member_state: its lambda and Stokes, its panels), and a change reaches it only when its frame or its
-cursor changes (a single frame does not move with t). No slit reads and no 2x2 view: those are the main cube's
-scheduler's, whose slit reads follow the cube the slit was drawn on (ViewState.path_cube). Its
+cursor changes (a single frame does not move with t). No 2x2 view: that is the main cube's scheduler's. The slit
+reads (SlitReads) of each cube see every notice of the whole state: the main cube's follow the cube the slit was drawn
+on (ViewState.path_cube), and with a slit tab per cube (ViewState.slit_tabs) each cube's reads its own. Its
 image is a panel that can be closed: then no image is read nor read ahead, and the cursor's panels go on from the
 last image (for the padding under the cursor); shown again, the image of now.
 The spectra's reads that are not the cursor's (the first block for the units, the y-range sample) wait for the
@@ -107,7 +108,7 @@ class Scheduler:
         self._panels = st.panels                        # the panels shown at the last notice
         self._seen = st                                 # a linked cube's state at the last notice
         self._flock = threading.Lock()
-        self.slit = SlitReads(session, sink, self._track, self._when_read) if member == 0 else None
+        self.slit = SlitReads(session, sink, self._track, self._when_read, cube=member)
         self._off = session.store.subscribe(self._on_change)
         self._units_read = False
         if "spectra" in st.panels:
@@ -146,8 +147,7 @@ class Scheduler:
     def close(self) -> None:
         """No more work: what is due later (the y-range sample) or still on its way is dropped."""
         self._closed = True
-        if self.slit is not None:
-            self.slit.close()
+        self.slit.close()
         self._off()
 
     # ---------------------------------------------------------------- bookkeeping for tests and idle checks
@@ -181,12 +181,11 @@ class Scheduler:
 
     # ---------------------------------------------------------------- changes of state
     def _on_change(self, st: ViewState, changed: frozenset) -> None:
+        self.slit.on_change(st, changed)               # the whole state: the slit is not in a member's (member_state)
         if self.member:
             st, changed = self._as_member(st)
             if not changed:
                 return
-        if self.slit is not None:
-            self.slit.on_change(st, changed)
         came, self._panels = st.panels - self._panels, st.panels
         if "spectra" in came:                           # shown for the first time: what waited for it
             if not self._units_read:

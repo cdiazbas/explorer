@@ -434,3 +434,90 @@ def test_a_slit_drawn_on_a_linked_cube_reads_that_cube_at_its_own_lambda(cube, t
     finally:
         ds.close()
         drv.close()
+
+
+class SliceRec(Recorder):
+    """The slit's pixels and the last slices given (a linked cube's sink: its slit tab)."""
+
+    def __init__(self):
+        super().__init__()
+        self.pix = self.ts = self.sl = None
+
+    def slit_path(self, pix):
+        super().slit_path(pix)
+        self.pix = pix
+        if pix is None:
+            self.ts = self.sl = None
+
+    def slit(self, ts, sl, s, ts_levels, sl_levels):
+        super().slit(ts, sl, s, ts_levels, sl_levels)
+        self.ts = ts if ts is not None else self.ts
+        self.sl = sl if sl is not None else self.sl
+
+
+def idle(drv, *scheds):
+    """The driver's scheduler and these idle: nothing pending, nothing in flight."""
+    every = (drv.scheduler, *scheds)
+    for _ in range(1000):
+        futs = [f for s in every for f in s.in_flight()]
+        if futs:
+            cf.wait(futs, timeout=30)
+        if drv.loop.pump() == 0 and not any(s.in_flight() for s in every):
+            return
+    raise AssertionError("not idle")
+
+
+@pytest.mark.parametrize("linked_file", ["per-pixel", "frames"])
+def test_a_slit_tab_per_cube_reads_each_cube_along_the_same_slit(cube, tmp_path, linked_file):
+    """With a slit tab per cube (ViewState.slit_tabs) each cube's scheduler reads its own cube's slices along the
+    slit, whichever image it was drawn on: the main cube's tab the main cube's, the linked cube's its own, at its own
+    lambda. A tab behind reads nothing until it comes in front (the drawn-on cube's blocks excepted: its tab comes in
+    front with the slit). Off, one tab as before: the main cube's reads follow the cube the slit was drawn on, and
+    the linked cube's read nothing."""
+    d = synth.write_dataset(tmp_path, "other", shape=(SHAPE[0], SHAPE[1], 7, SHAPE[3], SHAPE[4]), seed=4,
+                            icube=False)
+    other = fits.getdata(d["im"]).astype(np.float32)
+    drv = Driver.open(cube[0])
+    ds = Dataset.open(d["im"], no_sp=linked_file == "frames", executors=drv.dataset.executors)
+    rec = SliceRec()
+    sched = None
+    try:
+        k = drv.session.add(ds)
+        sched = Scheduler(drv.session, rec, member=k)
+        drv.session.set_slit_tabs(True)
+        drv.show("slit")                                # the main cube's tab in front, the linked cube's behind
+        drv.session.set_path(B, 0)                      # drawn on the main image
+        idle(drv, sched)
+        behind = list(sched.slit.reads)
+        drv.session.set_path(A, k)                      # drawn on the linked cube's image
+        idle(drv, sched)
+        main = drv.state()
+        ts, sl = want(cube[1], A, main.t, main.s, main.l)
+        print(linked_file, "behind, a slit drawn on the main image: reads", behind, "; drawn on its own: reads",
+              len(sched.slit.reads), "slices shown", rec.ts is not None)
+        np.testing.assert_array_equal(drv.shown.slit_ts, ts)        # the main tab: the main cube's
+        np.testing.assert_array_equal(drv.shown.slit_sl, sl)
+        assert behind == [] and rec.pix is not None and rec.ts is None
+        assert len(sched.slit.reads) == (0 if linked_file == "frames" else 1)
+        drv.session.show(f"slit:{k}")                   # its tab in front: its own cube's slices
+        idle(drv, sched)
+        mine = drv.session.member_state(k)
+        ts, sl = want(other, A, mine.t, mine.s, mine.l)
+        np.testing.assert_array_equal(rec.ts, ts)
+        np.testing.assert_array_equal(rec.sl, sl)
+        drv.session.set_member_index(k, "l", 5)
+        idle(drv, sched)
+        np.testing.assert_array_equal(rec.ts, want(other, A, mine.t, mine.s, 5)[0])
+        drv.session.set_slit_tabs(False)                # one tab: the cube the slit was drawn on, in the main one
+        idle(drv, sched)
+        assert rec.pix is None and rec.ts is None
+        np.testing.assert_array_equal(drv.shown.slit_ts, want(other, A, mine.t, mine.s, 5)[0])
+        drv.session.set_slit_tabs(True)
+        idle(drv, sched)
+        np.testing.assert_array_equal(drv.shown.slit_ts, want(cube[1], A, main.t, main.s, main.l)[0])
+        np.testing.assert_array_equal(rec.ts, want(other, A, mine.t, mine.s, 5)[0])
+    finally:
+        if sched is not None:
+            sched.close()
+        ds.close()
+        drv.close()

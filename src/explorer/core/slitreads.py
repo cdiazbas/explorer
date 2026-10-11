@@ -10,7 +10,10 @@ nearest pixel (data.slits). Two slices along it share the position axis: the tim
 and lambda) and the spectral slice (lambda x position, at this Stokes and t). They are the slices of the cube the slit
 was drawn on (ViewState.path_cube, draft_cube): with linked cubes (ROADMAP E8.1) on the main cube's grid, the same
 pixels of that member, at its own t, lambda and Stokes (Session.member_state); a map without lambda gives a spectral
-slice of one row. Another cube is another slit: its results for the one before are dropped.
+slice of one row. Another cube is another slit: its results for the one before are dropped. With a slit tab per cube
+(ViewState.slit_tabs) each cube's scheduler has a SlitReads of its own cube (cube=k), whose tab is the panel
+"slit:k" ("slit" the main cube's): every one reads the same slit on its cube, and none follows the cube it was drawn
+on; without, the main cube's alone reads, the cube the slit was drawn on, and the others read nothing.
 
 With a per-pixel file:
 - the (s, t, lambda) block of each pixel along the slit, read in runs of neighbouring pixels in a row on the slab
@@ -40,6 +43,7 @@ the latest pixel's, as no paint comes between them (6173 on bellatrix, offscreen
 computes the path's pixels (a few hundred points) and draws. Nothing is read while the panel's tab is behind
 ("slit" not in ViewState.panels), except the blocks of a slit just finished: its tab comes in front with it (the
 shell's _slit_shown, as the prototype's _slit_changed, 1745), a notice later, and the read no longer waits for it.
+With a tab per cube, only the drawn-on cube's tab comes in front: the others read when theirs is brought in front.
 """
 import time
 from collections import OrderedDict
@@ -63,15 +67,18 @@ DRAFTS = 64                 # stages of the slit being drawn whose late results 
 class SlitReads:
     """Owned by the Scheduler, which passes on every notice of the Store (on_change) and tracks its futures."""
 
-    def __init__(self, session, sink, track, when_read):
-        """track(fut) -> fut and when_read(fut, fn): the Scheduler's, so its in_flight() covers the slit's work."""
+    def __init__(self, session, sink, track, when_read, cube: int = 0):
+        """track(fut) -> fut and when_read(fut, fn): the Scheduler's, so its in_flight() covers the slit's work.
+        cube: the member whose tab this is (ViewState.slit_tabs); the main cube's (0) is the one tab without them."""
         self.session, self.sink = session, sink
-        self.cube = 0                                   # the member read: the one the slit shown was drawn on
-        self.ds = session.main
+        self.tab = int(cube)                            # its tab's cube; its panel, "slit" or "slit:k"
+        self.panel = f"slit:{self.tab}" if self.tab else "slit"
+        self.cube = self.tab                            # the member read: its tab's, or the one the slit was drawn on
+        self.ds = session.members[self.cube].dataset
         self.loop = session.store.loop
         self._track, self._when_read = track, when_read
         self.gens, self.shown = Generations(), ShownGate()
-        self.pts = None                                 # the points of the slit shown, (x, y)
+        self.pts: tuple | None = None                   # the points of the slit shown, (x, y)
         self.pix: tuple[np.ndarray, np.ndarray] | None = None   # its pixels (iy, ix), one per sample
         self.path_id = 0                                # changes with the pixels: a result for another slit is dropped
         self._drafts: set[int] = set()                  # the path_ids that were stages of a slit being drawn
@@ -103,14 +110,14 @@ class SlitReads:
     def on_change(self, st: ViewState, changed: frozenset) -> None:
         if self._closed:
             return
-        front = "slit" in st.panels
+        front = self.panel in st.panels
         came, self._front = front and not self._front, front
-        if changed & {"path", "draft", "path_cube", "draft_cube"} and self._set_path(st):
+        if changed & {"path", "draft", "path_cube", "draft_cube", "slit_tabs"} and self._set_path(st):
             self._rest += 1                             # a rest timer for an older slit does nothing
             if self.pix is None:
                 return
             if not front:
-                if self.per_pixel and not self._drawing(st):
+                if self.per_pixel and not self._drawing(st) and self.cube == st.path_cube:
                     self._want = self.pix               # its tab comes in front with it: the read starts a pass early
                     self._kick()
                 return
@@ -136,7 +143,12 @@ class SlitReads:
     def _set_path(self, st: ViewState) -> bool:
         """The slit shown, from the state; True when its pixels changed (the sink then has them)."""
         pts = st.draft if self._drawing(st) else st.path
-        cube = (st.draft_cube if self._drawing(st) else st.path_cube) if pts is not None else self.cube
+        if st.slit_tabs:                                # each tab its own cube's
+            cube = self.tab
+        elif self.tab:                                  # one tab, the main cube's: this one shows nothing
+            pts, cube = None, self.cube
+        else:
+            cube = (st.draft_cube if self._drawing(st) else st.path_cube) if pts is not None else self.cube
         if not self._drawing(st):
             self._drafts = set()                        # drawn or given up: no late result of its stages any more
         if pts == self.pts and cube == self.cube:
@@ -227,7 +239,7 @@ class SlitReads:
         if self._closed:
             return
         st = self.session.state
-        if self.pix is not None and "slit" in st.panels:
+        if self.pix is not None and self.panel in st.panels:
             self._slices(st)
         self._kick()
 
