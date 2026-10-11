@@ -4723,3 +4723,18 @@ de Stokes ni bajo el aviso de la rendija (con una rendija a medio dibujar tampoc
 - 12 escenarios: 0 px frente a la base (la base contra sí misma: el fichero ruidoso de siempre, 865 px).
 
 **Por decidir:** la leyenda de classic en el tema claro empieza en blanco (la entrada 0 de `base_lut` es el relleno). Se deja así para no cambiar el arranque.
+
+### 2026-10-11 (12): λ₀ en la lectura de λ y en los ejes Δλ; el número de pasos de t con su glifo (ROADMAP E5.35)
+
+**λ₀** (el usuario: «λ₀ + X Å», no «Δλ +X Å»). La lectura de la barra dice ahora «λ₀ − 0.206 Å». Se escribe como una suma (el signo, separado) para que se lea como la longitud de onda, λ = λ₀ + Δλ. Su ayuda da λ₀ = 6173.341 Å y su línea. λ₀ es `axes.lam0_nm`: la del laboratorio, en aire, por WAVEBAND o por la única línea dentro del barrido en los LP; es la misma de la que miden Δλ y el eje de velocidades del Spectrum. Va con tres decimales en todas partes, para que λ₀ + Δλ dé la λ de la línea de estado (6173.341 − 0.206 = 6173.135).
+
+**Los ejes:** el Spectrum, el λ–t y el corte espectral de la rendija rotulan «Δλ [Å] from λ₀ = 6173.341 Å». Se compararon tres redacciones sobre datos reales. «Δλ + 6173.34 Å [Å]» se leía como si el eje fuera Δλ+6173.
+
+**El número de pasos de t** lleva delante un glifo dibujado como los de `ui/icons.py`: una pequeña λ–t cortada en filas («grid»). Las otras candidatas: «rows» parecía el menú ≡, «comb» una E y «dots» los ⋮. Se cambia en una línea (`icons.STEPS`). La ayuda empieza por «t steps shown at most».
+
+**Medido** (bellatrix, sin pantalla):
+- 3 pruebas nuevas fallan antes y pasan después;
+- grupos toolbar, spectra, lambda_t, slit_panel, titlebar, time_cap, labels, names, without_lambda, status, playback, look y polish: pasan (118 + 41; 79 + 5 tras el glifo final);
+- capturas 1400×900 con el 6173 real: solo cambian la lectura (338 px), los rótulos Δλ (804 + 804, 811 y el de la rendija, 878) y el glifo (147). El mismo código dos veces: 0 px. Un cubo sin λ: solo el glifo.
+
+**Sin explicar:** en una tanda, el eje izquierdo de la curva de un cubo sin λ salió 7 px más ancho en algunas ejecuciones del mismo código de `main`. No viene de este cambio.
