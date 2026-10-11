@@ -17,7 +17,7 @@ from PySide6 import QtCore
 
 from ..core.scheduler import Scheduler
 from ..data.axes import STOKES, unit_text
-from ..data.names import slice_names
+from ..data.names import slice_names, value_name
 from . import glass
 from .cards import CARD, CARD_LIGHT
 from .gestures import Gestures
@@ -96,12 +96,16 @@ class CubeView:
         self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light)
         self.view.widget.scene().sigMouseClicked.connect(self._click)
         r = ds.roles
-        # a cube without lambda has no spectra
-        self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, ds.axes, light=light) \
-            if r.l is not None else None
         # its axis other than t named as data.names says (not lambda unless known to be): a linked cube's, and the
         # main cube's with one plane along it or none; the main cube's with lambda as it always was
         self.slices = slice_names(r, ds.axes, getattr(ds, "path", "")) if k or r.l is None or r.nl <= 1 else None
+        # a cube without lambda has no spectra; one whose axis is not known to be lambda has them named as its
+        # lambda-t and slit are, and its values by what they are when it has no Stokes
+        other = self.slices if self.slices is not None and not self.slices.spectral else None
+        self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, ds.axes, light=light,
+                                    label=other.label if other else None,
+                                    value=value_name(getattr(ds, "path", ""), ds.axes) if other else None) \
+            if r.l is not None else None
         # lambda-t needs t; with one plane along the other axis it is one cell wide, a curve against t
         self.lambda_t: LambdaTPanel | TimeCurve | None = None
         if r.t is not None and self.slices is not None and self.slices.mapped:

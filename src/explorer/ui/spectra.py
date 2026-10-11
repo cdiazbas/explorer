@@ -173,9 +173,13 @@ class ResizeFreezer(QtCore.QObject):
 class SpectraPanel:
     """ns plots in a GraphicsLayoutWidget; widget: what goes in the dock."""
 
-    def __init__(self, ns: int, nl: int, axes, light: bool = False):
-        """axes: the cube's physical axes (data.axes.Axes); light: dark ink on a light background."""
+    def __init__(self, ns: int, nl: int, axes, light: bool = False, label: str | None = None,
+                 value: str | None = None):
+        """axes: the cube's physical axes (data.axes.Axes); light: dark ink on a light background; label: the x axis
+        in index units of an axis not known to be lambda ("Blos index", data.names.slice_names), "λ index" without;
+        value: what a cube without Stokes holds when it is not intensity along lambda ("Blos"), "I" without."""
         self.ns, self.nl, self.ax = ns, nl, axes
+        self.value = value or "I"
         dl = axes.dlam_A() if axes is not None else None
         self.physical = dl is not None and len(dl) == nl
         self.xl = np.asarray(dl, float) if self.physical else np.arange(nl, dtype=float)
@@ -248,7 +252,7 @@ class SpectraPanel:
         # last velocity label and the top-right axis title
         self.w.ci.setContentsMargins(9, 9, PanelLock.SIZE + PanelLock.MARGIN, 9)
         for p in self.plots[-ncol:]:
-            p.setLabel("bottom", "Δλ [Å]" if self.physical else "λ index")
+            p.setLabel("bottom", "Δλ [Å]" if self.physical else label or "λ index")
         if vk:
             for p in self.plots[:ncol]:
                 p.setLabel("top", "v [km s⁻¹]")      # Unicode, as every other unit: <sup> drew thinner digits
@@ -261,7 +265,7 @@ class SpectraPanel:
         cont = getattr(self.ax, "cont", None)
         bunit = getattr(self.ax, "bunit", None)
         for k, p in enumerate(self.plots):
-            name = STOKES[k] if self.ns > 1 else "I"
+            name = STOKES[k] if self.ns > 1 else self.value
             if k == 0 or cont is None:
                 e = f"10{str(int(np.log10(self.iscale))).translate(SUP)} " if self.iscale else ""
                 u = unit_text(bunit) if bunit else ""

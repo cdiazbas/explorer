@@ -98,13 +98,19 @@ class SliceNames(NamedTuple):
 KNOWN_LAMBDA = ("header", "--axes", "SOLARNET order")   # Roles.how that name lambda; else it is a guess
 
 
-def value_label(path, axes=None) -> str:
-    """What a cube's values are, for the axis of a curve: its BTYPE, else the word naming a map in its file name, else
-    "value"; with BUNIT in brackets when the header gives it."""
+def value_name(path, axes=None) -> str:
+    """What a cube's values are, without their unit: its BTYPE, else the word naming a map in its file name, else
+    "value"."""
     btype = str(getattr(axes, "btype", None) or "").strip()
     s = stem(path)
     word = re.split(r"[^A-Za-z]+", s)[0].lower() if s else ""
-    q = btype or QUANTITIES.get(word) or "value"
+    return btype or QUANTITIES.get(word) or "value"
+
+
+def value_label(path, axes=None) -> str:
+    """What a cube's values are, for the axis of a curve: value_name, with BUNIT in brackets when the header gives
+    it."""
+    q = value_name(path, axes)
     unit = str(getattr(axes, "bunit", None) or "").strip()
     return f"{q} [{unit}]" if unit else q
 

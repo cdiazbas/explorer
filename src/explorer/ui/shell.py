@@ -33,7 +33,7 @@ from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
 from ..data.axes import STOKES
-from ..data.names import cube_names
+from ..data.names import cube_names, slice_names, value_name
 from ..look import LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
 from ..obs import get_logger
@@ -158,6 +158,7 @@ class Shell(QtWidgets.QMainWindow):
         grid, outlined on every image (ui.mask); None: nothing of it is made."""
         super().__init__()
         self.dataset = dataset
+        self._value_name: str | None = None             # value_name, once
         self.images = 1 + len(linked)                   # side by side (ui.docks: the first window's width)
         self.t0 = time.perf_counter() if t0 is None else t0
         self.first_image_s: float | None = None
@@ -1601,9 +1602,19 @@ class Shell(QtWidgets.QMainWindow):
         ns = self.session.sizes["s"] if self.session.present["s"] else 1
         iscale = self.spectra.iscale if self.spectra is not None else None
         self.status.setText(pixel_text(self.dataset.axes, ns, y, x, st.t, st.l, st.s, v, ic, iscale, st.locked,
-                                       present))
+                                       present, self.value_name()))
         if self.glass is not None:
             self.glass.readout()
+
+    def value_name(self) -> str:
+        """What the main cube's values are called in the status bar without Stokes: I along an axis known to be
+        lambda, else what the cube shows (data.names.value_name: "Blos", "value"), as its curve's axis says."""
+        if self._value_name is None:
+            ds = self.dataset
+            path = getattr(ds, "path", "")
+            spectral = slice_names(ds.roles, ds.axes, path).spectral
+            self._value_name = "I" if spectral else value_name(path, ds.axes)
+        return self._value_name
 
     def set_diagnostics(self, on: bool) -> None:
         """F12: the cube, the storage probe, memory and the image cache, at the right of the status bar."""

@@ -20,11 +20,12 @@ def padding(v0: float, s: int) -> bool:
 
 
 def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, ic: float | None,  # noqa: E741
-               iscale: float | None, locked: bool, present=("t", "l")) -> str:
+               iscale: float | None, locked: bool, present=("t", "l"), value: str = "I") -> str:
     """The cursor's pixel, fields separated by thin dots: helioprojective x, y when the header gives the field's
     corners (else the pixel), t in UT (else its index), lambda in Å, delta-lambda and the Doppler velocity (else the
     tuning index), the value: Q U V in % of this pixel's I_c when it is known, I (and Q U V without I_c) in its
-    power of ten of BUNIT; "no data (padding)" on padding; "locked" when the cursor is."""
+    power of ten of BUNIT; "no data (padding)" on padding; "locked" when the cursor is. The value is named by its
+    Stokes when the cube has them, else by value ("I", or what a cube without lambda shows: "Blos")."""
     f = []
     xy = ax.arcsec(y, x, t) if ax is not None and ax.corners is not None else None
     f.append(f"x {fmt_signed(xy[0], 1)}″  y {fmt_signed(xy[1], 1)}″" if xy else f"x {x}  y {y}")
@@ -39,7 +40,7 @@ def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, i
             f.append(f"v {fmt_signed(ax.vel_kms(l), 2)}{NB}km s⁻¹")
         else:
             f.append(f"λ {l}")
-    name = STOKES[s] if ns > 1 else "I"
+    name = STOKES[s] if ns > 1 else value
     bunit = unit_text(ax.bunit) if ax is not None and ax.bunit else ""
     if padding(v0, s):
         f.append(f"{name}  no data (padding)")
