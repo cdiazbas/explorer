@@ -1029,3 +1029,38 @@ def test_a_cube_in_its_own_window_shows_its_own_slit_panel(window):
     spin(qapp, lambda: False, timeout=0.6)
     assert list(w.slit_tabs.keys) == ["slit", "slit:1", "slit:2"] and not pane.isVisible()
     w.clear_slit()
+
+
+def test_a_cube_s_window_offers_its_slit_panel_only_with_a_slit(window):
+    """Each cube in a window of its own: Panels lists its slit panel ("other_im · Slit") but, as the main window's
+    Slit, enabled only while there is a slit; without one, a show (as a saved layout's restore asks) leaves it
+    hidden: it was an empty panel."""
+    w, qapp = window
+    other = w.linked[0]
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.6)
+    menu = w.nav.panels.menu()
+
+    def entry():
+        menu.aboutToShow.emit()
+        return [a for a in menu.actions() if a.text() == f"{other.name} · Slit"]
+
+    pane = other.panes["slit:1"]
+    before = entry()
+    offered = [a.isEnabled() for a in before]
+    main_offered = w.slit_dock.toggleViewAction().isEnabled()
+    pane.show()
+    qapp.processEvents()
+    shown_without = pane.isVisible()
+    draw_slit(w, w.main, (5.2, 6.7), (30.4, 40.1))
+    assert spin(qapp, lambda: w.slit_panel.pix is not None and pane.isVisible()), "no slit"
+    with_slit = [a.isEnabled() for a in entry()]
+    w.clear_slit()
+    spin(qapp, lambda: False, timeout=0.3)
+    cleared = ([a.isEnabled() for a in entry()], pane.isVisible())
+    print("no slit: entry enabled", offered, "(main's", main_offered, ") shown by a show", shown_without,
+          "| with a slit", with_slit, "| cleared", cleared)
+    assert offered == [False] and not main_offered and not shown_without
+    assert with_slit == [True] and cleared == ([False], False)
+    w.detach_action.setChecked(False)
+    spin(qapp, lambda: False, timeout=0.3)

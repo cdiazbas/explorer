@@ -371,8 +371,11 @@ class LinkedCube(CubeView):
                 lay.addWidget(widget)
                 widget.show()                           # a tab behind was hidden
                 pane.setFloating(False)
-                # its slit panel shown while there is a slit (Shell._slit_tab), with a tab per cube
-                pane.setVisible(not key.startswith("slit") or (slit and self.shell.slit_dock.allowed()))
+                # its slit panel shown while there is a slit (Shell._slit_tab), with a tab per cube, and offered in
+                # Panels only then, as the main window's Slit
+                if key.startswith("slit"):
+                    pane.toggleViewAction().setEnabled(slit and self.shell.slit_dock.allowed())
+                pane.setVisible(not key.startswith("slit") or pane.toggleViewAction().isEnabled())
             else:
                 self.panes[key].hide()
                 if not key.startswith("slit") or slit:
@@ -380,15 +383,24 @@ class LinkedCube(CubeView):
         self._image_shown(None)
 
     def show_slit(self, on: bool) -> None:
-        """As a window of its own, its slit panel shown there (on) or not; docked, its slit tab is the main window's."""
+        """As a window of its own, its slit panel shown there (on) and offered in Panels, or neither; docked, its slit
+        tab is the main window's."""
         pane = self.panes.get(f"slit:{self.k}")
-        if self.windowed and pane is not None and pane.isHidden() == bool(on):
+        if not self.windowed or pane is None:
+            return
+        pane.toggleViewAction().setEnabled(bool(on))
+        if pane.isHidden() == bool(on):
             pane.setVisible(bool(on))
 
     def _pane(self, key: str, title: str) -> QtWidgets.QDockWidget:
         """The dock of one of its panels in its frame, made the first time: below the one before it (lambda-t below
-        the spectra), right of the image; dressed as the main window's panels (Shell.dress)."""
-        d = docks.dock(self.frame, title, None, key)
+        the spectra), right of the image; dressed as the main window's panels (Shell.dress). Gated (docks.GatedDock) as
+        the main window's: its slit panel shown only while offered (show_slit), not by a saved layout's restore."""
+        d = docks.dock(self.frame, title, None, key, cls=docks.GatedDock)
+        assert isinstance(d, docks.GatedDock)
+        if key.startswith("slit"):
+            d.toggleViewAction().setEnabled(False)
+            d.allowed = d.toggleViewAction().isEnabled
         before = list(self.panes.values())
         if before:
             self.frame.splitDockWidget(before[-1], d, QtCore.Qt.Orientation.Vertical)
