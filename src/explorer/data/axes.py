@@ -239,10 +239,17 @@ def from_series(layout) -> Axes:
 
         with fits.open(layout.path, memmap=False, lazy_load_hdus=True) as h:
             hd = h[layout.hdus[0]].header
-            ax.bunit, ax.btype = hd.get("BUNIT"), hd.get("BTYPE")
+            ax.bunit, ax.btype = text(hd, "BUNIT"), text(hd, "BTYPE")
     except Exception as e:                                          # never block opening a cube
         ax.source.append(f"header not read: {type(e).__name__}: {e}")
     return ax
+
+
+def text(hd, key: str) -> str | None:
+    """A header card that the standard makes a string (BUNIT, BTYPE), stripped; None when absent, blank or not text:
+    an unquoted BUNIT = T is FITS's logical true, which astropy reads as True and a label would show as "[True]"."""
+    v = hd.get(key)
+    return v.strip() or None if isinstance(v, str) else None
 
 
 def from_hdul(h) -> Axes:
@@ -257,8 +264,8 @@ def from_hdul(h) -> Axes:
 
 def _read(h, ax: Axes) -> None:
     hd = h[0].header
-    ax.bunit = hd.get("BUNIT")
-    ax.btype = hd.get("BTYPE")
+    ax.bunit = text(hd, "BUNIT")
+    ax.btype = text(hd, "BTYPE")
     # line: WAVEBAND -> laboratory wavelength
     wb = hd.get("WAVEBAND")
     if wb is not None and _norm(wb) in LINES:

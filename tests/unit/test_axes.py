@@ -39,6 +39,26 @@ def test_axes_of_a_synthetic_sstred_header(cube):
     assert ax.distortion is None
 
 
+def test_bunit_and_btype_are_read_as_text(cube, tmp_path):
+    """BUNIT = T unquoted (a simulation's tesla) is FITS's logical true, which astropy reads as True: dropped, so a
+    curve says "bz", not "bz [True]"; text stays text, a blank one is none."""
+    from explorer.data.names import value_label
+
+    def edit(bunit, btype):
+        def f(h):
+            h["BUNIT"], h["BTYPE"] = bunit, btype
+        return f
+
+    bz = axes.from_fits(_rewrite(cube, tmp_path / "bz.fits", edit(True, "bz")))
+    g = axes.from_fits(_rewrite(cube, tmp_path / "g.fits", edit(" G ", "Blos")))
+    blank = axes.from_fits(_rewrite(cube, tmp_path / "b.fits", edit("  ", False)))
+    print("bz", repr(bz.bunit), repr(value_label("bz.fits", bz)), "| G", repr(g.bunit), "| blank", repr(blank.bunit),
+          repr(blank.btype))
+    assert bz.bunit is None and bz.btype == "bz" and value_label("bz.fits", bz) == "bz"
+    assert g.bunit == "G" and value_label("g.fits", g) == "Blos [G]"
+    assert blank.bunit is None and blank.btype is None
+
+
 def test_continuum_from_an_isolated_tuning_without_prpara(cube, tmp_path):
     ax = axes.from_fits(_rewrite(cube, tmp_path / "n.fits", lambda h: h.remove("PRPARA1")))
     assert ax.cont is None                          # 5 tunings: the last is 2x the median step away, not > 4x
