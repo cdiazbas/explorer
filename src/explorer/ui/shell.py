@@ -603,13 +603,6 @@ class Shell(QtWidgets.QMainWindow):
         self.set_look(get_look(nxt))
         self.statusBar().showMessage(f"{self.look.name} look (M switches)", 3000)
 
-    def toggle_panels(self) -> None:
-        """I: every panel hidden, or shown again (the glass look's; its panels float beside the window)."""
-        if self.glass is None:
-            self.statusBar().showMessage("I: the glass look's (M)", 3000)
-            return
-        self.glass.toggle_panels()
-
     def maps_for(self, s: int) -> ColormapRegistry | None:
         """The colour maps Stokes s is drawn through, or None: the image's plain grey (base_lut). A look with the
         colour part draws every Stokes through its map; one with cmap alone (classic) only a Stokes off grey, so it
@@ -1280,7 +1273,6 @@ class Shell(QtWidgets.QMainWindow):
         # always bound: the terminal's keys are read once, and the look can change while the window runs
         rows += [("M", "look: classic \u2192 modern \u2192 glass", ((K.Key_M, self.toggle_look),)),
                  ("T", "theme: dark \u21c4 light", ((K.Key_T, self.toggle_theme),)),
-                 ("I", "panels: hide all, show again (glass look)", ((K.Key_I, self.toggle_panels),)),
                  ("C  \u21e7C", "colours: next, previous map for the Stokes shown",
                   (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1))))]
         rows += [("Esc", "release the cursor; while a slit is drawn, cancel it (first closes this sheet)",

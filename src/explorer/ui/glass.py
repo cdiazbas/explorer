@@ -8,10 +8,10 @@ prototype's app/look_glass.py, its floating panels (its default; the column of c
   in the image's own colour (near-black; near-white in the light theme), lit from above, with a rim and the accent's
   light along their top edge, and a title of their own (PanelSkin, PanelTitle). The window's title bar and edge take
   the same while glass is worn: the windows read as one set, on the image's black (a smoked grey parted the panels
-  from it). They move, resize, close and dock back as any floating panel; I hides and shows them all, Panels one by
-  one, the reset button places them again. Stacked beside the window: 52/48, or 40/30/30 with the slit's
-  (look_glass.py:572); S puts the slit's below lambda-t when the monitor has room there, else the three are stacked
-  again (look_glass.py:604-618).
+  from it). They move, resize, close and dock back as any floating panel; the Panels menu shows and hides each, the
+  reset button places them again. Stacked beside the window: 52/48, or 40/30/30 with the slit's (look_glass.py:572);
+  S puts the slit's below lambda-t when the monitor has room there, else the three are stacked again
+  (look_glass.py:604-618).
 - The toolbar's controls float in one compact glass bar at the bottom of the image, two rows. It hides after HIDE_MS
   without a mouse move, wheel or key, and comes back on the next one; it stays while in use (AutoHide).
 - The cursor's readout is the window's title while the pointer is on the image or the cursor is locked; the status
@@ -451,7 +451,6 @@ class GlassChrome:
         self.skins: list[PanelSkin] = []
         self._watches: list[_Watch] = []
         self._was: dict = {}
-        self._hidden: list = []
         self._tinted = self._sheet = None
         self._sheets: dict = {}
 
@@ -875,18 +874,6 @@ class GlassChrome:
             y += h + GAP
         if hasattr(w, "place_detached"):             # linked images in windows of their own: beside the column
             w.place_detached()
-
-    def toggle_panels(self) -> None:
-        """I: every panel hidden, or those shown before back (look_glass.py:622-632); the slit's never without a slit
-        (docks.GatedDock), as the prototype's default of spectra and lambda-t."""
-        shown = [d for d in self.docks() if not d.isHidden()]
-        if shown:
-            self._hidden = shown
-            for d in shown:
-                d.hide()
-        else:
-            for d in self._hidden or self.docks():
-                d.show()
 
     def reset(self) -> None:
         """The reset button: the whole image, and the panels shown and placed again; the slit's only with a slit

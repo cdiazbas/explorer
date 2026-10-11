@@ -107,13 +107,15 @@ def test_the_slit_panel_wears_the_glass_skin_and_three_panels_do_not_overlap(qap
     assert not overlaps(three), [d.frameGeometry().getRect() for d in three]
 
 
-def test_i_hides_and_shows_the_slits_panel_with_the_others_and_reset_places_it_again(qapp, shell):
+def test_panels_hides_and_shows_the_slits_panel_as_the_others_and_reset_places_it_again(qapp, shell):
     w = shell
     make(qapp, w)
     three = [w.spec_dock, w.lt_dock, w.slit_dock]
-    w.toggle_panels()
+    for d in three:                                     # Panels → each entry
+        d.toggleViewAction().trigger()
     assert all(d.isHidden() for d in three)
-    w.toggle_panels()
+    for d in three:
+        d.toggleViewAction().trigger()
     assert not any(d.isHidden() for d in three)
     w.slit_dock.close()                                 # its own close button
     w.reset_panels()

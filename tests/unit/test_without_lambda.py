@@ -294,9 +294,9 @@ def test_a_single_tuning_linked_cube_in_its_own_window_opens_its_spectrum_only_f
         close()
 
 
-def test_glass_s_i_brings_back_a_single_tuning_s_spectrum_closed_by_its_mark(qapp, cubes):
-    """One lambda point in glass: its Spectrum, opened from Panels and closed by its close mark, comes back with I (all
-    panels shown again), as Panels brings it back; a reset still forgets it."""
+def test_glass_s_panels_brings_back_a_single_tuning_s_spectrum_closed_by_its_mark(qapp, cubes):
+    """One lambda point in glass: its Spectrum, opened from Panels and closed by its close mark, comes back from
+    Panels (I is not bound); a reset still forgets it."""
     from PySide6 import QtWidgets
 
     from explorer.look import get_look
@@ -311,12 +311,13 @@ def test_glass_s_i_brings_back_a_single_tuning_s_spectrum_closed_by_its_mark(qap
             d.titleBarWidget().findChild(QtWidgets.QAbstractButton, "qt_dockwidget_closebutton").click()
         spin(qapp, lambda: False, timeout=0.3)
         closed = (w.spec_dock.isHidden(), w.lt_dock.isHidden())
-        w.toggle_panels()                               # I: every panel shown again
+        for d in (w.spec_dock, w.lt_dock):              # Panels → each entry again
+            d.toggleViewAction().trigger()
         spin(qapp, lambda: False, timeout=0.3)
         back = (not w.spec_dock.isHidden(), not w.lt_dock.isHidden())
         w.reset_panels()
         spin(qapp, lambda: False, timeout=0.3)
-        print("glass: shown from Panels", asked, "closed", closed, "back with I", back, "hidden after a reset",
+        print("glass: shown from Panels", asked, "closed", closed, "back from Panels", back, "hidden after a reset",
               w.spec_dock.isHidden())
         assert asked and closed == (True, True) and back == (True, True) and w.spec_dock.isHidden()
     finally:

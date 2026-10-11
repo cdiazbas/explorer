@@ -208,14 +208,15 @@ def test_reset_keeps_the_slits_tab_while_one_is_being_drawn_and_never_brings_it_
 
 
 def test_glass_never_shows_the_slits_panel_without_a_slit(qapp, shell):
-    """I, the reset button and glass's first placing show the panels; the slit's only with a slit."""
+    """Panels, the reset button and glass's first placing show the panels; the slit's only with a slit."""
     w = shell
     wear(qapp, w, "glass")
     g = w.glass
     assert spin(qapp, lambda: w.spec_dock.isFloating() and w.lt_dock.isFloating())
     assert w.slit_dock.isHidden()
-    w.toggle_panels()
-    w.toggle_panels()
+    for d in (w.spec_dock, w.lt_dock, w.slit_dock):     # Panels → each entry, twice
+        d.toggleViewAction().trigger()
+        d.toggleViewAction().trigger()
     assert w.slit_dock.isHidden() and not w.spec_dock.isHidden() and not w.lt_dock.isHidden()
     g.reset()
     spin(qapp, timeout=0.2)
@@ -224,8 +225,9 @@ def test_glass_never_shows_the_slits_panel_without_a_slit(qapp, shell):
     assert spin(qapp, lambda: not w.slit_dock.isHidden() and w.slit_dock.isFloating())
     w.clear_slit()
     assert spin(qapp, lambda: w.slit_dock.isHidden())
-    w.toggle_panels()
-    w.toggle_panels()
+    for d in (w.spec_dock, w.lt_dock, w.slit_dock):     # Panels → each entry, twice
+        d.toggleViewAction().trigger()
+        d.toggleViewAction().trigger()
     g.reset()
     spin(qapp, timeout=0.2)
     assert w.slit_dock.isHidden() and not front(w)

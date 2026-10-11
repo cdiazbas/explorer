@@ -98,17 +98,25 @@ def test_the_readout_is_the_title_while_locked(qapp, shell):
     assert spin(qapp, lambda: w.windowTitle() == "c_im.fits")
 
 
-def test_i_hides_and_shows_the_panels_and_all_agrees_with_key_5(qapp, shell):
-    from PySide6 import QtWidgets
+def test_i_is_not_bound_panels_hides_and_shows_each_and_all_agrees_with_key_5(qapp, shell):
+    """I does nothing in glass (no shortcut, no terminal key): the Panels menu hides and shows each panel."""
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    from explorer.ui import termkeys
 
     w = shell
     wear(qapp, w, "glass")
     g = w.glass
     assert spin(qapp, lambda: all(d.isFloating() for d in panels(w)))
-    w.toggle_panels()
-    assert all(d.isHidden() for d in panels(w))
-    w.toggle_panels()
-    assert not any(d.isHidden() for d in panels(w))
+    i = QtGui.QKeySequence(QtCore.Qt.Key.Key_I)
+    assert i not in [QtGui.QKeySequence(seq) for seq, _fn in w.action_registry.binds()]
+    assert i[0].toCombined() not in termkeys.actions_of(w)            # type: ignore[index]
+    assert "panels: hide all" not in w.sheet.text()
+    for d in panels(w):                                  # Panels → each entry, off and on again
+        d.toggleViewAction().trigger()
+        assert d.isHidden()
+        d.toggleViewAction().trigger()
+        assert not d.isHidden()
     # one name and one control for the four Stokes: All in the Stokes control, as outside glass (no 2x2 button)
     texts = [b.text() for b in g.bar.findChildren(QtWidgets.QAbstractButton)]
     assert not [t for t in texts if "2" in t and "×" in t], f"the bar's buttons: {texts}"
