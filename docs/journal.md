@@ -4817,3 +4817,42 @@ Condiciones: el 6173 solo, classic, en bellatrix, nodo 0, con el cerrojo, ABBA.
 - con qué versión iba más rápido.
 
 **En la pantalla del usuario** (ssh -Y a XQuartz, enlace medido ~34 MB/s y 10.8 ms): «la rendija funciona mucho más suave y rápida». Llevado a `main`.
+
+### 2026-10-11 (15): cada repintado sale en cuanto pasan sus bytes, por el puente (ROADMAP E6.23)
+
+**La pregunta** (el usuario, tras probar E6.22 en su pantalla): estudiar, optimizar y usar el truco de la rendija en más cosas.
+
+**Medido** con `bench/bridge_link.py` (nuevo, generaliza `slit_link.py`):
+- explorer de verdad por el puente sobre un Xvfb privado, con el enlace emulado;
+- la entrada con XTEST: cursor, t, λ, zoom, arrastre, la clave y su γ, la reproducción, y un cubo enlazado en su propia ventana;
+- por paso y región, cuándo cambia en el servidor (bandas finas con GetImage, 1.3 ms por lectura), los bytes, los pintados y la CPU de la interfaz;
+- `--native`: lo mismo con el xcb de Qt sin puente;
+- `--probe`: píxeles que el servidor muestra y Qt ya no tiene.
+
+Condiciones: el 6173, classic, en bellatrix, nodo 0, con el cerrojo, ABBA, enlaces de 30 MB/s y 12 ms y de 10 MB/s y 15 ms.
+
+**Dónde espera lo pequeño:**
+- Una actualización por ventana se mostraba con una sola copia al final de todos sus bytes.
+- El asa de la clave salía con la imagen entera en sus nuevos niveles (511 kB).
+- El texto de la barra de estado tras λ salía con la imagen y los dos paneles (777 kB).
+
+**Ahora:**
+- La actualización va en trozos, uno por repintado y en el orden en que Qt pinta, cada uno con su copia en cuanto pasan sus bytes.
+- El asa: 44.6 → 28.6 ms a 30 MB/s y 77.6 → 31.7 ms a 10 MB/s.
+- El γ en la clave: 64.8 → 40.6 y 111 → 46.
+- La imagen tras t a 10 MB/s: 129 → 114 ms; con el cubo enlazado en otra ventana, 99 → 67.
+- Barrido rápido a 10 MB/s: asentado 224 → 173 ms tras el último movimiento.
+- La última región de cada paso llega igual.
+- Además salen menos bytes (818 → 748 kB por paso de t), sin ningún píxel desfasado según `--probe`.
+
+**En local no cambia nada:** el cambio está en el puente. En xcb nativo, un movimiento del cursor cuesta unos 23.5 ms de CPU de la interfaz (espectros y λ–t, unos 6 ms de pintado cada uno), más que los 16 ms entre movimientos.
+
+**Descartados:**
+- Una actualización sin confirmar en vez de dos: menos cambios vistos durante el barrido.
+- Limitar los paneles del cursor a uno cada 50 ms: en el puente gana (asentado 189 → 105 ms a 10 MB/s); en local pierde (33 → 46 ms) y quita fotogramas de los paneles.
+
+**Pruebas:** `test_bridge_pieces` falla antes y pasa después; `tests/xvfb`, 40 pasan; grupos `xbridge`, 64.
+
+**Por decidir:** el límite de los paneles solo por el puente; mirar el desgarro entre trozos en la pantalla de verdad.
+
+**En la pantalla del usuario** (ssh -Y a XQuartz): «se ve genial»; llevado a `main`.
