@@ -1,8 +1,9 @@
 """The looks (ROADMAP E5.5), offscreen: which parts each has; the colour tables (grey exact, padding at level 0,
 one map per Stokes, cycling); classic: the sliders in the cursor's red, the crosshair in its locked colour, rounded
-panels, no colour keys; modern: the reticle instead of two lines, the Stokes drop-down in step with the state and
-no wider than the classic combo, C recolouring image, lambda-t and key, the zero lines and the cards; the spectra's
-corners back on top after its stack swaps page; the key's power of ten on the top row with the unit."""
+panels, grey at the start and C recolouring image, lambda-t and key there too; modern: the reticle instead of two
+lines, the Stokes drop-down in step with the state and no wider than the classic combo, C recolouring image, lambda-t
+and key, the zero lines and the cards; the spectra's corners back on top after its stack swaps page; the key's power
+of ten on the top row with the unit."""
 import sys
 import time
 
@@ -25,11 +26,11 @@ def spin(qapp, until, timeout=5.0):
 def test_the_looks_and_their_parts():
     from explorer.look import PARTS, get_look
 
-    assert get_look().name == "classic" and not get_look().parts
+    assert get_look().name == "classic" and get_look().parts == {"cmap"}      # C, from its plain grey
     assert get_look("modern", {}).parts == frozenset(PARTS)
     off = get_look("modern", {"EXPLORER_LOOK_OFF": "reticle, cards"})
     assert not off.has("reticle") and not off.has("cards") and off.has("colour")
-    assert not get_look("modern", {"EXPLORER_LOOK_OFF": "colour"}).has("cmap")   # C needs the tables
+    assert get_look("modern", {"EXPLORER_LOOK_OFF": "colour"}).has("cmap")    # C as in classic
     with pytest.raises(ValueError):
         get_look("baroque")
 
@@ -54,6 +55,21 @@ def test_the_colour_tables():
     for _ in range(n - 1):
         reg.cycle(3, 1)
     assert reg.maps[3] == "gray"                         # round the list
+
+
+def test_without_the_colour_part_q_u_v_start_in_grey_and_a_stokes_stepped_keeps_its_map(monkeypatch):
+    """ColormapRegistry.set_start: EXPLORER_DIVERGING is the start of a look with colour; classic starts in grey."""
+    from explorer.look import colormaps as cm
+
+    monkeypatch.setenv("EXPLORER_DIVERGING", "RdBu_r")
+    reg = cm.ColormapRegistry(4, colour=False)
+    assert reg.maps == ["gray"] * 4
+    assert reg.cycle(3, 1) == "RdBu_r"                  # the list modern steps through, from grey
+    reg.set_start(True)
+    assert reg.maps == ["gray", "RdBu_r", "RdBu_r", "RdBu_r"]
+    reg.cycle(3, 1)
+    reg.set_start(False)
+    assert reg.maps[:3] == ["gray"] * 3 and reg.maps[3] == cm._divergings(False)[1]
 
 
 def test_another_theme_keeps_each_stokes_map_where_it_can(monkeypatch):
@@ -117,12 +133,59 @@ def test_classic(themed, cube):
         w.session.lock(False)
         themed.processEvents()
         assert w.view.hl.pen.color() == CURSOR_PEN.color()
-        assert w.colours is None and w.nav.drop is None
+        assert w.nav.drop is None
         assert w.colour_key is not None and w.colour_key.isVisible() and w.colour_key.lut is None   # grey, classic
         assert len(w._rounders) == 4                                    # image, spectra, lambda-t, slit
-        before = list(w.colours.maps) if w.colours is not None else None
-        w.cycle_colours(1)                                              # C: the modern look's only
-        assert (list(w.colours.maps) if w.colours is not None else None) == before
+    finally:
+        w.close()
+        ds.close()
+
+
+def test_c_in_classic_steps_the_maps_from_its_grey(themed, cube):
+    """C and Shift+C in the classic look: image, lambda-t and key on the map, the same list as modern's; back on
+    grey, the image's own table again (base_lut), as it started."""
+    from explorer.look import colormaps as cm
+
+    w, ds = make(themed, cube, "classic")
+    try:
+        w.session.set_index("s", 3)
+        assert spin(themed, lambda: w.last.get("image", (None,))[0] is not None and w.last["image"][0][1] == 3)
+        assert spin(themed, lambda: w.last.get("lambda_t", (0, 0, -1))[2] == 3)
+        assert w.view.img.lut is w.view.base_lut and w.lambda_t.img.lut is None and w.colour_key.lut is None
+        fire(w, "C")
+        assert w.colours.maps[3] == "CET-D4" and w.colour_key.note == "CET-D4"
+        assert np.array_equal(w.view.img.lut, cm.image_table(cm.table("CET-D4"), False))
+        assert np.array_equal(w.lambda_t.img.lut, cm.table("CET-D4"))
+        assert w.colour_key.lut is cm.table("CET-D4") and w.colour_key.state[3] == "CET-D4"
+        assert w.colours.maps[:3] == ["gray"] * 3                       # one map per Stokes
+        fire(w, "C")
+        assert w.colours.maps[3] == cm._divergings(False)[2]
+        fire(w, "Shift+C")
+        fire(w, "Shift+C")
+        assert w.colours.maps[3] == "gray"
+        assert w.view.img.lut is w.view.base_lut and w.lambda_t.img.lut is None and w.colour_key.lut is None
+    finally:
+        w.close()
+        ds.close()
+
+
+def test_in_classic_the_map_chosen_stays_through_the_theme(themed, cube):
+    """T with a map on V in classic: the light list's map in its place (set_light), on image and key; back to dark."""
+    from explorer.look import colormaps as cm
+
+    w, ds = make(themed, cube, "classic")
+    try:
+        w.session.set_index("s", 3)
+        assert spin(themed, lambda: w.last.get("image", (None,))[0] is not None and w.last["image"][0][1] == 3)
+        fire(w, "C")
+        w.set_theme("light")
+        themed.processEvents()
+        m = w.colours.maps[3]
+        assert m == cm._divergings(True)[1] and w.colour_key.lut is cm.table(m)
+        assert np.array_equal(w.view.img.lut, cm.image_table(cm.table(m), True))
+        w.set_theme("dark")
+        themed.processEvents()
+        assert w.colours.maps[3] != "gray" and w.view.img.lut is not w.view.base_lut
     finally:
         w.close()
         ds.close()
@@ -181,7 +244,10 @@ def test_parts_can_be_left_out(themed, cube, monkeypatch):
 
     with Dataset.open(cube) as ds:
         w = Shell(ds, look=get_look("modern", {"EXPLORER_LOOK_OFF": "reticle,stokes,colour"}))
-        assert w.view.reticle is None and w.nav.drop is None and w.colours is None
+        assert w.view.reticle is None and w.nav.drop is None and w.colours.maps == ["gray"] * SHAPE[1]   # C stays
+        w.close()
+        w = Shell(ds, look=get_look("modern", {"EXPLORER_LOOK_OFF": "colour,cmap"}))
+        assert w.colours is None
         w.close()
 
 
@@ -224,10 +290,14 @@ def test_m_goes_round_modern_and_glass_back_to_exactly_classic(themed, cube):
         assert w.look.name == "glass" and w.glass is not None and not w.nav.tb.isVisible()
         fire(w, "M")
         themed.processEvents()
-        assert w.look.name == "classic" and w.glass is None and classic_state(w) == before
+        after = classic_state(w)
+        lut, lt_lut = after.pop("lut"), after.pop("lt_lut")
+        assert w.look.name == "classic" and w.glass is None
+        assert after == {k: v for k, v in before.items() if k not in ("lut", "lt_lut")}
+        assert lut is not None and lt_lut is not None                  # the map chosen stays, in classic too
         fire(w, "M")
         themed.processEvents()
-        assert w.colours.maps[3] == "CET-D4" and w.view.img.lut is not None      # the map chosen stays
+        assert w.colours.maps[3] == "CET-D4" and w.view.img.lut is not None
     finally:
         w.close()
         ds.close()
@@ -238,6 +308,8 @@ def test_the_help_button_opens_and_closes_the_sheet(themed, cube):
     try:
         w.nav.help.click()
         assert w.sheet.isVisible() and "look: classic" in w.sheet.text()
+        row = next(r for r in w.sheet.text().split("<tr") if "colours: next, previous map" in r)
+        assert "modern" not in row                                      # C in every look
         w.nav.help.click()
         assert not w.sheet.isVisible()
     finally:

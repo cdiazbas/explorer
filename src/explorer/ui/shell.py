@@ -34,7 +34,7 @@ from ..core.session import Session
 from ..core.state import ViewState
 from ..data.axes import STOKES
 from ..data.names import cube_names, slice_names, value_name
-from ..look import LOOKS, get_look
+from ..look import ENV_OFF, LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
 from ..obs import get_logger
 from . import docks, glass, icons, pens, style, titlebar
@@ -117,8 +117,8 @@ class _Sink:
         self.shell.main.last_s = s
         if self.shell.lambda_t is not None:
             self.shell.lambda_t.show(lt, levels, gamma=self.shell.session.gamma(0, s))
-            if self.shell.colours is not None and self.shell.look.has("colour"):
-                self.shell.lambda_t.set_lut(self.shell.colours.lut(s))
+            cols = self.shell.maps_for(s)
+            self.shell.lambda_t.set_lut(cols.lut(s) if cols is not None else None)
 
     def cleared(self, pixel):
         self.shell.last.pop("spectra", None)
@@ -148,8 +148,8 @@ class _Sink:
     def slit(self, ts, sl, s, ts_levels, sl_levels):
         self.shell.last["slit"] = s
         self.shell.slit_panel.show(ts, sl, ts_levels, sl_levels, gamma=self.shell.session.gamma(self.shell._slit_on, s))
-        if self.shell.colours is not None and self.shell.look.has("colour"):
-            self.shell.slit_panel.set_lut(self.shell.colours.lut(s))
+        cols = self.shell.maps_for(s)
+        self.shell.slit_panel.set_lut(cols.lut(s) if cols is not None else None)
 
 
 class Shell(QtWidgets.QMainWindow):
@@ -338,7 +338,7 @@ class Shell(QtWidgets.QMainWindow):
         self._install_gestures()
         # what the sink reads, before the scheduler: an image already in the cache (a second window on the same
         # Dataset) is shown inside Scheduler()
-        self.colours: ColormapRegistry | None = None    # made the first time the look has colour
+        self.colours: ColormapRegistry | None = None    # made the first time the look has colour or cmap (maps_for)
         self.colour_key: ColourKey | None = self.main.key     # in every look (ui.scalekey), hidden in the 2x2 view
         self.scale_card: ScaleCard | None = None
         self.grid: StokesGrid | None = None             # the 2x2 view (ui.stokesgrid), made the first time it is asked
@@ -375,7 +375,7 @@ class Shell(QtWidgets.QMainWindow):
     # ---------------------------------------------------------------- the look (look.Look; the prototype's app/look.py)
     def set_look(self, look) -> None:
         """Wear look (look.Look): every part put on or taken off, so the window can switch while it runs (M). The
-        colour maps chosen with C stay for the next time the colour part is on."""
+        colour maps chosen with C stay, in every look that has them (maps_for)."""
         if self.glass is not None and not look.has("glass"):   # out of glass first: it gives back what it took
             self.glass.remove()
             self.glass = None
@@ -396,23 +396,26 @@ class Shell(QtWidgets.QMainWindow):
         self._reticle_colours()
         for p in self.slit_panels:
             p.set_marks(acc) if L.has("marks") else p.clear_marks()
-        if L.has("colour") and self.colours is None:
-            self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light)
+        if (L.has("colour") or L.has("cmap")) and self.colours is None:
+            self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light,
+                                            colour=L.has("colour"))
+        elif self.colours is not None:
+            self.colours.set_start(L.has("colour"))
         if self.colour_key is not None:
             self.colour_key.show_with(True, grid=self.grid is not None and not self.grid.isHidden())
         self._shown_lut = object()
-        if not L.has("colour"):
-            self.view.set_lut(self.view.base_lut)
         self._paint_colour()
         self._grid_luts()
         if self.lambda_t is not None:
             lt = self.last.get("lambda_t")
-            cols = self.colours if L.has("colour") else None
+            cols = self.maps_for(lt[2]) if lt is not None else None
             self.lambda_t.set_lut(cols.lut(lt[2]) if cols is not None and lt is not None else None)
-        cols = self.colours if L.has("colour") else None
-        self.slit_panel.set_lut(cols.lut(self.last.get("slit", self.session.state.s)) if cols is not None else None)
+        s = self.last.get("slit", self.session.state.s)
+        cols = self.maps_for(s)
+        self.slit_panel.set_lut(cols.lut(s) if cols is not None else None)
         for c in self.linked:
             if c.slit_panel is not None:
+                cols = self.maps_for(c.slit_s)
                 c.slit_panel.set_lut(cols.lut(c.slit_s) if cols is not None else None)
         if st.name() == "macos" and self._seams is None:   # the native style's light lines under the panel titles
             self._seams = MacSeams()                    # and on the separators: in the window's colour, in both looks
@@ -566,8 +569,8 @@ class Shell(QtWidgets.QMainWindow):
     def _grid_luts(self) -> None:
         if self.grid is None:
             return
-        cols = self.colours if self.look.has("colour") else None
         for s in range(len(self.grid.views)):
+            cols = self.maps_for(s)
             self.grid.set_lut(s, cols.image_lut(s) if cols is not None else None)
 
     def _grid_click(self, s: int, ev) -> None:
@@ -607,26 +610,34 @@ class Shell(QtWidgets.QMainWindow):
             return
         self.glass.toggle_panels()
 
+    def maps_for(self, s: int) -> ColormapRegistry | None:
+        """The colour maps Stokes s is drawn through, or None: the image's plain grey (base_lut). A look with the
+        colour part draws every Stokes through its map; one with cmap alone (classic) only a Stokes off grey, so it
+        starts exactly as it did before it had maps."""
+        cols = self.colours
+        if cols is None or self.look.has("colour"):
+            return cols
+        return cols if self.look.has("cmap") and s < len(cols.maps) and cols.maps[s] != "gray" else None
+
     def _paint_colour(self) -> None:
-        """The image's colour table, for the Stokes shown (the modern look's colour part), and the key in every look
-        (in grey without the colour part)."""
-        colour = self.colours is not None and self.look.has("colour")
+        """The image's colour table, for the Stokes shown (maps_for), and the key in every look (in the image's plain
+        grey without a map)."""
         s = self.session.state.s
-        if colour and self.colours is not None:
+        cols = self.maps_for(s)
+        if self.colours is not None:
             for c in self.linked:                       # a linked cube with the main cube's Stokes
                 c.paint_colour()
-            tab = self.colours.image_lut(s)
-            if tab is not self._shown_lut:
-                self.view.set_lut(tab)
-                self._shown_lut = tab
+        tab = cols.image_lut(s) if cols is not None else self.view.base_lut
+        if tab is not self._shown_lut:
+            self.view.set_lut(tab)
+            self._shown_lut = tab
         last = self.last.get("image")
         if self.colour_key is not None and last is not None:
             ns = self.session.sizes["s"] if self.session.present["s"] else 1
             # named as the image's label is (ui.stokeslabel): "Stokes Q" with the four, nothing for one plane
             self.colour_key.set(f"Stokes {STOKES[s]}" if ns == len(STOKES) else "", last[1],
-                                self.colours.lut(s) if colour and self.colours is not None else self.view.base_lut,
-                                self.colours.maps[s] if colour and self.colours is not None else None,
-                                gamma=self.session.gamma(0, s))
+                                cols.lut(s) if cols is not None else self.view.base_lut,
+                                cols.maps[s] if cols is not None else None, gamma=self.session.gamma(0, s))
 
     # ---------------------------------------------------------------- gamma (core.levels; keys G, Shift+G, Ctrl+G)
     def gamma_target(self) -> tuple[int, int]:
@@ -720,19 +731,25 @@ class Shell(QtWidgets.QMainWindow):
         self._paint_colour()
 
     def cycle_colours(self, step: int) -> None:
-        """C / Shift+C: the next or previous map for the Stokes shown; image, lambda-t and key follow, nothing is
-        read again. Only in a look with the colour maps (the modern one)."""
+        """C / Shift+C: the next or previous map for the Stokes shown; image, lambda-t, the slit's slices, linked
+        images of that Stokes and the key follow, nothing is read again. In every look but one that leaves cmap out
+        (EXPLORER_LOOK_OFF)."""
         if self.colours is None or not self.look.has("cmap"):
-            self.statusBar().showMessage("colour maps: the modern look (M)", 3000)
+            self.statusBar().showMessage(f"colour maps: left out of this look ({ENV_OFF})", 3000)
             return
         s = self.session.state.s
         name = self.colours.cycle(s, step)
+        cols = self.maps_for(s)
+        lut = cols.lut(s) if cols is not None else None
         self._shown_lut = object()
         self._paint_colour()
         self._grid_luts()                               # the 2x2 view's panel of that Stokes too
         if self.lambda_t is not None:
-            self.lambda_t.set_lut(self.colours.lut(s))
-        self.slit_panel.set_lut(self.colours.lut(s))
+            self.lambda_t.set_lut(lut)
+        self.slit_panel.set_lut(lut)
+        for c in self.linked:                           # a linked cube's slit tab of that Stokes
+            if c.slit_panel is not None and c.slit_s == s:
+                c.slit_panel.set_lut(lut)
         if self.colour_key is not None:
             self.colour_key.flash(name)
 
@@ -1264,7 +1281,7 @@ class Shell(QtWidgets.QMainWindow):
         rows += [("M", "look: classic \u2192 modern \u2192 glass", ((K.Key_M, self.toggle_look),)),
                  ("T", "theme: dark \u21c4 light", ((K.Key_T, self.toggle_theme),)),
                  ("I", "panels: hide all, show again (glass look)", ((K.Key_I, self.toggle_panels),)),
-                 ("C  \u21e7C", "colours: next, previous map for the Stokes shown (modern look)",
+                 ("C  \u21e7C", "colours: next, previous map for the Stokes shown",
                   (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1))))]
         rows += [("Esc", "release the cursor; while a slit is drawn, cancel it (first closes this sheet)",
                   ((K.Key_Escape, self._escape),)),

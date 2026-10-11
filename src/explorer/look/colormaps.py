@@ -5,7 +5,7 @@ _image_table, SEQUENTIAL, DIVERGINGS, 137-200).
   dark-centre maps first on a dark window, light-centre first on a light one, grey last. Every map in the lists
   keeps +max and -max apart under simulated protanopia, deuteranopia and tritanopia (CIEDE2000 >= 20 between the two
   signs at every |v| >= 1/8). hsv is left out: its two ends are one red.
-- Q U V start in grey (EXPLORER_DIVERGING names another start).
+- Q U V start in grey (EXPLORER_DIVERGING names another start, in a look with the colour part; without it, grey).
 - A grey map is made exactly grey: one entry 1/255 off R = G = B sends the bridge's whole tile at 4 B/px instead of 1.
 - The image's table has the padding at level 0 (the reduction puts NaN padding there) and the map on 1..255.
 """
@@ -78,11 +78,19 @@ def image_table(lut: np.ndarray | None, light: bool) -> np.ndarray | None:
 
 
 class ColormapRegistry:
-    """The map each Stokes wears: I the first sequential, Q U V the first diverging; C steps the shown one's."""
+    """The map each Stokes wears: I the first sequential, Q U V the first diverging (grey without the look's colour
+    part: set_start); C steps the shown one's, and a Stokes stepped keeps its map in every look."""
 
-    def __init__(self, ns: int, light: bool = False):
+    def __init__(self, ns: int, light: bool = False, colour: bool = True):
         self.light = light
-        self.maps = [SEQUENTIAL[0]] + [_divergings(light)[0]] * (max(1, ns) - 1)
+        self.chosen: set = set()                        # the Stokes stepped with C
+        self.maps = [SEQUENTIAL[0]] * max(1, ns)
+        self.set_start(colour)
+
+    def set_start(self, colour: bool) -> None:
+        """Q U V not stepped with C at the look's start: the first diverging with the colour part, else grey."""
+        first = _divergings(self.light)[0] if colour else "gray"
+        self.maps = [m if s == 0 or s in self.chosen else first for s, m in enumerate(self.maps)]
         for m in set(self.maps):
             table(m)                                    # read now, not on the first frame of V
 
@@ -109,5 +117,6 @@ class ColormapRegistry:
     def cycle(self, s: int, step: int) -> str:
         names = self.names_for(s)
         i = names.index(self.maps[s]) if self.maps[s] in names else -1
+        self.chosen.add(s)
         self.maps[s] = names[(i + step) % len(names)]
         return self.maps[s]

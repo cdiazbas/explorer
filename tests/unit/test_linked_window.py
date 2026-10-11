@@ -117,6 +117,27 @@ def test_the_linked_cube_follows_cursor_and_t_at_its_own_lambda(window):
     assert spin(qapp, lambda: other.spectra._l == 5 and w.spectra._l == 1)      # each its own marker
 
 
+def test_c_in_classic_recolours_the_linked_images_of_that_stokes(window):
+    """The window starts in classic: C on V puts the linked cube with V on the map, image and lambda-t; the map with
+    one plane (I) stays grey; Shift+C takes them back to their plain grey."""
+    from explorer.look import colormaps as cm
+
+    w, qapp = window
+    other, blos = w.linked
+    w.session.set_index("s", 3)
+    assert spin(qapp, lambda: w.session.member_state(other.k).s == 3 and other.view._full is not None)
+    assert other.view.img.lut is other.view.base_lut
+    w.cycle_colours(1)
+    qapp.processEvents()
+    assert w.look.name == "classic" and w.colours.maps[3] == "CET-D4"
+    assert np.array_equal(other.view.img.lut, cm.image_table(cm.table("CET-D4"), False))
+    assert other.key.state[3] == "CET-D4"
+    assert blos.view.img.lut is blos.view.base_lut
+    w.cycle_colours(-1)
+    qapp.processEvents()
+    assert other.view.img.lut is other.view.base_lut and other.key.lut is other.view.base_lut
+
+
 def test_the_start_leaves_out_what_cannot_be_linked_and_says_why(cubes, tmp_path, capsys):
     from explorer.ui.app import plan_links
 

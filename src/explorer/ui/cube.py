@@ -80,9 +80,8 @@ class CubeSink:
             return
         self.cube.slit_s = s
         p.show(ts, sl, ts_levels, sl_levels, gamma=self.cube.session.gamma(self.cube.k, s))
-        shell = self.cube.shell
-        if shell.colours is not None and shell.look.has("colour"):
-            p.set_lut(shell.colours.lut(s))
+        cols = self.cube.shell.maps_for(s)
+        p.set_lut(cols.lut(s) if cols is not None else None)
 
 
 class CubeView:
@@ -226,15 +225,16 @@ class CubeView:
             self.lambda_t.set_light(light)
 
     def paint_colour(self) -> None:
-        """A linked cube's image and lambda-t in the window's colour maps, by its own Stokes (the modern look's
-        colour); the main cube's are the window's own (Shell._paint_colour, with the colour key)."""
+        """A linked cube's image and lambda-t in the window's colour maps, by its own Stokes (Shell.maps_for); the
+        main cube's are the window's own (Shell._paint_colour, with the colour key)."""
         if not self.k:
             return
-        cols = self.shell.colours if self.shell.look.has("colour") else None
         s = self.session.member_state(self.k).s
+        cols = self.shell.maps_for(s)
         self.view.set_lut(cols.image_lut(s) if cols is not None else self.view.base_lut)
         if self.lambda_t is not None:
-            self.lambda_t.set_lut(cols.lut(self.last_s) if cols is not None else None)
+            lt = self.shell.maps_for(self.last_s)
+            self.lambda_t.set_lut(lt.lut(self.last_s) if lt is not None else None)
         if self.view._full is not None:                 # its key: its name, its Stokes, its levels and gamma
             name = "   ".join(t for t in (self.name, f"Stokes {STOKES[s]}" if self.ns == len(STOKES) else "") if t)
             self.key.set(name, self.view._lim, cols.lut(s) if cols is not None else self.view.base_lut,

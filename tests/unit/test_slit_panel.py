@@ -234,9 +234,14 @@ def test_the_theme_the_looks_markers_and_colour_maps(qapp, shell, cube):
     make(qapp, w, A, cube[1])
     p = w.slit_panel
     assert p.t_line.pen.color() == CURSOR_PEN.color() and p.ts_img.lut is None          # classic: red, grey
+    s = w.session.state.s
+    w.cycle_colours(1)                                              # C in classic: the slices on the map too
+    lut = w.colours.lut(s)
+    assert lut is not None and p.ts_img.lut is lut and p.sl_img.lut is lut
+    w.cycle_colours(-1)
+    assert p.ts_img.lut is None and p.sl_img.lut is None            # grey again, as it started
     w.set_look(get_look("modern"))
     assert p.t_line.pen.color() == style.accent() and p.cur_lines[0].pen.color() == style.accent()
-    s = w.session.state.s
     assert p.ts_img.lut is w.colours.lut(s) and p.sl_img.lut is w.colours.lut(s)    # grey until C
     w.cycle_colours(1)                                              # C: the next map, the slices with it
     lut = w.colours.lut(s)
@@ -247,7 +252,7 @@ def test_the_theme_the_looks_markers_and_colour_maps(qapp, shell, cube):
     w.set_theme("dark")
     assert p.ts.getAxis("left").pen().color().lightness() > 128
     w.set_look(get_look("classic"))
-    assert p.t_line.pen.color() == CURSOR_PEN.color() and p.ts_img.lut is None
+    assert p.t_line.pen.color() == CURSOR_PEN.color() and p.ts_img.lut is lut      # the map chosen stays
 
 
 def test_a_slit_drawn_in_the_2x2_view_has_its_panel(qapp, shell, cube):

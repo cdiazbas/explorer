@@ -165,6 +165,24 @@ def test_c_in_the_2x2_view_recolours_its_panel_and_the_key_stays_hidden(qapp, sh
     assert w.colour_key.state[3] == w.colours.maps[3] != before
 
 
+def test_c_in_classic_in_the_2x2_view_recolours_its_panel(qapp, cube):
+    """Classic starts its panels in their plain grey (base_lut); C puts V's on the map and Shift+C takes it off."""
+    with made(qapp, cube, "classic") as w:
+        fire(w, "5")
+        assert spin(qapp, lambda: all(v._full is not None for v in w.grid.views))
+        click(w.grid.views[3], 20, 30)
+        assert spin(qapp, lambda: w.session.state.s == 3 and w.last["image"][0][1] == 3), key_seen(w)
+        assert all(v.img.lut is v.base_lut for v in w.grid.views)
+        fire(w, "C")
+        settle(qapp, w)
+        tab = w.colours.image_lut(3)
+        assert tab is not None and np.array_equal(w.grid.views[3].img.lut, tab) and not key_shown(w)
+        assert all(v.img.lut is v.base_lut for v in w.grid.views[:3])
+        fire(w, "Shift+C")
+        settle(qapp, w)
+        assert w.grid.views[3].img.lut is w.grid.views[3].base_lut
+
+
 def test_m_through_the_looks_in_the_2x2_view_shows_no_key(qapp, shell):
     w = shell
     start = w.look.name
