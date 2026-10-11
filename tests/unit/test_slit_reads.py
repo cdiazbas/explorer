@@ -2,8 +2,8 @@
 values at its pixels, through the per-pixel file's blocks and through rows read per frame without it; t, lambda and
 Stokes give the slices at them; nothing is read while the panel is behind, nor on the UI thread; a result made for
 another slit is never shown; the slit being drawn is read live (only its new pixels with the per-pixel file, after
-the pointer rests without it); the blocks kept are bounded, and count in the Dataset's memory; without the per-pixel
-file the spectral slice waits out playback."""
+the pointer rests without it, unless its last read was quick); the blocks kept are bounded, and count in the
+Dataset's memory; without the per-pixel file the spectral slice waits out playback."""
 import concurrent.futures as cf
 import threading
 
@@ -253,6 +253,33 @@ def test_without_the_per_pixel_file_the_slit_being_drawn_waits_for_the_pointer_t
         d.wait_idle()
         assert len(d.scheduler.slit.reads) == 2         # the time slice, then the spectral slice
         np.testing.assert_array_equal(d.shown.slit_ts, want(cube[1], B, 0, 0, d.state().l)[0])
+
+
+def test_without_the_per_pixel_file_a_quick_read_follows_the_pointer_a_slow_one_waits(cube, monkeypatch):
+    """Once a stage was read within LIVE_MS, the next ones are read as the pointer moves, with no rest; a stage
+    slower than that sends the slit drawn back to waiting for the pointer to rest."""
+    with Driver.open(cube[0], no_sp=True) as d:
+        def reads():
+            return len(d.scheduler.slit.reads)
+        d.show("slit")
+        d.draw_slit(A)                                  # nothing timed yet: after the rest
+        d.wait_idle()
+        assert reads() == 0
+        d.advance(slitreads.REST_S * 1.2)
+        d.wait_idle()
+        assert reads() == 2
+        d.draw_slit(B)                                  # those took far less than LIVE_MS: B at once
+        d.wait_idle()
+        assert reads() == 4
+        np.testing.assert_array_equal(d.shown.slit_ts, want(cube[1], B, 0, 0, d.state().l)[0])
+        monkeypatch.setattr(slitreads, "LIVE_MS", -1.0)  # every read slow from now on
+        d.draw_slit(A)
+        d.wait_idle()
+        assert reads() == 4
+        d.advance(slitreads.REST_S * 1.2)
+        d.wait_idle()
+        assert reads() == 6
+        np.testing.assert_array_equal(d.shown.slit_ts, want(cube[1], A, 0, 0, d.state().l)[0])
 
 
 def test_without_the_per_pixel_file_the_spectral_slice_waits_out_playback(cube):

@@ -28,7 +28,10 @@ Without one:
 - the rows the slit spans, one read per frame (Dataset.read_bands): the time slice for each (Stokes, lambda), the
   spectral slice for each (Stokes, t), kept per slit (BANDS of them); the spectral slice is not read while playing
   (CRISPEX does the same) and comes when playback stops. While the slit is drawn the reads wait for the pointer to
-  rest REST_S: a read of the rows took 0.15-0.8 s (F71).
+  rest REST_S, as a read of the rows took 0.15-0.8 s (F71), unless the last stage read took LIVE_MS or less: then
+  each stage is read as the pointer moves, as with the per-pixel file (a map linked to 6173, 17 frames of 2031 x
+  2028: its time slice read in 4-23 ms on bellatrix, against the 250 ms rest). A stage slower than LIVE_MS sends the
+  next ones back to waiting; another cube starts again from waiting.
 
 Threads: the blocks are read on the slab pool; the slices and their levels are made on the slit thread
 (Executors.slit), where the reads without a per-pixel file run too. Latest wins: a job is skipped if a newer request
@@ -60,6 +63,7 @@ from .state import ViewState
 log = get_logger("core")
 
 REST_S = 0.25               # without a per-pixel file, a slit being drawn is read once the pointer rests this long
+LIVE_MS = 50.0              # ... or at once, when its last stage was read within this long
 BANDS = 64                  # slices kept per slit without a per-pixel file (the prototype kept every one)
 DRAFTS = 64                 # stages of the slit being drawn whose late results may still be shown
 
@@ -89,6 +93,7 @@ class SlitReads:
         self._bands: OrderedDict = OrderedDict()        # (path_id, kind, s, u) -> (slice, levels); slit thread only
         self._made: dict = {}                           # kind -> (key, slice, levels): the last made; slit thread only
         self._rest = 0
+        self._stage_ms: float | None = None             # the last stage's reads without a per-pixel file (slit thread)
         self._front = False
         self._closed = False
         self.reads: list[dict] = []                     # the block reads: pixels, runs, ms (benches, diagnostics)
@@ -121,7 +126,7 @@ class SlitReads:
                     self._want = self.pix               # its tab comes in front with it: the read starts a pass early
                     self._kick()
                 return
-            if not self.per_pixel and self._drawing(st):
+            if not self.per_pixel and self._drawing(st) and not self._quick():
                 token = self._rest
                 self.loop.call_later(REST_S, lambda: self._rested(token))
             else:
@@ -135,6 +140,12 @@ class SlitReads:
 
     def _drawing(self, st: ViewState) -> bool:
         return st.draft is not None and len(st.draft) >= 2
+
+    def _quick(self) -> bool:
+        """Whether the last stage without a per-pixel file was read within LIVE_MS: the slit being drawn is read as
+        the pointer moves, not once it rests."""
+        ms = self._stage_ms
+        return ms is not None and ms <= LIVE_MS
 
     def _rested(self, token: int) -> None:
         if token == self._rest and not self._closed:
@@ -159,6 +170,7 @@ class SlitReads:
             self.cube, self.ds = cube, self.session.members[cube].dataset
             self.blocks, self._want = self._blocks_of(self.ds), None
             self._drafts = set()
+            self._stage_ms = None                       # its reads not timed yet: the slit drawn waits for a rest
         pix = None
         if pts is not None:
             pix = slit_pixels(slit_path(np.asarray(pts, np.float64)), self.ds.ny, self.ds.nx)
@@ -273,6 +285,7 @@ class SlitReads:
         r = ds.roles
         nlead = len(ds.shape) - 2
         every = len(steps) >= r.nt
+        spent = None                                    # this stage's reads, ms: whether the next waits (_quick)
         for kind, u in (("ts", l), ("sl", t)):
             key = (pid, kind, s, u) if kind == "sl" or every else (pid, kind, s, u, len(steps))
             hit = self._bands.get(key)
@@ -289,8 +302,10 @@ class SlitReads:
                         else [frame_index(nlead, r, t=t, s=s, l=k) for k in range(max(1, r.nl))])
                 q = time.perf_counter()
                 a = ds.read_bands(idxs, *pix)
-                self.reads = self.reads[-999:] + [dict(kind=kind, frames=len(idxs),
-                                                       ms=round((time.perf_counter() - q) * 1e3, 2))]
+                ms = (time.perf_counter() - q) * 1e3
+                spent = (spent or 0.0) + ms
+                self._stage_ms = spent
+                self.reads = self.reads[-999:] + [dict(kind=kind, frames=len(idxs), ms=round(ms, 2))]
                 counter("core.slit.band_reads")
                 hit = (a, panel_levels(a, symmetric=s > 0))
                 self._bands[key] = hit
