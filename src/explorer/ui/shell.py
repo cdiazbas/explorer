@@ -72,6 +72,7 @@ CASCADE = 28               # px each detached image is moved down and left when 
 WIDTHS_MS = 150            # the images share the window's width this long after its size last changed
 SLIT_FLOAT_H = 320          # px: the slit panel floating below lambda-t in glass (the prototype's look_glass.py:615)
 SP_SHEET_WIDTH = 560        # px: the sheet over a per-pixel file alone, its paragraphs wrapped to this
+GAMMA_NOTE_MS = 1000        # gamma on the image's colour key after G, Shift+G, Ctrl+G
 
 
 class _Follow(QtCore.QObject):
@@ -648,8 +649,9 @@ class Shell(QtWidgets.QMainWindow):
         ns = self.cubes[k].ns
         what = " ".join(t for t in (self.cubes[k].name if self.linked else "",
                                     f"Stokes {STOKES[s]}" if ns == len(STOKES) else "") if t)
-        # the colour key at rest never says gamma: its hot view does (the user, 2026-10-11)
+        # the colour key at rest says gamma only for a moment after a key, in every look; its hot view always does
         self.statusBar().showMessage(f"{gamma_text(g)}{': ' + what if what else ''}  (G \u21e7G {mod_key()}G)", 3000)
+        self.cubes[k].key.flash(gamma_text(g), GAMMA_NOTE_MS)
 
     # ---------------------------------------------------------------- the scale's menu and card (ui.scalekey)
     def scale_levels(self, k: int, s: int) -> tuple[float, float]:

@@ -117,11 +117,12 @@ class ColourKey(QtWidgets.QWidget):
         (935), the key seen again when the grid hides (945)."""
         self.setVisible(colour and not grid)
 
-    def flash(self, text):
-        """Show text (the map's name) in place of the numbers for a moment; None puts the numbers back."""
+    def flash(self, text, ms: int | None = None):
+        """Show text (the map's name, gamma after G) in place of the numbers for a moment (ms, else NOTE_MS); None
+        puts the numbers back."""
         self.note = text
         if text:
-            self._note_t.start()
+            self._note_t.start(self.NOTE_MS if ms is None else ms)
         self.update()
 
     def eventFilter(self, obj, e):
