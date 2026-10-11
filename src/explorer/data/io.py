@@ -196,30 +196,34 @@ class FrameReader:
         """Rows y0..y1-1 of a frame as native float32 in physical units, the negative-I rule applied."""
         return self._masked(idx, self.to_float32(self.read_rows_raw(idx, y0, y1)), y0, y1)
 
-    def series_frames(self, idx, free_axes):
+    def series_frames(self, idx, free_axes, at=None):
         """(sizes, frame numbers): the frames a series along free_axes (the other leading axes fixed at idx) reads,
-        one per value, in axis order; frame numbers in file order."""
+        one per value, in axis order; frame numbers in file order. at: {axis: indices} reads only those along a free
+        axis (data.tsample: the t steps a temporal panel shows)."""
         free = sorted(int(a) for a in free_axes)
         idx = tuple(int(i) for i in idx)
-        sizes = [self.shape[a] for a in free]
+        along = {a: np.asarray(at[a], np.int64) if at and a in at else np.arange(self.shape[a], dtype=np.int64)
+                 for a in free}
+        sizes = [len(along[a]) for a in free]
         fixed = sum(i * s for a, (i, s) in enumerate(zip(idx, self.strides, strict=True)) if a not in free)
         grid = np.zeros(sizes, np.int64)
         for k, a in enumerate(free):
             shp = [1] * len(sizes)
             shp[k] = sizes[k]
-            grid = grid + np.arange(sizes[k], dtype=np.int64).reshape(shp) * self.strides[a]
+            grid = grid + along[a].reshape(shp) * self.strides[a]
         return sizes, (fixed + grid).ravel()
 
-    def series(self, y: int, x: int, idx, free_axes) -> np.ndarray:
+    def series(self, y: int, x: int, idx, free_axes, at=None) -> np.ndarray:
         """Values at pixel (y, x) along the leading axes in free_axes, the others fixed at idx: one dimension per
-        free axis, in axis order (profile: (nl,), lambda-t: (nt, nl), everything: (nt, ns, nl)). Read from the
-        file every time, in the numba reader's threads (call it from the one thread that runs parallel numba).
+        free axis, in axis order (profile: (nl,), lambda-t: (nt, nl), everything: (nt, ns, nl)); at: only those
+        indices along an axis (series_frames). Read from the file every time, in the numba reader's threads (call it
+        from the one thread that runs parallel numba).
         A series of Q, U or V gathers I's in the same call, for the negative-I rule (twice the requests)."""
         from .gather import gather_limited
 
         if not 0 <= y < self.ny or not 0 <= x < self.nx:
             raise IndexError(f"pixel ({y}, {x}) outside {self.ny}x{self.nx}")
-        sizes, fn = self.series_frames(idx, free_axes)
+        sizes, fn = self.series_frames(idx, free_axes, at)
         n = fn.size
         if self.i_index(idx, free_axes) is not None:
             assert self.stokes is not None
@@ -248,16 +252,16 @@ class FrameReader:
             return masking.mask_where(v, i)
         return masking.mask_where(v, v)
 
-    def row_band(self, idx, free_axes, y0: int, y1: int) -> np.ndarray:
-        """Rows y0..y1-1 of every frame a series along free_axes reads, as stored: (sizes..., y1 - y0, nx), one
-        read per frame in the numba reader's threads (call it from the one thread that runs parallel numba). On
-        StorNext a whole row per request costs what 4 bytes do (rowbands.py), so the series of every pixel in the
-        rows comes with the one asked for."""
+    def row_band(self, idx, free_axes, y0: int, y1: int, at=None) -> np.ndarray:
+        """Rows y0..y1-1 of every frame a series along free_axes (at: series_frames) reads, as stored: (sizes...,
+        y1 - y0, nx), one read per frame in the numba reader's threads (call it from the one thread that runs
+        parallel numba). On StorNext a whole row per request costs what 4 bytes do (rowbands.py), so the series of
+        every pixel in the rows comes with the one asked for."""
         from .gather import gather_limited
 
         if not 0 <= y0 < y1 <= self.ny:
             raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
-        sizes, fn = self.series_frames(idx, free_axes)
+        sizes, fn = self.series_frames(idx, free_axes, at)
         n = (y1 - y0) * self.nx * self.layout.dtype.itemsize
         offs = (self.layout.offset + fn * self.frame_bytes + y0 * self.nx * self.layout.dtype.itemsize)
         out = np.empty(offs.size * n, np.uint8)
@@ -627,16 +631,16 @@ class SeriesReader(FrameReader):
             return np.stack(self._map(lambda j: self.to_float32(self.read_rows_raw(j, y0, y1).reshape(-1)[at]),
                                       idxs))
 
-    def series(self, y: int, x: int, idx, free_axes) -> np.ndarray:
+    def series(self, y: int, x: int, idx, free_axes, at=None) -> np.ndarray:
         if not 0 <= y < self.ny or not 0 <= x < self.nx:
             raise IndexError(f"pixel ({y}, {x}) outside {self.ny}x{self.nx}")
-        sizes, fn = self.series_frames(idx, free_axes)
+        sizes, fn = self.series_frames(idx, free_axes, at)
         with span("data.series.read"):
             raw = np.array(self._map(lambda t: self._pixel_raw(int(t), int(y), int(x)), fn), self.layout.dtype)
         return self.to_float32(raw).reshape(sizes)
 
-    def row_band(self, idx, free_axes, y0: int, y1: int) -> np.ndarray:
-        sizes, fn = self.series_frames(idx, free_axes)
+    def row_band(self, idx, free_axes, y0: int, y1: int, at=None) -> np.ndarray:
+        sizes, fn = self.series_frames(idx, free_axes, at)
         with span("data.rowband.read"):
             out = np.stack(self._map(lambda t: self.read_rows_raw((int(t),), y0, y1), fn))
         return out.reshape(*sizes, y1 - y0, self.nx)

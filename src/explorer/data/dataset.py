@@ -194,28 +194,29 @@ class Dataset:
             return _done(hit)
         return self._io.submit(self.pixel.block, int(y), int(x))
 
-    def series(self, y: int, x: int, idx, free_axes) -> Future:
-        """Values at (y, x) along the leading axes in free_axes, the others fixed at idx (FrameReader.series), on
-        the numba thread; from the row blocks in memory, completed at once, when they hold it."""
+    def series(self, y: int, x: int, idx, free_axes, at=None) -> Future:
+        """Values at (y, x) along the leading axes in free_axes, the others fixed at idx (FrameReader.series; at:
+        only those indices along an axis), on the numba thread; from the row blocks in memory, completed at once,
+        when they hold it."""
         assert self.executors is not None
         if self.rowbands is not None:
-            hit = self.rowbands.peek(y, x, idx, free_axes)
+            hit = self.rowbands.peek(y, x, idx, free_axes, at)
             if hit is not None:
                 return _done(hit)
-            return self.executors.numba.submit(self.rowbands.series, int(y), int(x), tuple(idx), list(free_axes))
-        return self.executors.numba.submit(self.frames.series, int(y), int(x), tuple(idx), list(free_axes))
+            return self.executors.numba.submit(self.rowbands.series, int(y), int(x), tuple(idx), list(free_axes), at)
+        return self.executors.numba.submit(self.frames.series, int(y), int(x), tuple(idx), list(free_axes), at)
 
-    def peek_series(self, y: int, x: int, idx, free_axes):
+    def peek_series(self, y: int, x: int, idx, free_axes, at=None):
         """The series from memory (the row blocks), or None: never reads, never waits. With a per-pixel file use
         peek_block."""
-        return self.rowbands.peek(y, x, idx, free_axes) if self.rowbands is not None else None
+        return self.rowbands.peek(y, x, idx, free_axes, at) if self.rowbands is not None else None
 
-    def read_series(self, y: int, x: int, idx, free_axes):
+    def read_series(self, y: int, x: int, idx, free_axes, at=None):
         """The series, read now on the calling thread, which must be the one that runs parallel numba (as
         Executors.submit_latest does); from the row blocks when they hold it."""
         if self.rowbands is not None:
-            return self.rowbands.series(int(y), int(x), tuple(idx), list(free_axes))
-        return self.frames.series(int(y), int(x), tuple(idx), list(free_axes))
+            return self.rowbands.series(int(y), int(x), tuple(idx), list(free_axes), at)
+        return self.frames.series(int(y), int(x), tuple(idx), list(free_axes), at)
 
     def peek_block(self, y: int, x: int):
         """The (s, t, lambda) block at (y, x) from the per-pixel file's cache, or None; never reads."""
