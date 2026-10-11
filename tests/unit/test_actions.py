@@ -263,3 +263,12 @@ def test_the_sheet_is_a_few_short_lines_and_fits_a_laptop_window(qapp, linked_sh
     w.toggle_sheet()
     assert max(len(w.action_registry.rows), len(w.action_registry.mouse)) <= 16 and not long, long
     assert h < 600, h
+
+
+def test_the_sheet_writes_gamma_in_an_italic_serif():
+    """In the interface's sans at the sheet's size γ reads as a y (the user, 2026-10-11): the sheet sets it apart."""
+    from explorer.ui.actions import text_html
+
+    out = text_html("γ: lower, higher")
+    assert "font-style:italic" in out and "STIX Two Text" in out and out.endswith(": lower, higher")
+    assert text_html("a < b") == "a &lt; b"

@@ -17,6 +17,7 @@ import sys
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..obs import get_logger
+from .overlays import GAMMA, GAMMA_FAMILIES
 
 log = get_logger("ui.actions")
 
@@ -71,14 +72,22 @@ class ActionRegistry:
         def column(title, rows):
             return ('<table cellspacing="0" cellpadding="2">'
                     f'<tr><td colspan="3" style="color:{dim}">{title}</td></tr>'
-                    + "".join(f'<tr><td align="right"><b>{html.escape(k)}</b></td><td>&nbsp;&nbsp;</td>'
-                              f'<td>{html.escape(w)}</td></tr>' for k, w in rows) + "</table>")
+                    + "".join(f'<tr><td align="right"><b>{text_html(k)}</b></td><td>&nbsp;&nbsp;</td>'
+                              f'<td>{text_html(w)}</td></tr>' for k, w in rows) + "</table>")
         return ('<table cellspacing="0" cellpadding="0"><tr>'
                 f'<td valign="top">{column("Keys", [(k, w) for k, w, _b in self.rows])}</td>'
                 '<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>'
                 f'<td valign="top">{column("Mouse", self.mouse)}</td></tr></table>'
                 f'<table width="100%" cellspacing="0" cellpadding="2" style="color:{dim}"><tr>'
                 f'<td>? or Esc closes this</td><td align="right"><i>{CREDIT}</i></td></tr></table>')
+
+
+def text_html(text: str) -> str:
+    """text escaped for the sheet, its γ in an italic serif (overlays.GAMMA_FAMILIES): in the interface's sans at the
+    sheet's size it reads as a y."""
+    fams = ", ".join(f"'{f}'" for f in GAMMA_FAMILIES)
+    gamma = f'<span style="font-family:{fams}, serif; font-style:italic">{GAMMA}</span>'
+    return html.escape(text).replace(GAMMA, gamma)
 
 
 def _seconds(s: float) -> str:
