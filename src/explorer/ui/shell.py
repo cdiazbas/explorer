@@ -1284,6 +1284,11 @@ class Shell(QtWidgets.QMainWindow):
             rows.append(("click on a panel of the side-by-side view", "lock the cursor there; λ–t shows its Stokes"))
         rows.append(("padlock, top right of the image and of the spectra",
                      "fixed ⇄ automatic scale; right click: fit it to what is shown"))
+        rows.append(("colour key of an image (pointer on it)",
+                     "histogram: drag ▲ for min, max; wheel: γ; double click: automatic; right click: limits, γ, "
+                     "Scale…"))
+        if ns > 1:
+            rows.append(("right click on a side-by-side panel's Stokes label", "that panel's limits, γ, Scale…"))
         return rows
 
     def _keys(self) -> None:
