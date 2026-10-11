@@ -81,8 +81,10 @@ def test_question_mark_shows_and_hides_the_sheet_over_the_image(qapp, shell):
     assert sheet.isVisible() and shell.centralWidget().geometry().intersects(sheet.geometry())
     fire(shell, "Shift+?")
     assert not sheet.isVisible()
+    from explorer.ui.actions import text_html
+
     for _k, w, _b in shell.action_registry.rows:
-        assert w in sheet.text()                       # what the keys do, as the table says
+        assert text_html(w) in sheet.text()            # what the keys do, as the table says (its γ set apart)
     assert "pick λ" in sheet.text() and "y axis" in sheet.text()
 
 
