@@ -466,10 +466,10 @@ def lam0_text(ax) -> str:
 
 
 def dlam_label(ax) -> str:
-    """The label of an axis in delta-lambda, with the line centre it is measured from: 'Δλ [Å] from λ₀ = 6173.34 Å'
-    ('Δλ [Å]' when that is not known)."""
+    """The label of an axis in delta-lambda, as the wavelength less the line centre it is measured from:
+    'λ − 6173.34 Å' (the user, 2026-10-11); 'Δλ [Å]' when that is not known."""
     lam0 = lam0_text(ax)
-    return f"Δλ [Å] from λ₀ = {lam0}" if lam0 else "Δλ [Å]"
+    return f"λ − {lam0}" if lam0 else "Δλ [Å]"
 
 
 def fmt_offset(v, nd=3) -> str:

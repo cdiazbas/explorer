@@ -80,21 +80,21 @@ def test_the_spectrum_of_an_axis_not_known_to_be_lambda_is_named_as_its_lambda_t
               "y", my)
         assert x == lk.slices.label == "Blos index"
         assert y.startswith("Blos") and not y.startswith("I")
-        assert mx == "Δλ [Å] from λ₀ = 6173.34\u00a0Å" and my[0].startswith("I [")
+        assert mx == "λ − 6173.34\u00a0Å" and my[0].startswith("I [")
         assert all(t.startswith(s) for t, s in zip(my[1:], "QUV", strict=True))
     finally:
         close()
 
 
 def test_every_axis_in_delta_lambda_says_the_line_centre_it_is_measured_from(qapp, cubes):
-    """Spectrum, lambda-t and the slit's spectral slice: "Δλ [Å] from λ₀ = 6173.34 Å", λ₀ the laboratory centre of
+    """Spectrum, lambda-t and the slit's spectral slice: "λ − 6173.34 Å", λ₀ the laboratory centre of
     the header's line (WAVEBAND Fe I 6173: 617.3341 nm) to the readout's three decimals; the velocity axis over the
     Spectrum is measured from the same λ₀. A cube whose axis is not known to be lambda keeps its index label."""
     from explorer.data.axes import C_KMS
 
     w, close = open_window(qapp, cubes["spec"], [cubes["unknown"]])
     try:
-        want = "Δλ [Å] from λ₀ = 6173.34\u00a0Å"
+        want = "λ − 6173.34\u00a0Å"
         got = {"spectrum": w.main.spectra.plots[-1].getAxis("bottom").labelText,
                "lambda-t": w.lambda_t.w.getPlotItem().getAxis("bottom").labelText,
                "slit": w.slit_panel.sl.getAxis("left").labelText}
