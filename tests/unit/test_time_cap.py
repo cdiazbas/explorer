@@ -169,39 +169,6 @@ def test_a_series_reads_one_file_per_step_shown(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------- the panels: drawn in the cube's own t
-def test_the_panels_draw_the_steps_at_their_t_and_a_click_picks_the_nearest(qapp):
-    from PySide6 import QtCore
-
-    from explorer.ui.lambda_t import LambdaTPanel, TimeCurve
-    from explorer.ui.slitpanel import SlitPanel
-
-    ts = steps(NT, 100)
-    c = TimeCurve(NT, None)
-    c.show(np.arange(100, dtype=np.float32)[:, None])
-    print("curve x", np.asarray(c.curve.xData)[:4], "pick 5.0 ->", c.pick(QtCore.QPointF(5.0, 0)))
-    assert np.allclose(c.curve.xData, ts + 0.5)
-    assert c.pick(QtCore.QPointF(5.0, 0)) == {"t": 3} and c.pick(QtCore.QPointF(6.4, 0)) == {"t": 6}
-    c.set_markers(4)
-    assert c.t_line.value() == 4.5                   # the current t where it is, between the steps
-    c.show(np.arange(NT, dtype=np.float32))          # every t: as before
-    assert np.allclose(c.curve.xData, np.arange(NT) + 0.5) and c.pick(QtCore.QPointF(5.0, 0)) == {"t": 5}
-
-    p = LambdaTPanel(NT, NL, None)
-    p.show(np.ones((100, NL), np.float32), (0.0, 2.0))
-    r = p.img.mapRectToParent(p.img.boundingRect())
-    print("lambda-t image rect", r.height(), "pick y 5.0 ->", p.pick(QtCore.QPointF(1.5, 5.0)))
-    assert r.height() == pytest.approx(NT) and p.pick(QtCore.QPointF(1.5, 5.0)) == {"l": 1, "t": 3}
-    p.show(np.ones((NT, NL), np.float32), (0.0, 2.0))
-    assert p.pick(QtCore.QPointF(1.5, 5.0)) == {"l": 1, "t": 5}
-
-    s = SlitPanel(NT, NL, None)
-    s.set_path((np.arange(8), np.arange(8)))
-    s.show(np.ones((100, 8), np.float32), np.ones((NL, 8), np.float32), (0.0, 2.0), (0.0, 2.0))
-    r = s.ts_img.mapRectToParent(s.ts_img.boundingRect())
-    assert r.height() == pytest.approx(NT) and np.array_equal(s.steps, ts)
-
-
-# ---------------------------------------------------------------- the number in the titles
 def spin(qapp, until, timeout=20.0):
     end = time.perf_counter() + timeout
     while not until() and time.perf_counter() < end:
@@ -210,6 +177,70 @@ def spin(qapp, until, timeout=20.0):
     return until()
 
 
+def window(qapp, path, **kw):
+    """A window on path, shown, its first image in; the panels inside it (bare pyqtgraph widgets left to the collector
+    crashed the run's teardown)."""
+    from explorer.ui.shell import Shell
+
+    ds = Dataset.open(path, **kw)
+    w = Shell(ds)
+    w.resize(1200, 640)
+    w.show()
+    assert spin(qapp, lambda: w.first_image_s is not None)
+
+    def close():
+        w.close()
+        ds.close()
+    return w, close
+
+
+def test_the_panels_draw_the_steps_at_their_t_and_a_click_picks_the_nearest(qapp, cube, tmp_path):
+    from PySide6 import QtCore
+
+    ts = steps(NT, 100)
+    w, close = window(qapp, cube[0], no_sp=True)
+    try:
+        w.session.hover(Y, X)
+        p = w.lambda_t
+        assert spin(qapp, lambda: w.last.get("lambda_t") is not None and w.last["lambda_t"][1] == (Y, X))
+        r = p.img.mapRectToParent(p.img.boundingRect())
+        print("lambda-t rows 100, image height", r.height(), "pick y 5.0 ->", p.pick(QtCore.QPointF(1.5, 5.0)))
+        assert np.array_equal(p.steps, ts) and r.height() == pytest.approx(NT)
+        assert p.pick(QtCore.QPointF(1.5, 5.0)) == {"l": 1, "t": 3}
+        p.show(np.ones((NT, NL), np.float32), (0.0, 2.0))         # every t: as before
+        assert p.steps is None and p.pick(QtCore.QPointF(1.5, 5.0)) == {"l": 1, "t": 5}
+        w.session.set_path([(3.5, 6.5), (16.5, 18.5)], cube=0)
+        w._slit_shown(True)
+        sp = w.slit_panel
+        assert spin(qapp, lambda: sp._raw[0][0] is not None and sp._raw[0][0].shape[0] == 100)
+        r = sp.ts_img.mapRectToParent(sp.ts_img.boundingRect())
+        print("time slice rows 100, image height", r.height())
+        assert np.array_equal(sp.steps, ts) and r.height() == pytest.approx(NT)
+    finally:
+        close()
+
+    path = tmp_path / "blos_t.fits"
+    h = fits.Header()
+    h["CTYPE1"], h["CTYPE2"], h["CTYPE3"], h["BTYPE"], h["BUNIT"] = "HPLN-TAN", "HPLT-TAN", "UTC", "Blos", "G"
+    values = np.random.default_rng(2).normal(size=(NT, NY, NX)).astype(">f4")
+    fits.PrimaryHDU(values, h).writeto(path)
+    w, close = window(qapp, str(path))
+    try:
+        w.session.hover(Y, X)
+        c = w.lambda_t
+        assert spin(qapp, lambda: w.last.get("lambda_t") is not None and w.last["lambda_t"][1] == (Y, X))
+        print("curve x", np.asarray(c.curve.xData)[:4], "pick 5.0 ->", c.pick(QtCore.QPointF(5.0, 0)))
+        assert np.allclose(c.curve.xData, ts + 0.5) and np.allclose(c.curve.yData, values[ts, Y, X])
+        assert c.pick(QtCore.QPointF(5.0, 0)) == {"t": 3} and c.pick(QtCore.QPointF(6.4, 0)) == {"t": 6}
+        w.session.set_index("t", 4)
+        assert spin(qapp, lambda: c.t_line.value() == 4.5)      # the current t where it is, between the steps
+        c.show(np.arange(NT, dtype=np.float32))                  # every t: as before
+        assert np.allclose(c.curve.xData, np.arange(NT) + 0.5) and c.pick(QtCore.QPointF(5.0, 0)) == {"t": 5}
+    finally:
+        close()
+
+
+# ---------------------------------------------------------------- the number in the titles
 def test_the_number_in_the_titles_changes_the_steps(qapp, cube):
     from PySide6 import QtCore, QtGui
 
