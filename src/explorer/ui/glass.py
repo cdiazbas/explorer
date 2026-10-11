@@ -297,7 +297,7 @@ class PanelTitle(titlebar.DockTitle):
 class PanelSkin(QtCore.QObject):
     """A floating panel as a rounded slab of smoked glass: the panel paints it, its title and plots are transparent
     over it. The rounded shape: a mask on X11 (xcb: Qt's X SHAPE; the bridge: the published shape), a transparent
-    window on a local Mac. From look_glass.py:401-471; remove() puts the panel back as it was."""
+    window on a local Mac. From look_glass.py:401-471; remove() puts the panel back as it was and deletes the skin."""
 
     def __init__(self, dock: QtWidgets.QDockWidget):
         super().__init__(dock)
@@ -375,6 +375,7 @@ class PanelSkin(QtCore.QObject):
         if self.platform == "xcb":
             d.clearMask()
         d.update()
+        self.deleteLater()                          # a child of the panel: else one more per float and dock in glass
 
     def shape(self) -> None:
         titlebar.round_window(self.d, RADIUS_PANEL)  # rounded floating, square docked (the bridge's X SHAPE too)

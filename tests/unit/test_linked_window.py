@@ -1064,3 +1064,33 @@ def test_a_cube_s_window_offers_its_slit_panel_only_with_a_slit(window):
     assert with_slit == [True] and cleared == ([False], False)
     w.detach_action.setChecked(False)
     spin(qapp, lambda: False, timeout=0.3)
+
+
+def test_in_glass_a_cube_s_panel_floated_and_docked_leaves_no_skin_behind(window, restore):
+    """Each float and re-dock of a cube's panel in glass made a PanelSkin and, docked again, left it a child of the
+    panel, inert until the window closed: removed, it is deleted."""
+    from PySide6 import QtCore
+
+    from explorer.look import get_look
+    from explorer.ui.glass import PanelSkin
+
+    w, qapp = window
+    w.set_look(get_look("glass"))
+    spin(qapp, lambda: False, timeout=0.6)
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.6)
+    pane = w.linked[0].panes["spectra:1"]
+    counts = []
+    for _ in range(3):
+        pane.setFloating(True)
+        spin(qapp, lambda: False, timeout=0.2)
+        pane.setFloating(False)
+        spin(qapp, lambda: False, timeout=0.2)
+        QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+        counts.append(len(pane.findChildren(PanelSkin)))
+    worn = len(w.glass.skins)
+    print("skins left on the docked panel after each cycle", counts, "skins glass wears", worn)
+    assert counts == [0, 0, 0]
+    w.detach_action.setChecked(False)
+    w.set_look(get_look("classic"))
+    spin(qapp, lambda: False, timeout=0.4)
