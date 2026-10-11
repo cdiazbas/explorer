@@ -4738,3 +4738,41 @@ de Stokes ni bajo el aviso de la rendija (con una rendija a medio dibujar tampoc
 - capturas 1400×900 con el 6173 real: solo cambian la lectura (338 px), los rótulos Δλ (804 + 804, 811 y el de la rendija, 878) y el glifo (147). El mismo código dos veces: 0 px. Un cubo sin λ: solo el glifo.
 
 **Sin explicar:** en una tanda, el eje izquierdo de la curva de un cubo sin λ salió 7 px más ancho en algunas ejecuciones del mismo código de `main`. No viene de este cambio.
+
+### 2026-10-11 (13): la rendija sobre un mapa enlazado, otra vez al ritmo del puntero (ROADMAP E8.11)
+
+**El problema** (el usuario): «la rendija artificial va ahora mucho más lenta; antes se movía mucho más rápido».
+
+**Medido** con `bench/slit_drive.py` (nuevo):
+- Mueve la rendija como un usuario, en la Shell real y sin pantalla, sobre el 6173 con el Blos enlazado.
+- Va en bellatrix, en el nodo 0, con el cerrojo; ABBA entre `0712b98` (main del 10 por la mañana) y `4424608`.
+- Dibujada sobre el principal, en classic, modern y glass, solo y enlazado: nada cambia. Del movimiento a la banda
+  pintada, 2.2-2.6 ms; al corte pintado, 24-33 ms; 38-40 de 40 cortes a ritmo de puntero; A/D igual.
+- Dibujada sobre el Blos: del movimiento al corte, 31.7 → 256.8 ms; a ritmo de puntero, 39.5 → 0 cortes pintados.
+
+**La bisección** sobre ese caso da `3d0a312` (la rendija muestra los cortes del cubo en que se dibuja). Antes, la
+rendija dibujada en el Blos mostraba los del Stokes, sacados de sus bloques por píxel. Desde entonces lee el Blos,
+que no tiene `_sp`, por filas, y esa lectura espera 250 ms de reposo en cada paso (`REST_S`, F71). La lectura
+misma tarda 4-23 ms (17 fotogramas de 2031 × 2028).
+
+**Ahora** decide el tiempo medido de la última lectura. Si tardó 50 ms o menos (`LIVE_MS`), el paso siguiente se lee
+al momento; una lectura más lenta vuelve a la espera, y otro cubo empieza esperando.
+
+**Resultado** (ABBA, 4 tandas):
+- del movimiento al corte pintado, 260.0 → 20.8 ms;
+- a ritmo de puntero, 0 → 31 de 40 cortes pintados.
+
+Dibujada sobre el principal: 32.2 / 30.3 ms, 40 de 40.
+
+**Descartado, medido:**
+- que `62d1fba` repintara la imagen entera: 1 pintado del viewport por paso, un 1% de su área, antes y después;
+- el coste de una lectura de la rendija por cubo, el tope de t y la leyenda: nada en el principal.
+
+**Pruebas:**
+- una nueva falla antes (`2 == 4`) y pasa después;
+- grupos de la rendija, enlazadas, `over_image`, `scale_gui`, `time_cap` y `shell`: 169 pasan.
+
+**Por decidir:**
+- el valor de `LIVE_MS`;
+- si el primer paso de un cubo también se lee al momento;
+- comprobar con el usuario que dibujaba sobre el mapa. A través del puente X no se ha medido.
