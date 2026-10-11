@@ -541,7 +541,7 @@ class TimeSteps(QtCore.QObject):
             self.changed.emit(v)
 
     def step(self, d: int) -> None:
-        """The next choice up (d > 0) or down: 25 50 100 200 all."""
+        """The next choice up (d > 0) or down: 25 50 100 all."""
         ch = list(tsample.CHOICES)
         i = ch.index(self.value) if self.value in ch else ch.index(tsample.CAP)
         self.set(ch[min(len(ch) - 1, max(0, i + d))])
@@ -563,7 +563,7 @@ class StepsButton(QtWidgets.QAbstractButton):
         f = QtGui.QFont(self.font())
         f.setPointSizeF(max(6.0, f.pointSizeF() * 0.85))
         self.setFont(f)
-        w = QtGui.QFontMetrics(f).horizontalAdvance("200") + 8
+        w = QtGui.QFontMetrics(f).horizontalAdvance("100") + 8
         self.setFixedSize(max(size.width(), w), size.height())
         self.clicked.connect(self.choose)
         steps.changed.connect(lambda _v: self.update())

@@ -268,23 +268,21 @@ def test_the_number_in_the_titles_changes_the_steps(qapp, cube):
             QtCore.QCoreApplication.sendEvent(b, e)
             qapp.processEvents()
 
-        wheel(True)
-        assert spin(qapp, lambda: w.session.state.t_cap == 200 and len(w.last["lambda_t"][0]) == 200)
-        wheel(True)
+        wheel(True)                                     # past 100 only "all"
         assert spin(qapp, lambda: w.session.state.t_cap is None and len(w.last["lambda_t"][0]) == NT)
         wheel(True)                                     # "all" is the end
         assert w.session.state.t_cap is None and w.t_steps.value is None
         for _ in range(3):
             wheel(False)
-        assert spin(qapp, lambda: w.session.state.t_cap == 50 and len(w.last["lambda_t"][0]) == 50)
-        print("wheel: 100 -> 200 -> all -> all -> 200 -> 100 -> 50; lambda-t rows", len(w.last["lambda_t"][0]))
-        b.choose()                                      # the menu of choices: 25 picked
-        acts = [a for a in b.findChildren(QtGui.QAction) if a.text() == "25"]
-        assert acts
+        assert spin(qapp, lambda: w.session.state.t_cap == 25 and len(w.last["lambda_t"][0]) == 25)
+        print("wheel: 100 -> all -> all -> 100 -> 50 -> 25; lambda-t rows", len(w.last["lambda_t"][0]))
+        b.choose()                                      # the menu of choices: 50 picked
+        acts = [a for a in b.findChildren(QtGui.QAction) if a.text() == "50"]
+        assert acts and [a.text() for a in b.findChildren(QtGui.QAction)][-4:] == ["25", "50", "100", "all"]
         acts[-1].trigger()
-        assert spin(qapp, lambda: w.session.state.t_cap == 25 and w.t_steps.value == 25)
+        assert spin(qapp, lambda: w.session.state.t_cap == 50 and w.t_steps.value == 50)
         img = b.grab().toImage()
-        assert not img.isNull() and w.t_steps.value == 25
+        assert not img.isNull() and w.t_steps.value == 50
         g = glass.PanelTitle(w.lt_dock)                 # the glass look's title: the number there too
         g.resize(300, 20)
         g.layout().activate()

@@ -10,7 +10,7 @@ again, as without a cap. With nt <= cap, or no cap, every t: the panels as witho
 import numpy as np
 
 CAP = 100                   # the default: what the panels show at most along t
-CHOICES = (25, 50, 100, 200, None)    # what the panels' number offers; None: every t
+CHOICES = (25, 50, 100, None)        # what the panels' number offers: past the cap only "all" (None, every t)
 
 
 def time_samples(nt: int, cap: int | None) -> np.ndarray:
