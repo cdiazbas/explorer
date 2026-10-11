@@ -72,6 +72,19 @@ def test_a_per_pixel_file_opened_as_a_cube_reads_its_images_from_it(pair):
         assert ds.probe.read_ahead == 0 and ds.probe.readers == 1
 
 
+def test_a_per_pixel_file_alone_reads_only_the_t_steps_asked(pair):
+    """The temporal panels ask for their t steps (data.tsample, at=): the reader of a per-pixel file alone takes them
+    as the image cube's does, for a pixel's series and for a band of rows."""
+    steps = {0: np.array([0, 2])}
+    with Dataset.open(pair["renamed"], no_sp=True) as ds, Dataset.open(pair["im"], no_sp=True) as im:
+        a = ds.frames.series(5, 7, (0, 0, 0), (0, 2), at=steps)
+        b = im.frames.series(5, 7, (0, 0, 0), (0, 2), at=steps)
+        assert a.shape == (2, SHAPE[2]) and np.array_equal(a, b, equal_nan=True)
+        a = ds.frames.row_band((0, 0, 0), (0, 2), 3, 6, at=steps)
+        b = im.frames.row_band((0, 0, 0), (0, 2), 3, 6, at=steps)
+        assert a.shape[:2] == (2, SHAPE[2]) and np.array_equal(a, b, equal_nan=True)
+
+
 def test_times_that_do_not_match_the_frames_are_refused_at_opening(tmp_path):
     """An image cube whose WCS-TAB holds 2 times for 3 frames in t: refused at opening with both counts; before, it
     opened and the last time step raised IndexError while drawing."""

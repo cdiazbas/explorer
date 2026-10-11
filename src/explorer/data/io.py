@@ -432,10 +432,10 @@ class PerPixelFrames(FrameReader):
         raw = self.frames_rows([self._frame_number(j) for j in idxs], y0, y1).reshape(len(idxs), -1)[:, at]
         return np.stack([self._masked(j, self.to_float32(r), y0, y1, at) for j, r in zip(idxs, raw, strict=True)])
 
-    def row_band(self, idx, free_axes, y0: int, y1: int) -> np.ndarray:
+    def row_band(self, idx, free_axes, y0: int, y1: int, at=None) -> np.ndarray:
         if not 0 <= y0 < y1 <= self.ny:
             raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
-        sizes, fn = self.series_frames(idx, free_axes)
+        sizes, fn = self.series_frames(idx, free_axes, at)
         return self.frames_rows(fn, y0, y1).reshape(*sizes, y1 - y0, self.nx)
 
     def _pixel_record(self, y: int, x: int) -> np.ndarray:
@@ -444,10 +444,10 @@ class PerPixelFrames(FrameReader):
             raise ShortRead(f"read {len(b)} of {self.record} bytes of pixel ({y}, {x}) in {self.sp.path}")
         return np.frombuffer(b, self.sp.dtype)
 
-    def series(self, y: int, x: int, idx, free_axes) -> np.ndarray:
+    def series(self, y: int, x: int, idx, free_axes, at=None) -> np.ndarray:
         if not 0 <= y < self.ny or not 0 <= x < self.nx:
             raise IndexError(f"pixel ({y}, {x}) outside {self.ny}x{self.nx}")
-        sizes, fn = self.series_frames(idx, free_axes)
+        sizes, fn = self.series_frames(idx, free_axes, at)
         n = fn.size
         if self.i_index(idx, free_axes) is not None:
             assert self.stokes is not None
