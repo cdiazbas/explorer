@@ -135,9 +135,11 @@ def open_mask(path, main):
 def given_cubes(path, sp, no_sp, linked) -> tuple[str, str | None, list[str], dict[str, str]]:
     """The cubes to open for those given: a per-pixel file given as a cube becomes its image cube, opened with it
     (formats.opening), said in one line on stderr; (first cube, its per-pixel file, the linked cubes, their
-    per-pixel files by path). The first cube's ValueError (a per-pixel file without its image cube, --sp naming an
-    image cube) is the caller's; a linked one's leaves that cube out, with the reason, as data.link's refusals. A
-    linked per-pixel file of the first cube is taken as its per-pixel file, not linked to it."""
+    per-pixel files by path). A FITS per-pixel file without its image cube opens alone (its images read from it).
+    The first cube's ValueError (an LP per-pixel file without its image cube, --sp naming an image cube) is the
+    caller's; a linked one's leaves that cube out, with the reason, as data.link's refusals, and so does a linked
+    per-pixel file alone. A linked per-pixel file of the first cube is taken as its per-pixel file, not linked to
+    it."""
     from ..data.formats import opening
 
     first = opening(path, sp, no_sp)
@@ -151,6 +153,10 @@ def given_cubes(path, sp, no_sp, linked) -> tuple[str, str | None, list[str], di
             o = opening(p, None, no_sp)
         except (ValueError, OSError) as e:
             print(f"[{APP_NAME}] not linked: {e}", file=sys.stderr)
+            continue
+        if o.sp is not None and o.path == o.sp:        # a per-pixel file alone: an image is a pass over it
+            print(f"[{APP_NAME}] not linked: {os.path.basename(str(p))} is a per-pixel file without its image cube "
+                  f"beside it", file=sys.stderr)
             continue
         if o.sp is not None and os.path.realpath(o.path) == os.path.realpath(path):
             if sp is None:

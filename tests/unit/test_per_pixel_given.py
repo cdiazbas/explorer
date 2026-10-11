@@ -56,12 +56,20 @@ def test_the_header_of_the_per_pixel_file_says_what_it_is(pair):
     assert formats.per_pixel(pair["im"]) is None
 
 
-def test_a_per_pixel_file_is_refused_as_a_cube_and_its_times_never_indexed(pair):
-    """Before: it opened, (t, s, lambda) = (rows, cols, Stokes), its 3 times for 16 steps in t; Axes.utc_str(15)
-    raised the IndexError the toolbar raised on the real file."""
-    with pytest.raises(ValueError, match="per-pixel file") as e:
-        Dataset.open(pair["renamed"], no_sp=True)
-    print("refused:", e.value)
+def test_a_per_pixel_file_opened_as_a_cube_reads_its_images_from_it(pair):
+    """Before (2026-10-08): it opened, (t, s, lambda) = (rows, cols, Stokes), its 3 times for 16 steps in t, and
+    Axes.utc_str(15) raised the IndexError the toolbar raised on the real file; then (E1.23) it was refused. Now its
+    images are read from it, (t, s, lambda) its own, equal to the image cube's, and it is its own per-pixel file."""
+    with Dataset.open(pair["renamed"], no_sp=True) as ds, Dataset.open(pair["im"], no_sp=True) as im:
+        print(ds.describe())
+        assert ds.images_from_sp and not im.images_from_sp
+        assert (ds.roles.nt, ds.roles.ns, ds.roles.nl) == (SHAPE[0], SHAPE[1], SHAPE[2])
+        assert ds.axes.utc_str(ds.roles.nt - 1) == im.axes.utc_str(im.roles.nt - 1)
+        assert np.array_equal(ds.axes.lam_nm, im.axes.lam_nm)
+        assert ds.pixel is not None and ds.pixel.layout.path == pair["renamed"]
+        for idx in ((0, 0, 0), (2, 0, 4), (1, 0, 2)):
+            assert np.array_equal(ds.image(idx).result(), im.image(idx).result(), equal_nan=True)
+        assert ds.probe.read_ahead == 0 and ds.probe.readers == 1
 
 
 def test_times_that_do_not_match_the_frames_are_refused_at_opening(tmp_path):
@@ -111,15 +119,28 @@ def test_a_tagged_lp_per_pixel_file_finds_its_image_cube(tmp_path, tag, ext):
 
 
 def test_a_per_pixel_file_without_its_image_cube_says_what_is_needed(pair, tmp_path):
-    for p, want in (("sp_alone", "c_im.fits"), ("icube_alone", "c_im.icube"), ("renamed", "--sp renamed.fits")):
-        with pytest.raises(ValueError, match="is a per-pixel file") as e:
-            formats.opening(pair[p])
-        print(e.value)
-        assert want in str(e.value)
+    """A FITS one opens alone (the next test); an LP one is refused: its header gives pixels times Stokes, not the
+    image's size."""
+    with pytest.raises(ValueError, match="is a per-pixel file") as e:
+        formats.opening(pair["icube_alone"])
+    print(e.value)
+    assert "c_im.icube" in str(e.value) and "header does not say the image's size" in str(e.value)
     _, sp = _lp_pair(tmp_path)
     os.remove(tmp_path / "c_im.icube")
     with pytest.raises(ValueError, match=r"named _sp, 192 frames of 5 x 3 pixels"):
         formats.opening(sp)
+
+
+def test_a_fits_per_pixel_file_without_its_image_cube_opens_alone(pair):
+    """Before: ValueError, nothing opened. Now the per-pixel file is the cube and its per-pixel file, said why."""
+    for p, want in (("sp_alone", "its image cube c_im.fits is not next to it"),
+                    ("renamed", "its image cube (_im) is not next to it")):
+        o = formats.opening(pair[p])
+        print(o.note)
+        assert o.path == o.sp == pair[p] and want in o.note and "images read from it" in o.note
+    o = formats.opening(pair["sp"], sp=pair["sp"])     # its image cube beside it, --sp naming the file itself
+    print(o.note)
+    assert o.path == o.sp == pair["sp"] and "opened alone" in o.note
 
 
 def test_a_file_that_is_not_a_cube_is_passed_on_for_the_opening_to_say_why(tmp_path):
@@ -148,18 +169,19 @@ def test_among_linked_cubes(pair, tmp_path, capsys):
     assert (path, sp) == (pair["im"], pair["sp"])       # its own per-pixel file: taken as such, not linked
     assert linked == [str(tmp_path / "d_im.icube")] and sps == {linked[0]: lp_sp}
     assert "not linked: c_sp.fits is a per-pixel file" in err
+    assert "not linked: c_sp.fits is a per-pixel file without its image cube" in err   # sp_alone
 
 
 def test_the_command_opens_nothing_and_says_why(pair, capsys, monkeypatch):
-    """`explorer c_sp.fits` without its image cube: exit status 1, one line, no traceback, before any window."""
+    """`explorer c_sp.icube` without its image cube: exit status 1, one line, no traceback, before any window."""
     from explorer import cli
 
     monkeypatch.delenv("DISPLAY", raising=False)
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    assert cli.main([pair["sp_alone"]]) == 1
+    assert cli.main([pair["icube_alone"]]) == 1
     err = capsys.readouterr().err
     print(err)
-    assert "c_sp.fits is a per-pixel file" in err and "c_im.fits" in err and "Traceback" not in err
+    assert "c_sp.icube is a per-pixel file" in err and "c_im.icube" in err and "Traceback" not in err
 
 
 def test_start_opens_the_image_cube_with_the_per_pixel_file_given(qapp, pair, tmp_path, monkeypatch, capsys):
@@ -173,6 +195,8 @@ def test_start_opens_the_image_cube_with_the_per_pixel_file_given(qapp, pair, tm
         print(capsys.readouterr().err)
         assert s.ds.path == pair["im"] and s.ds.pixel is not None and s.ds.pixel.layout.path == pair["sp"]
         assert s.ds.axes.utc_str(s.ds.roles.nt - 1) is not None
+        assert not s.ds.images_from_sp
     finally:
         s.shell.close()
         s.close()
+

@@ -147,9 +147,11 @@ class Opening(NamedTuple):
 def opening(path, sp=None, no_sp=False) -> Opening:
     """The image cube to open for the file given as one, and its per-pixel file. A per-pixel file given as the
     cube (per_pixel) opens its image cube next to it, with it; with --sp naming that image cube, the two are taken
-    the right way round. --sp naming a FITS image cube (its spatial axes last) is refused, as is a per-pixel file
-    without an image cube next to it: ValueError, its message naming what was given and what is needed. A file that
-    cannot be read is passed on as given, for the opening to say why. no_sp: only the wording ("without it")."""
+    the right way round. A FITS per-pixel file without its image cube next to it opens alone, its images read from
+    it (_alone; Opening(path, path, note)), as it does with --sp naming the file itself. --sp naming a FITS image
+    cube (its spatial axes last) is refused, as is an LP per-pixel file without an image cube next to it:
+    ValueError, its message naming what was given and what is needed. A file that cannot be read is passed on as
+    given, for the opening to say why. no_sp: only the wording ("without it")."""
     name = os.path.basename(str(path))
     try:
         why = per_pixel(path)
@@ -157,6 +159,10 @@ def opening(path, sp=None, no_sp=False) -> Opening:
         why = None
     if why is not None:
         with_it = "without it (--nosp)" if no_sp else "with it"
+        if sp is not None and os.path.realpath(str(sp)) == os.path.realpath(str(path)) and _alone(path):
+            return Opening(str(path), str(path), f"{name} is a per-pixel file ({why}), and --sp names it too: "
+                                                 f"opened alone, images read from it, each one a pass over the "
+                                                 f"whole file")
         if sp is not None:
             if pairs(sp, path):
                 return Opening(str(sp), str(path), f"{name} is the per-pixel file of {os.path.basename(str(sp))} "
@@ -166,12 +172,18 @@ def opening(path, sp=None, no_sp=False) -> Opening:
         im = next((p for p in images(path) if pairs(p, path)), None)
         if im is None:
             m = _SP.match(name)
+            wanted = "its image cube (_im)" if m is None else f"its image cube {m.group(1)}_im{m.group(2)}.{m.group(3)}"
+            if _alone(path):
+                return Opening(str(path), str(path), f"{name} is a per-pixel file ({why}), and {wanted} is not next "
+                                                     f"to it: images read from it, each one a pass over the whole "
+                                                     f"file; spectra as usual")
             if m is None:
                 raise ValueError(f"{name} is a per-pixel file ({why}), not an image cube: open its image cube "
                                  f"(_im) with --sp {name}")
             raise ValueError(f"{name} is a per-pixel file ({why}), not an image cube, and its image cube "
                              f"{m.group(1)}_im{m.group(2)}.{m.group(3)} is not next to it: open that one (its "
-                             f"per-pixel file is found next to it)")
+                             f"per-pixel file is found next to it; an LP per-pixel file's header does not say the "
+                             f"image's size, so its images cannot be read from it alone)")
         return Opening(im, str(path), f"{name} is the per-pixel file of {os.path.basename(im)} ({why}): opening "
                                       f"that one {with_it}")
     if sp is not None and not pairs(path, sp):
@@ -180,6 +192,23 @@ def opening(path, sp=None, no_sp=False) -> Opening:
             raise ValueError(f"--sp {os.path.basename(str(sp))} is an image cube (its header puts "
                              f"{', '.join(last)} last), not a per-pixel file")
     return Opening(str(path), None if sp is None else str(sp))
+
+
+def _alone(path) -> bool:
+    """Whether a per-pixel file can be opened without its image cube: a FITS one with 5 axes, spatial first (y, x,
+    s, t, lambda), whose header says the image's size (io.PerPixelFrames reads its images). Not an LP one: its header
+    gives only pixels times Stokes."""
+    from .detect import detect
+    from .fits import fits_layout
+    from .layout import spatial_lead
+
+    try:
+        if detect(path) != "fits":
+            return False
+        lay = fits_layout(path)
+    except (OSError, ValueError):
+        return False
+    return len(lay.shape) == 5 and len(spatial_lead(lay.axes)) == 2
 
 
 def _image_axes(path) -> tuple[str, ...]:

@@ -10,6 +10,7 @@ where I is negative. read_raw and row_band give the values as stored; whoever co
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 
 import numpy as np
 
@@ -334,6 +335,141 @@ class FrameReader:
 
     def __exit__(self, *exc):
         self.close()
+
+
+
+def image_of_per_pixel(sp: Layout) -> Layout:
+    """The image cube a per-pixel file holds, as its _im would be laid out: numpy (y, x, s, t, lambda) read as
+    (t, s, lambda, y, x), each axis keeping its name; offset, dtype and values as the per-pixel file's. Only a
+    description: PerPixelFrames reads it."""
+    if len(sp.shape) != 5:
+        raise ValueError(f"{sp.path}: a per-pixel file has 5 axes (y, x, s, t, lambda), not {sp.shape}")
+    ny, nx, ns, nt, nl = sp.shape
+    a = sp.axes
+    return replace(sp, shape=(nt, ns, nl, ny, nx), axes=(a[3], a[2], a[4], a[0], a[1]))
+
+
+class PerPixelFrames(FrameReader):
+    """Images of a cube read from its per-pixel file alone (numpy (y, x, s, t, lambda), SSTRED's _sp.fits), with no
+    image cube beside it. A pixel's record (ns * nt * nl samples) is smaller than a page in SSTRED's files (2940
+    bytes in Halpha 6563, 1470 in its .icube), so the samples of one image are on every page of the file: an image
+    is one pass over the whole file, read in blocks of rows (`block` bytes at most, plus the images asked for), and
+    the images asked for together come out of the same pass. 4-26 s an image against 5-21 ms from the _im
+    (bench/sp_frames.py, bellatrix). Values at one pixel (series, points) are one read of its record, as the
+    per-pixel reader's. passes: seconds of each pass, the latest last."""
+
+    BLOCK = 64 << 20
+
+    def __init__(self, sp: Layout, pool: ThreadPoolExecutor | None = None, chunks: int = 4, block: int = BLOCK):
+        super().__init__(image_of_per_pixel(sp), pool=pool, chunks=chunks)
+        self.sp = sp
+        self.nt, self.ns, self.nl = self.shape[:3]
+        self.record = self.ns * self.nt * self.nl * sp.dtype.itemsize
+        self.block_rows = max(1, int(block) // (self.nx * self.record))
+        self.passes: list[float] = []
+
+    def _record_pos(self, fn) -> np.ndarray:
+        """Position in a pixel's record (s, t, lambda) of image frame numbers fn (file order of the _im)."""
+        fn = np.asarray(fn, np.int64)
+        t, s, lam = fn // (self.ns * self.nl), fn // self.nl % self.ns, fn % self.nl
+        return (s * self.nt + t) * self.nl + lam
+
+    def _frame_number(self, idx) -> int:
+        idx = tuple(int(i) for i in idx)
+        if len(idx) != 3 or any(not 0 <= i < n for i, n in zip(idx, self.shape[:3], strict=True)):
+            raise IndexError(f"frame index {idx} outside {self.shape[:-2]}")
+        return sum(i * s for i, s in zip(idx, self.strides, strict=True))
+
+    def frame_offset(self, idx) -> int:
+        raise NotImplementedError("an image of a per-pixel file is spread over the whole file")
+
+    def sample_at(self, k: int, y: int, x: int) -> tuple[int, int]:
+        pos = int(self._record_pos(k))
+        return self.fd, self.sp.offset + (y * self.nx + x) * self.record + pos * self.sp.dtype.itemsize
+
+    def rows_raw(self, y0: int, y1: int) -> np.ndarray:
+        """Raw records of rows y0..y1-1, (rows, nx, ns * nt * nl) as stored, one read."""
+        n = (y1 - y0) * self.nx * self.record
+        b = os.pread(self.fd, n, self.sp.offset + y0 * self.nx * self.record)
+        if len(b) != n:
+            raise ShortRead(f"read {len(b)} of {n} bytes of rows {y0}..{y1} in {self.sp.path}")
+        return np.frombuffer(b, self.sp.dtype).reshape(y1 - y0, self.nx, -1)
+
+    def frames_rows(self, fns, y0: int, y1: int) -> np.ndarray:
+        """Rows y0..y1-1 of the image frames fns (file order of the _im) as stored, (len(fns), rows, nx), in one
+        pass over those rows, blocks of block_rows at a time. A pass over every row is timed into passes."""
+        pos = self._record_pos(fns)
+        out = np.empty((pos.size, y1 - y0, self.nx), self.sp.dtype)
+        q = time.perf_counter()
+        with span("data.sp_frames.pass"):
+            for a in range(y0, y1, self.block_rows):
+                b = min(y1, a + self.block_rows)
+                out[:, a - y0:b - y0] = self.rows_raw(a, b)[:, :, pos].transpose(2, 0, 1)
+        if y1 - y0 == self.ny:
+            self.passes.append(time.perf_counter() - q)
+        return out
+
+    def _read_raws(self, idxs, chunks: int | None = None) -> list[np.ndarray]:
+        return list(self.frames_rows([self._frame_number(i) for i in idxs], 0, self.ny))
+
+    def read_rows_raw(self, idx, y0: int, y1: int) -> np.ndarray:
+        if not 0 <= y0 < y1 <= self.ny:
+            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        return self.frames_rows([self._frame_number(idx)], y0, y1)[0]
+
+    def band_values(self, idxs, y0: int, y1: int, at, threads: int = 8) -> np.ndarray:
+        if not 0 <= y0 < y1 <= self.ny:
+            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        at = np.asarray(at, np.int64)
+        idxs = list(idxs)
+        if not idxs:
+            return np.empty((0, at.size), np.float32)
+        raw = self.frames_rows([self._frame_number(j) for j in idxs], y0, y1).reshape(len(idxs), -1)[:, at]
+        return np.stack([self._masked(j, self.to_float32(r), y0, y1, at) for j, r in zip(idxs, raw, strict=True)])
+
+    def row_band(self, idx, free_axes, y0: int, y1: int) -> np.ndarray:
+        if not 0 <= y0 < y1 <= self.ny:
+            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        sizes, fn = self.series_frames(idx, free_axes)
+        return self.frames_rows(fn, y0, y1).reshape(*sizes, y1 - y0, self.nx)
+
+    def _pixel_record(self, y: int, x: int) -> np.ndarray:
+        b = os.pread(self.fd, self.record, self.sp.offset + (int(y) * self.nx + int(x)) * self.record)
+        if len(b) != self.record:
+            raise ShortRead(f"read {len(b)} of {self.record} bytes of pixel ({y}, {x}) in {self.sp.path}")
+        return np.frombuffer(b, self.sp.dtype)
+
+    def series(self, y: int, x: int, idx, free_axes) -> np.ndarray:
+        if not 0 <= y < self.ny or not 0 <= x < self.nx:
+            raise IndexError(f"pixel ({y}, {x}) outside {self.ny}x{self.nx}")
+        sizes, fn = self.series_frames(idx, free_axes)
+        n = fn.size
+        if self.i_index(idx, free_axes) is not None:
+            assert self.stokes is not None
+            fn = np.concatenate([fn, fn - int(idx[self.stokes]) * self.strides[self.stokes]])
+        with span("data.series.read"):
+            v = self.to_float32(self._pixel_record(y, x)[self._record_pos(fn)])
+        return self.mask_series(v[:n].reshape(sizes), idx, free_axes, v[n:].reshape(sizes) if v.size > n else None)
+
+    def _gather_points(self, ys, xs, fn) -> np.ndarray:
+        with span("data.points.read"):
+            raw = np.stack([self._pixel_record(y, x)[self._record_pos(f)] for y, x, f in zip(ys, xs, fn, strict=True)])
+        return self.to_float32(raw.reshape(fn.shape))
+
+    def playback_cap(self) -> float | None:
+        """One image per pass: one over the latest pass's seconds, once one was timed."""
+        return 1.0 / max(1e-6, self.passes[-1]) if self.passes else None
+
+    def throughput(self, reads: int = 4, nbytes: int = 8 << 20) -> float:
+        """Bytes a second read from this file now: `reads` reads of nbytes spread over it, timed. Optimistic when the
+        file is in the page cache; the first pass then says what a pass costs (passes)."""
+        size = self.sp.nbytes
+        n = min(nbytes, size)
+        q = time.perf_counter()
+        for k in range(reads):
+            at = self.sp.offset + (size - n) * k // max(1, reads - 1)
+            os.pread(self.fd, n, at)
+        return reads * n / max(1e-6, time.perf_counter() - q)
 
 
 # compressed files kept open after a read: astropy keeps each one's compressed table in memory once read from it

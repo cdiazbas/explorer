@@ -23,7 +23,8 @@ from . import axes as _axes
 from . import formats
 from .cache import FrameCache
 from .executors import Executors
-from .io import FrameReader, SeriesReader
+from .formats.layout import spatial_lead
+from .io import FrameReader, PerPixelFrames, SeriesReader
 from .masking import stokes_axis
 from .pixel import PixelReader, SpFits, calibrate_frames, open_pixel
 from .policy import Budgets, MemoryGuard, StorageProbe, plan_budgets
@@ -52,7 +53,8 @@ class Dataset:
         cube's, for a cube linked to it: one thread runs parallel numba for both (two at once abort the process,
         executors.py); they stay that cube's, and are not closed with this one. series: FITS files, one image each,
         read as the t axis of one cube (formats.series_layout); path is then ignored, and there is no per-pixel
-        file."""
+        file. A per-pixel file given as path (formats.opening, when its image cube is not beside it): its images
+        read from it, a pass over the whole file each (io.PerPixelFrames), and it is the per-pixel file."""
         self.executors: Executors | None = None
         self._own_executors = executors is None
         self._io = ThreadPoolExecutor(IO_THREADS, thread_name_prefix="io")
@@ -64,13 +66,22 @@ class Dataset:
         else:
             self.path = str(path)
             self.layout = formats.open_layout(path)
-            self.frames = FrameReader(self.layout, pool=self._io)
+            if len(self.layout.shape) == 5 and spatial_lead(self.layout.axes):
+                # a per-pixel file alone (formats.opening): its images, one pass over the file each; its spectra
+                # from it as from any per-pixel file, whatever no_sp says (they cost one read of a pixel)
+                self.frames = PerPixelFrames(self.layout, pool=self._io)
+                self.layout = self.frames.layout
+                sp, no_sp = self.path, False
+            else:
+                self.frames = FrameReader(self.layout, pool=self._io)
         try:
             self.shape = self.layout.shape
             self.ny, self.nx = self.frames.ny, self.frames.nx
             self.roles, self.axes = _axes.read(self.path, self.layout, axes)
             with span("data.open.probe"):
                 self.probe = probe if probe is not None else StorageProbe(self.frames)
+            if self.images_from_sp:                     # a pass at a time: no image ahead, one reader
+                self.probe.read_ahead, self.probe.readers = 0, 1
             self.guard = guard if guard is not None else MemoryGuard()
             self.frames.gather_threads = self.probe.gather_threads
             self.executors = (Executors(gather_threads=self.probe.gather_threads, io_threads=1) if executors is None
@@ -93,6 +104,11 @@ class Dataset:
         except BaseException:
             self.close()
             raise
+
+    @property
+    def images_from_sp(self) -> bool:
+        """Whether the images come from a per-pixel file alone (PerPixelFrames): each one a pass over the file."""
+        return isinstance(self.frames, PerPixelFrames)
 
     @classmethod
     def open(cls, path, sp=None, **kw) -> "Dataset":

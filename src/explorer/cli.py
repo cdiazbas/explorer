@@ -33,6 +33,8 @@ def _parser() -> argparse.ArgumentParser:
                                                 its own λ (other pixels: not linked yet, and said why)
   explorer --series aia*.fits                   one image per file (e.g. SDO/AIA), the files as one cube's t, in
                                                 the order of their header times (T_OBS, DATE-AVG or DATE-OBS)
+  explorer stokes_6173_sp.fits                  a per-pixel file: its _im beside it is opened with it; without one,
+                                                its images are read from it (slow: each one a pass over the file)
   explorer stokes_6173_im.fits --mask spots.fits
                                                 the outline of a 0/1 mask on the first cube's pixels over every
                                                 image: one frame at every t, or one per t
@@ -50,7 +52,9 @@ explorer --demo is explorer demo""")
                     help="the files given are one cube, one image (y, x) per file, its t in their header times' "
                          "order (T_OBS, else DATE-AVG, else DATE-OBS; without times, their names'); a quoted "
                          "pattern (\"aia*.fits\") is expanded here, in name order")
-    ap.add_argument("--sp", help="this per-pixel file instead of the one found next to the (first) cube")
+    ap.add_argument("--sp", help="this per-pixel file instead of the one found next to the (first) cube; the cube "
+                                 "itself, when it is a per-pixel FITS file: opened alone, its images read from it "
+                                 "(as without its _im beside it: slow, each image a pass over the file)")
     ap.add_argument("--nosp", action="store_true", help="read without the per-pixel files")
     ap.add_argument("--axes", help="what the (first) cube's leading axes are, slowest first: t,s,l, s,l, t,l, or t "
                                    "for a map whose frames are times (l is lambda), for cubes whose header or name "

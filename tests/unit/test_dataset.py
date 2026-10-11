@@ -123,3 +123,37 @@ def test_integer_lp_frames_beside_a_fits_per_pixel_file_take_its_units(tmp_path)
             # two counts: half a count of rounding, and the fit's error on 6 samples (2 t x 3 lambda), as SpLP's
             assert np.nanmax(np.abs(got - want)) <= 2.0 / synth.ICUBE_SCALE
         assert ds.frame_calibration["blank"] == -1240
+
+
+def test_a_per_pixel_file_alone_reads_what_its_image_cube_holds(tmp_path):
+    """io.PerPixelFrames: the images, rows, bands along a slit, series, points and row blocks of a per-pixel file
+    alone (no image cube beside it) equal those of the image cube it was made from, the negative-I rule included (4
+    Stokes); a whole image is one pass, timed; blocks of 2 rows, so that a pass is several reads."""
+    from explorer.data.io import PerPixelFrames
+
+    shape = (3, 4, 5, 9, 7)
+    d = synth.write_dataset(tmp_path, "c", shape=shape, icube=False)
+    alone = tmp_path / "alone"
+    alone.mkdir()
+    sp = synth.write_sp_fits(d["im"], alone / "c_sp.fits", wcs=True)
+    with Dataset.open(sp) as a, Dataset.open(d["im"], no_sp=True) as b:
+        assert isinstance(a.frames, PerPixelFrames) and a.layout.shape == b.layout.shape
+        assert a.layout.axes == b.layout.axes and a.frames.stokes == b.frames.stokes == 1
+        a.frames.block_rows = 2
+        for idx in ((0, 0, 0), (2, 3, 4), (1, 2, 1)):
+            assert np.array_equal(a.frames.read(idx), b.frames.read(idx), equal_nan=True)
+            assert np.array_equal(a.frames.read_rows(idx, 3, 8), b.frames.read_rows(idx, 3, 8), equal_nan=True)
+        assert len(a.frames.passes) >= 3
+        at = np.array([0, 5, 13, 20])
+        idxs = [(0, 1, 2), (2, 3, 0), (1, 0, 4)]
+        assert np.array_equal(a.frames.band_values(idxs, 2, 5, at), b.frames.band_values(idxs, 2, 5, at),
+                              equal_nan=True)
+        for idx, free in (((0, 2, 0), [0, 2]), ((1, 0, 3), [1]), ((0, 0, 0), [0, 1, 2]), ((2, 3, 1), [2])):
+            assert np.array_equal(a.frames.series(4, 3, idx, free), b.frames.series(4, 3, idx, free), equal_nan=True)
+            assert np.array_equal(a.frames.row_band(idx, free, 1, 4), b.frames.row_band(idx, free, 1, 4),
+                                  equal_nan=True)
+        fn = np.array([[0, 7, 59], [20, 21, 3]])
+        ys, xs = np.array([1, 8]), np.array([6, 0])
+        assert np.array_equal(a.frames.points(ys, xs, fn), b.frames.points(ys, xs, fn), equal_nan=True)
+        assert np.array_equal(a.pixel_block(4, 3).result().transpose(1, 0, 2),
+                              a.frames.series(4, 3, (0, 0, 0), [0, 1, 2]), equal_nan=True)
