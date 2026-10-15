@@ -4910,3 +4910,53 @@ de la cabecera, falla el comprimido. `test_series.py` y `test_series_playback.py
   1600×1000: la prueba pone una ventana de 825 px en x = 940, que sale de la pantalla. La misma prueba con el mismo
   código falla a 1600×1000 y pasa a 2560×1440. No es del cambio: el Xvfb de las pruebas necesita al menos 1800 px de
   ancho.
+
+### 2026-10-15 (3): envíos repetidos en el puente, y los paneles al ritmo solo en enlaces lentos (ROADMAP X.20, E6.24)
+
+**La pregunta** (el usuario): la retención de paneles de la rama `adaptive-panels` ganaba solo con enlaces lentos;
+¿dos modos? Y, ante una pérdida a 15 MB/s con barridos rápidos: «no tiene sentido que 15 sea un problema justo en la
+mitad».
+
+**Medido:** `bench/bridge_link.py`, el 6173, classic, Xvfb en bellatrix, nodo 0, bajo el cerrojo, ABBA, enlaces de
+10, 15, 20 y 30 MB/s con 12 ms, barridos de 40 movimientos a 16 y 8 ms; resultados en
+`bench/results/crossover_2026-10-15/`.
+
+**La causa de los 15 MB/s (X.20),** trazada con un registro de eventos en una copia (retenciones, envíos,
+confirmaciones, piezas):
+- en los barridos lentos, una actualización de 30 piezas y 3.15 Mpx llevaba cinco veces la misma pieza de 240 kB,
+  toda la imagen: 1.3 MB, 114 ms hasta confirmarse a 15 MB/s, y los paneles retenidos esperándola;
+- con el enlace ocupado se acumulan repintados de la imagen; cada uno, con muchos rectángulos, va como su caja; el
+  transporte comparaba cada pieza con lo que el servidor tenía antes de la actualización, no con lo que mandaban las
+  anteriores;
+- está en `main` desde `13b2af8`. Arreglado en `92dee26`.
+
+**Retirado:** las ganancias de la retención a 10 MB/s medidas el 2026-10-11 (mensaje de `8e92aa2`, ya reescrito). El
+banco daba un barrido por asentado tras 150 ms sin cambios, y la retención deja ese hueco antes de mostrar los últimos
+paneles: un barrido contado como asentado a los 17 ms mostró sus paneles a los 257. Ahora el banco espera 0.8 s,
+comprueba que el servidor coincide con Qt y mide hasta la última posición sin el ajuste del eje y de los espectros
+en reposo (`yrange.REST_S`, 0.4 s).
+
+**Con el banco corregido** (mediana de 12 barridos, ms hasta la última posición; carga 0.5-2.6, salvo 30 MB/s a 16 ms,
+hasta 7.7):
+
+| MB/s, barrido | `main` | + arreglo | + arreglo + retención |
+|---|---|---|---|
+| 10, 16 ms | 173 | 152 | 125 |
+| 10, 8 ms | 178 | 156 | 144 |
+| 15, 16 ms | 123 | 112 | 95 |
+| 15, 8 ms | 110 | 101 | 94 |
+| 20, 16 ms | 102 | 99 | 93 |
+| 20, 8 ms | 94 | 92 | 87 |
+| 30, 16 ms | 94 | 88 | 88 |
+| 30, 8 ms | 88 | 82 | 94 |
+
+La retención pinta los paneles la mitad de veces (unos 30 → 14 por barrido): por encima de 20 MB/s, para nada.
+
+**Dos modos (E6.24):** la retención solo cuando la sonda del arranque mide menos de 20 MB/s. Comprobado: a 10 MB/s
+emulados mide 9 y retiene (68 retenciones por tanda, 113-120 ms); a 30 mide 25 y no retiene (34-36 cambios de
+paneles por barrido).
+
+**Pruebas:** `test_bridge_pieces` (la misma pieza 5 veces antes, 1 después), `test_pace` (el umbral). Suites:
+`tests/unit` y `tests/golden` 965 pasan, 15 saltadas; `tests/xvfb` 43 pasan (Xvfb de 2560×1440).
+
+**Falta:** verlo en la pantalla del usuario.
