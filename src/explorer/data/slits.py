@@ -17,9 +17,15 @@ def slit_path(pts, step=1.0):
     """Points along a slit about `step` pixels apart, in the image's view coordinates (pixel centres at .5): straight
     between two points, a Catmull-Rom curve through three or more, which passes through every point clicked
     (CRISPEX smooths its loop paths with SPLINE_P, crispex.pro L12804). (N, 2): x, y."""
+    return slit_samples(pts, step)[0]
+
+
+def slit_samples(pts, step=1.0):
+    """slit_path's points and the distance along the slit of each, in pixels from its first point: (N, 2) x, y and
+    (N,), every `step` along the curve, the last at its whole length."""
     P = np.asarray(pts, dtype=np.float64)
     if len(P) < 2:
-        return P
+        return P, np.zeros(len(P))
     if len(P) == 2:
         dense = P
     else:
@@ -33,9 +39,9 @@ def slit_path(pts, step=1.0):
         dense = np.vstack([*segs, P[-1:]])
     d = np.r_[0.0, np.cumsum(np.hypot(*np.diff(dense, axis=0).T))]
     if d[-1] == 0:
-        return dense[:1]
+        return dense[:1], np.zeros(1)
     at = np.r_[np.arange(0.0, d[-1], step), d[-1]]
-    return np.column_stack([np.interp(at, d, dense[:, 0]), np.interp(at, d, dense[:, 1])])
+    return np.column_stack([np.interp(at, d, dense[:, 0]), np.interp(at, d, dense[:, 1])]), at
 
 
 def slit_pixels(path, ny, nx):
