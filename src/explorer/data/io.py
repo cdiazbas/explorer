@@ -636,7 +636,9 @@ class SeriesReader(FrameReader):
             # through section, never .data: astropy keeps .data (a whole image per file, outside the cache's
             # budget: +1044 MB after 30 frames of 4096x4096, against +37 MB through section)
             sec = h[self.layout.hdus[t]].section
-            a = sec[:, :] if rows is None else sec[rows] if x is None else sec[rows, x]
+            lead = (0,) * (len(sec.shape) - 2)         # the axes of length 1 before (y, x), as series_layout drops
+            a = sec[(*lead, slice(None), slice(None))] if rows is None else sec[(*lead, rows)] if x is None \
+                else sec[(*lead, rows, x)]
             if timed:
                 self._decode_s = (self._decode_s + [time.perf_counter() - q])[-DECODES_KEPT:]
         return np.asarray(a).astype(self.layout.dtype, copy=False)

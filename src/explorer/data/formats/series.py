@@ -2,8 +2,9 @@
 
     layout = series_layout(paths)       # every header read once; the frames are read elsewhere (io.SeriesReader)
 
-Each file's image is its primary HDU, else its first image extension: a plain image is read at its data offset as a
-frame of a cube is; a tile-compressed one (CompImageHDU, as JSOC serves SDO/AIA and HMI) is decompressed per read.
+Each file's image is its primary HDU, else its first image extension, its leading axes of length 1 dropped (stored as
+(1, 1, y, x), it is (y, x)): a plain image is read at its data offset as a frame of a cube is; a tile-compressed one
+(CompImageHDU, as JSOC serves SDO/AIA and HMI) is decompressed per read.
 The time of a file is its mid-exposure where the header gives it (TIME_KEYS, the first one every file has); files
 whose times cannot all be read keep their name order, and t is an index.
 """
@@ -168,6 +169,8 @@ def series_layout(paths) -> SeriesLayout:
         bitpix = int(hdr["BITPIX"])
         n = int(hdr["NAXIS"])
         shape = tuple(int(hdr[f"NAXIS{k}"]) for k in range(n, 0, -1))
+        while len(shape) > 2 and shape[0] == 1:         # (1, 1, y, x) is one image: the same bytes, in the same order
+            shape = shape[1:]
         return dict(path=p, hdu=i, offset=off, compressed=comp, bitpix=bitpix, shape=shape,
                     axes=tuple(str(hdr.get(f"CTYPE{k}", f"axis{k}")).split("-")[0] for k in (2, 1)),
                     scaling=(float(hdr.get("BSCALE", 1.0)), float(hdr.get("BZERO", 0.0)),

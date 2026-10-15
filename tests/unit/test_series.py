@@ -163,6 +163,42 @@ def test_compressed_equals_plain(tmp_path):
                                       a.read_bands([(t,) for t in range(5)], iy, ix))
 
 
+@pytest.mark.parametrize("compressed", [False, True])
+def test_images_stored_with_axes_of_length_one_read_as_images(tmp_path, monkeypatch, compressed):
+    """(1, 1, y, x) per file, as some pipelines write one image, is a series as (y, x) is: every read the same,
+    files of both kinds in one series, the same layout through astropy's reading; (2, y, x) is still not one
+    image."""
+    from explorer.data.formats import series as _series
+
+    (tmp_path / "flat").mkdir()
+    (tmp_path / "deep").mkdir()
+    flat, imgs = series(tmp_path / "flat", compressed=compressed, order=[2, 0, 1, 4, 3])
+    deep = [write(tmp_path / "deep", f"aia_{k:02d}.fits", imgs[t][None, None], t, compressed)
+            for k, t in enumerate([2, 0, 1, 4, 3])]
+    deep[0] = write(tmp_path / "deep", "aia_00b.fits", imgs[2], 2, compressed)            # one stored as (y, x)
+    os.remove(tmp_path / "deep" / "aia_00.fits")
+    lay = series_layout(deep)
+    assert lay.shape == (5, NY, NX) and lay.axes == ("UTC", "HPLT", "HPLN")
+
+    def refuse(p):
+        raise ValueError("astropy's turn")
+
+    with monkeypatch.context() as m:
+        m.setattr(_series, "_image_cards", refuse)
+        assert series_layout(deep) == lay
+    with Dataset.open(None, series=flat) as a, Dataset.open(None, series=deep) as b:
+        for t in range(5):
+            np.testing.assert_array_equal(b.image((t,)).result(5), a.image((t,)).result(5))
+        np.testing.assert_array_equal(b.read_series(7, 9, (0,), [0]), a.read_series(7, 9, (0,), [0]))
+        np.testing.assert_array_equal(b.frames.row_band((0,), [0], 3, 6), a.frames.row_band((0,), [0], 3, 6))
+        iy, ix = np.array([2, 3, 3]), np.array([5, 5, 6])
+        np.testing.assert_array_equal(b.read_bands([(t,) for t in range(5)], iy, ix),
+                                      a.read_bands([(t,) for t in range(5)], iy, ix))
+    two = [write(tmp_path, f"two_{k}.fits", np.stack([imgs[k], imgs[k]]), k, compressed) for k in range(2)]
+    with pytest.raises(ValueError, match="one image"):
+        series_layout(two)
+
+
 def test_axes_read_names_t_and_no_lambda(tmp_path):
     paths, _ = series(tmp_path)
     lay = series_layout(paths)
