@@ -68,3 +68,35 @@ def test_each_piece_is_shown_right_after_its_bytes(x):  # noqa: F811
         assert [k for k, _ in log] == ["bytes", "bytes", "copy"], log
     finally:
         t.stop()
+
+
+def test_overlapping_pieces_send_each_change_once(x):  # noqa: F811
+    """Pieces of one update that overlap (the bridge sends a repaint of many rectangles as its bounding box: five
+    repaints of a crosshair over the main image, five boxes of the whole image) carry each changed tile once: a
+    later piece is compared with what the earlier ones send, not with the server's pixels before the update. The
+    window then shows the last piece's pixels."""
+    from Xlib import X
+
+    from explorer.platform.xbridge.transport import Transport
+
+    W, H = 640, 480
+    win = _window(x, (40, 20), (W, H), 0xFF0000)
+    t = Transport(app_display(XDISP), on_ready=lambda: None)
+    try:
+        assert t.started.wait(30) and t.failed is None, t.failed
+        _sent(t, [(win.id, W, H, 0, 0, _grey(H, W, 1), None, False, False)])
+        new = _grey(H, W, 2)
+        b0 = t.stats["bytes"]
+        log = _sent(t, [(win.id, W, H, 0, 0, new, None, False, False, True) for _ in range(5)])
+        sent = t.stats["bytes"] - b0
+        assert [k for k, _ in log].count("bytes") == 1, log
+        assert sent <= W * H, f"{sent} B for {W * H} changed grey px"
+        over = new.copy()
+        over[100:200, 300:500] = _grey(100, 200, 3)                # a later piece over part of an earlier one
+        log = _sent(t, [(win.id, W, H, 0, 0, new, None, False, False, True),
+                        (win.id, W, H, 300, 100, over[100:200, 300:500], None, False, False, True)])
+        t.c.sync()
+        got = np.frombuffer(win.get_image(0, 0, W, H, X.ZPixmap, 0xFFFFFFFF).data, np.uint32).reshape(H, W)
+        assert int(((got ^ over) & 0xFFFFFF).astype(bool).sum()) == 0
+    finally:
+        t.stop()

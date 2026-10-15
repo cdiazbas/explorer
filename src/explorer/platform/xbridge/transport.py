@@ -303,6 +303,11 @@ class Transport:
                 continue
             a = a[: y1 - y, : x1 - x]
             rects = k.changed_pieces(a, b.last[y:y1, x:x1], force or new, self.grey is not None)
+            # what the server will have once this piece is sent: a later piece of the update overlapping it (the
+            # bridge's bounding box of a repaint of many rectangles) sends only what differs from it. Compared
+            # with the server's pixels before the update, five repaints of the main image went out as five copies
+            # of the same tiles, 1.3 MB instead of 0.25 (bench/bridge_link.py, 15 MB/s, bellatrix)
+            b.last[y:y1, x:x1] = a
             if len(rects):
                 work.append((b, x, y, a, rects))
                 ends.append(end)
@@ -333,7 +338,6 @@ class Transport:
             buf = np.empty(size, np.uint8)
             k.encode(a, rects, x, y, ids, self.maxb, self.swap_rb, self.msb, buf)
             bufs.append((buf, nreq))
-            b.last[y:y + a.shape[0], x:x + a.shape[1]] = a
             px = rects[:, 3] * rects[:, 4]
             grey_px = int(px[rects[:, 0] == 1].sum())
             self.stats["grey_px"] += grey_px
