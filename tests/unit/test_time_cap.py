@@ -391,3 +391,66 @@ def test_the_sheet_says_what_the_number_in_the_titles_does(qapp, small):
         assert "wheel" in rows[0][0] and "t steps: 25, 50, 100, all" in w.sheet.text()
     finally:
         close()
+
+
+def test_under_the_macos_style_the_numbered_titles_have_qt_s_own_close_and_float(qapp, cube):
+    """On a local Mac the spectra keep Qt's own title; lambda-t's and the slit's are ours, for the number, standing in
+    for Qt's (Shell.give_steps). Under the native macOS style their close and float are Qt's own: where Qt puts them
+    in the spectra's title (the same width), the same pixels; the title as high, so the panels' contents start at
+    the same height; the number after the float mark, as high. Qt's macos style, which exists only on a Mac: the
+    application's for this test (a faked name would mix it with another style's sizes, as no Mac does)."""
+    import pyqtgraph as pg
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    from explorer.ui.shell import Shell
+    from explorer.ui.titlebar import StepsButton
+
+    if "macos" not in [k.lower() for k in QtWidgets.QStyleFactory.keys()]:
+        pytest.skip("Qt's macos style exists only on a Mac")
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    qapp.setStyle(QtWidgets.QStyleFactory.create("macos"))
+    ds = Dataset.open(cube[0], no_sp=True)
+    w = Shell(ds)
+    try:
+        w.resize(1200, 640)
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        spec, lt = w.spec_dock, w.lt_dock
+        assert spec.titleBarWidget() is None and spec.width() == lt.width()
+        assert type(w.slit_dock.titleBarWidget()) is type(lt.titleBarWidget())
+        t = lt.titleBarWidget()
+        F = QtCore.Qt.FindChildOption.FindDirectChildrenOnly
+        for b_name in ("qt_dockwidget_closebutton", "qt_dockwidget_floatbutton"):
+            qt_b = spec.findChild(QtWidgets.QAbstractButton, b_name, F)
+            ours = t.findChild(QtWidgets.QAbstractButton, b_name)
+            print(f"{b_name}: Qt's {qt_b.geometry().getRect()}, ours {ours.geometry().getRect()}")
+            assert ours.geometry() == qt_b.geometry()
+            assert ours.grab().toImage() == qt_b.grab().toImage()
+        print(f"contents at y: spectra {spec.widget().y()}, lambda-t {lt.widget().y()}")
+        assert lt.widget().y() == spec.widget().y()
+        b, f = t.findChild(StepsButton, "time_steps"), t.button.geometry()
+        print(f"number at {b.geometry().getRect()}, float mark at {f.getRect()}")
+        assert f.right() < b.x() <= f.right() + 8 and b.geometry().center().y() == f.center().y()
+        assert t.rect().contains(b.geometry())
+    finally:
+        w.close()
+        ds.close()
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+        qapp.setProperty("explorer_light", False)
+        pg.setConfigOptions(background="k", foreground="d")
+
+
+def test_away_from_the_macos_style_the_numbered_titles_keep_their_marks(qapp, cube):
+    """Away from the macOS style (Linux, the Mac's dark and light themes, the chrome's titles) the titles of lambda-t
+    and the slit keep the tool buttons they had, at the left: unchanged by the stand-in's Qt marks."""
+    from PySide6 import QtWidgets
+
+    w, close = window(qapp, cube[0], no_sp=True)
+    try:
+        for d in (w.lt_dock, w.slit_dock):
+            t = d.titleBarWidget()
+            assert [type(b) for b in t.buttons] == [QtWidgets.QToolButton] * 2
+            assert t.buttons[0].x() < t.buttons[1].x() < t.steps_button.x() < t.width() // 2
+    finally:
+        close()

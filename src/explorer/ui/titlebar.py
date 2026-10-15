@@ -622,13 +622,74 @@ class StepsButton(QtWidgets.QAbstractButton):
         self.update()
 
 
+STEPS_GAP_QT = 4                                        # px from Qt's float mark to the number of t steps
+
+
+class QtMark(QtWidgets.QAbstractButton):
+    """Close or float as QDockWidget draws its own (QDockWidgetTitleButton, qdockwidget.cpp): the icon Qt gave its
+    own button (own), painted as a tool button without a frame where the style's dock buttons have none (macOS: the
+    grey discs). A title of ours standing in for Qt's (DockTitle, stand_in) shows the marks of the panels beside it,
+    which keep Qt's."""
+
+    def __init__(self, own: QtWidgets.QAbstractButton, parent):
+        super().__init__(parent)
+        self.own = own                                  # Qt keeps its icon in the style's (a change of style too)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.setSizePolicy(own.sizePolicy())
+        self.resize(own.sizeHint())                     # placed by the title where Qt places its own
+
+    def sizeHint(self):
+        return self.own.sizeHint()
+
+    def _icon_size(self) -> QtCore.QSize:
+        st, S = self.style(), QtWidgets.QStyle
+        n = st.pixelMetric(S.PixelMetric.PM_SmallIconSize, None, self)
+        if st.styleHint(S.StyleHint.SH_DockWidget_ButtonsHaveFrame, None, self):
+            n = n * 5 // 8
+        return QtCore.QSize(n, n)
+
+    def paintEvent(self, e):
+        S = QtWidgets.QStyle
+        p = QtWidgets.QStylePainter(self)
+        opt = QtWidgets.QStyleOptionToolButton()
+        opt.initFrom(self)
+        opt.state |= S.StateFlag.State_AutoRaise
+        if self.style().styleHint(S.StyleHint.SH_DockWidget_ButtonsHaveFrame, None, self):
+            if self.isEnabled() and self.underMouse() and not self.isDown():
+                opt.state |= S.StateFlag.State_Raised
+            if self.isDown():
+                opt.state |= S.StateFlag.State_Sunken
+            p.drawPrimitive(S.PrimitiveElement.PE_PanelButtonTool, opt)
+        elif self.isDown():
+            opt.state |= S.StateFlag.State_On | S.StateFlag.State_Sunken
+        opt.icon = self.own.icon()
+        opt.subControls = S.SubControl.SC_None
+        opt.activeSubControls = S.SubControl.SC_None
+        opt.features = QtWidgets.QStyleOptionToolButton.ToolButtonFeature.None_
+        opt.arrowType = Qt.ArrowType.NoArrow
+        opt.iconSize = self._icon_size()
+        p.drawComplexControl(S.ComplexControl.CC_ToolButton, opt)
+
+    def enterEvent(self, e):
+        self.update()
+
+    def leaveEvent(self, e):
+        self.update()
+
+
 class DockTitle(QtWidgets.QWidget):
     """Close and float buttons at the left, the title centred: what macOS draws on a local Mac, so every path looks
-    and works the same. A temporal panel's (dock.steps, a TimeSteps) has the number of its t steps after them."""
+    and works the same. A temporal panel's (dock.steps, a TimeSteps) has the number of its t steps after them.
+    stand_in: the title stands in for Qt's own (Shell.give_steps: a local Mac, where the other panels keep Qt's);
+    under the native macOS style its close and float are then Qt's (QtMark), where Qt puts them, and the bar is
+    drawn in the panel's style (MacSeams: no light line under it), so it reads as its neighbours' titles."""
+    QT_MARKS = ("macos",)                               # the styles whose stand-in titles show Qt's marks
 
-    def __init__(self, dock):
+    def __init__(self, dock, stand_in: bool = False):
         super().__init__(dock)
         self.d = dock
+        self.qt_marks = stand_in and QtWidgets.QApplication.style().name() in self.QT_MARKS
         st = dock.style()
         PM = QtWidgets.QStyle.PixelMetric
         m = st.pixelMetric(PM.PM_DockWidgetTitleMargin, None, dock)
@@ -639,30 +700,61 @@ class DockTitle(QtWidgets.QWidget):
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(m + 4, 0, m + 4, 0)
         lay.setSpacing(2)
-        self.buttons = []
+        self.buttons: list[QtWidgets.QAbstractButton] = []
         SP = QtWidgets.QStyle.StandardPixmap
         for name, sp, tip, fn in (("qt_dockwidget_closebutton", SP.SP_DockWidgetCloseButton,
                                    "Close (Panels in the toolbar opens it again)", dock.close),
                                   ("qt_dockwidget_floatbutton", SP.SP_TitleBarNormalButton,
                                    "Float / dock", lambda: dock.setFloating(not dock.isFloating()))):
-            b = QtWidgets.QToolButton(self)
+            if self.qt_marks:
+                b: QtWidgets.QAbstractButton = QtMark(
+                    dock.findChild(QtWidgets.QAbstractButton, name, Qt.FindChildOption.FindDirectChildrenOnly), self)
+            else:
+                b = QtWidgets.QToolButton(self)
+                b.setAutoRaise(True)
+                b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                b.setIcon(st.standardIcon(sp, None, dock))
+                b.setIconSize(QtCore.QSize(icon, icon))
+                b.setFixedSize(size)
             b.setObjectName(name)                        # the names Qt gives its own (tests find them by name)
-            b.setAutoRaise(True)
-            b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            b.setIcon(st.standardIcon(sp, None, dock))
-            b.setIconSize(QtCore.QSize(icon, icon))
-            b.setFixedSize(size)
             b.setToolTip(tip)
             b.clicked.connect(fn)
-            lay.addWidget(b, 0, Qt.AlignmentFlag.AlignVCenter)
+            if not self.qt_marks:                        # Qt's marks go where Qt puts its own: qt_places
+                lay.addWidget(b, 0, Qt.AlignmentFlag.AlignVCenter)
             self.buttons.append(b)
+        self.button = self.buttons[1]                    # the float button
+        if self.qt_marks:                                # the number as high as Qt's marks (resizeEvent)
+            size = self.button.sizeHint()
         steps = getattr(dock, "steps", None)
         self.steps_button = StepsButton(steps, self, size) if isinstance(steps, TimeSteps) else None
-        if self.steps_button is not None:
+        if self.steps_button is not None and not self.qt_marks:
             lay.addSpacing(2)
             lay.addWidget(self.steps_button, 0, Qt.AlignmentFlag.AlignVCenter)
         lay.addStretch(1)
-        self.button = self.buttons[1]                    # the float button
+
+    def _qt_rects(self, rect: QtCore.QRect) -> list[QtCore.QRect]:
+        """Where Qt puts its own close, float and title text in a title of this rect: the style's
+        (QDockWidgetLayout::setGeometry, from the panel's title option)."""
+        opt = QtWidgets.QStyleOptionDockWidget()
+        opt.initFrom(self.d)
+        opt.rect = rect
+        opt.movable, opt.floatable, opt.closable, opt.verticalTitleBar = True, True, True, False
+        SE = QtWidgets.QStyle.SubElement
+        st = self.d.style()
+        return [st.subElementRect(se, opt, self.d)
+                for se in (SE.SE_DockWidgetCloseButton, SE.SE_DockWidgetFloatButton, SE.SE_DockWidgetTitleBarText)]
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if not self.qt_marks:
+            return
+        rects = self._qt_rects(self.rect())
+        for b, r in zip(self.buttons, rects[:2], strict=True):
+            QtWidgets.QWidgetItem(b).setGeometry(r)     # as Qt lays out its own: within their size and policy
+        if self.steps_button is not None:               # after the float mark, as high
+            f = self.button.geometry()
+            self.steps_button.setFixedHeight(f.height())
+            self.steps_button.move(f.right() + 1 + STEPS_GAP_QT, f.top())
 
     def left_end(self) -> int:
         """Where the marks at the left end, x: the title stays clear of them on both sides."""
@@ -671,7 +763,9 @@ class DockTitle(QtWidgets.QWidget):
     def sizeHint(self):
         # Qt's rule (QDockWidgetLayout::titleHeight): the button plus 2, or the dock's font plus the margins
         m = self.d.style().pixelMetric(QtWidgets.QStyle.PixelMetric.PM_DockWidgetTitleMargin, None, self.d)
-        return QtCore.QSize(80, max(self.d.fontMetrics().height() + 2 * m, self.button.height() + 2))
+        # (Qt's own button's size where the marks are Qt's: the title as high as the panels' beside it)
+        h = self.button.own.sizeHint().height() if isinstance(self.button, QtMark) else self.button.height()
+        return QtCore.QSize(80, max(self.d.fontMetrics().height() + 2 * m, h + 2))
 
     minimumSizeHint = sizeHint
 
@@ -682,6 +776,9 @@ class DockTitle(QtWidgets.QWidget):
         opt.rect = self.rect()
         opt.title = ""                                   # the style paints the bar; the title goes centred below
         opt.movable, opt.floatable, opt.closable, opt.verticalTitleBar = True, True, True, False
+        if self.qt_marks:
+            self._paint_as_qt(p, opt)
+            return
         p.drawControl(QtWidgets.QStyle.ControlElement.CE_DockWidgetTitle, opt)
         f = QtGui.QFont(self.d.font())
         f.setWeight(QtGui.QFont.Weight.DemiBold)
@@ -692,6 +789,23 @@ class DockTitle(QtWidgets.QWidget):
         R = QtGui.QPalette.ColorRole
         p.setPen(self.palette().color(R.WindowText if self.isEnabled() else R.PlaceholderText))
         p.drawText(r, Qt.AlignmentFlag.AlignCenter, text)
+
+    def _paint_as_qt(self, p: QtGui.QPainter, opt: QtWidgets.QStyleOptionDockWidget) -> None:
+        """The bar and the title as QDockWidget paints its own: in the panel's style (MacSeams: no light line under
+        it), the name in the panel's font centred where the style puts it (after the marks), moved clear of the
+        number when it would run over it."""
+        st = self.d.style()
+        st.drawControl(QtWidgets.QStyle.ControlElement.CE_DockWidgetTitle, opt, p, self)
+        r = self._qt_rects(self.rect())[2]
+        fm = QtGui.QFontMetrics(self.d.font())
+        if self.steps_button is not None:
+            clear = self.steps_button.geometry().right() + 6
+            if r.center().x() - fm.horizontalAdvance(self.d.windowTitle()) / 2 < clear:
+                r.setLeft(clear)                        # it would run over it: centred after it, elided if need be
+        text = fm.elidedText(self.d.windowTitle(), Qt.TextElideMode.ElideRight, max(0, r.width()))
+        p.setFont(self.d.font())
+        st.drawItemText(p, r, int(Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextHideMnemonic), self.palette(),
+                        self.isEnabled(), text, QtGui.QPalette.ColorRole.WindowText)
 
 
 def dock_titles(window) -> None:

@@ -227,7 +227,7 @@ class _Glyph(QtCore.QObject):
     standard dock icons as grey squares on the smoked glass. A small x (close) or two offset squares (float), faint
     until the pointer is on it, then brighter on a soft disc. From look_glass.py CloseButton (203-222)."""
 
-    def __init__(self, button: QtWidgets.QToolButton, kind: str):
+    def __init__(self, button: QtWidgets.QAbstractButton, kind: str):
         super().__init__(button)
         self.b, self.kind = button, kind
         button.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover)

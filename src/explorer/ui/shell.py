@@ -485,7 +485,7 @@ class Shell(QtWidgets.QMainWindow):
         Qt's (a local Mac's native frame): the number is then there too."""
         dock.steps = self.t_steps  # type: ignore[attr-defined]
         if dock.titleBarWidget() is None:
-            dock.setTitleBarWidget(titlebar.DockTitle(dock))
+            dock.setTitleBarWidget(titlebar.DockTitle(dock, stand_in=True))
 
     def dress(self, dock: QtWidgets.QDockWidget) -> None:
         """A panel made after the window (a cube's spectra and lambda-t in its window, ui.linked) dressed as the
