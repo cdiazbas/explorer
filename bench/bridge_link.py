@@ -4,7 +4,7 @@ bytes the bridge sent per region, the bridge's updates and the Qt paints per reg
 (--src), so that two commits can be compared, ABBA. bench/slit_link.py measures the slit the same way.
 
     python bench/bridge_link.py one <cube> <out.json> --src <explorer/src> --xdisplay :N [--delay-ms 6] [--mbps 30]
-        [--link <other cube> [--detach]] [--look classic] [--only cursor,t,...]
+        [--link <other cube> [--detach]] [--look classic] [--only cursor,t,...] [--paced-ms 16] [--paced-reps 1]
 
 Three processes: the link (localhost:M to the X server :N), the application (this file's `app`, explorer through the
 bridge on localhost:M) and this one, which talks to :N directly, as the screen, the keyboard and the mouse are on the
@@ -16,8 +16,10 @@ where each is on the screen and in its X window. Per poll the driver reads each 
 and compares each region with the poll before (the poll's period is the timing's resolution: poll_ms in the output).
 
 Scenarios (--only picks some), each step settled (no region changed for QUIET_S, or STEP_TIMEOUT_S):
-- cursor: the pointer over the main image in STEPS moves; then cursor_paced, 40 moves 16 ms apart: how many times
-  each region changed on the server while the pointer moved, and how long after the last move the screen settled;
+- cursor: the pointer over the main image in STEPS moves; then cursor_paced, 40 moves 16 ms apart (--paced-ms), as
+  many sweeps as --paced-reps: how many times each region changed on the server while the pointer moved, how long
+  after the last move the screen settled, the bytes, the UI thread's CPU time over the sweep, and the panel results
+  core.pace held;
 - t, lam: the arrow keys (up: t + 1, right: lambda + 1), the pointer resting on the image;
 - play: Space, PLAY_S of playback, Space: the image's changes on the server per second against the frames stepped;
 - zoom: the wheel over the image, in then out; pan: a press and a drag across the image;
@@ -37,9 +39,14 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 QUIET_S = 0.150
+# a sweep ends after this long without a change: longer than a held panel waits (core.pace.HOLD_S, 0.5 s); with
+# QUIET_S the sweep ended before a held panel was shown and counted its settle as done (10 MB/s: 17 ms, shown at 257)
+PACED_QUIET_S = 0.8
+REST_MS = 400                 # core.yrange.REST_S, in ms
 STEP_TIMEOUT_S = 2.0
 STEPS = 12
 PACED_S = 0.016
+PACED_REPS = 1
 PLAY_S = 4.0
 BAND_PX = 60000                                         # regions larger are read as bands (Driver.snap)
 SCENARIOS = ("cursor", "t", "lam", "zoom", "pan", "keydrag", "gamma", "play")
@@ -60,6 +67,10 @@ def args():
     ap.add_argument("--probe", action="store_true", help="after each step, the pixels the server shows that Qt "
                     "no longer has, per region")
     ap.add_argument("--look", default="classic")
+    ap.add_argument("--paced-ms", type=float, default=PACED_S * 1e3, help="cursor_paced: ms between moves")
+    ap.add_argument("--paced-reps", type=int, default=1, help="cursor_paced: sweeps per run")
+    ap.add_argument("--paced-quiet-ms", type=float, default=PACED_QUIET_S * 1e3,
+                    help="cursor_paced: the quiet after the last move that ends a sweep")
     ap.add_argument("--only", default=",".join(SCENARIOS))
     ap.add_argument("--label", default=None)
     ap.add_argument("--io", default=None, help="app: the folder of the command, answer and log files")
@@ -146,6 +157,18 @@ def run_app(a):
     INPUT = (E.MouseMove, E.MouseButtonPress, E.KeyPress, E.Wheel)
     paints = Paints()
 
+    try:                                                # the cursor's panels held by core.pace, where it exists
+        from explorer.core import pace as PC
+
+        orig_show = PC.Pace.show
+
+        def show(self, key, fn):
+            if self.screen is not None and self.screen.behind():
+                events.append((time.time(), "held", str(key)))
+            return orig_show(self, key, fn)
+        PC.Pace.show = show
+    except ImportError:
+        pass
     st = start_app(a.cube, x11="native" if a.native else "bridge", look=a.look, saved_layout=False,
                    linked=[a.link] if a.link else ())
     app, w = st.app, st.shell
@@ -240,6 +263,7 @@ def run_app(a):
                         out["files"].append([rec.xid, fn, img.width(), img.height()])
         elif op == "mark":
             events.append((time.time(), "mark", cmd.get("what", "")))
+            events.append((time.time(), "cpu", time.thread_time()))     # the UI thread's, as at each input
         elif op == "quit":
             with open(os.path.join(io, "updates.json"), "w") as f:
                 json.dump(dict(updates=updates, events=events), f)
@@ -383,6 +407,15 @@ class Driver:
         return out
 
 
+def shown_ms(changes, last_move_ms):
+    """ms from the last move until the image, the spectra and lambda-t show the cursor's last place: their last change,
+    without the spectra's fit at rest (core.yrange.REST_S after the last spectrum shown: changes of sp0 that late)."""
+    rest = REST_MS - 20
+    ts = [c - last_move_ms for r in ("img0", "lt0") for c in changes.get(r, [])]
+    ts += [c - last_move_ms for c in changes.get("sp0", []) if c - last_move_ms < rest]
+    return round(max(ts), 2) if ts else None
+
+
 def scenario(drv, name, where):
     img = where["regions"]["img0"]["glob"]
     cx, cy = img[0] + img[2] // 2, img[1] + img[3] // 2
@@ -396,33 +429,38 @@ def scenario(drv, name, where):
             x, y = img[0] + img[2] * (0.2 + 0.6 * f), img[1] + img[3] * (0.25 + 0.5 * f)
             rows.append(drv.step(lambda x=x, y=y: drv.move(x, y)))
     elif name == "cursor_paced":
-        drv.move(img[0] + img[2] * 0.2, img[1] + img[3] * 0.3)
-        time.sleep(0.6)
-        before = drv.snap()
-        t0 = time.time()
-        n = 40
-        changes: dict = {}
-        k = 0
-        last_move = None
-        last_change = None
-        while True:
-            now = time.time()
-            if k < n and now >= t0 + k * PACED_S:
-                f = k / (n - 1)
-                drv.move(img[0] + img[2] * (0.2 + 0.6 * f), img[1] + img[3] * (0.3 + 0.4 * f))
-                last_move = time.time()
-                k += 1
-            s = drv.snap()
-            t = time.time()
-            for r, v in s.items():
-                if v != before[r]:
-                    changes.setdefault(r, []).append(ms(t, t0))
-                    last_change = t
-            before = s
-            if k >= n and (t - (last_change or t) > QUIET_S or t - last_move > STEP_TIMEOUT_S):
-                break
-        rows.append(dict(t=t0, moves=n, moves_ms=ms(last_move, t0), changes=changes,
-                         settle_after_last_ms=ms(last_change, last_move)))
+        for _ in range(PACED_REPS):
+            drv.move(img[0] + img[2] * 0.2, img[1] + img[3] * 0.3)
+            time.sleep(0.6)
+            drv.cmd("mark", what="paced")
+            before = drv.snap()
+            t0 = time.time()
+            n = 40
+            changes: dict = {}
+            k = 0
+            last_move = None
+            last_change = None
+            while True:
+                now = time.time()
+                if k < n and now >= t0 + k * PACED_S:
+                    f = k / (n - 1)
+                    drv.move(img[0] + img[2] * (0.2 + 0.6 * f), img[1] + img[3] * (0.3 + 0.4 * f))
+                    last_move = time.time()
+                    k += 1
+                s = drv.snap()
+                t = time.time()
+                for r, v in s.items():
+                    if v != before[r]:
+                        changes.setdefault(r, []).append(ms(t, t0))
+                        last_change = t
+                before = s
+                if k >= n and (t - (last_change or t) > PACED_QUIET_S or t - last_move > STEP_TIMEOUT_S):
+                    break
+            drv.cmd("mark", what="paced_end")
+            stale = drv.stale()                         # once quiet, the server against Qt: the last state shown?
+            rows.append(dict(t=t0, t_end=time.time(), moves=n, moves_ms=ms(last_move, t0), changes=changes,
+                             settle_after_last_ms=ms(last_change, last_move), paced_ms=PACED_S * 1e3, stale=stale,
+                             shown_ms=shown_ms(changes, ms(last_move, t0))))
     elif name in ("t", "lam"):
         keys = ("Up", "Down") if name == "t" else ("Right", "Left")
         for k in range(STEPS):
@@ -492,6 +530,8 @@ class _Native:
 
 
 def run_one(a):
+    global PACED_S, PACED_REPS, PACED_QUIET_S
+    PACED_S, PACED_REPS, PACED_QUIET_S = a.paced_ms / 1e3, a.paced_reps, a.paced_quiet_ms / 1e3
     xl_port = None
     for i in range(20):
         s = socket.socket()
@@ -546,12 +586,15 @@ def run_one(a):
     load1 = open("/proc/loadavg").read().split()[:3] if os.path.exists("/proc/loadavg") else None
     with open(os.path.join(drv.io, "updates.json")) as f:
         logged = json.load(f)
+    with open(os.path.join(drv.io, "app.log"), errors="replace") as f:   # the link probe's line, if it ran
+        probe = next((ln.strip() for ln in f if "X11 link ~" in ln), None)
     out = dict(host=socket.gethostname(), date=time.strftime("%Y-%m-%d %H:%M:%S"), label=a.label, src=a.src,
                cube=a.cube, link=a.link, detach=a.detach, native=a.native, look=a.look, delay_ms=a.delay_ms,
                mbps=a.mbps,
                load=[load0, load1], cpus=sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
                where=where, res=res, updates=logged["updates"], events=logged["events"],
-               poll_ms=round(statistics.median(drv.polls) * 1e3, 2), linkstats=json.load(open(stats)))
+               poll_ms=round(statistics.median(drv.polls) * 1e3, 2), linkstats=json.load(open(stats)),
+               link_probe=probe)
     out["summary"] = summarize(out)
     with open(a.out, "w") as f:
         json.dump(out, f)
@@ -567,12 +610,34 @@ def summarize(out):
     summ: dict = {}
     for name, rows in out["res"].items():
         if name == "cursor_paced":
-            r = rows[0]
-            summ[name] = dict(moves=r["moves"], moves_ms=r["moves_ms"], settle_ms=r["settle_after_last_ms"],
-                              changes={k: len(v) for k, v in r["changes"].items()})
-            t0, t1 = r["t"], r["t"] + (r["moves_ms"] + (r["settle_after_last_ms"] or 0)) / 1e3
-            u = [x for x in ups if t0 <= x["t0"] < t1]
-            summ[name].update(updates=len(u), kB=round(sum(sum(x["split"].values()) for x in u) / 1e3, 1))
+            per = []
+            for r in rows:
+                t0, t1 = r["t"], r.get("t_end") or r["t"] + (r["moves_ms"] + (r["settle_after_last_ms"] or 0)) / 1e3
+                u = [x for x in ups if t0 <= x["t0"] < t1]
+                cpu = [float(w) for t, k, w in ev if k == "cpu" and t0 - 0.5 <= t < t1 + 0.5]
+                cpu0 = [float(w) for t, k, w in ev if k == "cpu" and t0 - 0.5 <= t < t0]
+                cpu1 = [float(w) for t, k, w in ev if k == "cpu" and t1 - 0.2 <= t < t1 + 0.5]
+                busy = (cpu1[-1] - cpu0[-1]) * 1e3 if cpu0 and cpu1 else None
+                dur = (r["moves_ms"] + (r["settle_after_last_ms"] or 0)) / 1e3
+                kB = sum(sum(x["split"].values()) for x in u) / 1e3
+                stale = r.get("stale") or {}
+                per.append(dict(settle_ms=r["settle_after_last_ms"], shown_ms=r.get("shown_ms"), moves_ms=r["moves_ms"],
+                                final_ok=all(stale.get(g, 0) == 0 for g in ("img0", "sp0", "lt0", "key0")),
+                                changes={k: len(v) for k, v in r["changes"].items()}, updates=len(u),
+                                kB=round(kB, 1), kB_per_s=round(kB / dur, 1) if dur > 0 else None,
+                                cpu_ms=round(busy, 1) if busy is not None else None,
+                                held=sum(1 for t, k, _ in ev if k == "held" and t0 <= t < t1),
+                                cpu_n=len(cpu)))
+            regs = sorted({k for p in per for k in p["changes"]})
+            summ[name] = dict(moves=rows[0]["moves"], reps=len(rows), paced_ms=rows[0].get("paced_ms"),
+                              settle_ms=med([p["settle_ms"] for p in per]),
+                              shown_ms=med([p["shown_ms"] for p in per]),
+                              final_ok=sum(p["final_ok"] for p in per),
+                              moves_ms=med([p["moves_ms"] for p in per]),
+                              changes={g: med([p["changes"].get(g, 0) for p in per]) for g in regs},
+                              updates=med([p["updates"] for p in per]), kB=med([p["kB"] for p in per]),
+                              kB_per_s=med([p["kB_per_s"] for p in per]), cpu_ms=med([p["cpu_ms"] for p in per]),
+                              held=med([p["held"] for p in per]), per=per)
             continue
         if name == "play":
             r = rows[0]
