@@ -294,6 +294,48 @@ def test_the_number_in_the_titles_changes_the_steps(qapp, cube):
         ds.close()
 
 
+def test_titles_replaced_by_another_look_leave_no_button_behind(qapp, cube, monkeypatch):
+    """Changing the look replaces the panels' titles and their step buttons; a change of the steps after it repaints
+    the buttons shown, and none of the deleted ones (it raised "Internal C++ object (StepsButton) already deleted",
+    once per deleted button and change)."""
+    import sys
+
+    from explorer.look import get_look
+    from explorer.ui.shell import Shell
+    from explorer.ui.titlebar import StepsButton
+
+    raised: list = []
+    monkeypatch.setattr(sys, "excepthook", lambda *a: raised.append(a[1]))
+    ds = Dataset.open(cube[0], no_sp=True)
+    w = Shell(ds)
+    try:
+        w.resize(1200, 640)
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        for name in ("glass", "classic", "glass"):
+            w.set_look(get_look(name))
+            qapp.processEvents()
+        for _ in range(3):                                          # the deleted titles go at the next event loop
+            deferred_deletes(qapp)
+        for v in (50, 25, None):
+            w.t_steps.update(v)
+            qapp.processEvents()
+        assert raised == [], raised
+        shown = [d.titleBarWidget().findChild(StepsButton, "time_steps") for d in (w.lt_dock, w.slit_dock)]
+        assert all(b is not None for b in shown)
+    finally:
+        w.close()
+        ds.close()
+
+
+def deferred_deletes(qapp):
+    """The titles deleted later (deleteLater) deleted now."""
+    from PySide6 import QtCore
+
+    QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+
+
 def test_the_number_in_the_titles_has_a_glyph_that_says_t_steps(qapp, cube):
     """Before the number, the glyph icons.STEPS (a lambda-t cut in rows) in the number's ink, as high as its digits;
     the tooltip says what the number is: t steps shown at most."""

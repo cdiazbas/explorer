@@ -571,7 +571,12 @@ class StepsButton(QtWidgets.QAbstractButton):
         w = self.glyph + self.GAP + max(fm.horizontalAdvance(t) for t in ("100", "all")) + 8
         self.setFixedSize(max(size.width(), w), size.height())
         self.clicked.connect(self.choose)
-        steps.changed.connect(lambda _v: self.update())
+        # a method, not a lambda: Qt drops the connection with the button (a title replaced by another look's),
+        # where a lambda stays connected and repaints a deleted button at every change
+        steps.changed.connect(self._changed)
+
+    def _changed(self, _v) -> None:
+        self.update()
 
     def choose(self) -> None:
         m = QtWidgets.QMenu(self)
