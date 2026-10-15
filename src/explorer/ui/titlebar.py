@@ -638,6 +638,29 @@ class StepsButton(TitleButton):
         p.drawText(QtCore.QPointF(x + g + self.GAP, base), text)
 
 
+SAVE_TIP = "Save the slit's time slice to a FITS file (as shown: this Stokes, this λ, these t steps)"
+
+
+class SaveButton(TitleButton):
+    """After the number of t steps in the slit's title: its glyph (icons.SAVE) alone, the digits' height; a click
+    calls save() (Shell.save_slit, which says on the status line what it wrote, or why nothing)."""
+    PAD = 4                                             # px each side of the glyph
+
+    def __init__(self, save, parent, size: QtCore.QSize):
+        super().__init__(parent, SAVE_TIP)
+        self.save = save
+        self.setObjectName("save_slit")
+        self.setFixedSize(self.glyph + 2 * self.PAD, size.height())
+        self.clicked.connect(self._clicked)
+
+    def _clicked(self) -> None:
+        self.save()
+
+    def paintEvent(self, e):
+        p, ink, _base, y = self._start()
+        self._glyph(p, icons.SAVE, round((self.width() - self.glyph) / 2), y, ink)
+
+
 STEPS_GAP_QT = 4                                        # px from Qt's float mark to the number of t steps
 
 
@@ -741,11 +764,15 @@ class DockTitle(QtWidgets.QWidget):
         self.button = self.buttons[1]                    # the float button
         if self.qt_marks:                                # the number as high as Qt's marks (resizeEvent)
             size = self.button.sizeHint()
-        steps = getattr(dock, "steps", None)
+        steps, save = getattr(dock, "steps", None), getattr(dock, "save", None)
         self.steps_button = StepsButton(steps, self, size) if isinstance(steps, TimeSteps) else None
+        # the slit's (dock.save, Shell.save_slit): its time slice to a file, right after the number
+        self.save_button = SaveButton(save, self, size) if self.steps_button is not None and callable(save) else None
         if self.steps_button is not None and not self.qt_marks:
             lay.addSpacing(2)
             lay.addWidget(self.steps_button, 0, Qt.AlignmentFlag.AlignVCenter)
+            if self.save_button is not None:
+                lay.addWidget(self.save_button, 0, Qt.AlignmentFlag.AlignVCenter)
         lay.addStretch(1)
 
     def _qt_rects(self, rect: QtCore.QRect) -> list[QtCore.QRect]:
@@ -771,10 +798,13 @@ class DockTitle(QtWidgets.QWidget):
             f = self.button.geometry()
             self.steps_button.setFixedHeight(f.height())
             self.steps_button.move(f.right() + 1 + STEPS_GAP_QT, f.top())
+            if self.save_button is not None:
+                self.save_button.setFixedHeight(f.height())
+                self.save_button.move(self.steps_button.geometry().right() + 1, f.top())
 
     def left_end(self) -> int:
         """Where the marks at the left end, x: the title stays clear of them on both sides."""
-        return (self.steps_button or self.buttons[-1]).geometry().right()
+        return (self.save_button or self.steps_button or self.buttons[-1]).geometry().right()
 
     def sizeHint(self):
         # Qt's rule (QDockWidgetLayout::titleHeight): the button plus 2, or the dock's font plus the margins
@@ -809,13 +839,13 @@ class DockTitle(QtWidgets.QWidget):
     def _paint_as_qt(self, p: QtGui.QPainter, opt: QtWidgets.QStyleOptionDockWidget) -> None:
         """The bar and the title as QDockWidget paints its own: in the panel's style (MacSeams: no light line under
         it), the name in the panel's font centred where the style puts it (after the marks), moved clear of the
-        number when it would run over it."""
+        number (and the slit's save) when it would run over it."""
         st = self.d.style()
         st.drawControl(QtWidgets.QStyle.ControlElement.CE_DockWidgetTitle, opt, p, self)
         r = self._qt_rects(self.rect())[2]
         fm = QtGui.QFontMetrics(self.d.font())
         if self.steps_button is not None:
-            clear = self.steps_button.geometry().right() + 6
+            clear = self.left_end() + 6
             if r.center().x() - fm.horizontalAdvance(self.d.windowTitle()) / 2 < clear:
                 r.setLeft(clear)                        # it would run over it: centred after it, elided if need be
         text = fm.elidedText(self.d.windowTitle(), Qt.TextElideMode.ElideRight, max(0, r.width()))

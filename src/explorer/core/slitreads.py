@@ -50,6 +50,7 @@ With a tab per cube, only the drawn-on cube's tab comes in front: the others rea
 """
 import time
 from collections import OrderedDict
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -66,6 +67,18 @@ REST_S = 0.25               # without a per-pixel file, a slit being drawn is re
 LIVE_MS = 50.0              # ... or at once, when its last stage was read within this long
 BANDS = 64                  # slices kept per slit without a per-pixel file (the prototype kept every one)
 DRAFTS = 64                 # stages of the slit being drawn whose late results may still be shown
+
+
+@dataclass(frozen=True, eq=False)
+class TimeSlice:
+    """The time slice last given to the panel (SlitReads.time_slice), with what it is a slice of: what a save writes
+    (data.slitfits), the panel's own array and nothing read again."""
+    values: np.ndarray          # (len(t), len(pix[0])) float32, NaN where a pixel's block has not come yet
+    t: np.ndarray               # the cube's t index of each row (data.tsample)
+    s: int                      # its Stokes and lambda indices in the cube
+    l: int  # noqa: E741
+    cube: int                   # the member whose values they are
+    path_id: int                # the slit they were made for (SlitReads.path_id)
 
 
 class SlitReads:
@@ -97,6 +110,7 @@ class SlitReads:
         self._front = False
         self._closed = False
         self.reads: list[dict] = []                     # the block reads: pixels, runs, ms (benches, diagnostics)
+        self.time_slice: TimeSlice | None = None        # the one shown, of the slit shown (None: none of it yet)
 
     @staticmethod
     def _blocks_of(ds) -> SlitCache:
@@ -181,6 +195,7 @@ class SlitReads:
             return False
         self.pix = pix
         self.path_id += 1
+        self.time_slice = None
         if pix is not None and self._drawing(st):
             self._drafts = {p for p in self._drafts if p > self.path_id - DRAFTS} | {self.path_id}
         self.gens.new("slit")                           # a job for the slit before is skipped
@@ -275,7 +290,7 @@ class SlitReads:
                     a[:, i] = (b[s, :, l] if every else b[s, steps, l]) if kind == "ts" else b[s, t, :]
             out[kind] = (a, panel_levels(a, symmetric=s > 0))
             self._made[kind] = (key, *out[kind])
-        self.loop.post(lambda: self._show(g, pid, s, out["ts"], out["sl"]))
+        self.loop.post(lambda: self._show(g, pid, s, out["ts"], out["sl"], at=(l, steps)))
 
     # ---------------------------------------------------------------- no per-pixel file: rows per frame
     def _from_bands(self, g, pid, pix, t, s, l, playing, ds, blocks, steps) -> None:  # noqa: E741
@@ -312,12 +327,13 @@ class SlitReads:
                 while len(self._bands) > BANDS:
                     self._bands.popitem(last=False)
             if kind == "ts":
-                self.loop.post(lambda h=hit: self._show(g, pid, s, ts=h))
+                self.loop.post(lambda h=hit: self._show(g, pid, s, ts=h, at=(l, steps)))
             else:
                 self.loop.post(lambda h=hit: self._show(g, pid, s, sl=h))
 
     # ---------------------------------------------------------------- results, on the main thread
-    def _show(self, g: int, pid: int, s: int, ts=None, sl=None) -> None:
+    def _show(self, g: int, pid: int, s: int, ts=None, sl=None, at=None) -> None:
+        """at: (lambda, t steps) of the time slice ts."""
         if self._closed:
             return
         if pid != self.path_id and not (pid in self._drafts and self.path_id in self._drafts):
@@ -328,5 +344,8 @@ class SlitReads:
         if ts is None and sl is None:
             counter("core.slit.dropped_older")
             return
+        if ts is not None:                              # a late stage of the slit being drawn is not the slit shown
+            self.time_slice = (TimeSlice(ts[0], np.asarray(at[1]), s, at[0], self.cube, pid)
+                               if at is not None and pid == self.path_id else None)
         self.sink.slit(None if ts is None else ts[0], None if sl is None else sl[0], s,
                        None if ts is None else ts[1], None if sl is None else sl[1])

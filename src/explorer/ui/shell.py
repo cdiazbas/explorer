@@ -32,6 +32,7 @@ from ..core.levels import gamma_step
 from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
+from ..data import slitfits
 from ..data.axes import STOKES
 from ..data.names import cube_names, slice_names, value_name
 from ..look import ENV_OFF, LOOKS, get_look
@@ -253,6 +254,7 @@ class Shell(QtWidgets.QMainWindow):
         # the t steps the temporal panels show at most (data.tsample), one number for every cube: a number in the
         # titles of lambda-t and the slit, there in every look (a title of our own where Qt's would be)
         self.t_steps = titlebar.TimeSteps(self.session.state.t_cap, self.session.set_t_cap, self)
+        self.slit_dock.save = self.save_slit  # type: ignore[attr-defined]   # the slit's: a save button after the number
         for d in (self.lt_dock, self.slit_dock):
             self.give_steps(d)
         self.image_title: ImageTitle | None = None
@@ -1385,11 +1387,16 @@ class Shell(QtWidgets.QMainWindow):
         """With linked cubes, the slit panel titled with the cube it shows: the tab in front's, with a tab per cube."""
         if not self.linked:
             return
-        k = self._slit_on
+        k = self._slit_front_tab()
+        self.slit_dock.setWindowTitle(f"Slit: {self.cubes[self._slit_on if k is None else k].name}")
+
+    def _slit_front_tab(self) -> int | None:
+        """The cube whose slit tab is in front, with a tab per cube; None with one tab (the main cube's, which shows
+        the cube the slit was drawn on)."""
         if self.slit_tabs is not None and self.session.state.slit_tabs and self.slit_tabs.count():
             key = self.slit_tabs.keys[self.slit_tabs.currentIndex()]
-            k = int(key.split(":")[1]) if ":" in key else 0
-        self.slit_dock.setWindowTitle(f"Slit: {self.cubes[k].name}")
+            return int(key.split(":")[1]) if ":" in key else 0
+        return None
 
     def _slit_markers(self) -> None:
         st = self.session.member_state(self._slit_on)
@@ -1445,6 +1452,44 @@ class Shell(QtWidgets.QMainWindow):
     def clear_slit(self) -> None:
         """⌫: the finished slit removed, from the image and from the session."""
         self.slit_tool.clear()
+
+    def save_slit(self, folder: str | None = None) -> str | None:
+        """The slit title's save button (titlebar.SaveButton): the time slice of the slit tab in front, as it shows it
+        (its t steps, Stokes and lambda: nothing read again), to a new FITS file in folder (the working directory by
+        default), named after the cube whose slice it is (data.slitfits); its path on the status line and the
+        terminal. Returns it, None when nothing is written: no slit, one being drawn, or its slice not come yet; the
+        status line says which."""
+        st, tab = self.session.state, self._slit_front_tab() or 0
+        reads = self.cubes[tab].scheduler.slit
+        rec = reads.time_slice
+        why = ("no slit (S draws one)" if st.path is None and st.draft is None
+               else "the slit is being drawn: finish it first (double click)" if st.draft is not None
+               else "its time slice is not shown yet"
+               if rec is None or rec.path_id != reads.path_id or reads.pix is None else None)
+        if why is not None:
+            self.statusBar().showMessage(f"slit not saved: {why}", 4000)
+            return None
+        assert rec is not None and reads.pix is not None and reads.pts is not None
+        c, panel = self.cubes[rec.cube], self.cubes[tab].slit_panel
+        ds, r = c.dataset, c.dataset.roles
+        try:
+            path = slitfits.write_time_slice(
+                folder or os.getcwd(), rec.values, t=rec.t, pix=reads.pix, pts=reads.pts,
+                source=getattr(ds, "path", "") or c.name, axes=getattr(ds, "axes", None),
+                times=panel.tax if panel is not None else None, s=rec.s if r.s is not None else None, ns=r.ns,
+                l=rec.l if r.l is not None else None, nt=r.nt)
+        except OSError as e:                            # a folder that cannot be written: said, nothing else
+            msg = f"slit not saved: {e}"
+            self.statusBar().showMessage(msg, 10000)
+            print(f"[{APP_NAME}] {msg}", file=sys.stderr)
+            return None
+        # with a per-pixel file, the points whose blocks have not come are NaN in it (the cube's padding is NaN too)
+        gaps = (len(reads.blocks.missing(zip(reads.pix[0].tolist(), reads.pix[1].tolist(), strict=True)))
+                if reads.per_pixel else 0)
+        msg = f"slit saved: {path}" + (f" ({gaps} pixels along it not read yet: NaN)" if gaps else "")
+        self.statusBar().showMessage(msg, 10000)
+        print(f"[{APP_NAME}] {msg}", file=sys.stderr)
+        return path
 
     def slit_step(self, d: int) -> None:
         """A (d = -1) and D (+1): the cursor to the previous or next pixel of the slit shown, locked there as a click on

@@ -60,6 +60,10 @@ class Pen:
         """A closed outline through grid points, its corners rounded by the pen's round join."""
         self.p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(self.x(x), self.x(y)) for x, y in pts]))
 
+    def path(self, pts):
+        """An open line through grid points."""
+        self.p.drawPolyline(QtGui.QPolygonF([QtCore.QPointF(self.x(x), self.x(y)) for x, y in pts]))
+
     def ring(self, cx, cy, r):
         """A small open circle (a point of a slit)."""
         self.p.drawEllipse(QtCore.QPointF(self.x(cx), self.x(cy)), r * self.u, r * self.u)
@@ -108,12 +112,58 @@ def _grid(g):                                           # a lambda-t image cut i
     g.line(1, 7.5, 11, 7.5)
 
 
+# saving the slit's time slice, after the number in the slit's title (ui.titlebar.SaveButton), on the same grid
+def _disk(g):                                           # a floppy disk: its shutter at the top, its label below
+    g.poly(((1, 1), (9, 1), (11, 3), (11, 11), (1, 11)))
+    g.path(((3.5, 1), (3.5, 4), (8, 4), (8, 1)))
+    g.path(((3.5, 11), (3.5, 7.5), (8.5, 7.5), (8.5, 11)))
+
+
+def _tray(g):                                           # an arrow down into a tray
+    g.line(6, 1, 6, 7.5)
+    g.path(((3, 4.5), (6, 7.5), (9, 4.5)))
+    g.path(((1, 7.5), (1, 11), (11, 11), (11, 7.5)))
+
+
+def _page(g):                                           # a page, its corner folded, an arrow down on it
+    g.poly(((2, 1), (7.5, 1), (10, 3.5), (10, 11), (2, 11)))
+    g.path(((7.5, 1), (7.5, 3.5), (10, 3.5)))
+    g.line(6, 4.5, 6, 9)
+    g.path(((4, 7), (6, 9), (8, 7)))
+
+
+def _letter_f(g):                                       # F, for FITS
+    g.path(((9, 1.5), (3.5, 1.5), (3.5, 10.5)))
+    g.line(3.5, 6, 8, 6)
+
+
+def _export(g):                                         # an arrow up out of a tray
+    g.line(6, 7.5, 6, 1)
+    g.path(((3, 4), (6, 1), (9, 4)))
+    g.path(((1, 7.5), (1, 11), (11, 11), (11, 7.5)))
+
+
+def _drive(g):                                          # a drive: a box, its light at the right
+    g.poly(((1, 3), (11, 3), (11, 9), (1, 9)))
+    g.line(8.5, 6, 9, 6)
+
+
+def _to_line(g):                                        # an arrow down onto a line
+    g.line(6, 1, 6, 8)
+    g.path(((3, 5), (6, 8), (9, 5)))
+    g.line(2, 11, 10, 11)
+
+
 # name: (grid width, grid height, draw(Pen)). Play and pause drawn as the others: the font's ▶ and ⏸ were another
 # style beside them, and over X11 another font's
 GLYPHS = {"arrow": (18, 18, _arrow), "play": (18, 18, _play), "pause": (18, 18, _pause), "slit": (18, 18, _slit),
-          "rows": (12, 12, _rows), "comb": (12, 12, _comb), "dots": (12, 12, _dots), "grid": (12, 12, _grid)}
+          "rows": (12, 12, _rows), "comb": (12, 12, _comb), "dots": (12, 12, _dots), "grid": (12, 12, _grid),
+          "disk": (12, 12, _disk), "tray": (12, 12, _tray), "page": (12, 12, _page), "letter_f": (12, 12, _letter_f),
+          "export": (12, 12, _export), "drive": (12, 12, _drive), "to_line": (12, 12, _to_line)}
+SAVES = ("disk", "tray", "page", "letter_f", "export", "drive", "to_line")     # the glyphs drawn for saving
 RESET = "arrow"                                         # the usual sign for "back to how it was"
 STEPS = "grid"                                          # t steps shown at most: a lambda-t cut in rows
+SAVE = "tray"                                           # the slit's time slice to a file: one of SAVES
 
 
 class GlyphEngine(QtGui.QIconEngine):

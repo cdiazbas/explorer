@@ -284,8 +284,9 @@ class PanelTitle(titlebar.DockTitle):
         p.setFont(f)
         side = self.left_end() + 6
         r = self.rect().adjusted(side, 0, -side, 0)
-        if self.steps_button is not None:                # its number in the glass's ink, as the marks
-            self.steps_button.ink = INK[mode]
+        for b in (self.steps_button, self.save_button):  # the number and the save in the glass's ink, as the marks
+            if b is not None:
+                b.ink = INK[mode]
         p.setPen(INK[mode])
         text = QtGui.QFontMetrics(f).elidedText(self.d.windowTitle(), QtCore.Qt.TextElideMode.ElideRight,
                                                 max(0, r.width()))
