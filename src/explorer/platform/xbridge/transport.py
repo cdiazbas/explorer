@@ -139,6 +139,7 @@ class Transport:
         self._copies_lock = threading.Lock()
         self._backs: dict[int, _Back] = {}
         self._unacked: collections.deque = collections.deque()
+        self._then = None                               # the update being sent: called when the server confirms it
         self.stats: dict[str, Any] = dict(updates=0, bytes=0, wire=0, pieces=0, grey_px=0, colour_px=0,
                                           diff_ms=[], encode_ms=[], send_ms=[], ack_ms=[], acked=0, last_ack=0.0,
                                           check_hits=0, copies=0, shown=0)
@@ -147,14 +148,15 @@ class Transport:
         self._thread.start()
 
     # ---- interface thread
-    def submit(self, items: list) -> None:
+    def submit(self, items: list, then=None) -> None:
         """One update: items (xid, W, H, x, y, pixels uint32 [h, w], owner of the pixels, force, check[, ends]);
         check: a whole-window grab of the periodic check (counted when it finds something the Paint events missed);
         ends: the item closes a piece, shown (CopyArea) right after its bytes; without it, each window's pixels are
-        shown together after the whole update's."""
+        shown together after the whole update's. then: called once the server has confirmed it (at once when nothing
+        in it differs from what the server has), on the sender's or its reader's thread."""
         self.ready.clear()
         self._pending += 1
-        self._q.put(("update", items))
+        self._q.put(("update", (items, then)))
 
     def expose(self, xid: int, x: int, y: int, w: int, h: int) -> None:
         """The server lost these pixels of the window: copy them again from its back pixmap."""
@@ -225,10 +227,14 @@ class Transport:
                 if kind == "update":
                     self._working = True
                     self._pending -= 1
+                    items, self._then = arg
                     try:
-                        self._update(arg)
+                        self._update(items)
                     finally:
                         self._working = False
+                        then, self._then = self._then, None
+                        if then is not None:            # nothing was sent: the server has it already
+                            then()
                     if self._pending == 0:
                         self.ready.set()
                         self.on_ready()
@@ -375,7 +381,8 @@ class Transport:
         if self.trace is not None:
             self._traced(work, touched, fresh)
         t3 = time.perf_counter()
-        marker.then(lambda _r, _e, t=t2: self._acked(t))
+        then, self._then = self._then, None
+        marker.then(lambda _r, _e, t=t2, then=then: self._acked(t, then))
         self._unacked.append(marker)
         self.stats["wire"] += c.bytes_out - wire0
         self._stat(t0, t1, t2, t3, nbytes, npieces, marker)
@@ -396,7 +403,7 @@ class Transport:
                                           f"({x0}, {y0}, {x1 - x0}, {y1 - y0})")
             self.trace.count(xid, updates=1, px=px)
 
-    def _acked(self, t_sent: float) -> None:
+    def _acked(self, t_sent: float, then=None) -> None:
         now = time.perf_counter()
         with self.acked:
             s = self.stats
@@ -404,6 +411,8 @@ class Transport:
             s["last_ack"] = now
             s["ack_ms"].append((now - t_sent) * 1e3)
             self.acked.notify_all()
+        if then is not None:
+            then()
 
     def _stat(self, t0, t1, t2, t3, nbytes, npieces, marker) -> None:
         s = self.stats

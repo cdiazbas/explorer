@@ -1201,6 +1201,8 @@ class Shell(QtWidgets.QMainWindow):
             fps = linkprobe.suggest_fps(res["MBps"], link.bytes_per_px * cw.width() * cw.height(), hi=link.fps_cap)
             fps = self.auto_fps("link", fps) or fps
             msg = f"X11 link ~{res['MBps']:.0f} MB/s, round trip {res['rtt_ms']:.1f} ms: playback at {fps} fps"
+            if self.session.pace.link(res["MBps"]):     # a slow link: the panels at the pace it shows them
+                msg += "; panels at the link's pace"
             self.statusBar().showMessage(msg, 10000)
             print(f"[{APP_NAME}] {msg}", file=sys.stderr)
 

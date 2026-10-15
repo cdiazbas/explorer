@@ -71,6 +71,23 @@ class BridgeWindowOps(WindowOps):
         setattr(self.w, SHAPE_ATTR, QtGui.QRegion() if region is None else QtGui.QRegion(region))
 
 
+class BridgeScreen:
+    """The viewer's panels as frames through the bridge (core.pace.Screen): one is behind while the update that
+    carries the panels drawn before is not confirmed by the X server."""
+
+    def __init__(self, bridge: "Bridge"):
+        self.b = bridge
+
+    def behind(self) -> bool:
+        return self.b.frame_behind()
+
+    def drawn(self) -> None:
+        self.b.frame_drawn()
+
+    def when_shown(self, fn) -> None:
+        self.b.frame_when_shown(fn)
+
+
 class BridgeDisplay(Display):
     def __init__(self, plan: DisplayPlan):
         super().__init__(plan)
@@ -110,6 +127,9 @@ class BridgeDisplay(Display):
         b.attach(window)
         app.aboutToQuit.connect(lambda: print(b.describe(), file=sys.stderr, flush=True))
         return ops
+
+    def screen(self) -> BridgeScreen | None:
+        return BridgeScreen(self.bridge) if self.bridge is not None else None
 
     def link(self) -> LinkInfo:
         """Bytes per image-panel pixel and the playback cap. Until measured here (ROADMAP E6): the prototype's bridge,

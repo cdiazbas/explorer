@@ -39,6 +39,8 @@ MAX_PIECES = 16                                         # widgets' repaints show
 #                                                         together, after them
 CHECK_S = 1.0                                           # every window grabbed whole this often: the tile comparison
 #                                                         sends only what Qt changed without a Paint event
+DRAWN, PAINTED = "drawn", "painted"                     # a frame of the viewer's panels before it is grabbed
+FRAMES_AHEAD = 1                                        # frames of the viewer's panels on the link at a time
 EXTENSIONS = ("XINERAMA", "SHAPE", "XFIXES", "RENDER", "Apple-WM")
 
 
@@ -152,6 +154,11 @@ class Bridge(QtCore.QObject):
         except (X.XError, TimeoutError):
             pass
         self._flush_posted = False                      # a grab is queued (_schedule)
+        # the viewer's panels as frames (screen()): the one being drawn (None, DRAWN, PAINTED), those on the link
+        self._frame: str | None = None
+        self._frames_out: set[int] = set()
+        self._frame_n = 0
+        self._frame_shown: list = []
         self._check = QtCore.QTimer(self)
         self._check.setInterval(int(CHECK_S * 1000))
         self._check.timeout.connect(self._check_all)
@@ -245,6 +252,8 @@ class Bridge(QtCore.QObject):
                     rec.dirty += reg
                     if len(rec.pieces) < MAX_PIECES:
                         rec.pieces.append(reg)
+                    if self._frame == DRAWN:
+                        self._frame = PAINTED
                     self._schedule()
             return False
         if t not in (E.Type.Show, E.Type.Hide, E.Type.Move, E.Type.Resize, E.Type.WindowStateChange,
@@ -380,7 +389,13 @@ class Bridge(QtCore.QObject):
                     a = _pixels(img)
                     items.append((rec.xid, W, H, r.x(), r.y(), a, img, False, check, i == len(rects) - 1))
         if items:
-            self.transport.submit(items)
+            then = None
+            if self._frame == PAINTED:                  # the panels drawn go in this update
+                self._frame_n += 1
+                n, self._frame = self._frame_n, None
+                self._frames_out.add(n)
+                then = lambda n=n: self._call.emit(self._frame_confirmed, (n,))    # noqa: E731
+            self.transport.submit(items, then)
             self.stats["flushes"] += 1
             self.stats["grab_ms"].append((time.perf_counter() - t0) * 1e3)
             if len(self.stats["grab_ms"]) > 1000:
@@ -408,6 +423,27 @@ class Bridge(QtCore.QObject):
                 h = rec.w.windowHandle()
                 shape = h.cursor().shape() if h is not None else Qt.CursorShape.ArrowCursor
             self.windows.sync_cursor(rec, shape)
+
+    # ---------------------------------------------------------------- the viewer's pace (screen())
+    def frame_behind(self) -> bool:
+        """The panels drawn last are on their way to the server, not yet confirmed: what is drawn now would wait
+        behind them on the link."""
+        return len(self._frames_out) >= FRAMES_AHEAD
+
+    def frame_drawn(self) -> None:
+        if self._frame is None:
+            self._frame = DRAWN
+
+    def frame_when_shown(self, fn) -> None:
+        self._frame_shown.append(fn)
+
+    def _frame_confirmed(self, n: int) -> None:
+        self._frames_out.discard(n)
+        if self.frame_behind():
+            return
+        fns, self._frame_shown = self._frame_shown, []
+        for fn in fns:
+            fn()
 
     # ---------------------------------------------------------------- X events
     def post(self, fn, *args) -> None:

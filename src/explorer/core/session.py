@@ -19,6 +19,7 @@ from ..data.link import frames
 from ..obs import counter
 from .levels import GAMMA_MAX, GAMMA_MIN, RULE_DEFAULT, RULES
 from .loop import Loop
+from .pace import Pace
 from .state import Store, ViewState
 
 AXES = ("t", "s", "l")
@@ -52,6 +53,7 @@ class Session:
         self.sizes = {"t": r.nt, "s": r.ns, "l": r.nl}
         self.present = {"t": r.t is not None, "s": r.s is not None, "l": r.l is not None}
         self.store = Store(loop, ViewState(l=r.nl // 2 if r.l is not None else 0, cursor=(main.ny // 2, main.nx // 2)))
+        self.pace = Pace(loop)                          # the cursor's panels of every cube, as the screen keeps up
 
     # ---------------------------------------------------------------- the cubes
     @property

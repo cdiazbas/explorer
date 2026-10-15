@@ -337,6 +337,7 @@ class Scheduler:
             g = self.gens.new("cursor")                 # results still in flight are now stale
             self.shown.accept("spectra", g)
             self.shown.accept("lambda_t", g)
+            self.session.pace.drop([(self.member, "spectra"), (self.member, "lambda_t")])   # held: older
             if not self._cleared:
                 self.sink.cleared((y, x))
                 self._cleared = True
@@ -362,11 +363,16 @@ class Scheduler:
     def _show(self, kind: str, g: int, arr, pixel, at: int) -> None:
         if self._closed:
             return
-        if self.shown.accept(kind, g):
-            if kind == "lambda_t":                      # Q U V symmetric about 0
-                self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=at > 0))
-            else:
-                self.sink.spectra(self.yrange.spectrum(arr), pixel, at)
+        if self.shown.accept(kind, g):                  # now, or the latest once the screen caught up (core.pace)
+            self.session.pace.show((self.member, kind), lambda: self._draw(kind, arr, pixel, at))
+
+    def _draw(self, kind: str, arr, pixel, at: int) -> None:
+        if self._closed:
+            return
+        if kind == "lambda_t":                          # Q U V symmetric about 0
+            self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=at > 0))
+        else:
+            self.sink.spectra(self.yrange.spectrum(arr), pixel, at)
 
     # ---------------------------------------------------------------- the image's levels
     def _show_image(self) -> None:

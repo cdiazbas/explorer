@@ -214,6 +214,11 @@ class Display:
             _mac_zoom_not_fullscreen(window)
         return ops
 
+    def screen(self):
+        """What the viewer's panels need to know of the screen to keep pace with it (core.pace.Screen); None: every
+        panel is shown as it comes. The X11 bridge has one."""
+        return None
+
     def link(self) -> LinkInfo:
         if self.plan.remote and not self.plan.bridge:
             return LinkInfo(bytes_per_px=4.8, fps_cap=30)

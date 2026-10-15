@@ -289,6 +289,7 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         if store is not None:                           # each cube's limits and gamma, by its file name
             shell.restore_scale(store.scale())
         disp.attach(app, shell, ops)
+        shell.session.pace.offer = disp.screen()        # held for once the link probe finds it slow (core.pace)
         from . import termkeys
 
         shell.terminal_keys = termkeys.attach(shell)     # over ssh -Y the keyboard stays in the terminal until a click
