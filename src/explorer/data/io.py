@@ -560,6 +560,25 @@ KEEP_OPEN = 16
 DECODES_KEPT = 8            # whole-frame decompressions the playback cap is the median of
 
 
+# a series' descriptors are moved to FD_FLOOR and above, out of select()'s range (FD_SETSIZE, 1024 on Linux and
+# macOS): python-xlib waits on its connection with select (the resize outline's, platform.xoutline), and a series
+# of 1100 plain files left the next connection at descriptor 1103: "filedescriptor out of range in select()"
+FD_FLOOR = 1024
+
+
+def _above_select(fd: int) -> int:
+    """fd moved to FD_FLOOR or above (close-on-exec, as os.open's), or kept where it is when the limit does not
+    reach that far."""
+    import fcntl
+
+    try:
+        high = fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC, FD_FLOOR)
+    except OSError:
+        return fd
+    os.close(fd)
+    return high
+
+
 def _room_for_files(n: int, spare: int = 256) -> None:
     """Raise this process's soft limit of open files to hold n more (macOS starts shells at 256), up to the hard
     limit; where it cannot be raised, opening fails later with the system's message."""
@@ -588,10 +607,12 @@ class SeriesReader(FrameReader):
 
     def __init__(self, layout: SeriesLayout, pool: ThreadPoolExecutor | None = None, chunks: int = 4,
                  threads: int = 16):
-        _room_for_files(len(layout.paths))
+        _room_for_files(FD_FLOOR + len(layout.paths))
         super().__init__(layout, pool=pool, chunks=chunks)
         # plain: a descriptor per file (layout.path is the first); compressed: astropy's, opened at the first read
-        self.fds = [self.fd] + ([] if layout.compressed else [os.open(p, os.O_RDONLY) for p in layout.paths[1:]])
+        self.fd = _above_select(self.fd)
+        self.fds = [self.fd] + ([] if layout.compressed else
+                                [_above_select(os.open(p, os.O_RDONLY)) for p in layout.paths[1:]])
         self.threads = max(1, int(threads))
         self._decode_s: list[float] = []               # the latest whole-frame decompressions, seconds
         if layout.compressed:

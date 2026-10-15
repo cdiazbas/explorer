@@ -199,6 +199,29 @@ def test_images_stored_with_axes_of_length_one_read_as_images(tmp_path, monkeypa
         series_layout(two)
 
 
+def test_a_long_series_leaves_select_its_descriptors(tmp_path):
+    """1100 plain files held open are moved above select()'s range: a connection opened after them (python-xlib's,
+    for the resize outline) can still wait with select; the frames read as before."""
+    import select
+    import shutil
+    import socket
+
+    from explorer.data.io import FD_FLOOR
+
+    imgs = images(2)
+    first = write(tmp_path, "f00000.fits", imgs[0])
+    paths = [first] + [str(tmp_path / f"f{k:05d}.fits") for k in range(1, 1100)]
+    for p in paths[1:]:
+        shutil.copyfile(first, p)
+    with Dataset.open(None, series=paths) as ds:
+        with socket.socket() as s:
+            select.select([s], [], [], 0)                           # "filedescriptor out of range" before
+            assert s.fileno() < FD_FLOOR
+        assert min(ds.frames.fds) >= FD_FLOOR and len(set(ds.frames.fds)) == 1100
+        np.testing.assert_array_equal(ds.image((1099,)).result(5), imgs[0])
+        np.testing.assert_array_equal(ds.read_series(3, 4, (0,), [0]), np.full(1100, imgs[0][3, 4], np.float32))
+
+
 def test_axes_read_names_t_and_no_lambda(tmp_path):
     paths, _ = series(tmp_path)
     lay = series_layout(paths)
