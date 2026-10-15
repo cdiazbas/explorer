@@ -4856,3 +4856,22 @@ Condiciones: el 6173, classic, en bellatrix, nodo 0, con el cerrojo, ABBA, enlac
 **Por decidir:** el límite de los paneles solo por el puente; mirar el desgarro entre trozos en la pantalla de verdad.
 
 **En la pantalla del usuario** (ssh -Y a XQuartz): «se ve genial»; llevado a `main`.
+
+### 2026-10-15 (1): una serie de imágenes guardadas como (1, 1, y, x) (ROADMAP E1.27)
+
+**La pregunta** (el usuario): `--series` debe valer también para ficheros (1, 1, 512, 512), que con un squeeze son
+una imagen.
+
+**Antes:** la forma salía de todos los NAXISn y se exigía exactamente (y, x): esos ficheros se rechazaban con «a
+series needs one image (y, x) per file», y una mezcla con ficheros (y, x) con «shape differs».
+
+**Ahora:**
+- `series_layout` quita los ejes de longitud 1 delante de (y, x), en la lectura por bloques y en la de astropy.
+- Los planos se leen igual: los bytes de (1, 1, y, x) son los de (y, x), en el mismo orden y desde el mismo sitio.
+- Los comprimidos: `SeriesReader._decompressed` indexa la sección con un 0 por cada eje quitado. Sin esto, las
+  filas pedidas caían sobre el primer eje de longitud 1 (`AxisError` al leer la rendija).
+- (2, y, x) sigue sin ser una imagen.
+
+**Pruebas** (bellatrix, copia en `/tmp`): la nueva, plana y Rice, con cuadros, píxel en t, filas, bandas y la lectura
+de astropy iguales a los de la misma serie en (y, x). Falla antes (los dos casos, «shape differs»); con solo el cambio
+de la cabecera, falla el comprimido. `test_series.py` y `test_series_playback.py`: 24 pasan.
