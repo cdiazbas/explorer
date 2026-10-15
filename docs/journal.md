@@ -4875,3 +4875,38 @@ series needs one image (y, x) per file», y una mezcla con ficheros (y, x) con �
 **Pruebas** (bellatrix, copia en `/tmp`): la nueva, plana y Rice, con cuadros, píxel en t, filas, bandas y la lectura
 de astropy iguales a los de la misma serie en (y, x). Falla antes (los dos casos, «shape differs»); con solo el cambio
 de la cabecera, falla el comprimido. `test_series.py` y `test_series_playback.py`: 24 pasan.
+
+### 2026-10-15 (2): dos avisos en la consola de otro usuario: el contorno con series largas y los botones de pasos (ROADMAP X.18, X.19)
+
+**La consola** (otro usuario en bellatrix, en dev337, `304a162`):
+- cuatro veces «no outline (the X display): ValueError('filedescriptor out of range in select()')»;
+- seis trazas «RuntimeError: libshiboken: Internal C++ object (StepsButton) already deleted» desde `titlebar.py:574`.
+
+**El contorno (X.18).**
+- Mecanismo: una serie de ficheros planos guarda abierto un descriptor por fichero; las conexiones abiertas después
+  caen por encima de 1024, y python-xlib espera con `select` (`Xlib/protocol/display.py:561`), que no los admite. El
+  puente abrió su conexión antes que el cubo y funcionaba; los contornos, uno por ventana, fallaban.
+- Reproducido en bellatrix (Xvfb privado, 1100 ficheros de 64×64 en `/tmp`): con 500 ficheros, el contorno conecta
+  (descriptor 503); con 1100, el error de la consola. Con los descriptores de la serie movidos a ≥ 1024
+  (`F_DUPFD_CLOEXEC`), conecta (descriptor 3).
+- Coste: abrir la serie, 0.23 → 0.21 s; un píxel a lo largo de t, 29 → 30 ms (una tanda; dentro del ruido).
+- Descartado: dejar abiertos solo los últimos ficheros. Abrir y cerrar cuesta en StorNext 202 µs en frío y 12 µs en
+  caliente por fichero (1000 ficheros AIA, solo lectura): sobre 3900 ficheros, de 47 ms a 0.8 s más por lectura.
+- Límites en bellatrix: blando 1024, duro 524288; `_room_for_files` sube el blando a 1024 + n + 256.
+- Inferencia, sin confirmar: el otro usuario abrió `--series` con más de unos 1000 ficheros sin comprimir.
+
+**Los botones de pasos (X.19).**
+- Mecanismo: el botón de pasos de cada título se unía al `TimeSteps` de la ventana con una lambda; Qt suelta una
+  conexión al borrarse su objeto receptor, y una lambda no tiene. Al cambiar de aspecto, los títulos se sustituyen, y
+  cada cambio de pasos llamaba a `update()` sobre los botones borrados.
+- Ahora un método del botón, que Qt suelta con él.
+- La prueba (glass → classic → glass, y tres cambios de pasos) da 6 errores antes, los mismos que la consola, y
+  ninguno después.
+
+**Pruebas:**
+- Las dos nuevas fallan antes y pasan después.
+- `tests/unit` y `tests/golden`: 952 pasan, 15 saltadas.
+- `tests/xvfb`: 40 pasan y 1 falla, `test_bridge_glass_start` con BadMatch en GetImage. La causa fue el Xvfb de
+  1600×1000: la prueba pone una ventana de 825 px en x = 940, que sale de la pantalla. La misma prueba con el mismo
+  código falla a 1600×1000 y pasa a 2560×1440. No es del cambio: el Xvfb de las pruebas necesita al menos 1800 px de
+  ancho.
