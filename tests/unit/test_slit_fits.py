@@ -5,6 +5,7 @@ the number and clear of the name, and not in lambda-t's; no key for it. Through 
 the slice the slit tab in front shows (at the 100-step cap and at "all", per-pixel file or not), at the pixels of the
 slit drawn, named after its cube, a linked cube's too. Each test prints what it measured."""
 import datetime as dt
+import os
 import sys
 import time
 import warnings
@@ -413,3 +414,62 @@ def test_a_click_saves_the_tab_in_front_named_after_its_cube(qapp, linked, tmp_p
         assert h[0].header["PARENT"] == "o_im.fits" and h[0].header["LAMIDX"] == st.l
         np.testing.assert_array_equal(h["SLIT"].data["X"], ix)
     assert path.rsplit("/", 1)[1].startswith(f"o_im_slit_I_l{st.l:02d}_")
+
+
+def _toast_wait(qapp, ms):
+    end = time.perf_counter() + ms / 1e3
+    while time.perf_counter() < end:
+        qapp.processEvents()
+        time.sleep(0.005)
+
+
+def test_a_save_says_its_file_in_a_note_above_the_x_axis_that_goes(qapp, shell, tmp_path, monkeypatch):
+    """After a click, the file's name in a note over the slit panel, its foot above the time slice's x axis (the
+    axis and its label stay readable), gone by itself after TOAST_MS; a click with no finished slit says why the
+    same way."""
+    from explorer.ui import shell as shell_module
+
+    monkeypatch.setattr(shell_module, "TOAST_MS", 300)
+    monkeypatch.setattr(shell_module, "FADE_MS", 100)
+    w = shell
+    draw(w, DRAWN)
+    assert spin(qapp, lambda: w.cubes[0].scheduler.slit.time_slice is not None)
+    path = click_save(qapp, w, tmp_path, monkeypatch)
+    t = w._toast
+    assert t.isVisible() and t.text() == f"saved {os.path.basename(path)}"
+    panel, host = w.slit_panel, w.slit_dock.widget()
+    vb = panel.ts.vb
+    axis_top = panel.w.mapTo(host, panel.w.mapFromScene(vb.mapRectToScene(vb.boundingRect()).bottomLeft())).y()
+    assert t.geometry().bottom() < axis_top
+    assert t.geometry().top() > panel.w.mapTo(host, panel.w.mapFromScene(vb.mapRectToScene(vb.boundingRect())
+                                                                         .topLeft())).y()
+    _toast_wait(qapp, 500)
+    assert not t.isVisible()
+    w.clear_slit()                                              # no slit: its panel goes; S shows it, drawing
+    w.set_slit_mode(True)
+    assert spin(qapp, lambda: w.slit_dock.isVisible())
+    assert w.save_slit(str(tmp_path)) is None
+    assert t.isVisible() and t.text() == "not saved: the slit is being drawn: finish it first (double click)"
+
+
+def test_through_the_bridge_the_note_goes_at_once(qapp):
+    """fade_ms 0 (the X11 bridge: each step of a fade is a repaint on the link): shown for ms, then hidden at once,
+    no fade run; with a fade, it fades out over its last fade_ms."""
+    from PySide6 import QtCore, QtWidgets
+
+    from explorer.ui.overlays import Toast
+
+    host = QtWidgets.QWidget()
+    host.resize(400, 200)
+    host.show()
+    t = Toast(host)
+    t.say("saved x.fits", 150, 0, bottom=150)
+    assert t.isVisible() and t.geometry().bottom() < 150
+    _toast_wait(qapp, 250)
+    assert not t.isVisible() and t._anim.state() == QtCore.QAbstractAnimation.State.Stopped
+    t.say("saved y.fits", 200, 120)
+    _toast_wait(qapp, 130)
+    assert t.isVisible() and t._anim.state() == QtCore.QAbstractAnimation.State.Running
+    _toast_wait(qapp, 250)
+    assert not t.isVisible()
+    host.close()

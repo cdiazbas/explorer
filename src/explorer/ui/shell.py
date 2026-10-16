@@ -38,7 +38,7 @@ from ..data.names import cube_names, slice_names, value_name
 from ..look import ENV_OFF, LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
 from ..obs import get_logger
-from . import docks, glass, icons, pens, style, titlebar
+from . import docks, glass, icons, overlays, pens, style, titlebar
 from .actions import ActionRegistry, KeySheet, mod_key, per_pixel_sheet_html
 from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
 from .cube import CubeView
@@ -73,6 +73,7 @@ CASCADE = 28               # px each detached image is moved down and left when 
 WIDTHS_MS = 150            # the images share the window's width this long after its size last changed
 SLIT_FLOAT_H = 320          # px: the slit panel floating below lambda-t in glass (the prototype's look_glass.py:615)
 SP_SHEET_WIDTH = 560        # px: the sheet over a per-pixel file alone, its paragraphs wrapped to this
+TOAST_MS, FADE_MS = 2000, 500  # a save's note over the slit panel: shown, of which fading
 GAMMA_NOTE_MS = 1000        # gamma on the image's colour key after G, Shift+G, Ctrl+G
 
 
@@ -1457,8 +1458,8 @@ class Shell(QtWidgets.QMainWindow):
         """The slit title's save button (titlebar.SaveButton): the time slice of the slit tab in front, as it shows it
         (its t steps, Stokes and lambda: nothing read again), to a new FITS file in folder (the working directory by
         default), named after the cube whose slice it is (data.slitfits); its path on the status line and the
-        terminal. Returns it, None when nothing is written: no slit, one being drawn, or its slice not come yet; the
-        status line says which."""
+        terminal, its name in a note over the panel (_save_toast). Returns it, None when nothing is written: no
+        slit, one being drawn, or its slice not come yet; the status line and the note say which."""
         st, tab = self.session.state, self._slit_front_tab() or 0
         reads = self.cubes[tab].scheduler.slit
         rec = reads.time_slice
@@ -1468,6 +1469,7 @@ class Shell(QtWidgets.QMainWindow):
                if rec is None or rec.path_id != reads.path_id or reads.pix is None else None)
         if why is not None:
             self.statusBar().showMessage(f"slit not saved: {why}", 4000)
+            self._save_toast(f"not saved: {why}", tab)
             return None
         assert rec is not None and reads.pix is not None and reads.pts is not None
         c, panel = self.cubes[rec.cube], self.cubes[tab].slit_panel
@@ -1489,7 +1491,26 @@ class Shell(QtWidgets.QMainWindow):
         msg = f"slit saved: {path}" + (f" ({gaps} pixels along it not read yet: NaN)" if gaps else "")
         self.statusBar().showMessage(msg, 10000)
         print(f"[{APP_NAME}] {msg}", file=sys.stderr)
+        self._save_toast(f"saved {os.path.basename(path)}", tab)
         return path
+
+    def _save_toast(self, text: str, tab: int) -> None:
+        """A save's note over the slit panel, just above the time slice's x axis (overlays.Toast): TOAST_MS, fading
+        over its last FADE_MS; through the X11 bridge (pace offered a screen) gone at once, as each step of a fade
+        is a repaint on the link."""
+        host = self.slit_dock.widget()
+        if host is None:
+            return
+        t = getattr(self, "_toast", None)
+        if t is None or t.parentWidget() is not host:
+            t = self._toast = overlays.Toast(host)
+        bottom = None
+        panel = self.cubes[tab].slit_panel
+        if panel is not None and panel.w.isVisible() and host.isAncestorOf(panel.w):
+            vb = panel.ts.vb                            # the time slice's plot area: its foot is the x axis
+            foot = panel.w.mapFromScene(vb.mapRectToScene(vb.boundingRect()).bottomLeft())
+            bottom = panel.w.mapTo(host, foot).y()
+        t.say(text, TOAST_MS, 0 if self.session.pace.offer is not None else FADE_MS, bottom)
 
     def slit_step(self, d: int) -> None:
         """A (d = -1) and D (+1): the cursor to the previous or next pixel of the slit shown, locked there as a click on

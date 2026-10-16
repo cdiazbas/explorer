@@ -284,3 +284,49 @@ class OverImage(QtCore.QObject):
         if e.type() in self.REPAINT:
             self.view.viewport().update()
         return False
+
+
+class Toast(QtWidgets.QLabel):
+    """A short note in a widget that goes by itself: centred, its foot at `bottom` (the widget's foot when None),
+    shown for ms and fading over its last fade_ms (0: gone at once). Clicks go through it."""
+    MARGIN = 6                                          # px between its foot and bottom
+
+    def __init__(self, host: QtWidgets.QWidget):
+        super().__init__(host)
+        self.setObjectName("toast")
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setStyleSheet("QLabel#toast { background: rgba(20, 20, 20, 210); color: #f0f0f0; border-radius: 6px; "
+                           "padding: 4px 10px; }")
+        self._fx = QtWidgets.QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self._fx)
+        self._anim = QtCore.QPropertyAnimation(self._fx, b"opacity", self)
+        self._anim.finished.connect(self.hide)
+        self._timer = QtCore.QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self._fade)
+        self._fade_ms = 0
+        self.hide()
+
+    def say(self, text: str, ms: int, fade_ms: int, bottom: int | None = None) -> None:
+        host = self.parentWidget()
+        if host is None:
+            return
+        self.setText(text)
+        self.adjustSize()
+        foot = host.height() if bottom is None else min(host.height(), bottom)
+        self.move(max(4, (host.width() - self.width()) // 2), max(4, foot - self.height() - self.MARGIN))
+        self._anim.stop()
+        self._fx.setOpacity(1.0)
+        self._fade_ms = fade_ms
+        self.show()
+        self.raise_()
+        self._timer.start(max(0, ms - fade_ms))
+
+    def _fade(self) -> None:
+        if self._fade_ms <= 0:
+            self.hide()
+            return
+        self._anim.setDuration(self._fade_ms)
+        self._anim.setStartValue(1.0)
+        self._anim.setEndValue(0.0)
+        self._anim.start()
