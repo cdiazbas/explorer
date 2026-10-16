@@ -4960,3 +4960,49 @@ paneles por barrido).
 `tests/unit` y `tests/golden` 965 pasan, 15 saltadas; `tests/xvfb` 43 pasan (Xvfb de 2560×1440).
 
 **Falta:** verlo en la pantalla del usuario.
+
+### 2026-10-16 (1): los títulos con el número en el Mac, y guardar la rendija en FITS (ROADMAP X.21, E7.6)
+
+**Los títulos en el Mac (X.21).**
+- *La queja* (el usuario): el número de pasos se ve muy bien en Linux y muy feo en el Mac, y han cambiado los símbolos de
+  desanclar y cerrar.
+- *La causa:* `Shell.give_steps` ponía nuestro `DockTitle` en λ–t y la rendija para que el número tuviera sitio; antes
+  llevaban el título de Qt, como los espectros. En el Mac nuestro título:
+  - dimensiona los iconos con una regla de 96 dpi (`logicalDpiX` es 72 allí): 7 px en botones de 11, cuadrados grises
+    del estilo macos, frente a los discos de 18×18 de Qt;
+  - mide 16 px de alto frente a los 22 de Qt, con el contenido de λ–t 6 px más arriba que el de los espectros;
+  - pinta con el estilo de la aplicación, sin el `MacSeams` del panel, y vuelve la raya clara bajo el título.
+- *Ahora,* solo bajo el estilo macos: las marcas de Qt (su icono, pintado como el botón de Qt), en el sitio de Qt, con
+  su altura y el estilo del panel; el número 4 px tras la marca de flotar.
+- *Medido* (`QWidget.grab()` sin mostrar ventanas): igual a antes del número salvo el número, 0 px de 41 088, en
+  oscuro y en claro; Linux por offscreen y el Mac con los temas propios, 0 px entre `main` y el arreglo. Imágenes en
+  `archive/images/2026-10-16_mac_titles/`.
+- *Sin probar:* un panel flotante, glass con el estilo nativo y el ratón de verdad encima. El Mac con nuestros temas
+  oscuro y claro sigue como en `main` (iconos de 7 px a la izquierda).
+
+**Guardar la rendija (E7.6).**
+- *La petición* (el usuario): un fichero muy simple de leer con las coordenadas de la rendija y su corte en el tiempo.
+  Decidido:
+  - un FITS;
+  - los pasos de t que tenga el panel (100 o «all»);
+  - el Stokes y la λ actuales;
+  - un botón tras el número de pasos, no una tecla;
+  - el disquete, elegido entre siete (`archive/images/2026-10-16_slit_save_button/`).
+- *El fichero:*
+  - primario: el corte (t, punto) en float32, tal como el panel lo tiene;
+  - SLIT: X, Y, XPOS, YPOS y DIST, la distancia a lo largo de la rendija (`slit_samples`);
+  - TIME: TINDEX, TSEC y UTC;
+  - VERTICES.
+
+  Se escribe en el directorio de trabajo, con `_2`, `_3` antes que sobrescribir. Sin rendija, o a medio dibujar, no
+  escribe y lo dice en la barra de estado.
+- *El disquete a 8 px* (Linux, dpr 1): el obturador y la etiqueta caían en las mismas columnas y se leía una «H». El
+  obturador va ahora más estrecho y a la derecha, y la etiqueta más ancha.
+
+**Pruebas:** `test_slit_fits.py` (13, fallan antes y pasan después) y la de los títulos macos en `test_time_cap.py`
+(falla antes). Grupos en el Mac: 67 + 77 + 54 pasan. Falla `test_docks::test_the_first_window_fills_the_monitor_height_
+at_most_one_point_six_wide`, igual sin estos cambios: es la pantalla offscreen del Mac (en bellatrix pasa). Suites en
+bellatrix: `tests/unit` y `tests/golden` 979 pasan, 16 saltadas (la de macos, sin ese estilo en Linux); `tests/xvfb`
+43 pasan (Xvfb de 2560×1440); carga 0.2-1.0.
+
+**Sin probar:** leer el fichero en IDL (sin IDL ni GDL en el Mac).
