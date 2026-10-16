@@ -5006,3 +5006,34 @@ bellatrix: `tests/unit` y `tests/golden` 979 pasan, 16 saltadas (la de macos, si
 43 pasan (Xvfb de 2560×1440); carga 0.2-1.0.
 
 **Sin probar:** leer el fichero en IDL (sin IDL ni GDL en el Mac).
+
+### 2026-10-16 (2): el aviso al guardar la rendija (ROADMAP E7.6)
+
+**La pregunta** (el usuario): ¿sale un aviso «Saved XX.fits» que se desvanece? No: solo la barra de estado (10 s) y la
+terminal. Pidió tres alternativas para probarlas.
+- *Las tres,* en una rama de prueba con `EXPLORER_TRY_SAVE_NOTE`:
+  - `status`: solo la barra de estado;
+  - `toast`: un aviso sobre el panel de la rendija;
+  - `button`: el disquete cambia a ✓ o ✗ durante 1.5 s.
+
+  Capturas en `archive/images/2026-10-16_save_note/`.
+- *Elegido:* `toast`.
+  - Dónde: centrado, con el pie encima del eje x del corte (en la captura de prueba tapaba la etiqueta del eje).
+  - Cuánto: 2 s, desvaneciéndose el último medio segundo.
+  - Por el puente desaparece de golpe: cada paso del fundido sería un repintado por el enlace. Es una inferencia, sin
+    medir.
+  - Sin guardar, el mismo aviso con el motivo.
+
+  La barra de estado y la terminal siguen con la ruta completa. La clase `overlays.Toast` sirve para otros avisos.
+
+**Pruebas:** tres nuevas en `test_slit_fits.py`, que fallan con el código de `main` y pasan 5 veces seguidas en
+bellatrix:
+- el aviso con el nombre, encima del eje, que se va solo;
+- con S y sin rendija terminada, dice «the slit is being drawn»;
+- el puente: sin fundido.
+
+Suites en bellatrix: `tests/unit` y `tests/golden` 980 pasan, 16 saltadas; `tests/xvfb` 43; carga 1.5-3.0. Tras ellas
+solo cambió la prueba nueva: con el panel oculto (sin rendija) el aviso no se ve, y la prueba ahora lo muestra con S.
+
+**Visto de pasada:** con S y nada dibujado aún, el motivo es «the slit is being drawn: finish it first (double click)»,
+algo confuso cuando aún no hay ningún punto. Sin cambiar.
