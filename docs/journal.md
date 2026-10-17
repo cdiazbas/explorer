@@ -5037,3 +5037,33 @@ solo cambió la prueba nueva: con el panel oculto (sin rendija) el aviso no se v
 
 **Visto de pasada:** con S y nada dibujado aún, el motivo es «the slit is being drawn: finish it first (double click)»,
 algo confuso cuando aún no hay ningún punto. Sin cambiar.
+
+### 2026-10-17 (1): `explorer update` (ROADMAP X.22)
+
+**La pregunta** (el usuario): para algo estable, ¿versiones de usuario o copias de desarrollador con un `git pull` en
+cada arranque?
+
+**Decidido:**
+- nada de un proceso de versiones formal: la versión sigue saliendo de git y nombra el commit;
+- `main` es la versión estable: solo llega a él lo que pasa las suites en bellatrix;
+- nada de `git pull` al arrancar: un cambio llegaría a todos a mitad de un análisis, y el repositorio es privado
+  (cada arranque necesitaría red y credenciales);
+- una orden `explorer update` para actualizar a mano cuando el autor avisa.
+
+**Motivo:** el otro usuario de la consola del 2026-10-15 iba en dev337, unos 175 commits atrás, sin saberlo.
+
+**`explorer update`:**
+- *Qué hace:* trae origin/main, lista lo nuevo (15 commits como mucho), avanza sin fusionar (`--ff-only`) y escribe
+  `_version.py` desde git. Una instalación editable no lo reescribe al hacer `git pull`, y la versión se quedaba en la
+  vieja.
+- *`--check`:* solo dice cuánto falta.
+- *Cuándo no hace nada:* con cambios en ficheros seguidos, commits propios, otra rama, sin git (la copia compartida de
+  bellatrix) o sin remoto. Dice por qué en cada caso.
+- *El entorno:* si cambió `uv.lock`, avisa de que el siguiente arranque lo rehace (`run.sh`, como antes).
+- *La versión desde git* pasa de `scripts/sync.py` al paquete (`explorer/_gitversion.py`, solo la biblioteca
+  estándar). `sync.py` la importa y da la misma versión.
+
+**Pruebas:**
+- `test_update.py`: 7, con repositorios temporales.
+- Un clon de GitHub retrasado 3 commits: los listó, avanzó y escribió `0.0.1.dev524+g320b45bc9`, la de `main`.
+- Suites en bellatrix: `tests/unit` y `tests/golden` 989 pasan, 16 saltadas; `tests/xvfb` 43; carga 0.1-2.0.
