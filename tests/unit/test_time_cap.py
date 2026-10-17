@@ -525,3 +525,73 @@ def test_on_a_mac_under_explorer_s_themes_the_numbered_titles_have_qt_s_marks(qa
         qapp.setPalette(pal)
         qapp.setProperty("explorer_light", False)
         pg.setConfigOptions(background="k", foreground="d")
+
+
+def _titles_clear(qapp, w, where: str) -> None:
+    """lambda-t's and the slit's titles: the number (and the slit's save) inside the title, clear of the marks and of
+    each other, and the name with room for its whole text."""
+    from PySide6 import QtGui
+
+    from explorer.ui.titlebar import SaveButton, StepsButton
+
+    w.set_slit_mode(True)
+    assert spin(qapp, lambda: w.slit_dock.isVisible())
+    qapp.processEvents()
+    for dock in (w.lt_dock, w.slit_dock):
+        t = dock.titleBarWidget()
+        assert spin(qapp, lambda t=t: t.isVisible() and t.button.x() > 0)
+        qapp.processEvents()
+        marks = [m.geometry() for m in t.buttons]
+        parts = [b.geometry() for b in (t.findChild(StepsButton, "time_steps"), t.findChild(SaveButton, "save_slit"))
+                 if b is not None]
+        f = QtGui.QFont(t.font())
+        f.setWeight(QtGui.QFont.Weight.DemiBold)
+        need = QtGui.QFontMetrics(f).horizontalAdvance(dock.windowTitle())
+        if t.marks_at_right():
+            room = parts[0].left() - 6 - t._qt_rects(t.rect())[2].left()
+        else:
+            room = t.width() - 2 * (t.left_end() + 6)
+        for p in parts:
+            assert t.rect().contains(p), (where, "outside")
+            assert not any(p.intersects(m) for m in marks), (where, "over a mark")
+        if len(parts) == 2:
+            assert not parts[0].intersects(parts[1]), (where, "number over save")
+        assert room >= need, (where, "name cut")
+
+
+def test_on_a_mac_the_numbered_titles_stay_clear_after_t(qapp, cube, monkeypatch):
+    """After T from the native macOS style to explorer's themes (and back to light), lambda-t's number and the slit's
+    number and save stay inside their titles, clear of Qt's marks and of each other, and the name keeps room: on
+    main from 83c724a, T to dark put the number over the close mark, past the title's end, and the name was gone."""
+    import pyqtgraph as pg
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.ui import style
+    from explorer.ui.titlebar import DockTitle
+    monkeypatch.setattr(DockTitle, "QT_MARKS_PLATFORMS", ("offscreen",), raising=False)
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    try:
+        style.apply_theme(qapp, "dark")
+        w, close = window(qapp, cube[0], no_sp=True)
+        try:
+            _titles_clear(qapp, w, "dark")
+            w.set_theme("light")
+            _titles_clear(qapp, w, "light after T")
+        finally:
+            close()
+        if "macos" in [k.lower() for k in QtWidgets.QStyleFactory.keys()]:
+            qapp.setStyle(QtWidgets.QStyleFactory.create("macos"))
+            w, close = window(qapp, cube[0], no_sp=True)
+            try:
+                _titles_clear(qapp, w, "macos")
+                w.set_theme("dark")
+                _titles_clear(qapp, w, "dark after T from macos")
+                w.set_theme("light")
+                _titles_clear(qapp, w, "light after a second T")
+            finally:
+                close()
+    finally:
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+        qapp.setProperty("explorer_light", False)
+        pg.setConfigOptions(background="k", foreground="d")
