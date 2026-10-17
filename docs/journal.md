@@ -5157,3 +5157,32 @@ comprobación de los colores en modern y glass.
 - 🔄 sin commit aún: X.25 (los temas propios en el Mac), X.26 (espacio antes de la versión en la hoja `?`), E7.7 (el
   aviso al guardar sin rendija), X.27 (niveles ±σ en Q, U, V).
 - `overlays.OverImage` se cita en E5.33 (`62d1fba`), sin fila propia.
+
+### 2026-10-17 (4): lo aprobado de la auditoría de simplificación, y una segunda pasada (ROADMAP X.14)
+
+**Aplicado** (seis commits, `Behaviour: unchanged`):
+- S13: cuatro funciones que nadie llamaba;
+- S14: cuatro atributos que nadie leía;
+- S8: `GridAxes`, `fixed_plot`, `axis_style` y `data.axes.tunings`; λ–t, su curva y la rendija ya no copian etiquetas
+  ni estilo;
+- S4: `Session.ns`;
+- S2: `Session.lock_at`, con una prueba;
+- S6: `reticle_colour` y `card_colour`; la shell ya no repinta la retícula principal.
+
+S5 ya estaba (`96fded8`, `maps_for`), y también S10 (`f05dfba`).
+
+**Líneas:** −38 en `src`, no las ~70 estimadas. S8 ahorra 7; S4 y S6 suman, y lo que ganan es una regla en un sitio.
+
+**Medido** (Mac, offscreen):
+- 2 ventanas (un cubo; tres enlazados) × 2 temas × (classic, modern, glass, 2×2): 104 PNG y 16 JSON de ejes, retículas
+  y fondos;
+- base contra base: 0 y 0; cada commit contra la base: 0 y 0;
+- 28 grupos de pruebas en el Mac;
+- suites en bellatrix: `tests/unit` y `tests/golden` 1013 pasan, 16 saltadas; `tests/xvfb` 43; carga 0.3-1.3.
+
+**Segunda pasada:** 152 commits desde `b571d12`; 14 hallazgos nuevos, todos propuestas, en el fichero de auditoría.
+- **Un defecto (S22):** los espectros enseñan el botón «A» de pyqtgraph, y un clic saca el eje λ de su rango.
+- Dos familias de cachés repetidas, el «uno calcula, los demás esperan» repetido, las comprobaciones de `data/io.py`, el
+  índice del fotograma a mano, la calibración por píxel dos veces y lo que S8 dejó.
+
+**Falta:** elegir entre las propuestas nuevas.
