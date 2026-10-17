@@ -60,6 +60,11 @@ class Session:
         return self.members[0].dataset
 
     @property
+    def ns(self) -> int:
+        """The main cube's Stokes, 1 without them."""
+        return self.sizes["s"] if self.present["s"] else 1
+
+    @property
     def state(self) -> ViewState:
         return self.store.state
 

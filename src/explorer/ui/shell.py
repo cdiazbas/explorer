@@ -413,8 +413,7 @@ class Shell(QtWidgets.QMainWindow):
         for p in self.slit_panels:
             p.set_marks(acc) if L.has("marks") else p.clear_marks()
         if (L.has("colour") or L.has("cmap")) and self.colours is None:
-            self.colours = ColormapRegistry(self.session.sizes["s"] if self.session.present["s"] else 1, light,
-                                            colour=L.has("colour"))
+            self.colours = ColormapRegistry(self.session.ns, light, colour=L.has("colour"))
         elif self.colours is not None:
             self.colours.set_start(L.has("colour"))
         if self.colour_key is not None:
@@ -533,7 +532,7 @@ class Shell(QtWidgets.QMainWindow):
         """I Q U V side by side over the image (ui.stokesgrid), or the single view back: the region in view goes
         with it either way. Key 5, and All in the Stokes control; 1-4, or a Stokes picked there, leave it. Only with
         more than one Stokes. From the prototype's app/look_glass.py set_grid (600-614)."""
-        ns = self.session.sizes["s"] if self.session.present["s"] else 1
+        ns = self.session.ns
         on = bool(on) and ns > 1
         if on == (self.grid is not None and self.grid.isVisible()):
             return
@@ -642,9 +641,8 @@ class Shell(QtWidgets.QMainWindow):
             self._shown_lut = tab
         last = self.last.get("image")
         if self.colour_key is not None and last is not None:
-            ns = self.session.sizes["s"] if self.session.present["s"] else 1
             # named as the image's label is (ui.stokeslabel): "Stokes Q" with the four, nothing for one plane
-            self.colour_key.set(f"Stokes {STOKES[s]}" if ns == len(STOKES) else "", last[1],
+            self.colour_key.set(f"Stokes {STOKES[s]}" if self.session.ns == len(STOKES) else "", last[1],
                                 cols.lut(s) if cols is not None else self.view.base_lut,
                                 cols.maps[s] if cols is not None else None, gamma=self.session.gamma(0, s))
 
@@ -1750,10 +1748,9 @@ class Shell(QtWidgets.QMainWindow):
                 self.spectra is not None and self.spectra.ns > 1:
             ic = float(last[0][0, cont]) * (self.spectra.iscale or 1.0)       # plot units back to physical
         present = tuple(a for a in ("t", "l") if self.session.present[a])
-        ns = self.session.sizes["s"] if self.session.present["s"] else 1
         iscale = self.spectra.iscale if self.spectra is not None else None
-        self.status.setText(pixel_text(self.dataset.axes, ns, y, x, st.t, st.l, st.s, v, ic, iscale, st.locked,
-                                       present, self.value_name()))
+        self.status.setText(pixel_text(self.dataset.axes, self.session.ns, y, x, st.t, st.l, st.s, v, ic, iscale,
+                                       st.locked, present, self.value_name()))
         if self.glass is not None:
             self.glass.readout()
 
