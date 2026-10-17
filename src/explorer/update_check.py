@@ -1,6 +1,6 @@
 """Whether origin's main holds a newer explorer than this clone, asked in the background at start (ui.shell) so that
-the window can say so: a note over the image once per new version, a line on the ? sheet. The update itself stays
-`explorer update`, by hand (update.py).
+the window can say so: a note over the image, a line on the ? sheet. The update itself stays `explorer update`, by
+hand (update.py).
 
     line, found = about()       # the version line of the ? sheet; Found, or None when not asked or on any failure
 
@@ -13,12 +13,17 @@ any fetch, a credential that worked is handed back to the helpers to keep (crede
 
 Asked at most once every EVERY_S; within that, the remote head seen last is compared with HEAD again (so after
 `explorer update` it is no longer newer). Not asked when the code is not a git clone on main (a copy synced without
-.git, a package installed with pip: they are updated as they were made), with EXPLORER_UPDATE_CHECK=0, and under
-pytest or an offscreen run unless EXPLORER_UPDATE_CHECK=1: no test touches the network unless it asks to.
+.git, a package installed with pip: they are updated as they were made), after `explorer update --no-notice` (until
+`--notice`), and under pytest or an offscreen run. EXPLORER_UPDATE_CHECK wins over all of these: 0 never asks, 1
+always does (what a test that asks for it sets).
+
+A newer head is said in the window at once, and again every REMIND_DAYS while this copy stays behind: a note missed
+in its seconds comes back.
 
 State, per clone, in <cache>/update_check.json (_paths.cache_dir):
-    {"<the clone's root>": {"checked": <unix time of the last ask>, "remote": "<head seen>", "announced": "<head>"}}
-"announced" is the head last said in the window: each new head is said once, not at every start.
+    {"<the clone's root>": {"checked": <unix time of the last ask>, "remote": "<head seen>",
+                            "announced": "<head last said>", "shown": <unix time it was last said>,
+                            "notice": false (only after --no-notice)}}
 Standard library only.
 """
 import atexit
@@ -39,7 +44,9 @@ from .update import BRANCH, REMOTE, ROOT
 ENV = ENV_PREFIX + "UPDATE_CHECK"                       # 0: never asked; 1: asked under pytest or offscreen too
 TIMEOUT_S = 3.0                                         # the remote's answer, at most; then killed, silently
 EVERY_S = 24 * 3600                                     # the remote asked at most this often
+REMIND_DAYS = 7                                         # a head already said, said again after this many days
 STATE = "update_check.json"
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")    # not the locale's
 QUIET = {"GIT_TERMINAL_PROMPT": "0",                    # no username or password asked on a terminal
          "GIT_ASKPASS": "",                             # empty: no askpass program either (core.askPass included)
          "SSH_ASKPASS_REQUIRE": "never",                # ssh: no passphrase window
@@ -51,18 +58,27 @@ _running: set[subprocess.Popen] = set()                 # killed at exit: a chec
 @dataclass(frozen=True)
 class Found:
     newer: bool                 # origin's main has commits HEAD lacks, and HEAD none of its own
-    announce: bool              # newer, and this remote head was never said in the window before
+    announce: bool              # newer, and to be said now: a head not said before, or said REMIND_DAYS ago
     remote: str                 # origin's main, as ls-remote gave it now or within EVERY_S
     local: str                  # HEAD
+    since: str = ""             # HEAD's commit date, YYYY-MM-DD ("" when git does not say)
 
 
-def wanted(env=None) -> bool:
-    """Whether the check runs here: EXPLORER_UPDATE_CHECK=0 never, =1 always; unset, not under pytest nor offscreen."""
+def forced(env=None) -> bool | None:
+    """EXPLORER_UPDATE_CHECK: False for 0, True for any other value, None when unset."""
+    v = (os.environ if env is None else env).get(ENV, "").strip()
+    return None if not v else v != "0"
+
+
+def wanted(env=None, stored: bool = True) -> bool:
+    """Whether the check runs here: as EXPLORER_UPDATE_CHECK says when set; unset, when notices are on for this clone
+    (stored: notices()) and not under pytest nor offscreen."""
     env = os.environ if env is None else env
-    v = env.get(ENV, "").strip()
-    if v:
-        return v != "0"
-    return not ("PYTEST_CURRENT_TEST" in env or "pytest" in sys.modules or env.get("QT_QPA_PLATFORM") == "offscreen")
+    f = forced(env)
+    if f is not None:
+        return f
+    return stored and not ("PYTEST_CURRENT_TEST" in env or "pytest" in sys.modules
+                           or env.get("QT_QPA_PLATFORM") == "offscreen")
 
 
 def _kill_running() -> None:
@@ -121,15 +137,43 @@ def _load(path: Path) -> dict:
         return {}
 
 
-def _save(path: Path, state: dict) -> None:
-    """Written whole or not at all (another start may read it meanwhile); a cache that cannot be written: nothing."""
+def _save(path: Path, state: dict) -> bool:
+    """Written whole or not at all (another start may read it meanwhile); False when it cannot be written."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(state, indent=1))
         os.replace(tmp, path)
+        return True
     except OSError:
-        pass
+        return False
+
+
+def _key(root) -> str:
+    return str(Path(root).resolve())
+
+
+def _entry(state: dict, root) -> dict:
+    e = state.get(_key(root))
+    return dict(e) if isinstance(e, dict) else {}
+
+
+def notices(root=ROOT, path: Path | None = None) -> bool:
+    """Whether notices are on for root as stored: on unless `explorer update --no-notice`; the env var aside."""
+    return _entry(_load(state_path() if path is None else path), root).get("notice", True) is not False
+
+
+def set_notices(root, on: bool, path: Path | None = None) -> Path | None:
+    """Notices on or off for root, stored; the state file, None when it cannot be written."""
+    path = state_path() if path is None else path
+    state = _load(path)
+    entry = _entry(state, root)
+    if on:
+        entry.pop("notice", None)
+    else:
+        entry["notice"] = False
+    state[_key(root)] = entry
+    return path if _save(path, state) else None
 
 
 def _ls_remote(root, timeout: float) -> str | None:
@@ -155,17 +199,18 @@ def check(root=ROOT, env=None, path: Path | None = None, now: float | None = Non
           timeout: float = TIMEOUT_S) -> Found | None:
     """Whether origin's main is newer than root's HEAD (the module); None when not asked here, or on any failure.
     path: the state file (state_path()); now: time.time()."""
-    if not wanted(env) or not is_clone(root):
+    if forced(env) is False or not is_clone(root):
+        return None
+    path = state_path() if path is None else path
+    state = _load(path)
+    entry = _entry(state, root)
+    if not wanted(env, stored=entry.get("notice", True) is not False):
         return None
     rc, head = _git(root, "rev-parse", "HEAD")
     head = head.strip()
     if rc or not head:
         return None
-    path = state_path() if path is None else path
     now = time.time() if now is None else now
-    state = _load(path)
-    key = str(Path(root).resolve())
-    entry = dict(state[key]) if isinstance(state.get(key), dict) else {}
     remote, checked = entry.get("remote"), entry.get("checked")
     changed = not isinstance(checked, (int, float)) or not 0 <= now - checked < EVERY_S
     if changed:
@@ -174,20 +219,33 @@ def check(root=ROOT, env=None, path: Path | None = None, now: float | None = Non
         if asked is not None:                           # a failure: the head seen before, if any, compared again
             entry["remote"] = remote = asked
     newer = isinstance(remote, str) and _newer(root, head, remote)
-    announce = newer and entry.get("announced") != remote
+    shown = entry.get("shown")
+    announce = newer and (entry.get("announced") != remote or not isinstance(shown, (int, float))
+                          or not 0 <= now - shown < REMIND_DAYS * 24 * 3600)
     if announce:
-        entry["announced"] = remote
+        entry["announced"], entry["shown"] = remote, now
     if changed or announce:
-        state[key] = entry
+        state[_key(root)] = entry
         _save(path, state)
     if not isinstance(remote, str):                     # never seen: the ask failed
         return None
-    return Found(newer, announce, remote, head)
+    rc, since = _git(root, "log", "-1", "--format=%cd", "--date=short")
+    return Found(newer, announce, remote, head, since.strip() if rc == 0 else "")
+
+
+def day_text(date: str) -> str:
+    """'2026-10-02' -> '2 Oct 2026' (English months, whatever the locale); date as it came when it is not one."""
+    try:
+        y, m, d = (int(x) for x in date.split("-"))
+        return f"{d} {MONTHS[m - 1]} {y}" if 1 <= m <= 12 else date
+    except ValueError:
+        return date
 
 
 def version_line(root=ROOT) -> str:
-    """'explorer 0.0.1.dev527 · 2026-10-17': the version without its local part (+g<hash>), and from a clone the
-    date of its commit; from a copy without git, the version it was built or synced with (_version.py), no date."""
+    """'explorer 0.0.1.dev527 · 17 Oct 2026': the version without its local part (+g<hash>), and from a clone the
+    date of its commit, written as the note writes it (day_text); from a copy without git, the version it was built
+    or synced with (_version.py), no date."""
     if (Path(root) / ".git").exists():
         try:
             version, _sha = git_version(root)
@@ -195,7 +253,7 @@ def version_line(root=ROOT) -> str:
             version = ""
         rc, date = _git(root, "log", "-1", "--format=%cd", "--date=short")
         if version and rc == 0 and date.strip():
-            return f"{APP_NAME} {version.partition('+')[0]} · {date.strip()}"
+            return f"{APP_NAME} {version.partition('+')[0]} · {day_text(date.strip())}"
     from . import __version__
     return f"{APP_NAME} {__version__.partition('+')[0]}"
 

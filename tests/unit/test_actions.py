@@ -264,7 +264,7 @@ def test_the_sheet_is_a_few_short_lines_and_fits_a_laptop_window(qapp, linked_sh
     w.toggle_sheet()
     qapp.processEvents()
     bare = w.sheet.sizeHint()
-    w.show_about(("explorer 0.0.1.dev527 · 2026-10-17", Found(True, False, "b" * 40, "a" * 40)))
+    w.show_about(("explorer 0.0.1.dev527 · 17 Oct 2026", Found(True, False, "b" * 40, "a" * 40)))
     qapp.processEvents()
     h = w.sheet.sizeHint().height()
     print("key rows", len(w.action_registry.rows), "mouse rows", len(w.action_registry.mouse), "sheet", h, "px",

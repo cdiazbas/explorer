@@ -11,9 +11,9 @@ from explorer.testing import synth
 from explorer.update_check import Found
 
 SHAPE = (6, 4, 21, 48, 40)
-LINE = "explorer 0.0.1.dev527 · 2026-10-17"
-NEWER = Found(newer=True, announce=True, remote="b" * 40, local="a" * 40)
-SAID = Found(newer=True, announce=False, remote="b" * 40, local="a" * 40)
+LINE = "explorer 0.0.1.dev527 · 2 Oct 2026"
+NEWER = Found(newer=True, announce=True, remote="b" * 40, local="a" * 40, since="2026-10-02")
+SAID = Found(newer=True, announce=False, remote="b" * 40, local="a" * 40, since="2026-10-02")
 SAME = Found(newer=False, announce=False, remote="a" * 40, local="a" * 40)
 
 
@@ -64,13 +64,16 @@ def test_a_newer_version_is_said_once_over_the_image_and_on_the_sheet(qapp, shel
     ran_on = answered(qapp, shell, NEWER)
     assert ran_on is not threading.main_thread()
     note = shell._update_note
-    assert note is not None and note.isVisible() and note.text() == S.UPDATE_NOTE
+    assert note is not None and note.isVisible()
+    assert note.text() == ("Your explorer is from 2 Oct 2026; a newer one is available: run "
+                           "<b>explorer update</b> in a terminal")
     assert "explorer update" in note.text() and note.parentWidget() is shell.view.widget
     key, host = shell.colour_key.geometry(), shell.view.widget.rect()
     assert host.contains(note.geometry()) and note.geometry().bottom() < key.top()      # above the colour key
     assert note._fade_ms == S.UPDATE_FADE_MS and note._timer.interval() == S.UPDATE_NOTE_MS - S.UPDATE_FADE_MS
     text = shell.sheet.text()
     assert LINE in text and "newer version available: <b>explorer update</b>" in text
+    assert "(explorer update --no-notice: no reminders)" in text            # how to stop it: on the sheet
     note.hide()
     shell.show_about((LINE, SAID))                              # the next start: said before, no note
     assert not note.isVisible() and "newer version available" in shell.sheet.text()
@@ -91,3 +94,19 @@ def test_through_the_bridge_the_note_goes_at_once(qapp, shell):
     shell.session.pace.offer = object()                         # a screen offered: the X11 bridge
     shell.show_about((LINE, NEWER))
     assert shell._update_note.isVisible() and shell._update_note._fade_ms == 0
+
+
+def test_without_a_date_the_note_says_no_age(qapp, shell):
+    from explorer.ui import shell as S
+
+    shell.show_about((LINE, Found(True, True, "b" * 40, "a" * 40)))
+    assert shell._update_note.text() == S.UPDATE_NOTE
+
+
+def test_in_a_narrow_image_the_note_wraps_instead_of_being_cut(qapp, shell):
+    shell.resize(560, 600)
+    qapp.processEvents()
+    shell.show_about((LINE, NEWER))
+    note, host = shell._update_note, shell.view.widget
+    assert note.wordWrap() and host.rect().contains(note.geometry()), (note.geometry(), host.size())
+    assert note.height() > 30                                   # two lines

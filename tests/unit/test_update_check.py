@@ -1,9 +1,10 @@
-"""The update check (update_check): with a bare origin and two clones, a clone behind origin's main is told once per
-new head, at most one ask of the remote a day; the same head, a clone with commits of its own, another branch, a tree
-without git, the check turned off (or not asked, under pytest) say nothing; a git that never answers is killed with
-what it started, silently, and waits for the next day. Nothing here reaches the network: origin is a folder."""
+"""The update check (update_check): with a bare origin and two clones, a clone behind origin's main is told at once
+for each new head and again every REMIND_DAYS while behind, with its own commit's date, at most one ask of the remote
+a day; the same head, a clone with commits of its own, another branch, a tree without git, the check turned off
+(--no-notice, the env var, which wins either way, or not asked under pytest) say nothing; a git that never answers
+is killed with what it started, silently, and waits for the next day. Nothing here reaches the network: origin is
+a folder."""
 import os
-import re
 import shutil
 import subprocess
 import time
@@ -15,6 +16,8 @@ from explorer import update_check as U
 ID = ["-c", "user.name=t", "-c", "user.email=t@example.org"]
 ON = {U.ENV: "1"}                                       # asked for, under pytest
 T0 = 1_800_000_000.0
+DAY = 24 * 3600
+SINCE = "2026-10-02"                                    # the user's clone's commit date
 
 
 def git(d, *args):
@@ -31,13 +34,16 @@ def commit(d, name, text, msg):
 
 
 @pytest.fixture
-def repos(tmp_path):
-    """origin (bare), dev (who pushes) and user (the clone checked), all on main, the user's clone up to date."""
+def repos(tmp_path, monkeypatch):
+    """origin (bare), dev (who pushes) and user (the clone checked), all on main, the user's clone up to date, its
+    commit dated SINCE."""
     origin, dev, user = tmp_path / "origin.git", tmp_path / "dev", tmp_path / "user"
     subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
     subprocess.run(["git", "clone", "-q", str(origin), str(dev)], check=True, capture_output=True)
     git(dev, "switch", "-q", "-c", "main")
+    monkeypatch.setenv("GIT_COMMITTER_DATE", f"{SINCE}T12:00:00")
     commit(dev, "src/explorer/__init__.py", "", "[DEV] start")
+    monkeypatch.delenv("GIT_COMMITTER_DATE")
     git(dev, "push", "-q", "origin", "main")
     subprocess.run(["git", "clone", "-q", "-b", "main", str(origin), str(user)], check=True, capture_output=True)
     return dev, user, tmp_path / "state.json"
@@ -53,15 +59,51 @@ def test_a_newer_head_is_announced_once_and_the_remote_asked_once_a_day(repos):
     dev, user, st = repos
     first = push(dev)
     f = U.check(user, ON, st, now=T0)
-    assert f == U.Found(newer=True, announce=True, remote=first, local=git(user, "rev-parse", "HEAD"))
-    assert U.check(user, ON, st, now=T0 + 60) == U.Found(True, False, first, f.local)     # said once
+    assert f == U.Found(newer=True, announce=True, remote=first, local=git(user, "rev-parse", "HEAD"), since=SINCE)
+    assert U.check(user, ON, st, now=T0 + 60) == U.Found(True, False, first, f.local, SINCE)     # said once
     second = push(dev, "b.txt")
     within = U.check(user, ON, st, now=T0 + U.EVERY_S - 1)
     assert within.remote == first and not within.announce      # the remote not asked again within the day
     next_day = U.check(user, ON, st, now=T0 + U.EVERY_S + 1)
-    assert next_day == U.Found(True, True, second, f.local)   # a new head: said again, once
+    assert next_day == U.Found(True, True, second, f.local, SINCE)   # a new head: said again at once
     saved = U.json.loads(st.read_text())[str(user.resolve())]
-    assert saved == {"checked": T0 + U.EVERY_S + 1, "remote": second, "announced": second}
+    assert saved == {"checked": T0 + U.EVERY_S + 1, "remote": second, "announced": second,
+                     "shown": T0 + U.EVERY_S + 1}
+
+
+def test_while_behind_it_is_said_again_every_seven_days_and_a_new_head_at_once(repos):
+    dev, user, st = repos
+    push(dev)
+    said = [t for t in (0, 1, 3, 6.9, 7.1, 8, 14, 14.2)
+            if U.check(user, ON, st, now=T0 + t * DAY).announce]
+    assert U.REMIND_DAYS == 7 and said == [0, 7.1, 14.2]       # counted from the last time it was said
+    push(dev, "b.txt")
+    assert U.check(user, ON, st, now=T0 + 15.3 * DAY).announce   # a new head: at once, though said a day ago
+    assert not U.check(user, ON, st, now=T0 + 16.4 * DAY).announce
+
+
+def test_the_age_is_the_commit_date_of_this_copy(repos):
+    dev, user, st = repos
+    push(dev)
+    assert U.check(user, ON, st, now=T0).since == SINCE
+    assert U.day_text(SINCE) == "2 Oct 2026" and U.day_text("2026-12-31") == "31 Dec 2026"
+    assert U.day_text("") == "" and U.day_text("soon") == "soon"
+    assert U.version_line(user) == "explorer 0.0.1.dev1 · 2 Oct 2026"
+
+
+def test_no_notice_is_stored_per_clone_and_the_env_var_wins(repos, monkeypatch):
+    dev, user, st = repos
+    push(dev)
+    monkeypatch.delitem(U.sys.modules, "pytest")               # as outside the tests
+    assert U.wanted({}) and U.notices(user, st)
+    assert U.set_notices(user, False, st) == st and not U.notices(user, st)
+    assert U.check(user, {}, st, now=T0) is None               # off: not asked
+    assert U.check(user, {U.ENV: "1"}, st, now=T0).announce    # the env var wins: asked
+    assert U.set_notices(user, True, st) == st and U.notices(user, st)
+    assert U.check(user, {U.ENV: "0"}, st, now=T0 + 60) is None    # and wins the other way
+    assert U.check(user, {}, st, now=T0 + 60) is not None
+    assert not U.wanted({}, stored=False) and U.wanted({U.ENV: "1"}, stored=False)
+    assert not U.wanted({U.ENV: "0"}, stored=True)
 
 
 def test_up_to_date_says_nothing(repos):
@@ -167,7 +209,7 @@ def test_git_is_asked_with_no_prompt_no_askpass_and_no_input(repos, tmp_path, mo
 
 def test_the_version_line(repos, tmp_path):
     _dev, user, _st = repos
-    assert re.fullmatch(r"explorer 0\.0\.1\.dev1 · \d{4}-\d\d-\d\d", U.version_line(user)), U.version_line(user)
+    assert U.version_line(user) == "explorer 0.0.1.dev1 · 2 Oct 2026"
     from explorer import __version__
 
     assert U.version_line(tmp_path / "synced") == f"explorer {__version__.partition('+')[0]}"

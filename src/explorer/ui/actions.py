@@ -69,12 +69,13 @@ class ActionRegistry:
         """The keys on the left, the mouse on the right, a line per row: short enough to read at a glance and to fit a
         laptop's window without scrolling; under them, how it closes and the credit, and a last line with version
         (update_check.version_line; none while it is not known) and, when origin has a newer one, the command that
-        brings it."""
+        brings it and the one that stops the reminders (the note over the image has no room for it)."""
         dim = palette.color(QtGui.QPalette.ColorRole.PlaceholderText).name()
         foot = html.escape(version) if version else ""
         if version and newer:
             foot += f' · <span style="color:{palette.color(QtGui.QPalette.ColorRole.Text).name()}">newer version ' \
-                    f"available: <b>{html.escape(APP_NAME)} update</b></span>"
+                    f"available: <b>{html.escape(APP_NAME)} update</b></span> " \
+                    f"({html.escape(APP_NAME)} update --no-notice: no reminders)"
 
         def column(title, rows):
             return ('<table cellspacing="0" cellpadding="2">'

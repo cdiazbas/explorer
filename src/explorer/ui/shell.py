@@ -78,6 +78,8 @@ GAMMA_NOTE_MS = 1000        # gamma on the image's colour key after G, Shift+G, 
 UPDATE_AFTER_S = 2.0        # the update check, this long after the first image (start_update_check)
 UPDATE_NOTE_MS, UPDATE_FADE_MS = 6000, 1000     # the note that a newer version exists: shown, of which fading
 UPDATE_NOTE = f"A newer {APP_NAME} is available: run <b>{APP_NAME} update</b> in a terminal"
+UPDATE_NOTE_AGED = (f"Your {APP_NAME} is from {{since}}; a newer one is available: run <b>{APP_NAME} update</b> in a "
+                    "terminal")         # since: HEAD's commit date, update_check.day_text
 
 
 class _Follow(QtCore.QObject):
@@ -1254,8 +1256,8 @@ class Shell(QtWidgets.QMainWindow):
         self.after_first_image(UPDATE_AFTER_S, start)
 
     def show_about(self, about) -> None:
-        """(version line, update_check.Found or None): the ? sheet's last line, and the note over the image when a
-        newer version is said for the first time."""
+        """(version line, update_check.Found or None): the ? sheet's last line, and the note over the image when the
+        check says to say it (a new head, or a reminder: update_check.REMIND_DAYS)."""
         self.version_line, self.newer = about
         self.sheet.setText(self.sheet_html())
         if self.sheet.isVisible():
@@ -1264,9 +1266,15 @@ class Shell(QtWidgets.QMainWindow):
             self.show_update_note()
 
     def show_update_note(self) -> None:
-        """UPDATE_NOTE over the foot of the image (overlays.Toast), above the colour key when the key is at the foot
+        """The note that a newer version exists, with this copy's date when known (UPDATE_NOTE_AGED, else
+        UPDATE_NOTE), over the foot of the image (overlays.Toast), above the colour key when the key is at the foot
         (glass moves it to the top): UPDATE_NOTE_MS, fading over its last UPDATE_FADE_MS; through the X11 bridge (pace
-        offered a screen) gone at once, as each step of a fade is a repaint on the link."""
+        offered a screen) gone at once, as each step of a fade is a repaint on the link. How to stop the reminders is
+        on the ? sheet: in the note it made a line wider than most images."""
+        from ..update_check import day_text
+
+        since = self.newer.since if self.newer is not None else ""
+        text = UPDATE_NOTE_AGED.format(since=day_text(since)) if since else UPDATE_NOTE
         host = self.view.widget
         if self._update_note is None:
             self._update_note = overlays.Toast(host)
@@ -1275,7 +1283,7 @@ class Shell(QtWidgets.QMainWindow):
         bottom = None
         if key is not None and key.isVisible() and key.geometry().top() > host.height() // 2:
             bottom = key.geometry().top()
-        self._update_note.say(UPDATE_NOTE, UPDATE_NOTE_MS,
+        self._update_note.say(text, UPDATE_NOTE_MS,
                               0 if self.session.pace.offer is not None else UPDATE_FADE_MS, bottom)
 
     def fit_spectra(self) -> None:

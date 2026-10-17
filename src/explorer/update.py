@@ -2,8 +2,9 @@
 there is something new; never at start (a change would reach everyone at once, in the middle of an analysis). The
 window only says that there is something new (update_check: read-only, at most once a day).
 
-    explorer update            # how far behind, then a fast-forward to origin/main, and the version after it
-    explorer update --check    # how far behind, and the commits it would bring; nothing changed
+    explorer update              # how far behind, then a fast-forward to origin/main, and the version after it
+    explorer update --check      # how far behind, the commits it would bring, and whether the window says so
+    explorer update --no-notice  # the window no longer says it, for this user and this clone; --notice: again
 
 Refuses, saying why, when this copy is not a git checkout (a copy synced or copied from another: updated by whoever
 keeps it; or a package installed without a clone: updated with pip, as it was installed), is on another branch, has
@@ -26,6 +27,40 @@ SHOWN = 15                                              # commits listed at most
 
 def _say(text: str) -> None:
     print(f"[{APP_NAME} update] {text}")
+
+
+def notice_state(root=ROOT, env=None) -> str:
+    """Whether the window says that a newer version exists, for this clone: the stored choice, and the environment
+    variable when it overrides it."""
+    from . import update_check as uc
+
+    stored = uc.notices(root)
+    forced = uc.forced(env)
+    text = (f"notices in the window: on (`{APP_NAME} update --no-notice` turns them off)" if stored else
+            f"notices in the window: off (`{APP_NAME} update --notice` turns them back on)")
+    if forced is not None and forced != stored:
+        text += f"; {uc.ENV}={'1' if forced else '0'} overrides this: {'on' if forced else 'off'}"
+    return text
+
+
+def set_notice(on: bool, root=ROOT, say=_say) -> int:
+    """--notice / --no-notice: stored for this user and this clone (update_check.set_notices)."""
+    from . import update_check as uc
+
+    path = uc.set_notices(root, on)
+    if path is None:
+        say(f"cannot write {uc.state_path()}: nothing changed")
+        return 1
+    if on:
+        say(f"notices on: the window says when a newer {APP_NAME} is available")
+        say(f"kept in {path}, for this user and this clone")
+    else:
+        say(f"notices off: the window no longer says when a newer {APP_NAME} is available")
+        say(f"kept in {path}, for this user and this clone; `{APP_NAME} update --notice` turns them back on")
+    forced = uc.forced()
+    if forced is not None and forced != on:
+        say(f"{uc.ENV}={'1' if forced else '0'} is set here, and overrides this while it is")
+    return 0
 
 
 def update(root=ROOT, check: bool = False, say=_say) -> int:
@@ -61,11 +96,14 @@ def update(root=ROOT, check: bool = False, say=_say) -> int:
         return 1
     if not behind:
         say(f"up to date ({head})")
+        if check:
+            say(notice_state(root))
         return 0
     log = git(root, "log", "--format=  %h %cd %s", "--date=short", f"-{SHOWN}", f"HEAD..{up}").stdout.rstrip()
     more = f"\n  ... and {behind - SHOWN} more" if behind > SHOWN else ""
     say(f"{behind} commit(s) behind {up} (this copy: {head}):\n{log}{more}")
     if check:
+        say(notice_state(root))
         return 0
     lock = bool(git(root, "diff", "--name-only", f"HEAD..{up}", "--", "uv.lock").stdout.strip())
     m = git(root, "merge", "--ff-only", "--quiet", up)
@@ -76,14 +114,23 @@ def update(root=ROOT, check: bool = False, say=_say) -> int:
     now = git(root, "log", "-1", "--format=%h, %cd", "--date=short").stdout.strip()
     say(f"updated to {version} ({now})" + ("; the pinned versions changed: the next start rebuilds the environment"
                                            " (scripts/run.sh)" if lock else ""))
+    say(f"an {APP_NAME} already running keeps the old code until it is restarted: restart {APP_NAME} to use it")
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, root=ROOT, say=_say) -> int:
     ap = argparse.ArgumentParser(prog=f"{APP_NAME} update", description=__doc__.split("\n\n")[0])
-    ap.add_argument("--check", action="store_true", help="only say how far behind, and what it would bring")
+    what = ap.add_mutually_exclusive_group()
+    what.add_argument("--check", action="store_true",
+                      help="only say how far behind, what it would bring, and whether the window says so")
+    what.add_argument("--no-notice", dest="notice", action="store_false", default=None,
+                      help="the window no longer says when a newer version is available (this user, this clone)")
+    what.add_argument("--notice", dest="notice", action="store_true", default=None,
+                      help="the window says it again (the default)")
     a = ap.parse_args(argv)
-    return update(check=a.check)
+    if a.notice is not None:
+        return set_notice(a.notice, root, say)
+    return update(root, check=a.check, say=say)
 
 
 if __name__ == "__main__":

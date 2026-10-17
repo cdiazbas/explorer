@@ -107,3 +107,46 @@ def test_no_git_or_no_remote(repos, tmp_path):
     git(user, "remote", "set-url", "origin", str(tmp_path / "gone.git"))
     rc, said = run(user)
     assert rc == 1 and "cannot reach origin" in said
+
+
+def test_an_update_ends_saying_a_running_explorer_needs_a_restart(repos):
+    _, dev, user = repos
+    commit(dev, "a.txt", "1", "[DEV] new")
+    git(dev, "push", "-q", "origin", "main")
+    rc, said = run(user, check=True)
+    assert rc == 0 and "restart" not in said                     # nothing changed: nothing to restart
+    rc, said = run(user)
+    lines = said.splitlines()
+    assert rc == 0 and lines[-1] == ("an explorer already running keeps the old code until it is restarted: "
+                                     "restart explorer to use it")
+    assert "restart" not in run(user)[1]                         # up to date: no restart either
+
+
+def test_no_notice_and_notice_are_stored_said_and_reported_by_check(repos, monkeypatch):
+    from explorer import update_check as uc
+    from explorer.update import main
+
+    _, dev, user = repos
+    commit(dev, "a.txt", "1", "[DEV] new")
+    git(dev, "push", "-q", "origin", "main")
+    monkeypatch.delenv(uc.ENV, raising=False)
+    assert "notices in the window: on (`explorer update --no-notice` turns them off)" in run(user, check=True)[1]
+    said: list[str] = []
+    assert main(["--no-notice"], root=user, say=said.append) == 0
+    assert not uc.notices(user) and uc.state_path().exists()
+    out = "\n".join(said)
+    assert "notices off" in out and str(uc.state_path()) in out and "--notice` turns them back on" in out
+    check = run(user, check=True)[1]
+    assert "notices in the window: off (`explorer update --notice` turns them back on)" in check
+    assert "overrides" not in check
+    monkeypatch.setenv(uc.ENV, "1")                              # the env var wins, and --check says so
+    assert "EXPLORER_UPDATE_CHECK=1 overrides this: on" in run(user, check=True)[1]
+    said.clear()
+    monkeypatch.setenv(uc.ENV, "0")
+    assert main(["--notice"], root=user, say=said.append) == 0
+    out = "\n".join(said)
+    assert uc.notices(user) and "notices on" in out and str(uc.state_path()) in out
+    assert "EXPLORER_UPDATE_CHECK=0 is set here, and overrides this" in said[-1]
+    assert git(user, "rev-list", "--count", "HEAD") == "2"      # neither flag updates anything
+    with pytest.raises(SystemExit):
+        main(["--check", "--no-notice"], root=user)              # one thing at a time

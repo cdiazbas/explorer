@@ -288,7 +288,8 @@ class OverImage(QtCore.QObject):
 
 class Toast(QtWidgets.QLabel):
     """A short note in a widget that goes by itself: centred, its foot at `bottom` (the widget's foot when None),
-    shown for ms and fading over its last fade_ms (0: gone at once). Clicks go through it."""
+    shown for ms and fading over its last fade_ms (0: gone at once); wrapped when the widget is narrower than its
+    line. Clicks go through it."""
     MARGIN = 6                                          # px between its foot and bottom
 
     def __init__(self, host: QtWidgets.QWidget):
@@ -312,7 +313,12 @@ class Toast(QtWidgets.QLabel):
         if host is None:
             return
         self.setText(text)
+        self.setWordWrap(False)
         self.adjustSize()
+        room = host.width() - 8
+        if self.width() > room > 0:                     # wider than its widget: on two lines rather than cut
+            self.setWordWrap(True)
+            self.resize(room, self.heightForWidth(room))
         foot = host.height() if bottom is None else min(host.height(), bottom)
         self.move(max(4, (host.width() - self.width()) // 2), max(4, foot - self.height() - self.MARGIN))
         self._anim.stop()
