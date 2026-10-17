@@ -113,6 +113,10 @@ explorer update                  # this copy brought to the latest version, and 
   cloned with), lists what is new, and moves this copy forward to it. It never writes to GitHub.
 - **Only when you ask:** it never runs by itself, at start or otherwise, so nothing changes in the middle of an
   analysis.
+- **Told in the window:** a clone on `main` asks GitHub at most once a day, in the background, whether there is a
+  newer `main` (`git ls-remote`: nothing fetched, nothing changed, no password asked; silent if it fails). A new
+  version is said once, in a note over the image; the `?` sheet ends with the version you run and, while a newer one
+  exists, `explorer update`. `EXPLORER_UPDATE_CHECK=0` turns the question off.
 - **Your own work is safe:** a copy with changed files, commits of its own or on another branch is left as it is,
   and it says why. Nothing is merged, stashed or thrown away.
 - **The environment:** if the update brings new pinned versions, the next `explorer` rebuilds the environment by
