@@ -1,6 +1,6 @@
 """`explorer update`: a copy that is behind its remote's main is fast-forwarded and its version written; --check
-changes nothing; a copy with changes, commits of its own, another branch, no git or no remote is left as it is,
-and the reason said."""
+changes nothing; a copy with changes, commits of its own, another branch, no git (synced, or a package installed
+without a clone) or no remote is left as it is, and the reason said with what to do."""
 import subprocess
 
 import pytest
@@ -95,10 +95,15 @@ def test_a_copy_with_its_own_work_is_left_as_it_is(repos, case):
 
 def test_no_git_or_no_remote(repos, tmp_path):
     _, _, user = repos
-    plain = tmp_path / "plain"
-    plain.mkdir()
-    rc, said = run(plain)
-    assert rc == 1 and "not a git checkout" in said
+    synced = tmp_path / "synced"                                 # a tree without git: copied or synced
+    (synced / "src" / "explorer").mkdir(parents=True)
+    (synced / "pyproject.toml").write_text("")
+    rc, said = run(synced)
+    assert rc == 1 and "a copy without git" in said and "whoever keeps it" in said
+    package = tmp_path / "lib"                                   # pip install git+...: no source tree
+    package.mkdir()
+    rc, said = run(package)
+    assert rc == 1 and "installed here as a package" in said and "pip install --upgrade git+https://" in said
     git(user, "remote", "set-url", "origin", str(tmp_path / "gone.git"))
     rc, said = run(user)
     assert rc == 1 and "cannot reach origin" in said

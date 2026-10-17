@@ -5,10 +5,11 @@ the remote is private: every start would need the network and credentials).
     explorer update            # how far behind, then a fast-forward to origin/main, and the version after it
     explorer update --check    # how far behind, and the commits it would bring; nothing changed
 
-Refuses, saying why, when this copy is not a git checkout (a shared copy kept in step by its owner), is on another
-branch, has changes to tracked files, or has commits of its own: nothing is merged, stashed nor thrown away. The
-environment is not touched here: scripts/run.sh (the `explorer` command) rebuilds it at the next start when the
-pinned versions (uv.lock) changed.
+Refuses, saying why, when this copy is not a git checkout (a copy synced or copied from another: updated by whoever
+keeps it; or a package installed without a clone: updated with pip, as it was installed), is on another branch, has
+changes to tracked files, or has commits of its own: nothing is merged, stashed nor thrown away. The environment is
+not touched here: scripts/run.sh (the `explorer` command) rebuilds it at the next start when the pinned versions
+(uv.lock) changed.
 """
 import argparse
 import sys
@@ -19,6 +20,7 @@ from ._name import APP_NAME
 
 ROOT = Path(__file__).resolve().parents[2]              # src/explorer/update.py -> the tree
 BRANCH, REMOTE = "main", "origin"
+REPO = "https://github.com/cdiazbas/explorer.git"         # where a package installed without a clone comes from
 SHOWN = 15                                              # commits listed at most
 
 
@@ -30,7 +32,13 @@ def update(root=ROOT, check: bool = False, say=_say) -> int:
     """0: up to date or brought up to date (or, with check, only said); 1: refused or failed, and why said."""
     root = Path(root)
     if git(root, "rev-parse", "--is-inside-work-tree").returncode or not (root / ".git").exists():
-        say(f"{root} is not a git checkout: it is kept up to date by whoever keeps it, not from here")
+        if (root / "pyproject.toml").exists() and (root / "src" / APP_NAME).is_dir():
+            say(f"{root} is a copy without git (copied or synced from another): it is brought up to date by whoever "
+                "keeps it. To update yourself, install from a clone instead (README, Install)")
+        else:
+            say(f"{APP_NAME} is installed here as a package, not from a clone: update it as it was installed, "
+                f"`pip install --upgrade git+{REPO}`, or install from a clone (README, Install) to use "
+                f"`{APP_NAME} update`")
         return 1
     branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if branch != BRANCH:

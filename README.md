@@ -100,16 +100,36 @@ A La Palma cube derived from another of the same observation (`..._stokesI_..._i
 (`..._stokes_..._im_times+wvl.idlsave`) when their sizes are the cube's, and the terminal says so. Its values stay as
 stored (counts): that file's scale and padding value are the other cube's.
 
+### Updating
+
+When you are told there is something new:
+
+```bash
+explorer update --check          # how far behind this copy is, and the changes it would bring; nothing changed
+explorer update                  # this copy brought to the latest version, and which version that is
+```
+
+- **What it does:** it asks GitHub for the latest `main` (a `git fetch`: it only reads, with the same access you
+  cloned with), lists what is new, and moves this copy forward to it. It never writes to GitHub.
+- **Only when you ask:** it never runs by itself, at start or otherwise, so nothing changes in the middle of an
+  analysis.
+- **Your own work is safe:** a copy with changed files, commits of its own or on another branch is left as it is,
+  and it says why. Nothing is merged, stashed or thrown away.
+- **The environment:** if the update brings new pinned versions, the next `explorer` rebuilds the environment by
+  itself, in the same mode (with or without `--dev`).
+- **Installed with or without `--dev`:** the same; both run the code of your clone.
+- **A copy without git** (synced or copied from another, e.g. a shared one): its keeper brings it up to date;
+  `explorer update` says so and does nothing.
+- **Installed with `pip install git+https://…`** instead of from a clone: update it the same way, with
+  `pip install --upgrade git+https://github.com/cdiazbas/explorer.git`; `explorer update` says so.
+- **Reporting a problem:** `explorer --version` names the exact commit you run.
+
 ### Notes
 
 - **Shared storage:** one checkout can serve Linux and Macs at once (e.g. on a shared disk). Run `setup_env.sh`
   once on each kind of machine; each builds its own environment.
 - **Remote, over ssh:** `ssh -Y host`, then `explorer cube_im.fits`. The window is drawn on your screen (on a
   Mac, through XQuartz); explorer picks the best way to draw over the link by itself.
-- **Updating:** `explorer update` when there is something new (`explorer update --check` only says how far
-  behind this copy is, and what it would bring). It never runs by itself, and it leaves a copy with changes or
-  commits of its own as it is, saying why. The next `explorer` updates the environment by itself if the pinned
-  versions changed. `explorer --version` names the commit, for whoever reports a problem.
 - **Without touching your startup files:** `scripts/setup_env.sh --link --no-update-shell` says what to add.
   Without `--link`, run explorer as `scripts/run.sh cube_im.fits` from the checkout.
 - **Uninstalling:** delete the checkout, the `explorer` link that `setup_env.sh` reported (usually
