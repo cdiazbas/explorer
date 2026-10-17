@@ -1529,11 +1529,13 @@ class Shell(QtWidgets.QMainWindow):
         (its t steps, Stokes and lambda: nothing read again), to a new FITS file in folder (the working directory by
         default), named after the cube whose slice it is (data.slitfits); its path on the status line and the
         terminal, its name in a note over the panel (_save_toast). Returns it, None when nothing is written: no
-        slit, one being drawn, or its slice not come yet; the status line and the note say which."""
+        slit, S on with no point placed, one being drawn, or its slice not come yet; the status line and the note
+        say which."""
         st, tab = self.session.state, self._slit_front_tab() or 0
         reads = self.cubes[tab].scheduler.slit
         rec = reads.time_slice
         why = ("no slit (S draws one)" if st.path is None and st.draft is None
+               else "no slit yet: click points, double click to finish" if st.path is None and not st.draft
                else "the slit is being drawn: finish it first (double click)" if st.draft is not None
                else "its time slice is not shown yet"
                if rec is None or rec.path_id != reads.path_id or reads.pix is None else None)

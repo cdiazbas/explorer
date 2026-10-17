@@ -281,15 +281,24 @@ def test_a_click_without_a_finished_slit_writes_nothing_and_says_why(qapp, shell
     bar = said(w := shell)
     b = save_button(w)
     assert b is not None and b.isEnabled()
-    QTest.mouseClick(b, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier, b.rect().center())
+    def click():
+        w.statusBar().clearMessage()                    # the same message twice is said twice
+        qapp.processEvents()
+        QTest.mouseClick(b, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                         b.rect().center())
+
+    click()                                             # S off
     w.set_slit_mode(True)
+    click()                                             # S on, no point yet
     w.slit_tool.add(*PTS[0])
+    click()                                             # one point
     w.slit_tool.add(*PTS[1])
-    qapp.processEvents()
-    QTest.mouseClick(b, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier, b.rect().center())
+    click()                                             # two, not finished
     print(" | ".join(bar))
     assert [m for m in bar if m.startswith("slit not saved")] == [
         "slit not saved: no slit (S draws one)",
+        "slit not saved: no slit yet: click points, double click to finish",
+        "slit not saved: the slit is being drawn: finish it first (double click)",
         "slit not saved: the slit is being drawn: finish it first (double click)"]
     assert not list(tmp_path.iterdir())
 
@@ -449,7 +458,7 @@ def test_a_save_says_its_file_in_a_note_above_the_x_axis_that_goes(qapp, shell, 
     w.set_slit_mode(True)
     assert spin(qapp, lambda: w.slit_dock.isVisible())
     assert w.save_slit(str(tmp_path)) is None
-    assert t.isVisible() and t.text() == "not saved: the slit is being drawn: finish it first (double click)"
+    assert t.isVisible() and t.text() == "not saved: no slit yet: click points, double click to finish"
 
 
 def test_through_the_bridge_the_note_goes_at_once(qapp):
