@@ -5110,3 +5110,50 @@ vuelve a guardar la credencial tras cada consulta con éxito, como en cada `pull
 - Capturas en `archive/images/2026-10-17_update_notice/`.
 
 **Sin probar:** de principio a fin contra GitHub en una ventana de verdad, y una semana real de recordatorios.
+
+### 2026-10-17 (3): el roadmap puesto al día
+
+**Por qué:** las respuestas del usuario del 2026-10-17 en la página de revisión. Muchas filas esperaban solo que él
+mirara algo, y otras citaban ramas borradas o commits que ya no existen.
+
+**Cerradas (✅):**
+- E5.12, E5.22, E5.26, E6.3 y E6: el usuario vio glass por el puente X11 en su pantalla, «todo parece bien». E5.12 ya
+  no habla de la tecla I (quitada en `78e2ffa`).
+- E5.6, E5.1, E5.2 y E5.4: acepta las diferencias con el prototipo de `bench/results/e56_screens_2026-10-01/`.
+- E5.3: las comprobaciones de persistencia del humo ya corrieron con la rendija (2026-10-05 (3)).
+- E8.11: «va muy bien».
+- E8.10: el tope de 100 pasos en todo cubo de más de 100, como hoy; la rendija lenta en series comprimidas sigue en
+  E1.26.
+- E6.24 y E7.6, sin su «Falta»: la primera, vista en su pantalla; la lectura en IDL de la segunda queda sin probar,
+  cerrada así por ahora.
+
+**Sustituida (⚪):** E8.6. La palabra del eje siguió en E8.8, y un panel de rendija por cubo es E8.9, que se lleva la
+comprobación de los colores en modern y glass.
+
+**Partidas** (lo hecho queda ✅, lo que falta en una fila nueva):
+- E1.23 → E1.28, un `_sp` LP solo y dónde ofrecer la copia transpuesta;
+- E1.24 → E1.29, la I negativa del 8542 real y el coste en StorNext;
+- E8.4 → E8.12 (🔄), el Δt en pantalla, lejos de todo tiempo y cubos LP de días distintos. La parte real la cubre
+  `tests/real/test_link_real.py:17` (2026-10-10 (1));
+- E6.22 → E6.25, el caso enlazado con una prueba que falle antes.
+
+**Corregidas:**
+- E8 pasa a 🔄, la etapa en curso. E7 ya no es «la siguiente etapa»: solo queda E7.5, una decisión. E5.25, sin
+  «Prioridad máxima».
+- E5.27 sigue 🔄: en el Mac, ampliada con el botón verde, al pasar a otro aspecto y volver a glass recupera el tamaño
+  de antes. Arreglo en curso.
+- E8.2, en decidido y abierto. Las máscaras de prueba para el usuario están en `/tmp` de bellatrix.
+- X.14: el usuario aprueba las propuestas y una auditoría nueva.
+- Textos viejos: E5.35 (dos decimales, «λ − 6173.34 Å»), E4.9 (10 fps), E4.15 (el halo), E5.31 (la rendija se guarda,
+  `KEY_MENU = False`), E8.3 (el suelo del aumento), E5.33 (el doble clic), X.21 (lo que queda pasa a X.25).
+- Hashes que no están en `main`, cambiados por los de `main` con el mismo asunto: E1.23, E1.24, E4.15, E8.4, E8.5,
+  E5.33 y X.11 (`b93c4a3`, de antes de la reescritura del 2026-10-05, es `328bcc5`). Las ramas borradas
+  (`integ-1011b` y las suyas), por sus commits. E1.27 lleva su commit, `8111b57`.
+
+**Nuevas:**
+- ✅ E4.16 (10 fps por defecto), E5.36 (sin la tecla I de glass), E5.37 (la hoja `?` en dos columnas), E8.13 (los
+  arreglos de paneles de 2026-10-11 (9)), E5.38 (la línea de autoría) y X.24 (el entorno de las pruebas: un Xvfb de
+  1800 px o más; `test_docks` en el Mac).
+- 🔄 sin commit aún: X.25 (los temas propios en el Mac), X.26 (espacio antes de la versión en la hoja `?`), E7.7 (el
+  aviso al guardar sin rendija), X.27 (niveles ±σ en Q, U, V).
+- `overlays.OverImage` se cita en E5.33 (`62d1fba`), sin fila propia.
