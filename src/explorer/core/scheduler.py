@@ -118,7 +118,9 @@ class Scheduler:
         self.slit = SlitReads(session, sink, self._track, self._when_read, cube=member)
         self.noise = NoiseReads(self.ds, self.loop, sink.noise, self._track, self._noise_index,
                                 lambda: self.state) if noise else None
-        self._noise_due = False                         # a new t's sigma, asked for once its spectra are drawn
+        # a new t's sigma, asked for once its spectra are drawn; the first one too, off the first image's way (asked
+        # for with it, the first image and spectra came within the noise: 512 x 512 synthetic, Mac, 16 windows each)
+        self._noise_due = noise
         self._off = session.store.subscribe(self._on_change)
         self._units_read = False
         if "spectra" in st.panels:
@@ -126,8 +128,6 @@ class Scheduler:
         self._pending.add("cursor")                     # the first image brings the first cursor
         if self._image_shown(st):
             self._request_image(st)
-        if self.noise is not None:
-            self.noise.want(st)
 
     @property
     def state(self) -> ViewState:
