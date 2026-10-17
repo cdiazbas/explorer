@@ -15,6 +15,7 @@ SUBCOMMANDS = {
     "doctor": ("doctor", "check that this user can run explorer here (environment, numba, Qt, a cube)"),
     "demo": ("demo", "try what explorer can do so far, on a cube (default: a small synthetic one)"),
     "transpose": ("transpose", "write the image cube (_im.fits) of a per-pixel file (_sp.fits) alone, once"),
+    "update": ("update", "bring this copy up to date with the latest main (git), when told there is something new"),
 }
 
 

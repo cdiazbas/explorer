@@ -30,6 +30,7 @@ explorer --version
 explorer demo                    # a synthetic cube, to see it working
 explorer path/to/cube_im.fits    # a cube; its per-pixel file (_sp.fits) is found next to it
 explorer doctor                  # if something does not work: the environment, numba, Qt and the display
+explorer update                  # when told there is something new: this copy brought up to date
 ```
 
 `explorer --help` lists the options (theme, look, layout). Inside the window, `?` shows the keys.
@@ -105,7 +106,10 @@ stored (counts): that file's scale and padding value are the other cube's.
   once on each kind of machine; each builds its own environment.
 - **Remote, over ssh:** `ssh -Y host`, then `explorer cube_im.fits`. The window is drawn on your screen (on a
   Mac, through XQuartz); explorer picks the best way to draw over the link by itself.
-- **Updating:** `git pull`. The next `explorer` updates the environment by itself if the pinned versions changed.
+- **Updating:** `explorer update` when there is something new (`explorer update --check` only says how far
+  behind this copy is, and what it would bring). It never runs by itself, and it leaves a copy with changes or
+  commits of its own as it is, saying why. The next `explorer` updates the environment by itself if the pinned
+  versions changed. `explorer --version` names the commit, for whoever reports a problem.
 - **Without touching your startup files:** `scripts/setup_env.sh --link --no-update-shell` says what to add.
   Without `--link`, run explorer as `scripts/run.sh cube_im.fits` from the checkout.
 - **Uninstalling:** delete the checkout, the `explorer` link that `setup_env.sh` reported (usually
