@@ -34,6 +34,16 @@ SPEC_TIP = ("Spectra y range: open = automatic, closed = fixed (I from 100 rando
             "image). Click to switch; right click {keys}fixes it to this pixel")
 
 
+def reticle_colour(look):
+    """The reticles': white, in the glass look its accent."""
+    return glass.accent() if look.has("glass") else pg.mkColor(255, 255, 255, 235)
+
+
+def card_colour(look, light: bool):
+    """The plots' background: a card in the looks that have them, else pyqtgraph's own."""
+    return (CARD_LIGHT if light else CARD) if look.has("cards") else pg.getConfigOption("background")
+
+
 class CubeSink:
     """The scheduler's results on a cube's own panels (the main cube's adds the window's parts: ui.shell)."""
 
@@ -202,12 +212,12 @@ class CubeView:
         colour maps too (the main cube's are the window's, with its colour key)."""
         self.view.set_reticle(look.has("reticle"))
         if self.view.reticle is not None:
-            self.view.reticle.set_colour(glass.accent() if look.has("glass") else pg.mkColor(255, 255, 255, 235))
+            self.view.reticle.set_colour(reticle_colour(look))
         if self.spectra is not None:
             self.spectra.set_marks(acc, light) if look.has("marks") else self.spectra.clear_marks()
         if self.lambda_t is not None:
             self.lambda_t.set_marks(acc) if look.has("marks") else self.lambda_t.clear_marks()
-        card = (CARD_LIGHT if light else CARD) if look.has("cards") else pg.getConfigOption("background")
+        card = card_colour(look, light)
         for pw in (getattr(self.spectra, "w", None), getattr(self.lambda_t, "w", None)):
             if pw is not None and self.shell.glass is None:     # worn, glass keeps them clear over its slabs
                 pw.setBackground(card)

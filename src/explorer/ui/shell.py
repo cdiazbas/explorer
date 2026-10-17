@@ -24,7 +24,6 @@ import time
 from typing import TYPE_CHECKING
 
 import numpy as np
-import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import APP_NAME
@@ -40,8 +39,8 @@ from ..look.colormaps import ColormapRegistry
 from ..obs import get_logger
 from . import docks, glass, icons, overlays, pens, style, titlebar
 from .actions import ActionRegistry, KeySheet, mod_key, per_pixel_sheet_html
-from .cards import CARD, CARD_LIGHT, MacSeams, Rounder
-from .cube import CubeView
+from .cards import MacSeams, Rounder
+from .cube import CubeView, card_colour, reticle_colour
 from .gestures import Gestures
 from .imageview import CURSOR_PEN
 from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync
@@ -436,7 +435,7 @@ class Shell(QtWidgets.QMainWindow):
             self._seams = MacSeams()                    # and on the separators: in the window's colour, in both looks
             for w in self._seamed():
                 w.setStyle(self._seams)
-        card = (CARD_LIGHT if light else CARD) if L.has("cards") else pg.getConfigOption("background")
+        card = card_colour(L, light)
         if self.glass is None:                          # worn, glass keeps it clear over its slab
             for p in self.slit_panels:
                 p.w.setBackground(card)
@@ -521,11 +520,10 @@ class Shell(QtWidgets.QMainWindow):
         self.statusBar().showMessage(f"{'light' if style.is_light() else 'dark'} theme (T switches)", 3000)
 
     def _reticle_colours(self) -> None:
-        """The reticles white, in the glass look its accent; the 2x2 view's too, whenever it is made."""
-        c = glass.accent() if self.look.has("glass") else QtGui.QColor(255, 255, 255, 235)
-        for v in [self.view] + (self.grid.views if self.grid is not None else []):
+        """The 2x2 view's reticles as the images' (CubeView.set_look), whenever it is made."""
+        for v in self.grid.views if self.grid is not None else []:
             if v.reticle is not None:
-                v.reticle.set_colour(c)
+                v.reticle.set_colour(reticle_colour(self.look))
 
     # ---------------------------------------------------------------- the 2x2 view (ROADMAP E5.11)
     def set_grid(self, on: bool) -> None:
