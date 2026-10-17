@@ -342,7 +342,6 @@ class Connection:
         self._id_shift = (self.setup.id_mask & -self.setup.id_mask).bit_length() - 1
         self._ext: dict[str, tuple[int, int, int] | None] = {}
         self._atoms: dict[str, int] = {}
-        self._atom_names: dict[int, str] = {}
         self.errors = 0
         self.last_error: XError | None = None
         self.lost: BaseException | None = None
@@ -537,9 +536,7 @@ class Connection:
         todo = [n for n in dict.fromkeys(names) if n not in self._atoms]
         cks = [(n, self.intern_atom(n)) for n in todo]
         for n, ck in cks:
-            a = struct.unpack_from("<I", ck.result(), 8)[0]
-            self._atoms[n] = a
-            self._atom_names[a] = n
+            self._atoms[n] = struct.unpack_from("<I", ck.result(), 8)[0]
         return {n: self._atoms[n] for n in names}
 
     def atom(self, name: str) -> int:
@@ -548,15 +545,6 @@ class Connection:
     def intern_atom(self, name: str, only_if_exists: bool = False) -> Cookie:
         b = name.encode("latin-1")
         return self.request(16, int(only_if_exists), struct.pack("<HH", len(b), 0) + b, reply=True)  # type: ignore
-
-    def atom_name(self, atom: int) -> str:
-        if atom not in self._atom_names:
-            ck = self.request(17, 0, struct.pack("<I", atom), reply=True)
-            assert ck is not None
-            r = ck.result()
-            n = struct.unpack_from("<H", r, 8)[0]
-            self._atom_names[atom] = r[32:32 + n].decode("latin-1")
-        return self._atom_names[atom]
 
     def extensions(self, *names: str) -> dict[str, tuple[int, int, int] | None]:
         """(major opcode, first event, first error) per extension, None when absent; together, one round trip."""
@@ -589,9 +577,6 @@ class Connection:
 
     def map_window(self, wid) -> None:
         self.request(8, 0, struct.pack("<I", wid))
-
-    def unmap_window(self, wid) -> None:
-        self.request(10, 0, struct.pack("<I", wid))
 
     CFG = (("x", 0x1, "<i"), ("y", 0x2, "<i"), ("width", 0x4, "<I"), ("height", 0x8, "<I"),
            ("border", 0x10, "<I"), ("sibling", 0x20, "<I"), ("stack_mode", 0x40, "<I"))
@@ -709,9 +694,6 @@ class Connection:
 
     def create_glyph_cursor(self, cid, font, glyph, fore=(0, 0, 0), back=(65535, 65535, 65535)) -> None:
         self.request(94, 0, struct.pack("<IIIHH6H", cid, font, font, glyph, glyph + 1, *fore, *back))
-
-    def free_cursor(self, cid) -> None:
-        self.request(95, 0, struct.pack("<I", cid))
 
     def keyboard_mapping(self) -> Cookie:
         lo, hi = self.setup.min_keycode, self.setup.max_keycode

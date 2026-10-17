@@ -273,6 +273,3 @@ class SlitPanel:
         """The axes and a map's curve in this theme's ink; the background is the shell's (a card, or the plots' own)."""
         style.default_axes(self.w)
         self.curve.setPen(pg.mkPen(self._ink(light), width=1.5))
-
-    def set_background(self, colour) -> None:
-        self.w.setBackground(colour)
