@@ -115,8 +115,11 @@ explorer update                  # this copy brought to the latest version, and 
   analysis.
 - **Told in the window:** a clone on `main` asks GitHub at most once a day, in the background, whether there is a
   newer `main` (`git ls-remote`: nothing fetched, nothing changed, no password asked; silent if it fails). A new
-  version is said once, in a note over the image; the `?` sheet ends with the version you run and, while a newer one
-  exists, `explorer update`. `EXPLORER_UPDATE_CHECK=0` turns the question off.
+  version is said at once in a note over the image, with the date of the copy you run, and again every 7 days while
+  you stay behind; the `?` sheet ends with the version you run and, while a newer one exists, `explorer update`.
+  `explorer update --no-notice` stops the notes for you and this clone (`--notice` brings them back; `--check` says
+  which); `EXPLORER_UPDATE_CHECK=0` or `=1` overrides that either way.
+- **Restart:** an explorer already running keeps the old code; `explorer update` ends by saying so.
 - **Your own work is safe:** a copy with changed files, commits of its own or on another branch is left as it is,
   and it says why. Nothing is merged, stashed or thrown away.
 - **The environment:** if the update brings new pinned versions, the next `explorer` rebuilds the environment by
