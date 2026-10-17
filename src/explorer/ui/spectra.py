@@ -16,7 +16,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import APP_NAME
-from ..data.axes import C_KMS, STOKES, SUP, dlam_label, fmt_signed, unit_text
+from ..data.axes import C_KMS, STOKES, SUP, dlam_label, fmt_signed, tunings, unit_text
 from . import pens, style
 from .imageview import CURSOR_PEN
 from .padlock import PanelLock
@@ -180,9 +180,7 @@ class SpectraPanel:
         value: what a cube without Stokes holds when it is not intensity along lambda ("Blos"), "I" without."""
         self.ns, self.nl, self.ax = ns, nl, axes
         self.value = value or "I"
-        dl = axes.dlam_A() if axes is not None else None
-        self.physical = dl is not None and len(dl) == nl
-        self.xl = np.asarray(dl, float) if self.physical else np.arange(nl, dtype=float)
+        self.physical, self.xl = tunings(axes, nl)
         vk = C_KMS / (axes.lam0_nm * 10.0) if self.physical and axes.lam0_nm else None     # km/s per Å
         pad = X_PAD * (float(self.xl.max() - self.xl.min()) or 1.0)
         self.x_range = (float(self.xl.min()) - pad, float(self.xl.max()) + pad)

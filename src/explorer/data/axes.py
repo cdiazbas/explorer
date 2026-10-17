@@ -465,6 +465,15 @@ def lam0_text(ax) -> str:
     return "" if lam0 is None else f"{float(lam0) * 10.0:.{LAM0_DECIMALS}f}\u00a0Å"
 
 
+def tunings(ax, nl: int) -> tuple[bool, np.ndarray]:
+    """A panel's lambda axis: (True, each tuning's delta-lambda [Å]) when the header gives the nl of them, else
+    (False, the tuning index)."""
+    dl = ax.dlam_A() if ax is not None else None
+    if dl is not None and len(dl) == nl:
+        return True, np.asarray(dl, float)
+    return False, np.arange(nl, dtype=float)
+
+
 def dlam_label(ax) -> str:
     """The label of an axis in delta-lambda, as the wavelength less the line centre it is measured from:
     'λ − 6173.34 Å' (the user, 2026-10-11); 'Δλ [Å]' when that is not known."""

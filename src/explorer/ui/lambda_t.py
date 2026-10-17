@@ -18,7 +18,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.levels import gamma_panel
-from ..data.axes import dlam_label, fmt_signed
+from ..data.axes import dlam_label, fmt_signed, tunings
 from ..data.tsample import nearest_sample, time_samples
 from . import pens, style
 from .imageview import CURSOR_PEN
@@ -109,16 +109,53 @@ class IndexAxis(pg.AxisItem):
         return out
 
 
-class LambdaTPanel:
+def fixed_plot(pi) -> None:
+    """A panel's plot as a control: no zoom, no pan, no pyqtgraph menu nor its buttons; a click picks."""
+    pi.setMouseEnabled(x=False, y=False)
+    pi.setMenuEnabled(False)
+    pi.vb.setMenuEnabled(False)
+    pi.hideButtons()
+
+
+def axis_style(a: pg.AxisItem) -> None:
+    """Ticks out of the image, to the labels (pyqtgraph's 5 px went in); cached: a range change re-renders only the
+    axes that moved."""
+    a.setStyle(tickLength=4)
+    a.setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
+
+
+class GridAxes:
+    """t and lambda of a panel on the index grid and their axes' labels: lambda-t's, TimeCurve's and the slit
+    panel's. tax: the axes whose times label t; xl: each tuning's delta-lambda [Å] when physical, else its index."""
+
+    def _grid_axes(self, nl: int, axes, times=None) -> None:
+        self.physical, self.xl = tunings(axes, nl)
+        self.tax = times if times is not None else axes
+        self.timed = self.tax is not None and getattr(self.tax, "t_sec", None) is not None
+
+    @property
+    def t_title(self) -> str:
+        return "t [UT]" if self.timed else "t index"
+
+    def lam_label(self, i: int) -> str:
+        return fmt_signed(self.xl[i], 2) if self.physical else str(i)
+
+    def t_label(self, i: int) -> str:
+        u = self.tax.utc_str(i, seconds=False) if self.timed else None
+        return u or str(i)
+
+    def t_label_fine(self, i: int) -> str:
+        u = self.tax.utc_str(i, seconds=True) if self.timed else None
+        return u or str(i)
+
+
+class LambdaTPanel(GridAxes):
     """widget: what goes in the dock."""
 
     def __init__(self, nt: int, nl: int, axes, label: str = "λ index"):
         """label: its axis other than t in index units, when not in Å (data.names.slice_names)."""
         self.nt, self.nl, self.ax = nt, nl, axes
-        dl = axes.dlam_A() if axes is not None else None
-        self.physical = dl is not None and len(dl) == nl
-        self.xl = np.asarray(dl, float) if self.physical else np.arange(nl, dtype=float)
-        self.timed = axes is not None and getattr(axes, "t_sec", None) is not None
+        self._grid_axes(nl, axes)
         bottom = TuningAxis("bottom", self.xl) if self.physical else IndexAxis("bottom", self.lam_label, nl)
         left = IndexAxis("left", self.t_label, nt, fine_of=self.t_label_fine)
         self.w = pg.PlotWidget(axisItems={"bottom": bottom, "left": left})
@@ -128,12 +165,9 @@ class LambdaTPanel:
         self.steps: np.ndarray | None = None            # the t of its rows when fewer than nt (data.tsample)
         self.w.addItem(self.img)
         pi = self.w.getPlotItem()
-        pi.setMouseEnabled(x=False, y=False)            # the whole (t, lambda) grid always in view; a click picks
-        pi.setMenuEnabled(False)
-        pi.vb.setMenuEnabled(False)
-        pi.hideButtons()
+        fixed_plot(pi)                                  # the whole (t, lambda) grid always in view
         self.w.setLabel("bottom", dlam_label(axes) if self.physical else label)
-        self.w.setLabel("left", "t [UT]" if self.timed else "t index")
+        self.w.setLabel("left", self.t_title)
         self.t_line = pg.InfiniteLine(angle=0)
         self.l_line = pg.InfiniteLine(angle=90)
         for ln in (self.t_line, self.l_line):           # markers, as the spectra's lambda line (pens.mark)
@@ -145,8 +179,7 @@ class LambdaTPanel:
         self.reset_view()
         pi.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         for side in ("left", "bottom"):
-            pi.getAxis(side).setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
-            pi.getAxis(side).setStyle(tickLength=4)     # out of the image, to the labels: pyqtgraph's 5 px went in
+            axis_style(pi.getAxis(side))
         self.widget = self.w
 
     def set_light(self, light: bool) -> None:
@@ -158,17 +191,6 @@ class LambdaTPanel:
     def set_stokes(self, s: int | None, ns: int) -> None:
         """The label of Stokes s of ns ("Stokes Q") at the top left, when ns is 4 (ui.stokeslabel); s None: nothing."""
         self.stokes.show_stokes(s, ns)
-
-    def lam_label(self, i: int) -> str:
-        return fmt_signed(self.xl[i], 2) if self.physical else str(i)
-
-    def t_label(self, i: int) -> str:
-        u = self.ax.utc_str(i, seconds=False) if self.timed else None
-        return u or str(i)
-
-    def t_label_fine(self, i: int) -> str:
-        u = self.ax.utc_str(i, seconds=True) if self.timed else None
-        return u or str(i)
 
     def show(self, lt: np.ndarray, levels, gamma: float | None = None) -> None:
         """lt: (nt, nl), or fewer rows: the t steps of data.tsample; levels: the core's; gamma: its cube's at its
@@ -225,7 +247,7 @@ class LambdaTPanel:
         self.w.setRange(xRange=(0, max(1, self.nl)), yRange=(0, max(1, self.nt)), padding=0)
 
 
-class TimeCurve:
+class TimeCurve(GridAxes):
     """lambda-t of a cube with one plane along its other axis: the cursor's value against t, t along x on the index
     grid (t's ticks and labels as lambda-t's), the current t as a vertical line; value: the y axis's label
     (data.names.SliceNames.value). The same calls as LambdaTPanel: what the core gives is (nt, 1), or (nt,)."""
@@ -233,14 +255,11 @@ class TimeCurve:
     def __init__(self, nt: int, axes, value: str = "value", light: bool | None = None):
         """axes: whose times label t (a map's own, else the main cube's when its frames are the main cube's t)."""
         self.nt, self.nl, self.ax = nt, 1, axes
-        self.timed = axes is not None and getattr(axes, "t_sec", None) is not None
+        self._grid_axes(1, None, axes)
         self.w = pg.PlotWidget(axisItems={"bottom": IndexAxis("bottom", self.t_label, nt, fine_of=self.t_label_fine)})
         pi = self.w.getPlotItem()
-        pi.setMouseEnabled(x=False, y=False)            # the whole t range always in view; a click picks t
-        pi.setMenuEnabled(False)
-        pi.vb.setMenuEnabled(False)
-        pi.hideButtons()
-        self.w.setLabel("bottom", "t [UT]" if self.timed else "t index")
+        fixed_plot(pi)                                  # the whole t range always in view
+        self.w.setLabel("bottom", self.t_title)
         self.w.setLabel("left", value)
         pi.getAxis("left").enableAutoSIPrefix(False)    # its "(x1e-08)" ran off the panel; the ticks say it
         light = style.is_light() if light is None else light
@@ -254,8 +273,7 @@ class TimeCurve:
         self.reset_view()
         pi.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         for side in ("left", "bottom"):
-            pi.getAxis(side).setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
-            pi.getAxis(side).setStyle(tickLength=4)
+            axis_style(pi.getAxis(side))
         self.widget = self.w
 
     @staticmethod
@@ -269,14 +287,6 @@ class TimeCurve:
 
     def set_stokes(self, s: int | None, ns: int) -> None:
         self.stokes.show_stokes(s, ns)
-
-    def t_label(self, i: int) -> str:
-        u = self.ax.utc_str(i, seconds=False) if self.timed else None
-        return u or str(i)
-
-    def t_label_fine(self, i: int) -> str:
-        u = self.ax.utc_str(i, seconds=True) if self.timed else None
-        return u or str(i)
 
     def show(self, lt: np.ndarray, levels=None, gamma: float | None = None) -> None:
         """lt: (nt, 1) or (nt,), or fewer: the t steps of data.tsample, each at its t; the y range its finite values'

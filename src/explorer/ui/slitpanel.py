@@ -14,19 +14,19 @@ prototype's app/viewer.py: the slit dock (1023-1048), _slit_mark (1922), _slit_p
 """
 import numpy as np
 import pyqtgraph as pg
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore
 
 from ..core.levels import gamma_panel
-from ..data.axes import dlam_label, fmt_signed
+from ..data.axes import dlam_label
 from ..data.tsample import nearest_sample, time_samples
 from . import pens, style
 from .imageview import CURSOR_PEN
-from .lambda_t import MARGIN, IndexAxis, TimeCurve, TuningAxis
+from .lambda_t import MARGIN, GridAxes, IndexAxis, TimeCurve, TuningAxis, axis_style, fixed_plot
 
 ALONG = "along the slit [px]"
 
 
-class SlitPanel:
+class SlitPanel(GridAxes):
     """widget: what goes in the dock. ts, sl: the two plots; ts_img, sl_img: their images."""
 
     def __init__(self, nt: int, nl: int, axes):
@@ -45,11 +45,8 @@ class SlitPanel:
         for pl in (self.ts, self.sl):
             pl.setLabel("bottom", ALONG)
             for side in ("left", "bottom"):
-                self._axis_style(pl.getAxis(side))
-            pl.setMouseEnabled(x=False, y=False)
-            pl.hideButtons()
-            pl.setMenuEnabled(False)
-            pl.vb.setMenuEnabled(False)
+                axis_style(pl.getAxis(side))
+            fixed_plot(pl)
             pl.disableAutoRange()
         self.t_line = pg.InfiniteLine(angle=0)
         self.l_line = pg.InfiniteLine(angle=0)
@@ -77,11 +74,7 @@ class SlitPanel:
     def _cube(self, nt: int, nl: int, axes, times=None, label: str = "λ index") -> None:
         self.nt, self.nl, self.ax, self.label = max(1, nt), max(1, nl), axes, label
         self.steps: np.ndarray | None = None            # the time slice's t when fewer than nt (data.tsample)
-        self.tax = times if times is not None else axes  # whose times label t
-        dl = axes.dlam_A() if axes is not None else None
-        self.physical = dl is not None and len(dl) == nl
-        self.xl = np.asarray(dl, float) if self.physical else np.arange(self.nl, dtype=float)
-        self.timed = self.tax is not None and getattr(self.tax, "t_sec", None) is not None
+        self._grid_axes(nl, axes, times)
 
     def _t_axis(self) -> pg.AxisItem:
         if self.flat:                                   # a curve's values
@@ -98,13 +91,8 @@ class SlitPanel:
         return TuningAxis("left", self.xl) if self.physical else IndexAxis("left", self.lam_label, self.nl)
 
     def _left_labels(self) -> None:
-        self.ts.setLabel("left", self.value if self.flat else "t [UT]" if self.timed else "t index")
+        self.ts.setLabel("left", self.value if self.flat else self.t_title)
         self.sl.setLabel("left", dlam_label(self.ax) if self.physical else self.label)
-
-    @staticmethod
-    def _axis_style(a: pg.AxisItem) -> None:
-        a.setStyle(tickLength=4)                        # out of the image, as lambda-t's
-        a.setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
 
     def set_cube(self, nt: int, nl: int, axes, times=None, label: str = "λ index", mapped: bool = False,
                  value: str = "value") -> None:
@@ -133,22 +121,10 @@ class SlitPanel:
         self.sl.setAxisItems({"left": self._l_axis()})
         self._left_labels()
         for pl in (self.ts, self.sl):
-            self._axis_style(pl.getAxis("left"))
+            axis_style(pl.getAxis("left"))
         style.default_axes(self.w)                      # the new axes in this theme's ink
         self.clear()
         self._ranges(max(1, self.n))
-
-    # ---------------------------------------------------------------- labels (as lambda-t's)
-    def lam_label(self, i: int) -> str:
-        return fmt_signed(self.xl[i], 2) if self.physical else str(i)
-
-    def t_label(self, i: int) -> str:
-        u = self.tax.utc_str(i, seconds=False) if self.timed else None
-        return u or str(i)
-
-    def t_label_fine(self, i: int) -> str:
-        u = self.tax.utc_str(i, seconds=True) if self.timed else None
-        return u or str(i)
 
     # ---------------------------------------------------------------- what the core gives
     @property
