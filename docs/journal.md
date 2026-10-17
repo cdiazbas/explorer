@@ -5186,3 +5186,42 @@ S5 ya estaba (`96fded8`, `maps_for`), y también S10 (`f05dfba`).
   índice del fotograma a mano, la calibración por píxel dos veces y lo que S8 dejó.
 
 **Falta:** elegir entre las propuestas nuevas.
+
+### 2026-10-17 (5): glass ampliada, los títulos del Mac con los temas, la hoja ? y el aviso de S (ROADMAP E5.27, X.25, X.26, E7.7)
+
+**Glass ampliada en el Mac (E5.27).** El usuario: ampliada con el botón verde, al pasar a otro aspecto y volver a
+glass, la ventana volvía a su tamaño original.
+- *Causa 1* (`glass.py`, `GlassChrome.remove`): al salir de glass se tiraba la ampliación tomada dentro y volvía el
+  tamaño de antes de glass; solo se restauraba una ampliación que ya existía al entrar.
+- *Causa 2*, encontrada por la prueba nueva y trazada con una sonda: dejar la ampliación y volver a tomarla en el
+  mismo turno trae dos notificaciones tardías del sistema, y con la segunda Qt anota el rectángulo ampliado como el
+  tamaño de debajo (`normalGeometry() == geometry()`). Deshacer la ampliación dejaba entonces el tamaño del monitor.
+- *Ahora:* `remove()` vuelve a ampliar una ampliación tomada en glass (también a pantalla completa) y guarda el tamaño
+  de debajo en `Shell.under_zoom`, que `apply()` usa cuando la `normalGeometry` de Qt es la propia ampliación.
+- *Negativo:* solo la primera mitad no bastaba (deshacer quedaba en 1348×874). Un temporizador de 0 ms antes de
+  volver a ampliar tampoco.
+- *Sin probar:* en un Mac de verdad, y la ampliación de nuestra barra de título en Linux y el puente, que sigue
+  perdiéndose al salir de glass.
+
+**Los títulos del Mac con nuestros temas (X.25).** El título que sustituye al de Qt (`give_steps`) solo llevaba las
+marcas de Qt con el estilo macos; con nuestros temas (un proxy de Fusion), iconos de 7 px a la izquierda. Además, en
+`main` desde `83c724a`, T del estilo nativo al oscuro dejaba el número sobre la marca de cerrar, fuera de la barra, y el
+nombre desaparecía: el usuario lo vio en las capturas.
+- *Ahora:* en el Mac (`QT_MARKS_PLATFORMS = ("cocoa",)`), con cualquier estilo, las marcas de Qt donde Qt las pone.
+  Con las marcas a la derecha, el número y el disquete terminan 4 px antes, y el nombre va a la izquierda, como el de
+  Qt, cortado antes del número.
+- *Medido:* Linux por offscreen y el estilo nativo, 0 píxeles distintos; las marcas frente a las de Qt de los
+  espectros, 384 de 3024 antes y 0 después.
+- *Prueba añadida tras ver el fallo:* λ–t y la rendija (con el disquete), en oscuro, claro tras T, estilo nativo y
+  dos T desde él. Comprueba que número y disquete quedan dentro de la barra, sin tocar las marcas ni entre sí, y que el
+  nombre cabe entero.
+
+**La hoja `?` (X.26):** 10 px en vez de 2 entre las teclas y el pie.
+
+**El aviso de S (E7.7):** con S y ningún punto decía «the slit is being drawn» (el borrador es `()`, no `None`); ahora
+dice «no slit yet: click points, double click to finish».
+
+**Pruebas:**
+- Las nuevas fallan antes y pasan después.
+- Suites en bellatrix: `tests/unit` y `tests/golden` 1019 pasan, 16 saltadas; `tests/xvfb` 43; carga 1.1-1.7.
+- Capturas en `archive/images/2026-10-17_small_fixes/`.
