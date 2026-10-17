@@ -5067,3 +5067,46 @@ cada arranque?
 - `test_update.py`: 7, con repositorios temporales.
 - Un clon de GitHub retrasado 3 commits: los listó, avanzó y escribió `0.0.1.dev524+g320b45bc9`, la de `main`.
 - Suites en bellatrix: `tests/unit` y `tests/golden` 989 pasan, 16 saltadas; `tests/xvfb` 43; carga 0.1-2.0.
+
+### 2026-10-17 (2): el aviso de versión nueva, en la ventana (ROADMAP X.23)
+
+**La pregunta** (el usuario): ¿un símbolo o botón en la app para actualizar? Un botón que actualice desde la app se
+descartó:
+- el código cargado bajo demanda se mezclaría con el nuevo;
+- git podría pedir credenciales en una terminal que nadie ve.
+
+Un aviso solo en la terminal tampoco sirve: nadie la mira.
+
+**Comparado con otras herramientas** (documentación de cada una):
+- npm `update-notifier` y `gh`: una comprobación al día y una variable para apagarla;
+- pip: una vez por semana, con la orden y las dos versiones;
+- Oh My Zsh: recordatorios cada 13 días;
+- Fiji: ahora, luego o nunca, y reiniciar para usarlo;
+- JupyterLab: pide permiso la primera vez.
+
+Tomado de ellas: recordar cada 7 días, decir la fecha de la copia, un «no me avises» guardado y avisar de que hay que
+reiniciar. Descartado: pedir permiso (repositorio privado y gente con acceso) y actualizar desde la app.
+
+**Hecho:**
+- *La comprobación* (`update_check.py`, solo la biblioteca estándar):
+  - `git ls-remote origin refs/heads/main`, sin `fetch` ni escrituras en `.git`;
+  - un hilo en segundo plano con 3 s, sin terminal ni preguntas (`GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS` vacío);
+  - si se pasa del tiempo, mata el grupo de procesos;
+  - como mucho una al día, con el estado en `~/.cache/explorer/update_check.json`;
+  - no corre sin clon, fuera de `main`, en pruebas ni con `EXPLORER_UPDATE_CHECK=0`.
+- *El aviso:* un `overlays.Toast` sobre la imagen, encima de la escala de colores (al pie en glass), 6 s, sin fundido
+  por el puente. Sale una vez por versión nueva y de nuevo cada 7 días mientras la copia siga atrasada.
+- *La hoja `?`:* al pie, la versión y la fecha, y si hay una más nueva, la orden y cómo silenciarlo.
+- *`explorer update`:* `--no-notice`/`--notice`; `--check` dice si los avisos están activados; al actualizar termina
+  con «restart explorer to use it».
+
+**El llavero del Mac:** la consulta respondió en 0.7-0.9 s (3 de 3) con la credencial del llavero, sin diálogo. git
+vuelve a guardar la credencial tras cada consulta con éxito, como en cada `pull`. Decidido (el usuario): dejarlo así.
+
+**Pruebas:**
+- Nuevas: 12 de la comprobación, 4 del aviso y las de `explorer update`. Fallan antes y pasan después, con repositorios
+  temporales y un reloj simulado; nunca contra GitHub.
+- Suites en bellatrix: `tests/unit` y `tests/golden` 1012 pasan, 16 saltadas; `tests/xvfb` 43; carga 0.5-1.4.
+- Capturas en `archive/images/2026-10-17_update_notice/`.
+
+**Sin probar:** de principio a fin contra GitHub en una ventana de verdad, y una semana real de recordatorios.
