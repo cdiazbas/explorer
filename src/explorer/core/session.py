@@ -49,7 +49,6 @@ class Session:
         and Stokes, the cursor at the centre of the image."""
         r = main.roles
         self.members = [Member(main, t=tuple(range(r.nt)))]
-        self.master = 0                                 # the member whose t is the time of the session
         self.sizes = {"t": r.nt, "s": r.ns, "l": r.nl}
         self.present = {"t": r.t is not None, "s": r.s is not None, "l": r.l is not None}
         self.store = Store(loop, ViewState(l=r.nl // 2 if r.l is not None else 0, cursor=(main.ny // 2, main.nx // 2)))

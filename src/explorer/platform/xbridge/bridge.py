@@ -164,7 +164,6 @@ class Bridge(QtCore.QObject):
         self._check.timeout.connect(self._check_all)
         self._repeat = None                             # keycode of an auto-repeat release whose press comes next
         self.main: QtWidgets.QWidget | None = None
-        self.t_attach: float | None = None
         self.stats: dict[str, Any] = dict(grabs=0, grab_ms=[], x_events=0, flushes=0, applied=0)
         app.installEventFilter(self)
         app.aboutToQuit.connect(self.close)
@@ -173,7 +172,6 @@ class Bridge(QtCore.QObject):
     def attach(self, window: QtWidgets.QWidget) -> None:
         """Show window (already shown by Qt) and any other visible top-level on X, and give window the keyboard."""
         self.main = window
-        self.t_attach = time.perf_counter()
         for w in QtWidgets.QApplication.topLevelWidgets():
             if w.isVisible() and self.windows.get(w) is None and w.windowType() not in (
                     Qt.WindowType.Popup, Qt.WindowType.ToolTip, Qt.WindowType.Desktop):

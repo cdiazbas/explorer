@@ -41,7 +41,6 @@ class StorageProbe:
 
     def __init__(self, frames, n_small: int = 8, seed: int = 0):
         """frames: an explorer.data.io.FrameReader of the cube to be read."""
-        t0 = time.perf_counter()
         self.mount = mount_of(os.path.realpath(frames.layout.path))
         rng = np.random.default_rng(seed)
         it, nfr = frames.layout.dtype.itemsize, int(np.prod(frames.shape[:-2]))
@@ -53,7 +52,6 @@ class StorageProbe:
             os.pread(fd, it, at)
             small.append((time.perf_counter() - q) * 1e3)
         self.small_ms = float(np.median(small))
-        self.probe_ms = (time.perf_counter() - t0) * 1e3
         self.decide(self.mount.get("fstype", ""), self.small_ms)
 
     def decide(self, fstype: str, small_ms: float) -> None:
@@ -90,7 +88,6 @@ class MemoryGuard:
         self.swap0 = s.get("swap_used") or 0
         frac, cap = (self.MAC_FRAC, self.MAC_CAP) if self.mac else (self.LINUX_FRAC, self.LINUX_CAP)
         self.budget = max(256 << 20, sysmem.budget(frac, cap, s=s))
-        self.start_budget = self.budget
         self.last = s
         self.events: list = []
 
