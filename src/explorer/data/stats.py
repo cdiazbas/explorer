@@ -14,6 +14,7 @@ from .io import FrameReader
 from .kernels import absmax_into
 
 SAMPLE_N = 100              # profiles
+CONT_SAMPLE_N = 500         # the sample of a cube of 4 Stokes whose header gives no continuum (quietest_tuning)
 SAMPLE_K = 2.0              # median +- 2 robust sigma per tuning (CRISPEX: mean +- 2 stdev, crispex.pro L12519)
 SAMPLE_STEP = 4             # pixels drawn on a 4-px grid: 16x fewer candidates, the same spread
 
@@ -85,6 +86,28 @@ def sample_profiles(ys, xs, ts, frames: FrameReader, roles: Roles, pixel=None, t
     if roles.l is not None:
         sl = sl + np.arange(roles.nl, dtype=np.int64)[None, :] * strides[roles.l]
     return frames.points(ys, xs, base[:, None, None] + sl[None]).astype(np.float64)
+
+
+def quietest_tuning(prof) -> int | None:
+    """The tuning with the least polarisation over a sample of profiles (n, 4, nl), as read: per tuning
+    sqrt(std(Q/I)^2 + std(U/I)^2 + std(V/I)^2) across the profiles, each Stokes over I at the same tuning. A profile
+    counts at a tuning where its four values are finite and I > 0. The continuum of a cube whose header gives none,
+    for Q U V in % of I_c: by eye, not precise (6173 icube, bellatrix: 100 profiles flipped among tunings 26, 24, 1
+    and 0, 1000 gave 26 or 1, the four lowest within 0.65-0.84 % on whole frames, the line core 3.4 %). None without 4
+    Stokes, with one tuning, or no tuning with 2 profiles that count."""
+    prof = np.asarray(prof, dtype=np.float64)
+    if prof.ndim != 3 or prof.shape[1] != 4 or prof.shape[2] < 2:
+        return None
+    i = prof[:, 0, :]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        ok = np.all(np.isfinite(prof), axis=1) & (i > 0)                # (n, nl)
+        r = np.where(ok[:, None, :], prof[:, 1:, :] / np.where(ok, i, 1.0)[:, None, :], np.nan)
+    n = ok.sum(axis=0)
+    mean = np.nansum(r, axis=0) / np.maximum(n, 1)                      # (3, nl), NaN-safe without warnings
+    var = np.nansum((r - mean) ** 2, axis=0) / np.maximum(n - 1, 1)
+    score = np.sqrt(var.sum(axis=0))
+    score[n < 2] = np.inf
+    return int(np.argmin(score)) if np.isfinite(score).any() else None
 
 
 def sample_ranges(prof, cont, iscale=None, k_sig=SAMPLE_K):

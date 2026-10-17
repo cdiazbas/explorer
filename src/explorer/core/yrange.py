@@ -160,6 +160,18 @@ class YRange:
             if last is not None:
                 self._set(int(k), nice_range(*last))
 
+    def set_cont(self, cont) -> None:
+        """The continuum tuning known from now on (chosen from the sample, core.scheduler): Q U V go to % of I_c, so
+        their ranges, the user's included, and the whole frames' half-widths, read in I's units, are forgotten; the
+        next spectrum and the sample (sample_ready, after this) give them again, and Q U V from whole frames are
+        asked for again when the padlock is closed."""
+        self.cont = cont
+        for k in range(1, self.ns):
+            self.manual_k.discard(k)
+            self.r[k] = self.last[k] = None
+        self.sample = self.quv = None
+        self.quv_started = self.quv_pending = False
+
     def start_quv(self) -> None:
         if self.quv_started or not self.quv_ok:
             return

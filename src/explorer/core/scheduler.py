@@ -36,6 +36,8 @@ that read frames ahead (Levels.ahead): the UI thread finds them cached. Never fo
 main thread: a future that completed before its callback was added runs it there, and the levels are then computed
 when the image is shown, as before.
 Q U V's noise levels (core.noise), when the UI asks for them: at each t, with the spectra shown, not while playing.
+A cube of 4 Stokes whose header gives no continuum tuning (an LP icube) takes the quietest tuning in Q U V of a larger
+y-range sample as its continuum for the session, whatever its format (_choose_cont): until then Q U V are in I's units.
 """
 import dataclasses
 import functools
@@ -45,8 +47,18 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from ..data.axes import quietest_text
 from ..data.executors import Generations, ShownGate
-from ..data.stats import quv_amplitude_ranges, quv_threads, sample_pixels, sample_profiles
+from ..data.masking import STOKES
+from ..data.stats import (
+    CONT_SAMPLE_N,
+    SAMPLE_N,
+    quietest_tuning,
+    quv_amplitude_ranges,
+    quv_threads,
+    sample_pixels,
+    sample_profiles,
+)
 from ..data.tsample import time_samples
 from ..obs import counter, get_logger
 from .levels import Levels, panel_levels, rule_levels
@@ -77,6 +89,8 @@ class Sink(Protocol):
     def units(self, iscale: float | None) -> None: ...                                 # I's power of ten, for titles
 
     def noise(self, sigma: dict[int, float], t: int) -> None: ...                     # Q U V's sigma at t (core.noise)
+
+    def continuum(self, k: int, text: str) -> None: ...                               # tuning k chosen as I_c, once
 
     def grid_image(self, s: int, idx: tuple, img: np.ndarray, levels: tuple[float, float]) -> None: ...  # 2x2 view
 
@@ -121,6 +135,10 @@ class Scheduler:
         # a new t's sigma, asked for once its spectra are drawn; the first one too, off the first image's way (asked
         # for with it, the first image and spectra came within the noise: 512 x 512 synthetic, Mac, 16 windows each)
         self._noise_due = noise
+        # no continuum in the header of a cube of 4 Stokes along lambda: the sample chooses one (_choose_cont)
+        self._needs_cont = (self._cont() is None and r.s is not None and r.ns == STOKES and r.l is not None
+                            and r.nl > 1)
+        self._last_spec: tuple | None = None            # the spectrum last drawn, as read, its pixel and t
         self._off = session.store.subscribe(self._on_change)
         self._units_read = False
         if "spectra" in st.panels:
@@ -359,6 +377,7 @@ class Scheduler:
             self.session.pace.drop([(self.member, "spectra"), (self.member, "lambda_t")])   # held: older
             if not self._cleared:
                 self.sink.cleared((y, x))
+                self._last_spec = None
                 self._cleared = True
             return
         refill = self._cleared
@@ -391,6 +410,7 @@ class Scheduler:
         if kind == "lambda_t":                          # Q U V symmetric about 0
             self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=at > 0))
         else:
+            self._last_spec = (arr, pixel, at)          # as read: drawn again if the continuum comes later
             self.sink.spectra(self.yrange.spectrum(arr), pixel, at)
             self._noise_after()
 
@@ -534,22 +554,65 @@ class Scheduler:
     # ---------------------------------------------------------------- the spectra's y ranges: reads
     def _start_sample(self) -> None:
         """SAMPLE_N profiles at random valid pixels of the image shown, each at its own t (stats.sample_*), on the
-        numba thread: the fixed y ranges of the padlock."""
+        numba thread: the fixed y ranges of the padlock. In a cube of 4 Stokes whose header gives no continuum,
+        CONT_SAMPLE_N, and the quietest tuning in Q U V among them becomes its continuum (_choose_cont). Read
+        SAMPLE_N at a time, each part a job of its own, so that a cursor's read waits for one part at most."""
         r = self.ds.roles
         if self._closed or self.img is None or r.l is None:
             return
-        pix = sample_pixels(self.img, getattr(self.ds, "path", ""), r.nt)
+        n = CONT_SAMPLE_N if self._needs_cont else SAMPLE_N
+        pix = sample_pixels(self.img, getattr(self.ds, "path", ""), r.nt, n=n)
         if pix is None:
             return
         ys, xs, ts = pix
         threads = getattr(getattr(self.ds, "probe", None), "gather_threads", 16)
         pixel = getattr(self.ds, "pixel", None)
+        parts: list[np.ndarray] = []
 
-        def job():
-            prof = sample_profiles(ys, xs, ts, self.ds.frames, r, pixel, threads)
-            self.loop.post(lambda: self.yrange.sample_ready(prof))
+        def job(i: int) -> None:
+            if self._closed:
+                return
+            j = slice(i, i + SAMPLE_N)
+            parts.append(sample_profiles(ys[j], xs[j], ts[j], self.ds.frames, r, pixel, threads))
+            if i + SAMPLE_N < len(ys):                  # queued behind what the cursor asked for meanwhile
+                self._submit_sample(job, i + SAMPLE_N)
+                return
+            prof = np.concatenate(parts)
+            self.loop.post(lambda: self._sample_ready(prof))
 
-        self._track(self.ds.executors.numba.submit(job)).add_done_callback(self._log_failure("y-range sample"))
+        self._submit_sample(job, 0)
+
+    def _submit_sample(self, job, i: int) -> None:
+        try:
+            fut = self.ds.executors.numba.submit(job, i)
+        except RuntimeError:                            # closing: its threads are gone
+            return
+        self._track(fut).add_done_callback(self._log_failure("y-range sample"))
+
+    def _sample_ready(self, prof: np.ndarray) -> None:
+        if self._closed:
+            return
+        k = quietest_tuning(prof) if self._needs_cont else None
+        self._needs_cont = False
+        if k is not None:
+            self._choose_cont(k, len(prof))
+        self.yrange.sample_ready(prof)
+        if k is not None and self._last_spec is not None:
+            self._draw("spectra", *self._last_spec)    # this pixel's spectrum again, Q U V in % of I_c
+
+    def _choose_cont(self, k: int, n: int) -> None:
+        """Tuning k becomes the cube's continuum for the session (Axes.cont, which every reader of it follows): the
+        titles say % of I_c, Q U V's ranges are fitted again in it (YRange.set_cont), the spectrum shown is drawn
+        again, the noise levels are read, and the sink says once which tuning it is."""
+        text = quietest_text(self.ds.axes, k, n)
+        self.ds.axes.cont = k
+        self.ds.axes.source.append(text)
+        log.info("%s: %s", getattr(self.ds, "path", ""), text)
+        self.yrange.set_cont(k)
+        self.sink.units(self.yrange.iscale)
+        if self.noise is not None:
+            self.noise.want(self.state)
+        self.sink.continuum(k, text)
 
     def _start_quv(self) -> None:
         """Q U V's ranges from the whole frames at the t shown, on the background thread (never delaying the cursor's
@@ -558,19 +621,22 @@ class Scheduler:
         limit = getattr(getattr(self.ds, "probe", None), "gather_threads", 16)
         threads = quv_threads(self.ds.frames.frame_bytes, limit)
 
+        cont = self._cont()
+
         def job():
             try:
-                half = quv_amplitude_ranges(self.ds.frames, r, self._cont(), t, threads=threads,
+                half = quv_amplitude_ranges(self.ds.frames, r, cont, t, threads=threads,
                                             strips=self.ds.executors.strips)[0]
             except Exception as e:                      # the sample's ranges stay: a range, not a failure
                 log.warning("Q U V ranges from whole frames failed: %r", e)
                 half = None
-            self.loop.post(lambda: self.yrange.quv_ready(half))
+            # in the units of the continuum it was read with: one chosen meanwhile asks for them again
+            self.loop.post(lambda: self.yrange.quv_ready(half) if self._cont() == cont else None)
 
         self._track(self.ds.executors.background.submit(job))
 
     def _cont(self):
-        """The continuum tuning, when the cube's header gives one."""
+        """The continuum tuning: the header's, or the one chosen from the sample (_choose_cont); None before."""
         return getattr(getattr(self.ds, "axes", None), "cont", None)
 
     def _noise_index(self, st: ViewState, s: int, lam: int) -> tuple:

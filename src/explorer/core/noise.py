@@ -8,8 +8,9 @@ Here the same sigma (data.stats.stokes_noise), in % of I_c as Q U V are plotted:
 - once per t: kept for the session (three floats per t), so a t seen again reads nothing;
 - latest wins: a job for a t already left stops before its next read;
 - not while playing: the t it stops on, at the pause. Until a t's sigma comes, the last one stays on screen;
-- only in a cube of 4 Stokes with a continuum tuning, with its spectra shown, and not with the images of a per-pixel
-  file alone (each frame a pass over the file).
+- only in a cube of 4 Stokes with a continuum tuning (the header's, or from the moment one is chosen from the sample:
+  core.scheduler), with its spectra shown, and not with the images of a per-pixel file alone (each frame a pass over
+  the file).
 """
 from collections.abc import Callable
 from concurrent.futures import Future
@@ -31,19 +32,27 @@ class NoiseReads:
         lambda l of state st; state(): the cube's state now."""
         self.ds, self.loop, self._show, self._track, self._index, self._state = ds, loop, show, track, index, state
         r = ds.roles
-        self.cont: int | None = getattr(getattr(ds, "axes", None), "cont", None)
-        self.applies = (r.s is not None and r.ns == STOKES and r.l is not None and self.cont is not None
-                        and not getattr(ds, "images_from_sp", False))
+        self._can = r.s is not None and r.ns == STOKES and r.l is not None and not getattr(ds, "images_from_sp", False)
         self.known: dict[int, dict[int, float]] = {}   # t -> sigma
         self.gens = Generations()
         self._closed = False
+
+    @property
+    def cont(self) -> int | None:
+        """The cube's continuum tuning now: the header's, or the one chosen from the sample later (core.scheduler)."""
+        return getattr(getattr(self.ds, "axes", None), "cont", None)
+
+    @property
+    def applies(self) -> bool:
+        return self._can and self.cont is not None
 
     def close(self) -> None:
         self._closed = True
 
     def want(self, st: ViewState) -> None:
         """The sigma of st's t: shown at once when known, else read (not while playing)."""
-        if self._closed or not self.applies or self.cont is None or "spectra" not in st.panels:
+        cont = self.cont
+        if self._closed or not self._can or cont is None or "spectra" not in st.panels:
             return
         t = st.t
         hit = self.known.get(t)
@@ -54,7 +63,6 @@ class NoiseReads:
         if st.playing:
             return
         g = self.gens.new("noise")
-        cont = int(self.cont)
 
         def job():
             frames = {}

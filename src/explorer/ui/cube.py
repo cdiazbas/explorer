@@ -10,11 +10,13 @@ _spectrum_click to _pick_flush 1270-1317, _image_click 1419), now one code for e
 """
 import math
 import os
+import sys
 
 import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore
 
+from .._name import APP_NAME
 from ..core.scheduler import Scheduler
 from ..data.axes import STOKES, unit_text
 from ..data.names import slice_names, value_name
@@ -80,6 +82,10 @@ class CubeSink:
     def noise(self, sigma, t):
         if self.cube.spectra is not None:
             self.cube.spectra.set_noise(sigma)
+
+    def continuum(self, k, text):
+        """A linked cube's continuum chosen from its sample: said on the terminal, with its name."""
+        print(f"[{APP_NAME}] {self.cube.name}: {text}", file=sys.stderr)
 
     def grid_image(self, s, idx, img, levels):          # the 2x2 view is the main cube's
         pass

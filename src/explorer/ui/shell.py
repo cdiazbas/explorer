@@ -74,6 +74,7 @@ SLIT_FLOAT_H = 320          # px: the slit panel floating below lambda-t in glas
 SP_SHEET_WIDTH = 560        # px: the sheet over a per-pixel file alone, its paragraphs wrapped to this
 TOAST_MS, FADE_MS = 2000, 500  # a save's note over the slit panel: shown, of which fading
 GAMMA_NOTE_MS = 1000        # gamma on the image's colour key after G, Shift+G, Ctrl+G
+CONTINUUM_NOTE_MS = 10000   # the continuum chosen from the sample, on the status line (core.scheduler _choose_cont)
 UPDATE_AFTER_S = 2.0        # the update check, this long after the first image (start_update_check)
 UPDATE_NOTE_MS, UPDATE_FADE_MS = 6000, 1000     # the note that a newer version exists: shown, of which fading
 UPDATE_NOTE = f"A newer {APP_NAME} is available: run <b>{APP_NAME} update</b> in a terminal"
@@ -145,6 +146,15 @@ class _Sink:
     def noise(self, sigma, t):
         if self.shell.spectra is not None:
             self.shell.spectra.set_noise(sigma)
+
+    def continuum(self, k, text):
+        """The continuum chosen from the sample: said once on the terminal and the status line; the lambda slider's
+        label marks it from now on, and the status line's I_c comes with the next pixel."""
+        sh = self.shell
+        print(f"[{APP_NAME}] {text}", file=sys.stderr)
+        sh.nav.sync(sh.session.state, frozenset({"l"}))
+        sh.update_status()
+        sh.statusBar().showMessage(text, CONTINUUM_NOTE_MS)
 
     def grid_image(self, s, idx, img, levels):
         if self.shell.grid is not None:

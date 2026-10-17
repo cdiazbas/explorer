@@ -489,6 +489,15 @@ def fmt_offset(v, nd=3) -> str:
     return f"λ₀ {'−' if neg else '+'}{s.lstrip('-')}\u00a0Å"
 
 
+def quietest_text(ax, k: int, n: int) -> str:
+    """What a continuum chosen from a sample says once (stats.quietest_tuning): 'continuum: tuning 26 (λ₀ +0.731 Å),
+    the quietest in Q, U, V of 500 profiles'; the wavelength as the header gives it, none without."""
+    dl = ax.dlam_A(k) if ax is not None else None
+    lam = ax.lam_A(k) if ax is not None else None
+    where = f" ({fmt_offset(dl)})" if dl is not None else f" ({lam:.2f} Å)" if lam is not None else ""
+    return f"continuum: tuning {k}{where}, the quietest in Q, U, V of {n} profiles"
+
+
 def fmt_signed(v, nd=1) -> str:
     """+1.3 / −1.3 with a typographic minus; 0 stays 0."""
     s = f"{v:+.{nd}f}"

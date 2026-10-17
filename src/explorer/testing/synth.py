@@ -52,17 +52,20 @@ def fov_mask(ny, nx, angle_deg=12.0, margin=0.12):
     return (np.abs(u) <= half) & (np.abs(v) <= half)
 
 
-def tunings_A(nl):
-    """Tuning offsets from line centre, Angstrom: nl-1 across the line and one continuum far in the red wing."""
+def tunings_A(nl, isolated=True):
+    """Tuning offsets from line centre, Angstrom: nl-1 across the line and one continuum far in the red wing;
+    isolated=False: all nl evenly from the blue wing to that continuum, none apart."""
+    if not isolated:
+        return np.linspace(-0.35, 0.70, nl)
     if nl < 3:
         return np.linspace(-0.35, 0.35, nl)
     return np.concatenate([np.linspace(-0.35, 0.35, nl - 1), [0.70]])
 
 
-def wcs_table(shape):
+def wcs_table(shape, isolated=True):
     """(nt, nl, 2, 2, 4) float64: HPLN, HPLT (arcsec), WAVE (nm), TIME (s since DATEREF) at the field's corners."""
     nt, _, nl, ny, nx = shape
-    lam = LINE_NM + tunings_A(nl) / 10.0
+    lam = LINE_NM + tunings_A(nl, isolated) / 10.0
     tab = np.empty((nt, nl, 2, 2, 4))
     for t in range(nt):
         cx, cy = -700.0 + 0.05 * t, 248.0 - 0.03 * t   # pointing drifts with t
@@ -77,7 +80,7 @@ def wcs_table(shape):
     return tab
 
 
-def _primary_header(shape):
+def _primary_header(shape, continuum=True):
     from astropy.io import fits
 
     nt, ns, nl, ny, nx = shape
@@ -102,15 +105,18 @@ def _primary_header(shape):
     h["WAVEBAND"] = "Fe I 6173"
     h["DATEREF"] = f"{DATE}T00:00:00.000000"
     h["SOLARNET"] = 1.0
-    h["PRSTEP1"] = "STOKES-CROSSTALK-CORRECTION"
-    h["PRPARA1"] = json.dumps({"TUNING_SELECTION": [nl - 1], "MARGIN": 50}, separators=(",", ":"))
+    if continuum:
+        h["PRSTEP1"] = "STOKES-CROSSTALK-CORRECTION"
+        h["PRPARA1"] = json.dumps({"TUNING_SELECTION": [nl - 1], "MARGIN": 50}, separators=(",", ":"))
     h["ORIGIN"] = "explorer synthetic cube"
     h["SYNTHVER"] = (SYNTH_VERSION, "explorer.testing.synth version")
     return h
 
 
-def write_stokes_cube(path, shape=DEFAULT_SHAPE, seed=0, padding=True):
-    """Write the _im cube with its WCS-TAB extension, one t at a time: memory ~ one t (10 MB for the default)."""
+def write_stokes_cube(path, shape=DEFAULT_SHAPE, seed=0, padding=True, continuum=True):
+    """Write the _im cube with its WCS-TAB extension, one t at a time: memory ~ one t (10 MB for the default).
+    continuum=False: nothing says which tuning is the continuum, as in an LP icube: no PRPARA in the header, and the
+    tunings evenly spaced, none apart (tunings_A)."""
     from astropy.io import fits
 
     nt, ns, nl, ny, nx = shape
@@ -123,9 +129,9 @@ def write_stokes_cube(path, shape=DEFAULT_SHAPE, seed=0, padding=True):
     pore = np.exp(-(((x - px) ** 2 + (y - py) ** 2) / (0.05 * nx) ** 2))
     b = spot - 0.8 * pore                                   # signed field, arbitrary units
     azimuth = 2 * np.arctan2(y - sy, x - sx)
-    lam = tunings_A(nl).astype(np.float32)
+    lam = tunings_A(nl, isolated=continuum).astype(np.float32)
     inside = fov_mask(ny, nx) if padding else np.ones((ny, nx), bool)
-    hdr = _primary_header(shape)
+    hdr = _primary_header(shape, continuum)
     hdr["SYNTSEED"] = (seed, "random seed")
 
     out = fits.StreamingHDU(str(path), hdr)                 # writes the header now, data as it comes
@@ -150,7 +156,7 @@ def write_stokes_cube(path, shape=DEFAULT_SHAPE, seed=0, padding=True):
             out.write(blk.astype(">f4"))
     finally:
         out.close()
-    tab = wcs_table(shape)
+    tab = wcs_table(shape, isolated=continuum)
     cols = fits.ColDefs([
         fits.Column(name="HPLN+HPLT+WAVE+TIME", format=f"{tab.size}D", dim=f"(4,2,2,{nl},{nt})", array=tab[None]),
         fits.Column(name="HPLN-INDEX", format="2E", array=np.array([[1, nx]], np.float32)),

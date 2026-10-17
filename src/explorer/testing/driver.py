@@ -42,6 +42,7 @@ class Shown:
     slit_s: int | None = None
     noise: dict | None = None                           # Q U V's sigma (Stokes -> % of I_c), with noise=True
     noise_t: int | None = None                          # and the t it is of
+    continuum: tuple | None = None                      # (tuning, text) when one was chosen from the sample
     counts: dict = field(default_factory=dict)
 
 
@@ -200,3 +201,7 @@ class _Recorder:
     def noise(self, sigma, t):
         self.s.noise, self.s.noise_t = dict(sigma), t
         self._count("noise")
+
+    def continuum(self, k, text):
+        self.s.continuum = (k, text)
+        self._count("continuum")
