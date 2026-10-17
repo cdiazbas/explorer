@@ -75,6 +75,9 @@ SLIT_FLOAT_H = 320          # px: the slit panel floating below lambda-t in glas
 SP_SHEET_WIDTH = 560        # px: the sheet over a per-pixel file alone, its paragraphs wrapped to this
 TOAST_MS, FADE_MS = 2000, 500  # a save's note over the slit panel: shown, of which fading
 GAMMA_NOTE_MS = 1000        # gamma on the image's colour key after G, Shift+G, Ctrl+G
+UPDATE_AFTER_S = 2.0        # the update check, this long after the first image (start_update_check)
+UPDATE_NOTE_MS, UPDATE_FADE_MS = 6000, 1000     # the note that a newer version exists: shown, of which fading
+UPDATE_NOTE = f"A newer {APP_NAME} is available: run <b>{APP_NAME} update</b> in a terminal"
 
 
 class _Follow(QtCore.QObject):
@@ -155,6 +158,10 @@ class _Sink:
 
 
 class Shell(QtWidgets.QMainWindow):
+    # (version line, update_check.Found or None), emitted by the update check's thread: Qt queues it to
+    # the window's thread, where show_about runs
+    _about_found = QtCore.Signal(object)
+
     def __init__(self, dataset, title: str | None = None, t0: float | None = None, look=None, linked=(), mask=None):
         """t0: perf_counter() when opening started, for the time to the first image. linked: cubes linked to this
         one (data.link has checked them; opened with its executors), shown beside it. mask: a data.mask.Mask on its
@@ -337,6 +344,10 @@ class Shell(QtWidgets.QMainWindow):
         self.sys_status.hide()
         self.last: dict = {}
         self.setWindowTitle(title or str(getattr(dataset, "path", "")))
+        self.version_line = ""                          # the ? sheet's last line, once the update check says it
+        self.newer = None                               # update_check.Found, when the check asked
+        self._update_note: overlays.Toast | None = None
+        self._about_found.connect(self.show_about)
         self._keys()
         self._install_gestures()
         # what the sink reads, before the scheduler: an image already in the cache (a second window on the same
@@ -464,7 +475,7 @@ class Shell(QtWidgets.QMainWindow):
         if self.colours is not None:
             self.colours.set_light(light)
         self.nav.restyle()
-        self.sheet.setText(self.action_registry.sheet_html(self.palette()))
+        self.sheet.setText(self.sheet_html())
         if self.sp_sheet is not None:
             self.sp_sheet.setText(self.per_pixel_sheet_html())
         self.set_look(self.look)                        # marks, cards and colour maps in the new theme
@@ -1215,6 +1226,58 @@ class Shell(QtWidgets.QMainWindow):
 
         QtCore.QTimer.singleShot(1500, start)
 
+    def start_update_check(self, about=None) -> None:
+        """The version for the ? sheet and whether origin has a newer one (update_check.about: git takes ~70 ms, the
+        remote up to its timeout), in a thread UPDATE_AFTER_S after the first image, so that it does not compete with
+        the start; its answer reaches show_about through a queued signal. about: update_check.about's stand-in."""
+        import threading
+
+        from .. import update_check
+
+        ask = about or update_check.about
+
+        def run():
+            try:
+                found = ask()
+            except Exception:                           # the check is silent: the log has it
+                log.exception("update check failed")
+                return
+            try:
+                self._about_found.emit(found)
+            except RuntimeError:                        # the window was deleted meanwhile
+                pass
+
+        def start():
+            if not self._closing:
+                threading.Thread(target=run, daemon=True, name="updatecheck").start()
+
+        self.after_first_image(UPDATE_AFTER_S, start)
+
+    def show_about(self, about) -> None:
+        """(version line, update_check.Found or None): the ? sheet's last line, and the note over the image when a
+        newer version is said for the first time."""
+        self.version_line, self.newer = about
+        self.sheet.setText(self.sheet_html())
+        if self.sheet.isVisible():
+            self.sheet.set_shown(True)                  # its size and place for the new line
+        if self.newer is not None and self.newer.announce:
+            self.show_update_note()
+
+    def show_update_note(self) -> None:
+        """UPDATE_NOTE over the foot of the image (overlays.Toast), above the colour key when the key is at the foot
+        (glass moves it to the top): UPDATE_NOTE_MS, fading over its last UPDATE_FADE_MS; through the X11 bridge (pace
+        offered a screen) gone at once, as each step of a fade is a repaint on the link."""
+        host = self.view.widget
+        if self._update_note is None:
+            self._update_note = overlays.Toast(host)
+            self.view.over.add(self._update_note)       # the whole image repainted when it goes (ui.overlays)
+        key = self.colour_key
+        bottom = None
+        if key is not None and key.isVisible() and key.geometry().top() > host.height() // 2:
+            bottom = key.geometry().top()
+        self._update_note.say(UPDATE_NOTE, UPDATE_NOTE_MS,
+                              0 if self.session.pace.offer is not None else UPDATE_FADE_MS, bottom)
+
     def fit_spectra(self) -> None:
         """F: the main cube's spectra fitted to this pixel's profile, and kept (closed); its padlock's right click."""
         self.main.fit_spectra()
@@ -1313,7 +1376,7 @@ class Shell(QtWidgets.QMainWindow):
     def _keys(self) -> None:
         self.action_registry = ActionRegistry(self.key_table(), self.mouse_table())     # not `actions`: QWidget's
         self.action_registry.install(self)
-        self.sheet = KeySheet(self, self.action_registry.sheet_html(self.palette()))
+        self.sheet = KeySheet(self, self.sheet_html())
         self.sp_sheet: KeySheet | None = None
         if getattr(self.dataset, "images_from_sp", False):     # shown at once: the first image takes seconds
             self.sp_sheet = KeySheet(self, self.per_pixel_sheet_html())
@@ -1321,6 +1384,11 @@ class Shell(QtWidgets.QMainWindow):
             self.sp_sheet.setFixedWidth(SP_SHEET_WIDTH)
             self.sp_sheet.set_shown(True)
             self.after_first_image(0, self._refresh_sp_sheet)
+
+    def sheet_html(self) -> str:
+        """The ? sheet (ui.actions), its last line the version and, when origin has a newer one, the command."""
+        return self.action_registry.sheet_html(self.palette(), self.version_line,
+                                               newer=self.newer is not None and self.newer.newer)
 
     def per_pixel_sheet_html(self) -> str:
         """The sheet over the window when the images come from a per-pixel file alone (data.transpose.estimate)."""

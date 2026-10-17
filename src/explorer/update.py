@@ -1,6 +1,6 @@
 """`explorer update`: bring this copy of explorer to the latest main of its git remote, by hand when its owner says
-there is something new; never at start (a change would reach everyone at once, in the middle of an analysis, and
-the remote is private: every start would need the network and credentials).
+there is something new; never at start (a change would reach everyone at once, in the middle of an analysis). The
+window only says that there is something new (update_check: read-only, at most once a day).
 
     explorer update            # how far behind, then a fast-forward to origin/main, and the version after it
     explorer update --check    # how far behind, and the commits it would bring; nothing changed

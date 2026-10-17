@@ -180,7 +180,8 @@ def given_cubes(path, sp, no_sp, linked) -> tuple[str, str | None, list[str], di
 def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=None, reset_layout=False, traces=False,
           saved_layout=True, linked=(), mask=None, series=None) -> Started | None:
     """Everything `explorer cube` does before its event loop: the display plan, the themed application, the cube,
-    the Shell with its title bar, its saved layout, the display's attachment, the terminal's keys and the link probe.
+    the Shell with its title bar, its saved layout, the display's attachment, the terminal's keys, the link probe and
+    the update check (update_check: in the background, at most once a day).
     The self-test (bench/explorer_selftest.py) goes through it too, so it measures the window as it is shown (as the
     prototype's app/startup.py, audit F4). saved_layout False: the user's saved layout is neither read, nor written
     at the close, nor dropped. theme None: the one in use at the last close on this way of displaying, else auto.
@@ -299,6 +300,7 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         link = disp.link()
         if plan.remote and link.bytes_per_px is not None:
             shell.start_link_probe(link)                # the default playback rate from what the link carries
+        shell.start_update_check()                      # the version on the ? sheet; a newer one said (update_check)
         log.info("%s; %s", ds.describe(), disp.stats())
         return Started(app, shell, ds, disp, plan, tracer, t0, app_ready, theme, others, masked)
     except BaseException:

@@ -102,6 +102,13 @@ forbidden_modules = ["explorer.cli", "explorer.doctor", "explorer.demo", "explor
                      "numpy", "numba", "astropy", "PySide6", "pyqtgraph", "Xlib"]
 
 [[tool.importlinter.contracts]]
+name = "the update and its check use the standard library only: no Qt, nothing heavy, not the interface"
+type = "forbidden"
+source_modules = ["explorer.update", "explorer.update_check"]
+forbidden_modules = ["explorer.cli", "explorer.ui", "explorer.core", "explorer.data", "explorer.testing",
+                     "numpy", "numba", "astropy", "PySide6", "pyqtgraph", "Xlib"]
+
+[[tool.importlinter.contracts]]
 name = "data never imports Qt, the command nor the test helpers"
 type = "forbidden"
 source_modules = ["explorer.data"]

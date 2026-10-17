@@ -254,17 +254,25 @@ def test_every_bound_key_is_shown_on_its_row(linked_shell):
 
 def test_the_sheet_is_a_few_short_lines_and_fits_a_laptop_window(qapp, linked_shell):
     """At most 16 lines a column and 6 words an entry; the card under 600 px high at the default font, so it fits
-    over the image of a 900-px-high window without scrolling."""
+    over the image of a 900-px-high window without scrolling. Measured with its longest last line: the version and
+    a newer one's command (update_check), which makes it no wider."""
+    from explorer.update_check import Found
+
     w = linked_shell
     rows = [(k, what) for k, what, _b in w.action_registry.rows] + list(w.action_registry.mouse)
     long = [r for r in rows if len(r[1].replace("·", " ").split()) > 6]
     w.toggle_sheet()
     qapp.processEvents()
+    bare = w.sheet.sizeHint()
+    w.show_about(("explorer 0.0.1.dev527 · 2026-10-17", Found(True, False, "b" * 40, "a" * 40)))
+    qapp.processEvents()
     h = w.sheet.sizeHint().height()
-    print("key rows", len(w.action_registry.rows), "mouse rows", len(w.action_registry.mouse), "sheet", h, "px")
+    print("key rows", len(w.action_registry.rows), "mouse rows", len(w.action_registry.mouse), "sheet", h, "px",
+          "without the version line", bare.height(), "px; width", bare.width(), "->", w.sheet.sizeHint().width())
     w.toggle_sheet()
     assert max(len(w.action_registry.rows), len(w.action_registry.mouse)) <= 16 and not long, long
     assert h < 600, h
+    assert w.sheet.sizeHint().width() == bare.width()
 
 
 def test_the_sheet_writes_gamma_in_an_italic_serif():

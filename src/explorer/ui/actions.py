@@ -16,6 +16,7 @@ import sys
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .._name import APP_NAME
 from ..obs import get_logger
 from .overlays import GAMMA, GAMMA_FAMILIES
 
@@ -27,7 +28,7 @@ def mod_key() -> str:
     return "⌘" if sys.platform == "darwin" else "Ctrl+"
 
 
-CREDIT = "Designed and implemented by C. J. Díaz Baso"     # the last line of the ? sheet
+CREDIT = "Designed and implemented by C. J. Díaz Baso"     # the ? sheet's last line, the version's under it
 
 class ActionRegistry:
     def __init__(self, rows, mouse=()):
@@ -64,10 +65,16 @@ class ActionRegistry:
             out.append(sc)
         return out
 
-    def sheet_html(self, palette: QtGui.QPalette) -> str:
+    def sheet_html(self, palette: QtGui.QPalette, version: str = "", newer: bool = False) -> str:
         """The keys on the left, the mouse on the right, a line per row: short enough to read at a glance and to fit a
-        laptop's window without scrolling; under them, how it closes and the credit."""
+        laptop's window without scrolling; under them, how it closes and the credit, and a last line with version
+        (update_check.version_line; none while it is not known) and, when origin has a newer one, the command that
+        brings it."""
         dim = palette.color(QtGui.QPalette.ColorRole.PlaceholderText).name()
+        foot = html.escape(version) if version else ""
+        if version and newer:
+            foot += f' · <span style="color:{palette.color(QtGui.QPalette.ColorRole.Text).name()}">newer version ' \
+                    f"available: <b>{html.escape(APP_NAME)} update</b></span>"
 
         def column(title, rows):
             return ('<table cellspacing="0" cellpadding="2">'
@@ -79,7 +86,8 @@ class ActionRegistry:
                 '<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>'
                 f'<td valign="top">{column("Mouse", self.mouse)}</td></tr></table>'
                 f'<table width="100%" cellspacing="0" cellpadding="2" style="color:{dim}"><tr>'
-                f'<td>? or Esc closes this</td><td align="right"><i>{CREDIT}</i></td></tr></table>')
+                f'<td>? or Esc closes this</td><td align="right"><i>{CREDIT}</i></td></tr>'
+                + (f'<tr><td colspan="2">{foot}</td></tr>' if foot else "") + "</table>")
 
 
 def text_html(text: str) -> str:
