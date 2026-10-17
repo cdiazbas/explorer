@@ -173,6 +173,12 @@ class Session:
     def lock(self, on: bool = True) -> None:
         self.store.set(locked=bool(on))
 
+    def lock_at(self, y: int, x: int) -> None:
+        """The cursor to (y, x), clipped as hover clips it, and locked there, whether it was locked or not."""
+        self.lock(False)
+        self.hover(y, x)
+        self.lock(True)
+
     def set_t_cap(self, cap: int | None) -> None:
         """The t steps the temporal panels read and show at most (data.tsample), every cube's; None: every t."""
         self.store.set(t_cap=None if cap is None else max(1, int(cap)))

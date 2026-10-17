@@ -270,9 +270,7 @@ class CubeView:
             self.shell.view.show_all()
             return
         p = self.view.vb.mapSceneToView(ev.scenePos())
-        self.session.lock(False)                        # move there, then lock
-        self.session.hover(math.floor(p.y()), math.floor(p.x()))
-        self.session.lock(True)
+        self.session.lock_at(math.floor(p.y()), math.floor(p.x()))
 
     def _install_gestures(self) -> None:
         """Click or drag picks on its spectra (lambda) and lambda-t (t and lambda); a right click on either releases

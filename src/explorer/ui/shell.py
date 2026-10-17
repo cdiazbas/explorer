@@ -1119,9 +1119,7 @@ class Shell(QtWidgets.QMainWindow):
             return
         i, axis, v = hit
         iy, ix = panel.pix
-        self.session.lock(False)
-        self.session.hover(int(iy[i]), int(ix[i]))
-        self.session.lock(True)
+        self.session.lock_at(int(iy[i]), int(ix[i]))
         if k and axis == "t":                           # its t nearest the main cube's (Member.t)
             mt = self.session.members[k].t
             v = min(range(len(mt)), key=lambda i: abs(mt[i] - v))
@@ -1608,9 +1606,7 @@ class Shell(QtWidgets.QMainWindow):
             while 0 <= j + d < n and iy[j + d] == iy[i] and ix[j + d] == ix[i]:
                 j += d
             i = int(np.clip(j + d, 0, n - 1))
-        self.session.lock(False)
-        self.session.hover(int(iy[i]), int(ix[i]))
-        self.session.lock(True)
+        self.session.lock_at(int(iy[i]), int(ix[i]))
 
     def _slit_mode_changed(self, on: bool) -> None:
         """The button and the image's pointer at rest (ui.gestures puts it back after a pan) follow the mode, however

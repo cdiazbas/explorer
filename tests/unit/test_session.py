@@ -38,6 +38,15 @@ def test_hover_is_clipped_ignored_when_locked_and_skipped_on_the_same_pixel(sess
     assert session.state.cursor == (7, 7)
 
 
+def test_lock_at_moves_a_locked_cursor_and_locks_a_free_one(session):
+    session.lock()
+    session.lock_at(-3, 400)
+    assert (session.state.cursor, session.state.locked) == ((0, 19), True)
+    session.lock(False)
+    session.lock_at(7, 8)
+    assert (session.state.cursor, session.state.locked) == ((7, 8), True)
+
+
 def test_index_changes_clip_and_step_wraps_only_when_asked(session):
     session.set_index("t", 99)
     assert session.state.t == 4
