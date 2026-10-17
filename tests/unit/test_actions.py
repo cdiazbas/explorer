@@ -275,6 +275,25 @@ def test_the_sheet_is_a_few_short_lines_and_fits_a_laptop_window(qapp, linked_sh
     assert w.sheet.sizeHint().width() == bare.width()
 
 
+def test_the_sheet_s_foot_stands_apart_from_the_keys(qapp):
+    """Between the key and mouse tables and the foot (how it closes, the credit, the version) a gap of FOOT_GAP px at
+    least, the tables' own padding aside: laid out by the sheet's QTextDocument, the foot's table starts that far
+    below the bottom of the one above it."""
+    from PySide6 import QtGui
+
+    from explorer.ui.actions import FOOT_GAP, ActionRegistry
+
+    reg = ActionRegistry([("K", "a key", ())], [("click", "a gesture")])
+    doc = QtGui.QTextDocument()
+    doc.setHtml(reg.sheet_html(QtGui.QPalette(), "explorer 0.0.1.dev999 · 17 Oct 2026"))
+    doc.setTextWidth(800)
+    lay = doc.documentLayout()
+    keys, foot = doc.rootFrame().childFrames()[:2]
+    above, below = lay.frameBoundingRect(keys), lay.frameBoundingRect(foot)
+    print(f"keys {above.getRect()}, foot {below.getRect()}: gap {below.top() - above.bottom():.1f} px")
+    assert below.top() - above.bottom() >= FOOT_GAP
+
+
 def test_the_sheet_writes_gamma_in_an_italic_serif():
     """In the interface's sans at the sheet's size γ reads as a y (the user, 2026-10-11): the sheet sets it apart."""
     from explorer.ui.actions import text_html

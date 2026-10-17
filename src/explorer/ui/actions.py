@@ -29,6 +29,7 @@ def mod_key() -> str:
 
 
 CREDIT = "Designed and implemented by C. J. Díaz Baso"     # the ? sheet's last line, the version's under it
+FOOT_GAP = 8                                            # px between the key and mouse lists and the foot under them
 
 class ActionRegistry:
     def __init__(self, rows, mouse=()):
@@ -86,7 +87,7 @@ class ActionRegistry:
                 f'<td valign="top">{column("Keys", [(k, w) for k, w, _b in self.rows])}</td>'
                 '<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>'
                 f'<td valign="top">{column("Mouse", self.mouse)}</td></tr></table>'
-                f'<table width="100%" cellspacing="0" cellpadding="2" style="color:{dim}"><tr>'
+                f'<table width="100%" cellspacing="0" cellpadding="2" style="margin-top:{FOOT_GAP}px; color:{dim}"><tr>'
                 f'<td>? or Esc closes this</td><td align="right"><i>{CREDIT}</i></td></tr>'
                 + (f'<tr><td colspan="2">{foot}</td></tr>' if foot else "") + "</table>")
 
