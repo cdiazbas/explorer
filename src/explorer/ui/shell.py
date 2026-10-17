@@ -359,6 +359,8 @@ class Shell(QtWidgets.QMainWindow):
         self.grid: StokesGrid | None = None             # the 2x2 view (ui.stokesgrid), made the first time it is asked
         self.pointer = 0                                # the cube whose image the mouse last moved over (CubeView)
         self.glass: glass.GlassChrome | None = None     # the glass look's chrome (ui.glass), while worn
+        # (zoom state, geometry): the size glass put under a zoom it gave back on leaving (GlassChrome.remove)
+        self.under_zoom: tuple[QtCore.Qt.WindowState, QtCore.QRect] | None = None
         self._seams: MacSeams | None = None
         self._shown_lut = object()
         self._off = self.session.store.subscribe(self._on_state)

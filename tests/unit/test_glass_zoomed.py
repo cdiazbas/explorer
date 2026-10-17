@@ -4,10 +4,16 @@ the monitor's height at its left edge, the panels in their column on its right, 
 monitor; out of glass it is zoomed again, and the zoom's undo gives back the size it had before the zoom. On a Mac
 the window kept the screen's width and the panels landed on it.
 
+Zoomed in glass (a Mac's green button pressed there; full screen), the zoom stays across looks: out of glass the
+window is zoomed, back in glass narrowed as above, out again zoomed, and the zoom's undo gives back the size from
+before glass. Before, a zoom taken in glass was left on the way out: the window came back at its size from before
+glass, and back in glass it kept that size.
+
 Each case runs in its own process: a monitor of the Mac's size (1352 x 878 points), which Qt's offscreen platform
 takes from a configuration file of its own (the tests' application has an 800 x 800 one, with no room beside it).
 
-    python tests/unit/test_glass_zoomed.py <cube_im.fits> maximised|fullscreen|titlebar   (one JSON line a step)
+    python tests/unit/test_glass_zoomed.py <cube_im.fits> CASE   (one JSON line a step)
+    CASE: maximised|fullscreen|titlebar (zoomed in classic), glass_maximised|glass_fullscreen (zoomed in glass)
 """
 import json
 import os
@@ -79,6 +85,33 @@ def test_a_zoomed_window_in_glass_leaves_room_for_the_panels_and_is_zoomed_again
     assert undone["geometry"] == list(START) and not undone["zoomed"], undone
 
 
+@pytest.mark.parametrize("case", ["glass_maximised", "glass_fullscreen", "glass_started_maximised"])
+def test_a_zoom_taken_in_glass_stays_out_of_it_and_back_in_it(cube, case, tmp_path):
+    """glass_started: the window shown in glass (the last session closed in it), so that the other look starts
+    afresh at the first window's size (docks.first_geometry, no saved layout here): the zoom's undo gives that."""
+    from explorer.ui.glass import FLOAT_W
+
+    s = run(cube, case, tmp_path)
+    zoomed, out, g, back, undone = s["zoomed"], s["classic"], s["glass"], s["classic2"], s["undone"]
+    print(case, json.dumps(s))
+    m = zoomed["monitor"]
+    assert zoomed["zoomed"] and zoomed["frame"][2] >= m[2] - 2, f"not zoomed in glass to begin with: {zoomed}"
+    # out of glass: zoomed as it was in glass
+    assert out["zoomed"] and out["state"] == zoomed["state"], dict(out=out, zoomed=zoomed)
+    assert out["frame"][2] >= m[2] - 2 and out["frame"][3] >= m[3] - 2, out
+    # back in glass: narrowed beside the panels, as a window zoomed in another look
+    assert not g["zoomed"] and g["unzoomed"] is None, g
+    fx, fy, fw, fh = g["frame"]
+    assert inside(g["frame"], m) and (fx, fy) == (m[0], m[1]) and abs(fh - m[3]) <= 1, (g["frame"], m)
+    assert fw <= m[2] - FLOAT_W, g
+    for name, d in g["docks"].items():
+        assert d["floating"] and d["visible"] and not meets(d["frame"], g["frame"]), (name, d, g["frame"])
+    # out again: zoomed as the first time
+    assert back["state"] == out["state"] and back["frame"] == out["frame"], dict(back=back, out=out)
+    # and the zoom's undo gives back the window from before glass, or the other look's first one
+    assert undone["geometry"] == undone["before"] and not undone["zoomed"], undone
+
+
 # ---------------------------------------------------------------- the case, in its own process
 def main() -> int:
     from PySide6 import QtCore, QtWidgets
@@ -88,6 +121,7 @@ def main() -> int:
     from explorer.platform.display import Display
     from explorer.platform.plan import DisplayPlan
     from explorer.platform.screens import monitor_rect
+    from explorer.ui import docks
     from explorer.ui.shell import Shell
 
     zoom = QtCore.Qt.WindowState.WindowMaximized | QtCore.Qt.WindowState.WindowFullScreen
@@ -105,6 +139,8 @@ def main() -> int:
         titlebar.wanted = lambda *a, **k: True          # a local Mac keeps its own
         appmod.chrome(app, w, ops, disp.ops, bridge=False)
     w.setGeometry(*START)
+    if case.startswith("glass_started"):               # glass worn before the window is shown (the last session
+        w.set_look(get_look("glass"))                   # closed in glass): out of it, the other look starts afresh
     w.show()
 
     def spin(until=lambda: False, timeout=1.0):
@@ -117,16 +153,42 @@ def main() -> int:
     def rect(r):
         return [r.x(), r.y(), r.width(), r.height()]
 
+    # the window's size under the zoom: START, or out of a glass worn before the window was shown, the other look's
+    # first one (no saved layout here)
+    started = case.startswith("glass_started")
+    before = rect(docks.first_geometry(app, getattr(w, "images", 1))) if started else list(START)
+
     def step(name):
         print(json.dumps(dict(
-            step=name, state=int(w.windowState().value), zoomed=bool(w.windowState() & zoom),
-            frame=rect(w.frameGeometry()), geometry=rect(w.geometry()),
+            step=name, before=before, state=int(w.windowState().value), zoomed=bool(w.windowState() & zoom),
+            frame=rect(w.frameGeometry()), geometry=rect(w.geometry()), normal=rect(w.normalGeometry()),
             monitor=rect(monitor_rect(app, w.frameGeometry().center())),
             unzoomed=rect(ops.unzoomed) if ops.unzoomed is not None else None,
             docks={d.objectName(): dict(floating=d.isFloating(), visible=d.isVisible(), frame=rect(d.frameGeometry()))
                    for d in (w.spec_dock, w.lt_dock)})), flush=True)
 
     assert spin(lambda: w.first_image_s is not None and "lambda_t" in w.last, timeout=20)
+    if case.startswith("glass_"):                       # zoomed in glass; then classic, glass, classic
+        if w.glass is None:
+            w.set_look(get_look("glass"))
+        assert spin(lambda: all(d.isFloating() and d.isVisible() for d in (w.spec_dock, w.lt_dock)), timeout=10)
+        spin()
+        (w.showFullScreen if case.endswith("fullscreen") else w.showMaximized)()
+        spin()
+        step("zoomed")
+        for name, look in (("classic", "classic"), ("glass", "glass"), ("classic2", "classic")):
+            w.set_look(get_look(look))
+            if look == "glass":
+                assert spin(lambda: all(d.isFloating() and d.isVisible() for d in (w.spec_dock, w.lt_dock)),
+                            timeout=10)
+            spin()
+            step(name)
+        w.showNormal()
+        spin()
+        step("undone")
+        w.close()
+        ds.close()
+        return 0
     {"maximised": w.showMaximized, "fullscreen": w.showFullScreen, "titlebar": ops.zoom}[case]()
     spin()
     step("zoomed")
