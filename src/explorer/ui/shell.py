@@ -142,6 +142,10 @@ class _Sink:
         if self.shell.spectra is not None:
             self.shell.spectra.set_units(iscale)
 
+    def noise(self, sigma, t):
+        if self.shell.spectra is not None:
+            self.shell.spectra.set_noise(sigma)
+
     def grid_image(self, s, idx, img, levels):
         if self.shell.grid is not None:
             self.shell.grid.set_image(s, img, levels, gamma=self.shell.session.gamma(0, s))

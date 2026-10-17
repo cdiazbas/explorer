@@ -231,3 +231,37 @@ def quv_plot_ranges(half, cont, iscale):
     """The half-widths as symmetric plot ranges: in % of I_c with a continuum tuning, else over I's power of ten."""
     conv = 1.0 if cont is not None else 1.0 / (iscale or 1.0)
     return {k: nice_range(-m * conv, m * conv) for k, m in half.items()}
+
+
+# ---------------------------------------------------------------- the noise of Q U V
+#
+# CRISPEX's noise level (crispex.pro L21033-21043, in CRISPEX_UPDATE_T, at every change of t): per Stokes, the
+# standard deviation of S/I_c over the whole frame at the continuum tuning, pixel by pixel, NaN ignored (STDDEV(...,
+# /NAN): IDL's variance divides by n - 1). Drawn at +-1 sigma (L8554-8562). Here in % of I_c, as Q U V are plotted.
+# The robust sigma (1.4826 MAD) came out 7-8 % lower on the synthetic cubes (their noise the same everywhere in
+# counts, so 4x wider in S/I_c over the spot's umbra) and costs 8x more: 28 against 3.7 ms for the three Stokes on
+# 768 x 768 frames (Mac M-series, bench/noise_cost.py).
+
+def stokes_noise(ic, frames: dict, robust: bool = False) -> dict[int, float]:
+    """{Stokes: sigma} of frames[s] / ic in % of I_c, over the pixels where both are finite and I_c > 0: ic is
+    Stokes I's frame at the continuum tuning, frames {s: the frame of Stokes s at the same (t, lambda)}. robust: 1.4826
+    MAD instead of the standard deviation (n - 1). A Stokes with fewer than 2 such pixels, or a sigma that is not
+    finite and positive, is left out. The ratios in float32, the sums in float64: 28 ms for the three on 2k x 2k
+    frames against 42 ms all in float64, the same sigma to 3e-11 (Mac M-series)."""
+    ic = np.asarray(ic, dtype=np.float32)
+    out: dict[int, float] = {}
+    with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
+        good = np.isfinite(ic) & (ic > 0)
+        icg = ic[good]
+        for s, f in frames.items():
+            r = np.asarray(f, dtype=np.float32)[good] / icg
+            r = r[np.isfinite(r)]
+            if r.size < 2:
+                continue
+            if robust:
+                sig = 100.0 * 1.4826 * float(np.median(np.abs(r - np.median(r))))
+            else:
+                sig = 100.0 * float(r.std(ddof=1, dtype=np.float64))
+            if np.isfinite(sig) and sig > 0:
+                out[int(s)] = sig
+    return out

@@ -1,7 +1,7 @@
 """The spectra panel (ROADMAP E4.3): one plot per Stokes, the four of I Q U V as 2x2 (I Q / U V), any other number in
 a column; x shared, delta-lambda [Å] below and the Doppler velocity above when the header gives the wavelengths,
 the tuning index otherwise; the cursor's lambda as a line; Stokes I titled in its power of ten of BUNIT, Q U V in % of
-I_c when the continuum tuning is known.
+I_c when the continuum tuning is known, with their noise level at +-sigma (a trial: NOISE_VAR).
 
 What is drawn and in which units is decided by the core: spectra in plot units (yrange.spectrum, plot_units), each
 plot's y range (yrange: grows while the cursor moves, refits at rest, fixed by the padlock) and I's power of ten.
@@ -29,6 +29,18 @@ DOT, RING = 4, 9                                        # px: each measured poin
 X_PAD = 0.04                                            # of the lambda span, each side
 AXIS_W = 56                                             # px: tick digits changing never re-lays out the plots
 FREEZE_VAR = f"{APP_NAME.upper()}_RESIZE_FREEZE"
+# Q U V's +-sigma (core.noise), a trial of two ways to draw it: CRISPEX's dashed lines at +-1 sigma in the curves'
+# colour (crispex.pro L8554-8562), or a band between them; off draws none and reads nothing
+NOISE_VAR = f"{APP_NAME.upper()}_TRY_SIGMA"
+NOISE_MODES = ("lines", "band", "off")
+NOISE_ALPHA = {"lines": 150, "band": 34}                # of the curves' ink: the lines', the band's fill
+NOISE_DASH = [5, 3]                                     # longer than the modern look's zero line, which is dashed too
+
+
+def noise_mode() -> str:
+    """How Q U V's +-sigma is drawn, from NOISE_VAR: lines, band or off; lines without it or for anything else."""
+    v = os.environ.get(NOISE_VAR, "lines").strip().lower()
+    return v if v in NOISE_MODES else "lines"
 
 
 def decimals(spacing: float) -> int:
@@ -233,6 +245,8 @@ class SpectraPanel:
         self._classic = [(c.opts["pen"], c.opts["symbolPen"], c.opts["symbolBrush"]) for c in self.curves]
         self._zeros: list = []
         self.light = light
+        self.noise_mode = noise_mode() if ns == len(STOKES) else "off"
+        self._noise: dict[int, list] = {}               # Stokes -> its +-sigma: two lines, or one band
         # the x axes are linked: their values once, on the outer edges (delta-lambda under the bottom row, v over the
         # top one), as two rows of the same numbers between the plots read as a third axis. Inner axes keep their
         # line, the box's edge. The velocity ticks point out, to their labels: it has no grid, and inward they hung
@@ -282,6 +296,8 @@ class SpectraPanel:
         zero = QtGui.QColor(0, 0, 0, 70) if light else QtGui.QColor(255, 255, 255, 70)
         for ln in self._zeros:
             ln.setPen(pg.mkPen(zero, width=1, style=QtCore.Qt.PenStyle.DashLine))
+        for items in self._noise.values():
+            self._style_noise(items)
         style.default_axes(self.w)
 
     def set_marks(self, colour, light: bool) -> None:
@@ -325,6 +341,75 @@ class SpectraPanel:
     def set_units(self, iscale: float | None) -> None:
         self.iscale = iscale
         self.label_stokes()
+
+    # ---------------------------------------------------------------- Q U V's +-sigma (a trial: NOISE_VAR)
+    def set_noise(self, sigma: dict) -> None:
+        """Q U V's noise levels (Stokes -> sigma in % of I_c, core.noise) at +-sigma, as lines or a band (NOISE_VAR);
+        in data coordinates, so they follow each plot's y range. Only on Q U V of a panel of the 4 Stokes; a Stokes
+        without a sigma has none. They never take the mouse: a click on them picks lambda as anywhere on the plot."""
+        if self.noise_mode == "off":
+            return
+        for k in range(1, len(STOKES)):
+            sig = sigma.get(k)
+            items = self._noise.get(k)
+            if items is None:
+                if sig is None:
+                    continue
+                items = self._noise[k] = self._make_noise(k)
+            for it in items:
+                it.setVisible(sig is not None)
+            if sig is None:
+                continue
+            if self.noise_mode == "band":
+                items[0].setRegion((-sig, sig))
+            else:
+                items[0].setValue(sig)
+                items[1].setValue(-sig)
+
+    def noise_at(self, k: int) -> tuple[float, float] | None:
+        """(-sigma, +sigma) as plot k draws it, or None when it draws none."""
+        items = self._noise.get(k)
+        if not items or not items[0].isVisible():
+            return None
+        if self.noise_mode == "band":
+            lo, hi = items[0].getRegion()
+            return float(lo), float(hi)
+        return float(items[1].value()), float(items[0].value())
+
+    def _make_noise(self, k: int) -> list:
+        p = self.plots[k]
+        if self.noise_mode == "band":
+            items = [pg.LinearRegionItem(orientation="horizontal", movable=False)]
+            items[0].setZValue(-10)                     # under the curve and the markers
+        else:
+            items = [pg.InfiniteLine(angle=0, movable=False), pg.InfiniteLine(angle=0, movable=False)]
+            for ln in items:
+                ln.setZValue(-1)
+        for it in items:
+            for part in [it, *getattr(it, "lines", [])]:
+                part.setAcceptedMouseButtons(QtCore.Qt.MouseButton.NoButton)
+                part.setAcceptHoverEvents(False)
+            p.addItem(it, ignoreBounds=True)
+        self._style_noise(items)
+        return items
+
+    def _style_noise(self, items: list) -> None:
+        """In the curves' ink, as CRISPEX draws them in its plot colour: dashed lines, or a faint band without
+        edges."""
+        ink = QtGui.QColor(30, 30, 34) if self.light else QtGui.QColor(255, 255, 255)
+        ink.setAlpha(NOISE_ALPHA[self.noise_mode])
+        if self.noise_mode == "band":
+            band = items[0]
+            band.setBrush(pg.mkBrush(ink))
+            band.setHoverBrush(pg.mkBrush(ink))
+            for ln in band.lines:
+                ln.setPen(pg.mkPen(None))
+                ln.setHoverPen(pg.mkPen(None))
+            return
+        pen = pg.mkPen(ink, width=1)
+        pen.setDashPattern(NOISE_DASH)
+        for ln in items:
+            ln.setPen(pen)
 
     def show(self, spec: np.ndarray) -> None:
         """spec: (ns, nl) in plot units; a Stokes with nothing finite (padding) is left empty, without warnings."""

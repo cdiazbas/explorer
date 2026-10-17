@@ -77,6 +77,10 @@ class CubeSink:
         if self.cube.spectra is not None:
             self.cube.spectra.set_units(iscale)
 
+    def noise(self, sigma, t):
+        if self.cube.spectra is not None:
+            self.cube.spectra.set_noise(sigma)
+
     def grid_image(self, s, idx, img, levels):          # the 2x2 view is the main cube's
         pass
 
@@ -150,8 +154,10 @@ class CubeView:
 
     def start(self, sink=None) -> None:
         """Its scheduler (sink: where its results go; its own panels by default), and the state followed from now
-        on."""
-        self.scheduler = Scheduler(self.session, sink if sink is not None else CubeSink(self), member=self.k)
+        on. Q U V's noise levels are read when its spectra draw them (ui.spectra NOISE_VAR)."""
+        noise = self.spectra is not None and self.spectra.noise_mode != "off"
+        self.scheduler = Scheduler(self.session, sink if sink is not None else CubeSink(self), member=self.k,
+                                   noise=noise)
         self._off = self.session.store.subscribe(self._on_state)
         self.follow(self.session.member_state(self.k), None)
 

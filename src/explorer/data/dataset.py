@@ -258,6 +258,17 @@ class Dataset:
             return self._passes.image(idx, request)
         return self._images.submit(self.cache.get, idx)
 
+    def read_frame(self, idx) -> tuple[np.ndarray, bool]:
+        """(the frame at idx, whether it was read): the cached one when there is one, else read now on the calling
+        thread (a worker's, never the UI's) and not kept, so that frames wanted once (the noise levels') never push
+        out the frames read ahead. Not for the images of a per-pixel file alone: each is a pass over the file."""
+        hit = self.cache.peek(idx)
+        if hit is not None:
+            return hit, False
+        if self.images_from_sp:
+            raise LookupError(f"{self.path}: its images are passes over the per-pixel file; use image()")
+        return self.frames.read(tuple(int(i) for i in idx)), True
+
     def prefetch(self, idx) -> Future | None:
         """Read the frame at idx ahead, in the background: the read's future, the one in flight if any (None when
         cached or outside the cube)."""

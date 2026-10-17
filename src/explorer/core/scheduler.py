@@ -35,6 +35,7 @@ The image's levels are computed on the thread that read the frame, before its re
 that read frames ahead (Levels.ahead): the UI thread finds them cached. Never for a read already stale, nor on the
 main thread: a future that completed before its callback was added runs it there, and the levels are then computed
 when the image is shown, as before.
+Q U V's noise levels (core.noise), when the UI asks for them: at each t, with the spectra shown, not while playing.
 """
 import dataclasses
 import functools
@@ -49,6 +50,7 @@ from ..data.stats import quv_amplitude_ranges, quv_threads, sample_pixels, sampl
 from ..data.tsample import time_samples
 from ..obs import counter, get_logger
 from .levels import Levels, panel_levels, rule_levels
+from .noise import NoiseReads
 from .session import Session
 from .slitreads import SlitReads
 from .state import ViewState
@@ -74,6 +76,8 @@ class Sink(Protocol):
 
     def units(self, iscale: float | None) -> None: ...                                 # I's power of ten, for titles
 
+    def noise(self, sigma: dict[int, float], t: int) -> None: ...                     # Q U V's sigma at t (core.noise)
+
     def grid_image(self, s: int, idx: tuple, img: np.ndarray, levels: tuple[float, float]) -> None: ...  # 2x2 view
 
     def slit_path(self, pix: tuple[np.ndarray, np.ndarray] | None) -> None: ...        # the slit's pixels (iy, ix)
@@ -83,7 +87,9 @@ class Sink(Protocol):
 
 
 class Scheduler:
-    def __init__(self, session: Session, sink: Sink, member: int = 0):
+    def __init__(self, session: Session, sink: Sink, member: int = 0, noise: bool = False):
+        """noise: Q U V's noise levels read at each t and sent to sink.noise (core.noise); without it the sink is
+        never asked for them."""
         self.session, self.sink, self.member = session, sink, member
         self.ds: Any = session.members[member].dataset   # a Dataset: the session types only what it needs of one
         self.loop = session.store.loop
@@ -110,6 +116,9 @@ class Scheduler:
         self._flock = threading.Lock()
         self._scale_seen = self._my_scale(st)
         self.slit = SlitReads(session, sink, self._track, self._when_read, cube=member)
+        self.noise = NoiseReads(self.ds, self.loop, sink.noise, self._track, self._noise_index,
+                                lambda: self.state) if noise else None
+        self._noise_due = False                         # a new t's sigma, asked for once its spectra are drawn
         self._off = session.store.subscribe(self._on_change)
         self._units_read = False
         if "spectra" in st.panels:
@@ -117,6 +126,8 @@ class Scheduler:
         self._pending.add("cursor")                     # the first image brings the first cursor
         if self._image_shown(st):
             self._request_image(st)
+        if self.noise is not None:
+            self.noise.want(st)
 
     @property
     def state(self) -> ViewState:
@@ -149,6 +160,8 @@ class Scheduler:
         """No more work: what is due later (the y-range sample) or still on its way is dropped."""
         self._closed = True
         self.slit.close()
+        if self.noise is not None:
+            self.noise.close()
         self._off()
 
     # ---------------------------------------------------------------- bookkeeping for tests and idle checks
@@ -195,6 +208,11 @@ class Scheduler:
             if not changed:
                 return
         came, self._panels = st.panels - self._panels, st.panels
+        if self.noise is not None and "t" in changed:
+            self._noise_due = True                      # once this t's spectra are drawn (_noise_after)
+        elif self.noise is not None and ("playing" in changed or "spectra" in came):
+            noise = self.noise
+            self.loop.call_soon(lambda: noise.want(st))
         if "spectra" in came:                           # shown for the first time: what waited for it
             if not self._units_read:
                 self._first_units(st)
@@ -334,6 +352,7 @@ class Scheduler:
         v0 = self.img[y, x]
         if not np.isfinite(v0) or (v0 == 0 and st.s == 0):
             counter("core.cursor.skipped_padding")
+            self._noise_after()                         # no spectra to wait for
             g = self.gens.new("cursor")                 # results still in flight are now stale
             self.shown.accept("spectra", g)
             self.shown.accept("lambda_t", g)
@@ -373,6 +392,15 @@ class Scheduler:
             self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=at > 0))
         else:
             self.sink.spectra(self.yrange.spectrum(arr), pixel, at)
+            self._noise_after()
+
+    def _noise_after(self) -> None:
+        """The sigma of a new t, asked for once its spectra are drawn (or the cursor is on padding): started with
+        the step, its reads slowed the step's own (768 x 768 synthetic cube, Mac: 1.18 -> 1.69 ms to the spectra;
+        after them, 1.15 -> 1.43, as much as the same work done between two steps without sigma costs the next)."""
+        if self._noise_due and self.noise is not None:
+            self._noise_due = False
+            self.noise.want(self.state)
 
     # ---------------------------------------------------------------- the image's levels
     def _show_image(self) -> None:
@@ -544,6 +572,10 @@ class Scheduler:
     def _cont(self):
         """The continuum tuning, when the cube's header gives one."""
         return getattr(getattr(self.ds, "axes", None), "cont", None)
+
+    def _noise_index(self, st: ViewState, s: int, lam: int) -> tuple:
+        """The index of the frame at st's t, Stokes s and lambda lam (core.noise)."""
+        return self.session.index_of(self.member, dataclasses.replace(st, s=s, l=lam))
 
     @staticmethod
     def _log_failure(what: str):

@@ -40,22 +40,25 @@ class Shown:
     slit_ts: np.ndarray | None = None                   # its time slice (t x position), spectral slice (lambda x ...)
     slit_sl: np.ndarray | None = None
     slit_s: int | None = None
+    noise: dict | None = None                           # Q U V's sigma (Stokes -> % of I_c), with noise=True
+    noise_t: int | None = None                          # and the t it is of
     counts: dict = field(default_factory=dict)
 
 
 class Driver:
-    def __init__(self, dataset, own: bool = False):
+    def __init__(self, dataset, own: bool = False, noise: bool = False):
+        """noise: Q U V's noise levels read at each t, as the window asks for them (Scheduler, core.noise)."""
         self.dataset, self._own = dataset, own
         self.loop = ManualLoop()
         self.session = Session(self.loop, dataset)
         self.shown = Shown()
-        self.scheduler = Scheduler(self.session, _Recorder(self.shown))
+        self.scheduler = Scheduler(self.session, _Recorder(self.shown), noise=noise)
         self.wait_idle()
 
     @classmethod
-    def open(cls, path, **dataset_kw) -> "Driver":
+    def open(cls, path, noise: bool = False, **dataset_kw) -> "Driver":
         """A Driver over a cube opened here (and closed with it); dataset_kw as Dataset's (sp, no_sp, axes...)."""
-        return cls(Dataset.open(path, **dataset_kw), own=True)
+        return cls(Dataset.open(path, **dataset_kw), own=True, noise=noise)
 
     # ---------------------------------------------------------------- state
     def state(self) -> ViewState:
@@ -193,3 +196,7 @@ class _Recorder:
 
     def units(self, iscale):
         self.s.iscale = iscale
+
+    def noise(self, sigma, t):
+        self.s.noise, self.s.noise_t = dict(sigma), t
+        self._count("noise")
