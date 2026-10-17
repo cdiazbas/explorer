@@ -454,3 +454,74 @@ def test_away_from_the_macos_style_the_numbered_titles_keep_their_marks(qapp, cu
             assert t.buttons[0].x() < t.buttons[1].x() < t.steps_button.x() < t.width() // 2
     finally:
         close()
+
+
+def _as_qt_s(qapp, w, where: str) -> None:
+    """lambda-t's title as the spectra's beside it (Qt's own, the same width): Qt's close and float where Qt puts
+    them, the same pixels; the contents as high; the number as high as the marks, on their inner side, inside."""
+    from PySide6 import QtCore, QtWidgets
+
+    from explorer.ui.titlebar import StepsButton
+
+    spec, lt = w.spec_dock, w.lt_dock
+    assert spin(qapp, lambda: lt.titleBarWidget().isVisible() and lt.titleBarWidget().button.x() > 0)
+    qapp.processEvents()
+    assert spec.titleBarWidget() is None and spec.width() == lt.width()
+    t = lt.titleBarWidget()
+    F = QtCore.Qt.FindChildOption.FindDirectChildrenOnly
+    for b_name in ("qt_dockwidget_closebutton", "qt_dockwidget_floatbutton"):
+        qt_b = spec.findChild(QtWidgets.QAbstractButton, b_name, F)
+        ours = t.findChild(QtWidgets.QAbstractButton, b_name)
+        print(f"{where} {b_name}: Qt's {qt_b.geometry().getRect()}, ours {ours.geometry().getRect()}")
+        assert ours.geometry() == qt_b.geometry(), where
+        assert ours.grab().toImage() == qt_b.grab().toImage(), where
+    assert lt.widget().y() == spec.widget().y(), where
+    b, f = t.findChild(StepsButton, "time_steps"), t.button.geometry()
+    marks = min(m.geometry().left() for m in t.buttons)
+    print(f"{where}: number at {b.geometry().getRect()}, marks from x {marks}, title {t.width()} px")
+    if f.center().x() > t.width() // 2:                 # the themes' marks, at the right: the number before them
+        assert marks - 8 <= b.geometry().right() < marks and b.x() > t.width() // 2, where
+    else:                                               # the macOS style's, at the left: after them
+        assert f.right() < b.x() <= f.right() + 8, where
+    assert b.geometry().center().y() == f.center().y() and t.rect().contains(b.geometry()), where
+
+
+def test_on_a_mac_under_explorer_s_themes_the_numbered_titles_have_qt_s_marks(qapp, cube, monkeypatch):
+    """On a local Mac (cocoa) the spectra keep Qt's title under every theme; lambda-t's and the slit's stand in for
+    it (Shell.give_steps). Under explorer's dark and light themes (Fusion's, with explorer's style) they showed 7-px
+    tool buttons at the left, where the spectra beside them have Qt's marks at the right. Now Qt's marks, where Qt
+    puts them, also after T (the theme while the window runs) and after T from the native macOS style, whose marks
+    are at the left. Offscreen, as a platform whose stand-in titles show Qt's marks (cocoa's, which tests do not
+    run on)."""
+    import pyqtgraph as pg
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.ui import style
+    from explorer.ui.titlebar import DockTitle
+
+    monkeypatch.setattr(DockTitle, "QT_MARKS_PLATFORMS", ("offscreen",), raising=False)
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    try:
+        style.apply_theme(qapp, "dark")
+        w, close = window(qapp, cube[0], no_sp=True)
+        try:
+            assert type(w.slit_dock.titleBarWidget()) is type(w.lt_dock.titleBarWidget())
+            _as_qt_s(qapp, w, "dark")
+            w.set_theme("light")
+            _as_qt_s(qapp, w, "light, after T")
+        finally:
+            close()
+        if "macos" in [k.lower() for k in QtWidgets.QStyleFactory.keys()]:
+            qapp.setStyle(QtWidgets.QStyleFactory.create("macos"))
+            w, close = window(qapp, cube[0], no_sp=True)
+            try:
+                _as_qt_s(qapp, w, "macos")
+                w.set_theme("dark")
+                _as_qt_s(qapp, w, "dark, after T from the macos style")
+            finally:
+                close()
+    finally:
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+        qapp.setProperty("explorer_light", False)
+        pg.setConfigOptions(background="k", foreground="d")

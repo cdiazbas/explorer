@@ -721,14 +721,19 @@ class DockTitle(QtWidgets.QWidget):
     """Close and float buttons at the left, the title centred: what macOS draws on a local Mac, so every path looks
     and works the same. A temporal panel's (dock.steps, a TimeSteps) has the number of its t steps after them.
     stand_in: the title stands in for Qt's own (Shell.give_steps: a local Mac, where the other panels keep Qt's);
-    under the native macOS style its close and float are then Qt's (QtMark), where Qt puts them, and the bar is
-    drawn in the panel's style (MacSeams: no light line under it), so it reads as its neighbours' titles."""
+    under the native macOS style, and under any style on a local Mac (explorer's dark and light themes), its close
+    and float are then Qt's (QtMark), where Qt puts them, and the bar is drawn in the panel's style (MacSeams: no
+    light line under it), so it reads as its neighbours' titles: the macOS style's marks at the left, the name centred
+    after the number; the themes' marks at the right, the name at the left as the style draws Qt's, the number by the
+    marks."""
     QT_MARKS = ("macos",)                               # the styles whose stand-in titles show Qt's marks
+    QT_MARKS_PLATFORMS = ("cocoa",)                     # and the platforms, whatever the style
 
     def __init__(self, dock, stand_in: bool = False):
         super().__init__(dock)
         self.d = dock
-        self.qt_marks = stand_in and QtWidgets.QApplication.style().name() in self.QT_MARKS
+        self.qt_marks = stand_in and (QtWidgets.QApplication.style().name() in self.QT_MARKS
+                                      or QtGui.QGuiApplication.platformName() in self.QT_MARKS_PLATFORMS)
         st = dock.style()
         PM = QtWidgets.QStyle.PixelMetric
         m = st.pixelMetric(PM.PM_DockWidgetTitleMargin, None, dock)
@@ -789,17 +794,31 @@ class DockTitle(QtWidgets.QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        if not self.qt_marks:
-            return
+        if self.qt_marks:
+            self._place_qt_marks()
+
+    def marks_at_right(self) -> bool:
+        return self.qt_marks and self.button.geometry().center().x() > self.width() // 2
+
+    def _place_qt_marks(self) -> None:
         rects = self._qt_rects(self.rect())
         for b, r in zip(self.buttons, rects[:2], strict=True):
             QtWidgets.QWidgetItem(b).setGeometry(r)     # as Qt lays out its own: within their size and policy
-        if self.steps_button is not None:               # after the float mark, as high
-            f = self.button.geometry()
-            self.steps_button.setFixedHeight(f.height())
+        if self.steps_button is None:
+            return
+        f = self.button.geometry()                      # as high as the float mark
+        self.steps_button.setFixedHeight(f.height())
+        if self.save_button is not None:
+            self.save_button.setFixedHeight(f.height())
+        if self.marks_at_right():                       # before the marks: number and save end STEPS_GAP_QT short
+            end = min(b.geometry().left() for b in self.buttons) - STEPS_GAP_QT
+            if self.save_button is not None:
+                self.save_button.move(end - self.save_button.width(), f.top())
+                end = self.save_button.x()
+            self.steps_button.move(end - self.steps_button.width(), f.top())
+        else:                                           # after the float mark
             self.steps_button.move(f.right() + 1 + STEPS_GAP_QT, f.top())
             if self.save_button is not None:
-                self.save_button.setFixedHeight(f.height())
                 self.save_button.move(self.steps_button.geometry().right() + 1, f.top())
 
     def left_end(self) -> int:
@@ -839,8 +858,18 @@ class DockTitle(QtWidgets.QWidget):
     def _paint_as_qt(self, p: QtGui.QPainter, opt: QtWidgets.QStyleOptionDockWidget) -> None:
         """The bar and the title as QDockWidget paints its own: in the panel's style (MacSeams: no light line under
         it), the name in the panel's font centred where the style puts it (after the marks), moved clear of the
-        number (and the slit's save) when it would run over it."""
+        number (and the slit's save) when it would run over it. With the marks at the right (explorer's themes) the
+        style draws the name too, where it draws Qt's (at the left), cut short before the number."""
         st = self.d.style()
+        if self.marks_at_right():
+            r = self._qt_rects(self.rect())[2]
+            f = QtGui.QFont(self.font())
+            f.setWeight(QtGui.QFont.Weight.DemiBold)    # the widest a style draws it: elided early, never late
+            room = (self.steps_button.x() - 6 if self.steps_button is not None else r.right()) - r.left()
+            opt.title = QtGui.QFontMetrics(f).elidedText(self.d.windowTitle(), Qt.TextElideMode.ElideRight,
+                                                         max(0, room))
+            st.drawControl(QtWidgets.QStyle.ControlElement.CE_DockWidgetTitle, opt, p, self)
+            return
         st.drawControl(QtWidgets.QStyle.ControlElement.CE_DockWidgetTitle, opt, p, self)
         r = self._qt_rects(self.rect())[2]
         fm = QtGui.QFontMetrics(self.d.font())
