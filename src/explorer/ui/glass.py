@@ -656,6 +656,8 @@ class GlassChrome:
         if self._tinted is not None:
             for a, c in zip(self.TINT, (mark, sel, sel.lighter(110), sel.darker(115)), strict=True):
                 setattr(st, a, c)
+            if hasattr(st, "set_controls"):             # the menus' and lists' rows too: their sheets hold a colour
+                st.set_controls(mark, sel)
         drop = self.w.nav.drop
         self._sheet = None
         if drop is not None:
@@ -669,6 +671,8 @@ class GlassChrome:
             for a in self.TINT:
                 if a in vars(st):
                     delattr(st, a)
+            if hasattr(st, "set_controls"):
+                st.set_controls(None)
         if self._sheet is not None and self.w.nav.drop is not None:
             self.w.nav.drop.segments.setStyleSheet(self._sheet)
 

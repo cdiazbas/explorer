@@ -414,6 +414,8 @@ class Shell(QtWidgets.QMainWindow):
             st.SLIDER = acc if L.has("glass") else None if L.has("marks") else CURSOR_PEN.color()
             for sl in self.nav.sliders.values():
                 sl.update()
+        if hasattr(st, "set_controls") and not L.has("glass"):     # glass tints them its own (GlassChrome._tint)
+            st.set_controls(None if L.has("marks") else CURSOR_PEN.color())     # classic: one accent, its red
         self.main.set_look(L, acc, light)               # its reticle, marks and cards (ui.cube)
         if self.grid is not None:
             self.grid.set_reticle(L.has("reticle"))

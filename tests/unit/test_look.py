@@ -410,3 +410,54 @@ def test_the_keys_power_of_ten_goes_with_the_unit(themed, monkeypatch, name, lim
         key.render(QtGui.QPixmap(key.size()))
     host.deleteLater()
     assert texts == want, dict(seen=texts, want=want)
+
+
+def test_each_look_wears_its_own_colour_on_the_controls(themed, cube):
+    """A toggle that is on, the chosen row of a menu or a pop-up list and a focus ring: the classic look's red, glass's
+    orange, the modern look's blue (the theme's accent). The menus made already change too: their sheets hold the
+    colour they were made with, and glass's Panels menu kept the blue. accent() stays the theme's in classic."""
+    from PySide6 import QtGui
+
+    from explorer.look import get_look
+    from explorer.ui import glass, style
+    from explorer.ui.imageview import CURSOR_PEN
+
+    w, ds = make(themed, cube, "classic")
+    try:
+        st, menu = themed.style(), w.nav.panels.menu()
+        red = CURSOR_PEN.color()
+        assert st.CTRL is not None and st.CTRL[0] == red
+        assert red.darker(130).name() in menu.styleSheet() and red.darker(130).name() in st.POPUP
+        assert style.SELECTED.name() not in menu.styleSheet()
+        assert style.accent() == QtGui.QColor(style.ACCENT)          # the markers' and the mask's accent kept
+
+        w.set_look(get_look("glass", {}))
+        themed.processEvents()
+        orange = glass.accent()
+        assert st.CTRL[0] == orange
+        assert glass.for_white_text(orange).name() in menu.styleSheet()
+
+        w.set_look(get_look("modern", {}))
+        themed.processEvents()
+        assert st.CTRL is None and st.MENU == type(st).MENU
+        assert style.SELECTED.name() in menu.styleSheet()
+    finally:
+        w.close()
+        ds.close()
+
+
+def test_a_focus_ring_only_for_focus_from_the_keyboard():
+    """After a click a combo kept its accent ring until something else took the focus; the ring now needs the
+    window's last focus change to have come from the keyboard (Tab), as macOS and browsers draw it."""
+    from PySide6 import QtWidgets
+
+    from explorer.ui.style import _focus_shown
+
+    S = QtWidgets.QStyle.StateFlag
+    o = QtWidgets.QStyleOption()
+    o.state = S.State_Enabled | S.State_HasFocus
+    assert not _focus_shown(o)
+    o.state = S.State_Enabled | S.State_HasFocus | S.State_KeyboardFocusChange
+    assert _focus_shown(o)
+    o.state = S.State_Enabled | S.State_KeyboardFocusChange
+    assert not _focus_shown(o)

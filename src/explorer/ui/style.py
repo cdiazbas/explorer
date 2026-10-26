@@ -192,6 +192,12 @@ def _enabled(opt):
     return bool(opt.state & S.State_Enabled)
 
 
+def _focus_shown(opt):
+    """A focus ring only for focus that came from the keyboard (Tab), as macOS and browsers draw it: after a click a
+    combo kept its ring until something else took the focus."""
+    return bool(opt.state & S.State_HasFocus and opt.state & S.State_KeyboardFocusChange)
+
+
 class _RoundMask(QtCore.QObject):
     """Rounded corners for top-level popups (menus, tool tips, the pop-up list) without an alpha channel: a 1-bit
     window shape, which every X server honours."""
@@ -221,6 +227,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
     INK = staticmethod(WHITE)                       # overlays and glyphs: white at an alpha (light: black)
     ACC, SEL, SEL_HOVER, SEL_DOWN = _A, SELECTED, SELECTED_HOVER, SELECTED_DOWN
     SLIDER = None                                   # slider fill, if not ACC
+    CTRL = None                                     # the controls' (ACC, SEL, SEL_HOVER, SEL_DOWN), if not those
     SEP, LABEL = SEPARATOR, LABEL
     MENU, POPUP, SCROLL = MENU_QSS, POPUP_QSS, SCROLL_QSS
     TIP_BG, TIP_FG = C("#3a3a3a"), C("#e4e4e4")
@@ -240,8 +247,35 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
         super().__init__(QtWidgets.QStyleFactory.create("Fusion"))
         self._icons: dict = {}
 
-    def _acc(self, a):                                 # the accent at an alpha: focus rings
-        return C(self.ACC.red(), self.ACC.green(), self.ACC.blue(), int(round(a * 255)))
+    def _ctl(self, k):
+        """The controls' accent (k 0) and their fill when on (1 normal, 2 hover, 3 pressed): CTRL, a look's (the
+        classic look's red: set_controls), or the theme's."""
+        return (self.CTRL or (self.ACC, self.SEL, self.SEL_HOVER, self.SEL_DOWN))[k]
+
+    def set_controls(self, colour, sel=None) -> None:
+        """The controls in colour (a QColor; None: the theme's accent): focus rings, a toggle that is on, the chosen
+        row of a menu or a pop-up list, whose sheets hold the colour they were made with. accent() stays the theme's:
+        the classic look's markers and the mask's outline keep it. sel: the fill under white text; by default
+        colour.darker(130), white on it 4.5:1 or more as on the blue (the classic red: 5.11:1)."""
+        if colour is None:
+            self.CTRL = None
+            menu, popup = type(self).MENU, type(self).POPUP
+        else:
+            sel = C(sel) if sel is not None else C(colour).darker(130)
+            self.CTRL = (C(colour), sel, sel.lighter(110), sel.darker(115))
+            sheet = dict(_LIGHT_SHEET if self.THEME == "light" else _DARK_SHEET, sel=sel.name())
+            menu, popup = _MENU_QSS % sheet, _POPUP_QSS % sheet
+            _OURS.update((menu, popup))                 # polish may replace them, as the theme's
+        if (menu, popup) == (self.MENU, self.POPUP):
+            return
+        self.MENU, self.POPUP = menu, popup
+        for w in QtWidgets.QApplication.allWidgets():   # the menus and pop-up lists made already
+            if isinstance(w, (QtWidgets.QMenu, QtWidgets.QComboBox)):
+                self.polish(w)
+
+    def _acc(self, a):                                 # the controls' accent at an alpha: focus rings
+        c = self._ctl(0)
+        return C(c.red(), c.green(), c.blue(), int(round(a * 255)))
 
     # ---- popups: rounded masks, their own sheets; sizes set once
     def polish(self, arg):
@@ -344,7 +378,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
         if st & S.State_On and not _enabled(opt):
             p.setBrush(self.INK(0.10))
         elif st & S.State_On:                          # a toggle that is on (playing): the accent
-            p.setBrush(self.SEL_DOWN if st & S.State_Sunken else self.SEL_HOVER if st & S.State_MouseOver else self.SEL)
+            p.setBrush(self._ctl(3 if st & S.State_Sunken else 2 if st & S.State_MouseOver else 1))
         else:
             p.setBrush(self.TOOL_DOWN if st & S.State_Sunken else self.TOOL_HOVER)
         p.drawRoundedRect(rect, 4, 4)
@@ -363,7 +397,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         if (on or partial) and en:
             p.setPen(QtGui.QPen(BLACK(0.25), 1))
-            p.setBrush(self.SEL if down else self.ACC)
+            p.setBrush(self._ctl(1 if down else 0))
         elif on or partial:
             p.setPen(QtGui.QPen(self.INK(0.08), 1))
             p.setBrush(self.INK(0.12))
@@ -371,7 +405,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
             p.setPen(QtGui.QPen(self.CHECK_PEN[0 if en else 1], 1))       # 3:1 on the window (WCAG 1.4.11)
             p.setBrush(self.CHECK_FILL[(0 if down else 1) if en else 2])
         p.drawRoundedRect(box, 3.5, 3.5)
-        if st & S.State_HasFocus:
+        if _focus_shown(opt):
             p.setPen(QtGui.QPen(self._acc(0.55), 2))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawRoundedRect(box.adjusted(-1.5, -1.5, 1.5, 1.5), 4.5, 4.5)
@@ -437,6 +471,8 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
     def _focus_rect(self, opt, p, w):
         if isinstance(w, (QtWidgets.QCheckBox, QtWidgets.QRadioButton)):
             return                                     # the ring goes round the box (_checkbox), not the text
+        if not opt.state & S.State_KeyboardFocusChange:
+            return                                     # focus from a click: no ring (_focus_shown)
         p.save()
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         p.setPen(QtGui.QPen(self._acc(0.60), 1.5))
@@ -476,7 +512,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
             p.save()
             p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(self.SEL)
+            p.setBrush(self._ctl(1))
             p.drawRoundedRect(QtCore.QRectF(opt.rect).adjusted(3.5, 0.5, -3.5, -0.5), 4, 4)
             p.restore()
             o = QtWidgets.QStyleOptionMenuItem(opt)      # rounded accent row, white text (pop-up list)
@@ -522,13 +558,13 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
     def _box(self, p, r, fill, opt):
         """The rounded box of pop-up buttons and fields: faint border, a lighter top edge (dark) or a shadow along
         the bottom (light), the accent when focused."""
-        en, focus = _enabled(opt), bool(opt.state & S.State_HasFocus)
+        en, focus = _enabled(opt), _focus_shown(opt)
         r = QtCore.QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(fill)
         p.drawRoundedRect(r, 6, 6)
         if focus and en:
-            p.setPen(QtGui.QPen(self.ACC, 1))
+            p.setPen(QtGui.QPen(self._ctl(0), 1))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawRoundedRect(r, 6, 6)
             p.setPen(QtGui.QPen(self._acc(0.35), 1))
@@ -604,7 +640,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
                 filled = QtCore.QRectF(track.left(), track.top(), t, c.y() - track.top())
         p.setBrush(self.TRACK[0 if en else 1])
         p.drawRoundedRect(track, t / 2, t / 2)
-        p.setBrush((self.SLIDER or self.ACC) if en else self.INK(0.22))
+        p.setBrush((self.SLIDER or self._ctl(0)) if en else self.INK(0.22))
         p.drawRoundedRect(filled, t / 2, t / 2)
         knob = QtCore.QRectF(0, 0, d, d)
         knob.moveCenter(c)
@@ -617,7 +653,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
         p.setBrush(self.KNOB[0 if down else 1 if en else 2])
         p.setPen(QtGui.QPen(self.KNOB_EDGE, 0.5))
         p.drawEllipse(knob)
-        if opt.state & S.State_HasFocus and en:
+        if _focus_shown(opt) and en:
             p.setPen(QtGui.QPen(self._acc(0.55), 2))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawEllipse(knob.adjusted(-1.5, -1.5, 1.5, 1.5))
