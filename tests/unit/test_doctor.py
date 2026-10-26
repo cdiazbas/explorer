@@ -79,6 +79,24 @@ def test_started_by_run_sh_the_numba_pool_is_the_one_the_viewer_sizes(headless):
     assert json.loads(out.read_text())["numba"]["threads"] >= GATHER_MAX
 
 
+def test_the_pythons_doctor_accepts_are_the_ones_pyproject_allows(monkeypatch):
+    """doctor.PYTHONS and requires-python say the same: 3.12 and 3.13 pass the check, 3.11 and 3.14 do not."""
+    import tomllib
+    import types
+
+    from packaging.specifiers import SpecifierSet
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    with open(os.path.join(root, "pyproject.toml"), "rb") as f:
+        allowed = SpecifierSet(tomllib.load(f)["project"]["requires-python"])
+    assert {(3, m) for m in range(8, 20) if f"3.{m}.0" in allowed} == set(doctor.PYTHONS)
+    for m, want in ((11, doctor.FAIL), (12, doctor.OK), (13, doctor.OK), (14, doctor.FAIL)):
+        monkeypatch.setattr(doctor.sys, "version_info", types.SimpleNamespace(major=3, minor=m))
+        status, msg = doctor.c_python(doctor.Report())
+        assert status in (want, doctor.WARN if want == doctor.OK else want), (m, msg)   # WARN: not in a venv
+        assert (status == doctor.FAIL) is (want == doctor.FAIL), (m, msg)
+
+
 @pytest.mark.parametrize("extra, want", [
     ({}, doctor.WARN),                                              # auto: the bridge stands in, Qt offscreen
     ({"QT_QPA_PLATFORM": "xcb"}, doctor.FAIL),                      # Qt's own X11 asked for: it cannot start

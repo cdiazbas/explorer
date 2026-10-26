@@ -26,6 +26,7 @@ from ._paths import cache_dir
 from .platform.plan import GET_XCB_CURSOR, X11_VAR, XCB_CURSOR, find_xcb_cursor
 
 OK, WARN, FAIL = "ok", "WARN", "FAIL"
+PYTHONS = ((3, 12), (3, 13))                            # pyproject's requires-python, as (major, minor)
 
 
 class Report:
@@ -65,8 +66,9 @@ def c_python(rep):
     else:
         where = None
     info = f"Python {platform.python_version()} ({where or 'NOT an isolated environment'}: {sys.prefix})"
-    if (v.major, v.minor) != (3, 12):
-        return FAIL, info + "; explorer needs 3.12 (the version it was measured with)"
+    if (v.major, v.minor) not in PYTHONS:
+        return FAIL, info + "; explorer needs " + " or ".join(f"{a}.{b}" for a, b in PYTHONS) + \
+            " (measured with 3.12; the suites pass on 3.13)"
     return (OK if where else WARN), info
 
 

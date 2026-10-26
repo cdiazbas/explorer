@@ -7,7 +7,8 @@ all the documentation, in [docs/](docs/README.md) (in Spanish).
 ## Install
 
 Runs on macOS (Apple silicon and Intel) and Linux x86_64. No root needed. It needs `git`, and either
-[uv](https://docs.astral.sh/uv/) or conda/mamba on the machine; with uv, the right Python (3.12) is fetched for you.
+[uv](https://docs.astral.sh/uv/) or conda/mamba on the machine; with uv, the right Python is fetched for you. It
+runs on Python 3.12 (the version it was measured with) and 3.13.
 
 ```bash
 git clone https://github.com/cdiazbas/explorer.git
@@ -38,12 +39,12 @@ explorer update                  # when told there is something new: this copy b
 **Without a clone, as an application** (for using it, not for developing it):
 
 ```bash
-uv tool install --python 3.12 git+https://github.com/cdiazbas/explorer.git
+uv tool install git+https://github.com/cdiazbas/explorer.git
 ```
 
-This puts the `explorer` command on your PATH in an environment of its own. `--python 3.12` matters: a recent uv
-otherwise picks a newer Python, which numba does not support yet. The repository is private for now, so this needs
-the same GitHub access as a clone. Update it with `uv tool upgrade explorer`.
+This puts the `explorer` command on your PATH in an environment of its own, with a Python it can run on (uv fetches
+one if the machine has none). The repository is private for now, so this needs the same GitHub access as a clone.
+Update it with `uv tool upgrade explorer`.
 
 **Reporting a problem:** run it again with `--log` (`explorer --log cube_im.fits`, or `explorer demo --log`). The
 session then keeps traces of the window (every move and resize) and, over ssh, of what goes to the X server. When the

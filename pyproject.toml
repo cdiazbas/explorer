@@ -9,7 +9,8 @@ description = "Viewer for solar spectropolarimetric cubes [t, Stokes, lambda, y,
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
-requires-python = ">=3.12,<3.13"        # the prototype was measured on 3.12.13
+# measured on 3.12.13; the suites pass on 3.13 (and on 3.14, but Intel Macs' numba 0.62.1 has no 3.14 wheels)
+requires-python = ">=3.12,<3.14"
 # Pins are the versions the prototype was measured with (docs/measured.md). Intel Macs get the last numba
 # with x86_64 macOS wheels (0.62.1) and the numpy/llvmlite that go with it; its kernels were checked
 # identical (hash) against 0.67.0 on arm64 by the prototype's bench/test_numba_compat.py.

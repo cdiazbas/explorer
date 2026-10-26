@@ -17,30 +17,40 @@ colorama==0.4.6 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
     # via pyqtgraph
 llvmlite==0.45.1 ; platform_machine == 'x86_64' and sys_platform == 'darwin' \
     --hash=sha256:09430bb9d0bb58fc45a45a57c7eae912850bedc095cd0810a57de109c69e1c32 \
-    --hash=sha256:28e763aba92fe9c72296911e040231d486447c01d4f90027c8e893d89d49b20e
+    --hash=sha256:28e763aba92fe9c72296911e040231d486447c01d4f90027c8e893d89d49b20e \
+    --hash=sha256:d9ea9e6f17569a4253515cc01dade70aba536476e3d750b2e18d81d7e670eb15
     # via
     #   explorer
     #   numba
 llvmlite==0.49.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:00f16db782f4a13c78c5804aedc434e46794a77e89999a168f9401106270e50a \
+    --hash=sha256:039fa4054a06f537fb39248d4472284ca96be311a142ec09e69f95630ab469cc \
     --hash=sha256:6acba646d88abbc87d5c113a3d62c1fbf8b8fee11c6493f516803e30f21ae870 \
-    --hash=sha256:b541c8fac3450db7574d1f53cf9dff83f285bfed9d69bf81fe71fc2a7d4f97fe
+    --hash=sha256:b541c8fac3450db7574d1f53cf9dff83f285bfed9d69bf81fe71fc2a7d4f97fe \
+    --hash=sha256:ddc7aecd4f56397ed6e8f120ec5dcd5a1a8f0e6032ca4af413462792d4dca2e3
     # via
     #   explorer
     #   numba
 numba==0.62.1 ; platform_machine == 'x86_64' and sys_platform == 'darwin' \
     --hash=sha256:1b743b32f8fa5fff22e19c2e906db2f0a340782caf024477b97801b918cf0494 \
-    --hash=sha256:7b774242aa890e34c21200a1fc62e5b5757d5286267e71103257f4e2af0d5161
+    --hash=sha256:7b774242aa890e34c21200a1fc62e5b5757d5286267e71103257f4e2af0d5161 \
+    --hash=sha256:b72489ba8411cc9fdcaa2458d8f7677751e94f0109eeb53e5becfdc818c64afb
     # via explorer
 numba==0.67.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:6004d8d5f28d4028687fb2d972d629295b13685943bd2ed5cd8810c3b848e219 \
+    --hash=sha256:77e1c7173fee57a0d84e006c7e70346689d6cb3e7db503489bae58646b4eff7b \
+    --hash=sha256:9c4953387c77864b596d8296e2cfbdef82b0eea4166ab4864b05d226c51143e0 \
     --hash=sha256:cd75aa535b33fa05d9d930b1ae8af9f97a2881e96d72dfb38ec9b78284d9f851 \
     --hash=sha256:f63d43db06b4756424d6d2484737c902e0ae944a0eec3e8b0b4de2c695b15caa
     # via explorer
 numpy==2.3.5 ; platform_machine == 'x86_64' and sys_platform == 'darwin' \
+    --hash=sha256:30bc11310e8153ca664b14c5f1b73e94bd0503681fcf136a163de856f3a50139 \
     --hash=sha256:3101e5177d114a593d79dd79658650fe28b5a0d8abeb8ce6f437c0e6df5be1a4 \
+    --hash=sha256:414802f3b97f3c1eef41e530aaba3b3c1620649871d8cb38c6eaff034c2e16bd \
     --hash=sha256:74ae7b798248fe62021dbf3c914245ad45d1a6b0cb4a29ecb4b31d0bfbc4cc3e \
-    --hash=sha256:784db1dcdab56bf0517743e746dfb0f885fc68d948aba86eeec2cba234bdf1c0
+    --hash=sha256:784db1dcdab56bf0517743e746dfb0f885fc68d948aba86eeec2cba234bdf1c0 \
+    --hash=sha256:afaffc4393205524af9dfa400fa250143a6c3bc646c08c9f5e25a9f4b4d6a903 \
+    --hash=sha256:d0f23b44f57077c1ede8c5f26b30f706498b4862d3ff0a7298b8411dd2f043ff
     # via
     #   astropy
     #   explorer
@@ -48,11 +58,15 @@ numpy==2.3.5 ; platform_machine == 'x86_64' and sys_platform == 'darwin' \
     #   pyerfa
     #   pyqtgraph
 numpy==2.5.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:1302b90c0e52281681b2975adfe8a860cb7b12216a27b4b0b4207c44bf7bccf0 \
+    --hash=sha256:92f30e89b8ee0ecf363033576c422b2f58fed6a80bed0aa48dff6d14c654663e \
+    --hash=sha256:a5fa86b80fd24bcd1aff83ad23be44ea323de3f787be8f8b15d4a65621e25321 \
     --hash=sha256:a72f874bc9e10e4b8f80426fb49716d5141f64442a0c8418065093ec8017fbb0 \
     --hash=sha256:b5d93cf48f687479941d12b69c873ad2cc76bbd487f0091c2200636497f34034 \
     --hash=sha256:b7e18c623bb5c95acb3b3328861272816ba199fb531921c5d6d0b675f1fde9e3 \
     --hash=sha256:df2d5874ff183595a4ba404edd04f6bd9b5505c1d7708573f6a6c17489a67563 \
-    --hash=sha256:f59a878c33d6b88122d80d239bb3b845d58708750b0cb06a09aebb9b18ec696c
+    --hash=sha256:f59a878c33d6b88122d80d239bb3b845d58708750b0cb06a09aebb9b18ec696c \
+    --hash=sha256:f9a2353b37a1a9e78fd82b27ad7e2a32a2d036604d18f02b05e3136c62ca3b09
     # via
     #   astropy
     #   explorer
@@ -92,10 +106,14 @@ python-xlib==0.33 ; (platform_machine == 'arm64' and sys_platform == 'darwin') o
     --hash=sha256:c3534038d42e0df2f1392a1b30a15a4ff5fdc2b86cfa94f072bf11b10a164398
     # via explorer
 pyyaml==6.0.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6 \
+    --hash=sha256:2283a07e2c21a2aa78d9c4442724ec1eb15f5e42a723b99cb3d822d48f5f7ad1 \
     --hash=sha256:41715c910c881bc081f1e8872880d3c650acf13dfa8214bad49ed4cede7c34ea \
     --hash=sha256:7f047e29dcae44602496db43be01ad42fc6f1cc0d8cd6c83d342306c32270196 \
+    --hash=sha256:8da9669d359f02c0b91ccc01cac4a67f16afec0dac22c2ad09f46bee0697eba8 \
     --hash=sha256:ba1cc08a7ccde2d2ec775841541641e4548226580ab850948cbfda66a1befcdc \
     --hash=sha256:d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f \
+    --hash=sha256:eda16858a3cab07b80edaf74336ece1f986ba330fdb8ee0d6c0d68fe82bc96be \
     --hash=sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0
     # via astropy
 shiboken6==6.11.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
