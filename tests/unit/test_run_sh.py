@@ -3,9 +3,9 @@ when the pins differed, $EXPLORER_VENV included: an old or experimental copy, st
 another tree, installed its own pins there, under everyone who runs that environment. The same through a copy whose
 .venv-<OS>-<arch> is a link to another tree's environment, as the test copies in /tmp are made.
 
-Run on a stand-in tree in a temporary folder: run.sh itself, a uv.lock, and a setup_env.sh that only writes down that
-it was called; the environments are stand-ins too, whose python and explorer are scripts. No real environment is
-read or written."""
+Run on a stand-in tree in a temporary folder: run.sh itself and the env.sh it sources, a uv.lock, and a setup_env.sh
+that only writes down that it was called; the environments are stand-ins too, whose python and explorer are scripts.
+No real environment is read or written."""
 import os
 import platform
 import shutil
@@ -23,7 +23,8 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="a bash script")
 def _tree(tmp_path, name="tree"):
     tree = tmp_path / name
     (tree / "scripts").mkdir(parents=True)
-    shutil.copy(os.path.join(ROOT, "scripts", "run.sh"), tree / "scripts" / "run.sh")
+    for script in ("run.sh", "env.sh"):                        # run.sh sources env.sh
+        shutil.copy(os.path.join(ROOT, "scripts", script), tree / "scripts" / script)
     setup = tree / "scripts" / "setup_env.sh"
     setup.write_text(f'#!/bin/sh\necho "$*" >> "{tmp_path}/setup_env.calls"\n')
     setup.chmod(0o755)

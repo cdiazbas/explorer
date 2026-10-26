@@ -7,14 +7,13 @@
 # Outside a git repository (the copy on bellatrix, synced without .git) the hygiene check is skipped.
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(dirname "$here")"
-plat="$(uname -s)-$(uname -m)"
-bin="${EXPLORER_VENV:-$root/.venv-$plat}/bin"
+. "$here/env.sh"                           # plat, venv and qt_libs
+bin="$venv/bin"
 fast=0; [ "${1:-}" = "--fast" ] && fast=1
 cd "$root"
 [ -x "$bin/python" ] || { echo "no environment in $bin: run scripts/setup_env.sh --dev" >&2; exit 1; }
 [ -x "$bin/ruff" ] || { echo "no dev tools in $bin: run scripts/setup_env.sh --dev" >&2; exit 1; }
-unset LD_LIBRARY_PATH
-[ "$(uname -s)" = Linux ] && [ -d "$root/.qtlibs/only" ] && export LD_LIBRARY_PATH="$root/.qtlibs/only"
+qt_libs
 
 fails=0; rows=()
 step() {                                   # step <name> <command...>

@@ -17,8 +17,7 @@ while [ -L "$src" ]; do                             # readlink -f is not on ever
 done
 here="$(cd "$(dirname "$src")" && pwd)"
 root="$(dirname "$here")"
-plat="$(uname -s)-$(uname -m)"
-venv="${EXPLORER_VENV:-$root/.venv-$plat}"
+. "$here/env.sh"                                    # plat, venv and qt_libs
 if ! { [ -x "$venv/bin/python" ] && "$venv/bin/python" -c "" 2>/dev/null; }; then
   echo "no environment for $plat in $venv: run $here/setup_env.sh first" >&2
   exit 1
@@ -44,8 +43,7 @@ if [ "$(cksum < "$root/uv.lock")" != "$(cat "$venv/.lock.cksum" 2>/dev/null)" ];
     echo "[run.sh] note: pinned versions changed; ask the owner of $venv to run setup_env.sh" >&2
   fi
 fi
-unset LD_LIBRARY_PATH
-[ "$(uname -s)" = Linux ] && [ -d "$root/.qtlibs/only" ] && export LD_LIBRARY_PATH="$root/.qtlibs/only"
+qt_libs
 # the code next to this script, whichever tree installed the env; the inherited PYTHONPATH without empty entries: an
 # empty one is the current folder, and a file there named as a module (types.py) replaced the standard one. A line
 # like PYTHONPATH="${PYTHONPATH}:dir" in a shell's startup file leaves one when PYTHONPATH was empty

@@ -12,8 +12,8 @@
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(dirname "$here")"
-plat="$(uname -s)-$(uname -m)"
-py="${EXPLORER_VENV:-$root/.venv-$plat}/bin/python"
+. "$here/env.sh"                                    # plat, venv and qt_libs
+py="$venv/bin/python"
 logs="${1:?usage: scripts/suites.sh LOGDIR [--xvfb BIN] [--display :N] [--size WxH]}"; shift
 xvfb="" disp=":131" size="2560x1440"
 while [ $# -gt 0 ]; do
@@ -29,8 +29,8 @@ mkdir -p "$logs"
 rm -f "$logs/DONE"
 echo "suites.sh pid $$: $root, $py; logs in $logs"
 cd "$root"
-unset DISPLAY LD_LIBRARY_PATH                       # no window on anyone's screen; no other environment's Qt
-[ "$(uname -s)" = Linux ] && [ -d "$root/.qtlibs/only" ] && export LD_LIBRARY_PATH="$root/.qtlibs/only"
+unset DISPLAY                                       # no window on anyone's screen
+qt_libs                                             # no other environment's Qt
 export PYTHONPATH="$root/src"
 load() { [ -r /proc/loadavg ] && cat /proc/loadavg || uptime; }
 load > "$logs/load.log"
