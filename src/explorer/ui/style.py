@@ -42,6 +42,8 @@ import sys
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from . import icons
+
 THEMES = ("auto", "dark", "light", "native")
 UI_PX = 12                                              # px: the interface's text away from a Mac
 ACCENT = "#0a84ff"
@@ -178,11 +180,7 @@ def light_palette() -> QtGui.QPalette:
 
 def _chevron(p, c, w, h, up, col, pen_w):
     """An open chevron (v or ^) centred at c, w wide and h tall."""
-    pen = QtGui.QPen(col, pen_w)
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-    p.setPen(pen)
-    p.setBrush(Qt.BrushStyle.NoBrush)
+    icons.glyph_pen(p, col, pen_w)
     s = -1 if up else 1
     p.drawPolyline(QtGui.QPolygonF([c + QtCore.QPointF(-w / 2, -s * h / 2), c + QtCore.QPointF(0, s * h / 2),
                                     c + QtCore.QPointF(w / 2, -s * h / 2)]))
@@ -325,11 +323,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
                 pm.fill(Qt.GlobalColor.transparent)
                 p = QtGui.QPainter(pm)
                 p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-                pen = QtGui.QPen(col, 1.4)
-                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-                p.setPen(pen)
-                p.setBrush(Qt.BrushStyle.NoBrush)
+                icons.glyph_pen(p, col, 1.4)
                 if sp == QtWidgets.QStyle.StandardPixmap.SP_TitleBarNormalButton:      # detach: square.on.square
                     p.drawRoundedRect(QtCore.QRectF(1.5, 5.0, 9.5, 9.5), 2, 2)
                     p.drawPolyline(QtGui.QPolygonF([QtCore.QPointF(5.0, 1.5), QtCore.QPointF(14.5, 1.5),
@@ -416,11 +410,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawRoundedRect(box.adjusted(-1.5, -1.5, 1.5, 1.5), 4.5, 4.5)
         col = C("#ffffff") if en else self.INK(0.40)
-        pen = QtGui.QPen(col, 1.7 * d / 14)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.BrushStyle.NoBrush)
+        icons.glyph_pen(p, col, 1.7 * d / 14)
         x, y, k = box.left(), box.top(), box.width()
         if partial:
             p.drawLine(QtCore.QPointF(x + 0.28 * k, y + 0.5 * k), QtCore.QPointF(x + 0.72 * k, y + 0.5 * k))
@@ -439,10 +429,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
         col = C("#ffffff") if opt.state & S.State_Selected else (self.LABEL if _enabled(opt) else self.INK(0.35))
         p.save()
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        pen = QtGui.QPen(col, 1.6)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        p.setPen(pen)
+        icons.glyph_pen(p, col, 1.6)
         p.drawPolyline(QtGui.QPolygonF([c + QtCore.QPointF(-0.36 * k, 0.02 * k),
                                         c + QtCore.QPointF(-0.10 * k, 0.28 * k),
                                         c + QtCore.QPointF(0.36 * k, -0.30 * k)]))

@@ -177,6 +177,15 @@ class GlyphEngine(QtGui.QIconEngine):
         p.drawPixmap(rect.topLeft(), self.scaledPixmap(rect.size(), mode, state, dpr))
 
 
+def glyph_pen(p, colour, width) -> None:
+    """p strokes in colour, width px wide, as every glyph here and our style's: round caps and joins, no fill."""
+    pen = QtGui.QPen(colour, width)
+    pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+
+
 def glyph_pixmap(glyph, size, colour, scale) -> QtGui.QPixmap:
     """The glyph in colour at size (logical px) and device pixel ratio scale, centred on whole device pixels."""
     gw, gh, draw = GLYPHS[glyph]
@@ -191,11 +200,7 @@ def glyph_pixmap(glyph, size, colour, scale) -> QtGui.QPixmap:
     col = QtGui.QColor(colour)
     alpha = col.alphaF()
     col.setAlphaF(1.0)
-    pen = QtGui.QPen(col, w)
-    pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-    pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
-    p.setPen(pen)
-    p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+    glyph_pen(p, col, w)
     draw(Pen(p, u, w))
     # opaque strokes, then one alpha for all: translucent strokes showed brighter dots where two met
     p.resetTransform()
