@@ -152,6 +152,25 @@ def test_not_a_clone_on_main_is_not_asked(repos, tmp_path):
     assert not st.exists()
 
 
+def test_an_installed_package_is_not_asked_and_git_is_not_run(tmp_path, monkeypatch):
+    """A uv tool's or pipx's environment: no clone, so nothing is asked, not even of git, and the version line is
+    the package's own."""
+    prefix = tmp_path / "venv"
+    package = prefix / "lib" / "python3.12" / "site-packages"
+    (package / "explorer").mkdir(parents=True)
+    (prefix / "uv-receipt.toml").write_text('[tool]\nrequirements = [{ name = "explorer" }]\n')
+    (prefix / "pipx_metadata.json").write_text("{}")
+
+    def no_git(*a, **k):
+        raise AssertionError("git asked")
+    monkeypatch.setattr(U, "_git", no_git)
+    for root in (package, prefix / "lib" / "python3.12"):     # where ROOT falls in an installed package
+        assert U.check(root, ON, tmp_path / "state.json", now=T0) is None
+        line, found = U.about(root, ON)
+        assert found is None and line.startswith("explorer ") and "·" not in line
+    assert not (tmp_path / "state.json").exists()
+
+
 def test_turned_off_or_under_tests_it_is_not_asked(repos):
     dev, user, st = repos
     push(dev)

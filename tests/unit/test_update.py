@@ -2,6 +2,7 @@
 changes nothing; a copy with changes, commits of its own, another branch, no git (synced, or a package installed
 without a clone) or no remote is left as it is, and the reason said with what to do."""
 import subprocess
+import sys
 
 import pytest
 
@@ -107,6 +108,72 @@ def test_no_git_or_no_remote(repos, tmp_path):
     git(user, "remote", "set-url", "origin", str(tmp_path / "gone.git"))
     rc, said = run(user)
     assert rc == 1 and "cannot reach origin" in said
+
+
+# what uv 0.11.15 and pipx 1.18.4 left in a tool's environment, measured (the paths here made up)
+UV_RECEIPT = """[tool]
+requirements = [{{ name = "explorer", {source} }}]
+entrypoints = [
+    {{ name = "explorer", install-path = "/srv/u/.local/bin/explorer", from = "explorer" }},
+]
+"""
+PIPX_METADATA = """{{"main_package": {{"package": "explorer", "package_or_url": "{source}", "suffix": ""}},
+ "pipx_metadata_version": "0.12", "venv_args": []}}"""
+
+
+@pytest.fixture
+def installed(tmp_path, monkeypatch):
+    """A package installed without a clone (no source tree beside it), in an environment at a sys.prefix of its own;
+    its distribution named 'solar-explorer' (a rename, docs/decisions/0003)."""
+    from importlib import metadata
+
+    prefix, package = tmp_path / "venv", tmp_path / "venv" / "lib" / "python3.12"
+    package.mkdir(parents=True)
+    monkeypatch.setattr(sys, "prefix", str(prefix))
+    monkeypatch.setattr(metadata, "packages_distributions", lambda: {"explorer": ["solar-explorer"]})
+    return prefix, package
+
+
+@pytest.mark.parametrize("installer, source, says", [
+    ("uv", 'git = "https://github.com/cdiazbas/explorer.git"', "as a uv tool: update it with `uv tool upgrade "
+                                                               "solar-explorer`"),
+    ("uv", 'directory = "/srv/u/explorer"', "`uv tool upgrade solar-explorer`"),
+    ("uv", 'path = "/srv/u/dist/explorer-0.1-py3-none-any.whl"',
+     "with uv from a wheel (/srv/u/dist/explorer-0.1-py3-none-any.whl), which `uv tool upgrade` cannot follow: "
+     "install the newer wheel with `uv tool install --force <newer .whl>`"),
+    ("pipx", "git+https://github.com/cdiazbas/explorer.git", "with pipx: update it with `pipx upgrade solar-explorer`"),
+    ("pipx", "/srv/u/explorer", "`pipx upgrade solar-explorer`"),
+    ("pipx", "/srv/u/dist/explorer-0.1-py3-none-any.whl", "`pipx install --force <newer .whl>`"),
+    ("pip", "", "`pip install --upgrade git+https://github.com/cdiazbas/explorer.git`"),
+])
+def test_an_installed_package_is_told_its_installers_command(installed, installer, source, says):
+    prefix, package = installed
+    if installer == "uv":
+        (prefix / "uv-receipt.toml").write_text(UV_RECEIPT.format(source=source))
+    elif installer == "pipx":
+        (prefix / "pipx_metadata.json").write_text(PIPX_METADATA.format(source=source))
+    rc, said = run(package)
+    assert rc == 1 and says in said, said
+    assert "install from a clone (README, Install) to use `explorer update`" in said
+
+
+def test_an_unreadable_record_still_names_the_installer(installed):
+    prefix, package = installed
+    (prefix / "uv-receipt.toml").write_text("not [toml")
+    assert "`uv tool upgrade solar-explorer`" in run(package)[1]
+    (prefix / "uv-receipt.toml").unlink()
+    (prefix / "pipx_metadata.json").write_text("{")
+    assert "`pipx upgrade solar-explorer`" in run(package)[1]
+
+
+def test_a_copy_without_git_is_kept_by_whoever_keeps_it_whatever_the_environment(installed, tmp_path):
+    prefix, _ = installed
+    (prefix / "uv-receipt.toml").write_text(UV_RECEIPT.format(source='directory = "/x"'))
+    synced = tmp_path / "synced"
+    (synced / "src" / "explorer").mkdir(parents=True)
+    (synced / "pyproject.toml").write_text("")
+    rc, said = run(synced)
+    assert rc == 1 and "a copy without git" in said and "uv tool" not in said
 
 
 def test_an_update_ends_saying_a_running_explorer_needs_a_restart(repos):

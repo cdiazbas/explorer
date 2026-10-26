@@ -7,13 +7,16 @@ window only says that there is something new (update_check: read-only, at most o
     explorer update --no-notice  # the window no longer says it, for this user and this clone; --notice: again
 
 Refuses, saying why, when this copy is not a git checkout (a copy synced or copied from another: updated by whoever
-keeps it; or a package installed without a clone: updated with pip, as it was installed), is on another branch, has
+keeps it; or a package installed without a clone: updated by the installer that made it, uv, pipx or pip, with the
+command said), is on another branch, has
 changes to tracked files, or has commits of its own: nothing is merged, stashed nor thrown away. The environment is
 not touched here: scripts/run.sh (the `explorer` command) rebuilds it at the next start when the pinned versions
 (uv.lock) changed.
 """
 import argparse
+import json
 import sys
+import tomllib
 from pathlib import Path
 
 from ._gitversion import git, stamp
@@ -23,6 +26,56 @@ ROOT = Path(__file__).resolve().parents[2]              # src/explorer/update.py
 BRANCH, REMOTE = "main", "origin"
 REPO = "https://github.com/cdiazbas/explorer.git"         # where a package installed without a clone comes from
 SHOWN = 15                                              # commits listed at most
+
+
+def dist_name() -> str:
+    """The distribution this package was installed as, from its metadata (docs/decisions/0003: the name may change);
+    APP_NAME when no installed distribution lists these files (a source tree, an editable install)."""
+    from importlib import metadata
+
+    names = metadata.packages_distributions().get(__name__.partition(".")[0], [])
+    return names[0] if names else APP_NAME
+
+
+def installed_with(prefix=None) -> tuple[str, str]:
+    """(installer, wheel) for a package installed without a clone, from what the installer leaves in the environment
+    at sys.prefix: "uv" for a uv tool (uv-receipt.toml), "pipx" for pipx (pipx_metadata.json), else "pip". wheel: the
+    .whl file it was installed from, which neither `uv tool upgrade` nor `pipx upgrade` can follow (the next version
+    is another file); "" for a directory, git or an index, which they follow."""
+    prefix = Path(sys.prefix if prefix is None else prefix)
+    receipt, pipx = prefix / "uv-receipt.toml", prefix / "pipx_metadata.json"
+    if receipt.is_file():
+        try:
+            reqs = tomllib.loads(receipt.read_text()).get("tool", {}).get("requirements", [])
+            sources = [str(r.get("path", "")) for r in reqs if isinstance(r, dict)]
+        except (OSError, ValueError, AttributeError):  # unreadable, or another layout: a uv tool all the same
+            sources = []
+        return "uv", next((s for s in sources if s.endswith(".whl")), "")
+    if pipx.is_file():
+        try:
+            source = str(json.loads(pipx.read_text())["main_package"]["package_or_url"])
+        except (OSError, ValueError, KeyError, TypeError):
+            source = ""
+        return "pipx", source if source.endswith(".whl") else ""
+    return "pip", ""
+
+
+def upgrade_advice(prefix=None) -> str:
+    """What to run to update a package installed without a clone, as the installer that made it does it."""
+    how, wheel = installed_with(prefix)
+    name = dist_name()
+    clone = f"or install from a clone (README, Install) to use `{APP_NAME} update`"
+    if wheel:
+        upgrade, force = (("uv tool upgrade", "uv tool install --force") if how == "uv" else
+                          ("pipx upgrade", "pipx install --force"))
+        return (f"{APP_NAME} is installed here with {how} from a wheel ({wheel}), which `{upgrade}` cannot follow: "
+                f"install the newer wheel with `{force} <newer .whl>`, {clone}")
+    if how == "uv":
+        return f"{APP_NAME} is installed here as a uv tool: update it with `uv tool upgrade {name}`, {clone}"
+    if how == "pipx":
+        return f"{APP_NAME} is installed here with pipx: update it with `pipx upgrade {name}`, {clone}"
+    return (f"{APP_NAME} is installed here as a package, not from a clone: update it as it was installed, "
+            f"`pip install --upgrade git+{REPO}`, {clone}")
 
 
 def _say(text: str) -> None:
@@ -63,17 +116,16 @@ def set_notice(on: bool, root=ROOT, say=_say) -> int:
     return 0
 
 
-def update(root=ROOT, check: bool = False, say=_say) -> int:
-    """0: up to date or brought up to date (or, with check, only said); 1: refused or failed, and why said."""
+def update(root=ROOT, check: bool = False, say=_say, prefix=None) -> int:
+    """0: up to date or brought up to date (or, with check, only said); 1: refused or failed, and why said.
+    prefix: the environment's (sys.prefix), where uv and pipx leave their records."""
     root = Path(root)
     if git(root, "rev-parse", "--is-inside-work-tree").returncode or not (root / ".git").exists():
         if (root / "pyproject.toml").exists() and (root / "src" / APP_NAME).is_dir():
             say(f"{root} is a copy without git (copied or synced from another): it is brought up to date by whoever "
                 "keeps it. To update yourself, install from a clone instead (README, Install)")
         else:
-            say(f"{APP_NAME} is installed here as a package, not from a clone: update it as it was installed, "
-                f"`pip install --upgrade git+{REPO}`, or install from a clone (README, Install) to use "
-                f"`{APP_NAME} update`")
+            say(upgrade_advice(prefix))
         return 1
     branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if branch != BRANCH:

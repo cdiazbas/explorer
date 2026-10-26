@@ -13,9 +13,9 @@ any fetch, a credential that worked is handed back to the helpers to keep (crede
 
 Asked at most once every EVERY_S; within that, the remote head seen last is compared with HEAD again (so after
 `explorer update` it is no longer newer). Not asked when the code is not a git clone on main (a copy synced without
-.git, a package installed with pip: they are updated as they were made), after `explorer update --no-notice` (until
-`--notice`), and under pytest or an offscreen run. EXPLORER_UPDATE_CHECK wins over all of these: 0 never asks, 1
-always does (what a test that asks for it sets).
+.git, a package installed with uv, pipx or pip: they are updated as they were made), after
+`explorer update --no-notice` (until `--notice`), and under pytest or an offscreen run. EXPLORER_UPDATE_CHECK wins
+over all of these: 0 never asks, 1 always does (what a test that asks for it sets).
 
 A newer head is said in the window at once, and again every REMIND_DAYS while this copy stays behind: a note missed
 in its seconds comes back.
@@ -200,6 +200,9 @@ def check(root=ROOT, env=None, path: Path | None = None, now: float | None = Non
     """Whether origin's main is newer than root's HEAD (the module); None when not asked here, or on any failure.
     path: the state file (state_path()); now: time.time()."""
     if forced(env) is False or not is_clone(root):
+        # a package installed with uv, pipx or pip has no clone and is not asked: `explorer update` says how to
+        # update it (update.upgrade_advice). Once explorer is on PyPI (not while its name is provisional,
+        # docs/decisions/0003), a check of PyPI's newest version against __version__ would go here
         return None
     path = state_path() if path is None else path
     state = _load(path)
