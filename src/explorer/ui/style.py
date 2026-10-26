@@ -252,17 +252,23 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
         classic look's red: set_controls), or the theme's."""
         return (self.CTRL or (self.ACC, self.SEL, self.SEL_HOVER, self.SEL_DOWN))[k]
 
-    def set_controls(self, colour, sel=None) -> None:
+    def set_controls(self, colour, sel=None, accent=False) -> None:
         """The controls in colour (a QColor; None: the theme's accent): focus rings, a toggle that is on, the chosen
-        row of a menu or a pop-up list, whose sheets hold the colour they were made with. accent() stays the theme's:
-        the classic look's markers and the mask's outline keep it. sel: the fill under white text; by default
-        colour.darker(130), white on it 4.5:1 or more as on the blue (the classic red: 5.11:1)."""
+        row of a menu or a pop-up list, whose sheets hold the colour they were made with. sel: the fill under white
+        text; by default colour.darker(130), white on it 4.5:1 or more as on the blue (the classic red: 5.11:1).
+        accent: accent() and selected() take them too, as attributes of the instance (glass: its markers' colour
+        everywhere); else they stay the theme's, as the classic look's markers and the mask's outline keep it."""
+        for a in ("ACC", "SEL", "SEL_HOVER", "SEL_DOWN"):   # the class's again
+            if a in vars(self):
+                delattr(self, a)
         if colour is None:
             self.CTRL = None
             menu, popup = type(self).MENU, type(self).POPUP
         else:
             sel = C(sel) if sel is not None else C(colour).darker(130)
             self.CTRL = (C(colour), sel, sel.lighter(110), sel.darker(115))
+            if accent:
+                self.ACC, self.SEL, self.SEL_HOVER, self.SEL_DOWN = self.CTRL
             sheet = dict(_LIGHT_SHEET if self.THEME == "light" else _DARK_SHEET, sel=sel.name())
             menu, popup = _MENU_QSS % sheet, _POPUP_QSS % sheet
             _OURS.update((menu, popup))                 # polish may replace them, as the theme's

@@ -649,21 +649,17 @@ class GlassChrome:
             nav.stokes.show()
         tb.hide()
 
-    TINT = ("ACC", "SEL", "SEL_HOVER", "SEL_DOWN")
-
     def _tint(self, mark: QtGui.QColor) -> None:
-        """What is on in the accent (look_glass.py:929-940): our style's fills, toggles, menu rows and focus (its
-        attributes, on the instance: remove() lets the class's show again), and the Stokes segments' sheet, which
-        holds the colour it was made with. Not under a Mac's native style, whose controls take the system's."""
+        """What is on in the accent (look_glass.py:929-940): our style's fills, toggles, menu rows, focus and its
+        accent() (style.set_controls; remove() gives the theme's back), and the Stokes segments' sheet, which holds
+        the colour it was made with. Not under a Mac's native style, whose controls take the system's."""
         st = _app().style()
         old = style.selected().name()
         sel = for_white_text(mark)
-        self._tinted = st if all(hasattr(st, a) for a in self.TINT) else None
-        if self._tinted is not None:
-            for a, c in zip(self.TINT, (mark, sel, sel.lighter(110), sel.darker(115)), strict=True):
-                setattr(st, a, c)
-            if hasattr(st, "set_controls"):             # the menus' and lists' rows too: their sheets hold a colour
-                st.set_controls(mark, sel)
+        self._tinted = None
+        if hasattr(st, "set_controls"):
+            st.set_controls(mark, sel, accent=True)
+            self._tinted = st
         drop = self.w.nav.drop
         self._sheet = None
         if drop is not None:
@@ -672,13 +668,8 @@ class GlassChrome:
             seg.setStyleSheet(self._sheet.replace(f"background: {old};", f"background: {sel.name()};"))
 
     def _untint(self) -> None:
-        st = self._tinted
-        if st is not None:
-            for a in self.TINT:
-                if a in vars(st):
-                    delattr(st, a)
-            if hasattr(st, "set_controls"):
-                st.set_controls(None)
+        if self._tinted is not None:
+            self._tinted.set_controls(None)
         if self._sheet is not None and self.w.nav.drop is not None:
             self.w.nav.drop.segments.setStyleSheet(self._sheet)
 
