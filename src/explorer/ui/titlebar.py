@@ -367,10 +367,12 @@ class Outline:
 def outline_colours(w) -> tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor]:
     """The resize outline's border, inside and ink, in w's look: the accent round the darker of the window's and
     the content's colours (never white: a white flash was what the shaped ring showed on XQuartz); in glass its
-    accent round its slab."""
+    accent round its slab. Glass is the main window's: found up from w, past a cube's frame (ui.linked)."""
     from . import glass, style
 
-    main = w if isinstance(w, QtWidgets.QMainWindow) else w.parentWidget()
+    main = w
+    while main is not None and not hasattr(main, "glass"):
+        main = main.parentWidget()
     g = getattr(main, "glass", None)
     if g is not None and getattr(g, "on", False):
         mode = "light" if light(w) else "dark"

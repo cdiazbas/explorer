@@ -717,6 +717,36 @@ def test_in_glass_a_cube_s_window_is_on_the_image_s_colour(window, restore):
     assert c.dock.palette().window().color() != glass.TITLE["dark"]
 
 
+def test_in_glass_the_panels_of_a_cube_s_window_take_glass_s_resize_outline(window, restore):
+    """The resize outline of a floating panel (titlebar.outline_colours, drawn by the X server) looked for glass on the
+    panel's parent: a panel of a cube's window has the cube's frame for parent, which has none, and took the
+    palette's inside and ink. In glass its outline is the main window's panels': the accent round glass's slab; out
+    of glass, the palette's again."""
+    from explorer.look import get_look
+    from explorer.ui import glass, titlebar
+
+    def outline(d):
+        return tuple(c.name() for c in titlebar.outline_colours(d))
+
+    w, qapp = window
+    w.set_theme("dark")
+    w.set_look(get_look("glass"))
+    spin(qapp, lambda: False, timeout=0.6)
+    w.detach_action.setChecked(True)
+    spin(qapp, lambda: False, timeout=0.6)
+    c = w.linked[0]
+    pane = c.panes["spectra:1"]
+    want = (glass.accent().name(), glass.SLAB["dark"][0].name(), glass.INK["dark"].name())
+    print("glass: main window's spectra", outline(w.spec_dock), "cube's window's", outline(pane),
+          "its parent", type(pane.parentWidget()).__name__)
+    assert outline(w.spec_dock) == want and outline(pane) == want
+    w.detach_action.setChecked(False)
+    w.set_look(get_look("classic"))
+    spin(qapp, lambda: False, timeout=0.4)
+    print("classic:", outline(pane))
+    assert outline(pane)[1] != want[1]
+
+
 def test_a_window_of_its_own_is_rounded_with_a_margin_the_corners_do_not_cut(window):
     """A cube's window floats beside the rounded main window: rounded as glass's panels are (RADIUS_PANEL), with a
     margin round its content the rounding does not cut (in glass, docked, it has none, and floating it went on
