@@ -23,7 +23,7 @@ from typing import Any
 from . import __version__
 from ._name import APP_NAME
 from ._paths import cache_dir
-from .platform.plan import find_xcb_cursor
+from .platform.plan import GET_XCB_CURSOR, X11_VAR, XCB_CURSOR, find_xcb_cursor
 
 OK, WARN, FAIL = "ok", "WARN", "FAIL"
 
@@ -191,9 +191,16 @@ def c_qt(rep, show):
             env["QT_QPA_PLATFORM"], note = "offscreen", " (no display: Qt checked offscreen)"
         elif sys.platform == "darwin" and env.get("SSH_CONNECTION") and not env.get("DISPLAY"):
             env["QT_QPA_PLATFORM"], note = "offscreen", " (Mac over ssh: no window server here; Qt checked offscreen)"
+    bridged = False
     if linux and env.get("DISPLAY") and env.get("QT_QPA_PLATFORM") in (None, "xcb") and find_xcb_cursor(env) is None:
-        return FAIL, ("libxcb-cursor.so.0 not found: Qt cannot use X11 (ssh -Y) without it. Run scripts/setup_env.sh "
-                      "(it installs it from conda-forge, no root), or: conda install -c conda-forge xcb-util-cursor")
+        if env.get("QT_QPA_PLATFORM") == "xcb" or env.get(X11_VAR) == "native":    # Qt's own X11 asked for: no start
+            return FAIL, ("libxcb-cursor.so.0 not found: Qt cannot use X11 (ssh -Y) without it. Run "
+                          "scripts/setup_env.sh (it installs it from conda-forge, no root), or: conda install -c "
+                          "conda-forge xcb-util-cursor")
+        # explorer then draws through the X11 bridge (platform.plan), with Qt offscreen: that is the Qt checked
+        env["QT_QPA_PLATFORM"], bridged = "offscreen", True
+        note = (f"; {XCB_CURSOR} not found, which Qt's own X11 needs: explorer draws through the X11 bridge "
+                f"(Qt checked offscreen). For Qt's own X11, {GET_XCB_CURSOR}")
     title = f"{APP_NAME} doctor: {rep.user}@{rep.host} {time.strftime('%H:%M:%S')}"
     cmd = [sys.executable, "-c", _QT_CHILD] + ([title] if show else [])
     r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
@@ -210,7 +217,8 @@ def c_qt(rep, show):
     d = json.loads(line[len("QTJSON"):])
     rep.data["qt"] = d
     scr = ", ".join(f"{g['geometry'][2]}x{g['geometry'][3]}@{g['dpr']:g}" for g in d["screens"]) or "none"
-    return OK, f"Qt {d['qt']} on '{d['platform']}', screens {scr}" + (", window shown" if d.get("shown") else "") + note
+    return (WARN if bridged else OK), (f"Qt {d['qt']} on '{d['platform']}', screens {scr}"
+                                       + (", window shown" if d.get("shown") else "") + note)
 
 
 def c_cube(rep, path):

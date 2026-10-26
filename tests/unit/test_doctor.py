@@ -77,3 +77,25 @@ def test_started_by_run_sh_the_numba_pool_is_the_one_the_viewer_sizes(headless):
     subprocess.run([os.path.join(root, "scripts", "run.sh"), "doctor", "--out", str(out)], env=env,
                    capture_output=True, text=True, timeout=300)
     assert json.loads(out.read_text())["numba"]["threads"] >= GATHER_MAX
+
+
+@pytest.mark.parametrize("extra, want", [
+    ({}, doctor.WARN),                                              # auto: the bridge stands in, Qt offscreen
+    ({"QT_QPA_PLATFORM": "xcb"}, doctor.FAIL),                      # Qt's own X11 asked for: it cannot start
+    ({"EXPLORER_X11": "native"}, doctor.FAIL),
+])
+def test_without_libxcb_cursor_the_bridge_is_a_warning_not_a_failure(headless, monkeypatch, extra, want):
+    """A Linux X display without libxcb-cursor: explorer starts through the X11 bridge (platform.plan), so doctor
+    checks the Qt the bridge runs and warns; it fails only when Qt's own X11 was asked for."""
+    monkeypatch.delenv("QT_QPA_PLATFORM")
+    monkeypatch.delenv("EXPLORER_X11", raising=False)
+    monkeypatch.setenv("DISPLAY", ":187")                           # never reached: the child runs offscreen
+    for k, v in extra.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+    monkeypatch.setattr(doctor, "find_xcb_cursor", lambda env: None)
+    status, msg = doctor.c_qt(doctor.Report(), False)
+    assert status == want, msg
+    assert "libxcb-cursor.so.0 not found" in msg
+    if want == doctor.WARN:
+        assert "on 'offscreen'" in msg and "X11 bridge" in msg
