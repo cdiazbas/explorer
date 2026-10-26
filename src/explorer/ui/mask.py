@@ -152,6 +152,4 @@ class MaskOutlines:
 
     def close(self) -> None:
         self._closed = True
-        if self._off is not None:
-            self._off()
-            self._off = None
+        self._off()

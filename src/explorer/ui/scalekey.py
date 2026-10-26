@@ -563,9 +563,7 @@ class ScaleCard(QtWidgets.QFrame):
         app = QtWidgets.QApplication.instance()
         if app is not None:
             app.removeEventFilter(self)
-        if self._off is not None:
-            self._off()
-            self._off = None
+        self._off()
         if getattr(self.shell, "scale_card", None) is self:
             self.shell.scale_card = None
         self.deleteLater()

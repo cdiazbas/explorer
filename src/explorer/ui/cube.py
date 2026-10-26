@@ -156,7 +156,7 @@ class CubeView:
             self.spec_lock.toggled.connect(lambda on: self.scheduler.set_y_fixed(on))
             self.spec_lock.refit.connect(self.fit_spectra)
         self._install_gestures()
-        self._off = None
+        self._off = lambda: None                        # nothing to unsubscribe before start()
 
     def start(self, sink=None) -> None:
         """Its scheduler (sink: where its results go; its own panels by default), and the state followed from now
@@ -167,9 +167,7 @@ class CubeView:
         self.follow(self.session.member_state(self.k), None)
 
     def close(self) -> None:
-        if self._off is not None:
-            self._off()
-            self._off = None
+        self._off()
         if hasattr(self, "scheduler"):
             self.scheduler.close()
 
