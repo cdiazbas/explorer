@@ -28,7 +28,7 @@ from . import formats
 from .cache import FrameCache
 from .executors import Executors
 from .formats.layout import spatial_lead
-from .io import FrameReader, PerPixelFrames, SeriesReader
+from .io import Closing, FrameReader, PerPixelFrames, SeriesReader
 from .masking import stokes_axis
 from .pixel import PixelReader, SpFits, calibrate_frames, open_pixel
 from .policy import Budgets, MemoryGuard, StorageProbe, plan_budgets
@@ -115,7 +115,7 @@ class ImagePasses:
             f.set_result(img)
 
 
-class Dataset:
+class Dataset(Closing):
     def __init__(self, path, *, sp=None, no_sp=False, probe=None, guard=None, axes=None, executors=None,
                  series=None):
         """Open the cube at path; sp: a per-pixel file to use instead of the companions next to it; no_sp: none;
@@ -389,9 +389,3 @@ class Dataset:
             self.pixel = None
         if getattr(self, "frames", None) is not None:
             self.frames.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        self.close()

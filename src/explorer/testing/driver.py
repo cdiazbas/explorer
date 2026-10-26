@@ -20,6 +20,7 @@ from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
 from ..data.dataset import Dataset
+from ..data.io import Closing
 
 
 @dataclass
@@ -46,7 +47,7 @@ class Shown:
     counts: dict = field(default_factory=dict)
 
 
-class Driver:
+class Driver(Closing):
     def __init__(self, dataset, own: bool = False, noise: bool = False):
         """noise: Q U V's noise levels read at each t, as the window asks for them (Scheduler, core.noise)."""
         self.dataset, self._own = dataset, own
@@ -140,12 +141,6 @@ class Driver:
         self.scheduler.close()
         if self._own:
             self.dataset.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        self.close()
 
 
 class _Recorder:

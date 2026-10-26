@@ -22,6 +22,19 @@ from . import masking
 from .formats import Layout, SeriesLayout
 
 
+class Closing:
+    """`with x:` closes x at the end: the readers, a mask, a dataset, a driver."""
+
+    def close(self) -> None:
+        raise NotImplementedError
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
 class ShortRead(OSError):
     """The file returned fewer bytes than asked for: truncated file, or an I/O error on network storage."""
 
@@ -36,7 +49,7 @@ def _preadv_exact(fd, view, offset):
         raise ShortRead(f"read {n} of {len(view)} bytes at offset {offset}")
 
 
-class FrameReader:
+class FrameReader(Closing):
     """Images of an image cube (numpy order (..., y, x)), by index over the leading axes."""
 
     def __init__(self, layout: Layout, pool: ThreadPoolExecutor | None = None, chunks: int = 4):
@@ -361,12 +374,6 @@ class FrameReader:
         if self.fd >= 0:
             os.close(self.fd)
             self.fd = -1
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        self.close()
 
 
 

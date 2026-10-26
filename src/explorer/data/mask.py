@@ -27,7 +27,7 @@ import numpy as np
 
 from ._numba import numba
 from .formats import detect, fits_layout, lp_single_layout
-from .io import FrameReader
+from .io import Closing, FrameReader
 from .link import frames, other_grid
 
 LEVEL = 1.0                 # set where the value is at least this: CRISPEX's contour level (crispex.pro:7176)
@@ -110,7 +110,7 @@ def outline(inside: np.ndarray) -> np.ndarray:
     return seg
 
 
-class Mask:
+class Mask(Closing):
     def __init__(self, path, reader: FrameReader, axis: int | None, t: np.ndarray, how: str):
         """Mask.open makes it. axis: the leading axis its frames run along (None: one frame); t: its frame at each
         of the first cube's t; how: how its frames were matched, for the start-up's line."""
@@ -188,9 +188,3 @@ class Mask:
 
     def close(self) -> None:
         self.reader.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        self.close()

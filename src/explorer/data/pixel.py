@@ -19,10 +19,10 @@ import numpy as np
 from ..obs import span
 from . import masking
 from .formats import Layout, fits_layout
-from .io import FrameReader, ShortRead
+from .io import Closing, FrameReader, ShortRead
 
 
-class PixelReader:
+class PixelReader(Closing):
     """Base: block(y, x) -> (s, t, l) float32 through a strip-filled LRU; subclasses implement strip_read."""
 
     kind = "per-pixel"
@@ -107,12 +107,6 @@ class PixelReader:
         with self._lock:
             self._lru.clear()
             self._bytes = 0
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        self.close()
 
 
 class SpFits(PixelReader):
