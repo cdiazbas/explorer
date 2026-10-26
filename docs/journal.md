@@ -5424,3 +5424,43 @@ Sin probar: el camino de uv en una copia sin `.git` (bellatrix no tiene uv); el 
 
 **Negativo, mío:** la primera vez pasé `--venv` con una ruta relativa en el Mac, y el `explorer.app` no se pudo
 rehacer (su enlace al Python quedó relativo). Con la ruta absoluta, como la pasa `run.sh`, se rehízo.
+
+### 2026-10-26 (6): cada aspecto con su color en los controles; el anillo de foco, solo desde el teclado (ROADMAP X.38)
+
+**Visto por el usuario en bellatrix:**
+- en el aspecto clásico, al usar los botones, en particular el de Stokes, salía el azul del acento, junto al rojo del
+  cursor y de λ;
+- en glass, el menú Panels salía azul en vez de naranja.
+
+**La causa:**
+- El estilo pinta en el azul del tema el botón activado, la fila elegida de un menú o una lista y el anillo de foco,
+  en todos los aspectos, como el del prototipo (`app/style.py:296, 404, 446`).
+- Glass teñía de naranja los colores del estilo, pero las filas de un menú las pinta una hoja de estilo que guarda el
+  color con que se hizo, y esa hoja no cambiaba.
+- El anillo salía con cualquier foco: tras un clic, el desplegable de Stokes se quedaba con él.
+
+**El arreglo** (`f04bc1c`):
+- `set_controls` da a los controles un color propio, y rehace con él las hojas de los menús y las listas: el rojo
+  del cursor en el clásico (bajo texto blanco, `darker(130)`: 5,11:1), el naranja en glass, el azul en modern.
+- `accent()` sigue siendo el del tema: los marcadores y el contorno de la máscara no cambian.
+- El anillo, solo si el último cambio de foco de la ventana vino del teclado (`State_KeyboardFocusChange`).
+
+**Medido**, tema oscuro, píxeles azules / rojos / naranjas; bellatrix sin pantalla, carga 0,2 → 0,3:
+
+| estado | `main` | rama |
+|---|---|---|
+| clásico, Stokes después de un clic | 240 / 0 / 0 (el anillo se queda) | 0 / 0 / 0 |
+| clásico, Stokes tras la tecla Tab | 240 / 0 / 0 | 0 / 216 / 0 (el anillo, rojo) |
+| clásico, fila de la lista de Stokes | 656 / 0 / 0 | 0 / 629 / 0 |
+| clásico, reproducir encendido | 993 / 0 / 0 | 0 / 982 / 0 |
+| clásico, fila del menú Panels | 2148 / 0 / 0 | 0 / 2063 / 0 |
+| glass, fila del menú Panels | 2148 / 0 / 0 | 0 / 0 / 2077 |
+| glass, reproducir encendido | 0 / 0 / 1222 | 0 / 0 / 1222 |
+| modern | azul | igual |
+
+En el Mac, los mismos estados dan lo mismo, salvo el anillo tras un clic: allí la lista, al cerrarse, le quitaba el
+foco. `bench/captures.py` frente a `main`: 0/104 PNG y 0/16 JSON distintos.
+
+**Pruebas:** en `test_look`, las dos nuevas fallan antes y pasan después; `test_look`, `test_style`, `test_glass`,
+`test_toolbar` y `test_theme`: 66 pasan (Mac). Sin probar: el estilo nativo del Mac, que dibuja sus propios
+controles.
