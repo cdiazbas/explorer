@@ -5294,3 +5294,46 @@ nueva por PyPI; que `doctor` no diga FAIL cuando el puente funciona; la línea �
 - Grupos en el Mac: 21, 34, 36 y 48 pasan.
 - Capturas en `archive/images/2026-10-26_mask_toggle/`.
 - Suites en bellatrix (copia en `/tmp`, carga 0.2 → 0.9): `tests/unit` + `tests/golden` 1068 pasan, 16 saltadas (18 min 53 s); `tests/xvfb` 43 pasan, 2 saltadas (4 min 38 s), en un Xvfb privado de 2560x1440.
+
+### 2026-10-26 (3): simplificación, segunda pasada aplicada (ROADMAP X.14)
+
+**Decidido** (el usuario): S22 y los de bajo riesgo; S9, S24, S33, S1 y S34 se quedan.
+
+**El defecto** (`477adeb`, `[FIX]`):
+- los espectros apagaban el auto-rango pero no ocultaban los botones de pyqtgraph: su «A» salía bajo el puntero y un
+  clic sacaba λ del rango del panel;
+- `fixed_plot` pasa a `spectra.py` (λ–t importa de los espectros, no al revés) y los espectros la usan, como λ–t y la
+  rendija.
+
+**Lo demás**, `Behaviour: unchanged` salvo con entradas malas:
+- las comprobaciones de filas, posiciones y vacío de los lectores, en `FrameReader.band_values` y `series`
+  (`6f7eede`). `PerPixelFrames.band_values` rechaza ahora posiciones fuera de la banda: una negativa se leía desde el
+  final;
+- `frame_index` en `data.axes`, y los tres índices hechos a mano la usan (`51c92d8`);
+- fuera `Scheduler.levels_now` y `SlitCache.trims`, que nadie lee (`68bdad1`);
+- darse de baja de la tienda con una llamada, que es idempotente (`9909750`);
+- un mixin `Closing` para lectores, máscara, dataset y driver (`0716499`);
+- el sink del cubo principal hereda de `CubeSink` (`3d5b345`);
+- λ–t y la rendija comparten las marcas y la curva (`9f17ed3`);
+- la clave de color toma `STOKES` de `data.axes` (`ccd49a3`).
+
+**Lo que no se hizo:**
+- el color de la clave siguiendo a los marcadores no es `unchanged`: el `#0063d1` de la clave clara no es ningún
+  `darker()` del `#007aff` de los marcadores, y con el estilo nativo de macOS los marcadores toman el acento del
+  sistema. Queda como S38, para decidir;
+- el final de los dos `__init__` de `lambda_t.py`: como función cuesta lo que ahorra (S40 ⚪);
+- nuevo S39: la regla del acento del look, `glass.accent() if look.has("glass") else style.accent()`, está dos veces.
+
+**Medido:**
+- `src`: +146 −234, −88 líneas netas; las pruebas, +29.
+- Capturas (Mac, offscreen): 16 estados, 104 PNG y 16 JSON. Ruido entre dos tandas de la base: 0/104 y 0/16. Cada
+  commit frente a la base: 0/104 PNG; en los JSON solo el `buttonsHidden` de los espectros, desde `477adeb`.
+
+**Pruebas:**
+- `test_spectra::test_no_auto_range_button_under_the_pointer` falla antes (el botón sale) y pasa después.
+- `test_dataset::test_positions_outside_the_band_are_refused_with_or_without_a_per_pixel_file` falla antes (no
+  lanza).
+- Grupos en el Mac, uno a uno: los de cada commit y 16 al final.
+- Sin probar: el botón con un puntero real (el paso del ratón, simulado con `mouseHovering`); el rango en y de la
+  curva plana de la rendija no sale en las capturas (lo cubre `test_without_lambda`).
+- Suites en bellatrix (copia en `/tmp`, carga 2.7 → 1.7): `tests/unit` + `tests/golden` 1070 pasan, 16 saltadas (18 min 32 s); `tests/xvfb` 43 pasan, 2 saltadas (4 min 39 s), en un Xvfb privado de 2560x1440.
