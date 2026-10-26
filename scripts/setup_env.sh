@@ -209,6 +209,16 @@ for c in "$(type -P uv || true)" "${XDG_CACHE_HOME:-$HOME/.cache}/explorer/uv-$p
   works "$c" && { UV="$c"; break; }
 done
 
+# a copy without .git (bellatrix's, synced by scripts/sync.py): the editable build of explorer writes vcs-versioning's
+# fallback, 0.0.0, over the version sync.py wrote, and explorer --version and its update notice then said 0.0.0.
+# Kept here and put back once installed, or on the way out if the install fails
+version_file="$root/src/explorer/_version.py" kept_version=""
+if [ ! -e "$root/.git" ] && [ -f "$version_file" ]; then
+  kept_version="$(mktemp)"
+  cp "$version_file" "$kept_version"
+  trap 'cp "$kept_version" "$version_file"; rm -f "$kept_version"' EXIT
+fi
+
 if [ -n "$UV" ]; then
   echo "== uv: $venv from uv.lock (Python in $pyhome)"
   export UV_PYTHON_INSTALL_DIR="$pyhome" UV_PROJECT_ENVIRONMENT="$venv" UV_PYTHON_PREFERENCE=only-managed
@@ -228,6 +238,11 @@ elif c="$(conda_cmd)"; then
 else
   echo "need uv, mamba or conda to get Python 3.12 (uv: https://docs.astral.sh/uv/, no admin needed)" >&2
   exit 1
+fi
+if [ -n "${kept_version:-}" ]; then                 # before the checks below, which report the version
+  cp "$kept_version" "$version_file"
+  rm -f "$kept_version"
+  trap - EXIT
 fi
 # what run.sh compares to rebuild when the pins change (uv.lock is synced too, uv or not), and the mode
 cksum < uv.lock > "$venv/.lock.cksum"
