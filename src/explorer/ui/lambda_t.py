@@ -116,9 +116,23 @@ def axis_style(a: pg.AxisItem) -> None:
     a.setCacheMode(QtWidgets.QGraphicsItem.CacheMode.DeviceCoordinateCache)
 
 
+def show_curve(curve: pg.PlotDataItem, plot, x, v: np.ndarray) -> None:
+    """v against x on curve, plot's y range that of its finite values (5 % each side); nothing finite: the curve
+    empty. TimeCurve's, and a map's slice on the slit panel."""
+    ok = np.isfinite(v)
+    if not ok.any():
+        curve.setData([], [])
+        return
+    curve.setData(x, v, connect="finite")
+    lo, hi = float(v[ok].min()), float(v[ok].max())
+    pad = (hi - lo) * 0.05 if hi > lo else max(abs(lo) * 0.05, 1e-12)
+    plot.setYRange(lo - pad, hi + pad, padding=0)
+
+
 class GridAxes:
-    """t and lambda of a panel on the index grid and their axes' labels: lambda-t's, TimeCurve's and the slit
-    panel's. tax: the axes whose times label t; xl: each tuning's delta-lambda [Å] when physical, else its index."""
+    """t and lambda of a panel on the index grid, their axes' labels and the markers' colour: lambda-t's,
+    TimeCurve's and the slit panel's. tax: the axes whose times label t; xl: each tuning's delta-lambda [Å] when
+    physical, else its index; _marks: its marker lines."""
 
     def _grid_axes(self, nl: int, axes, times=None) -> None:
         self.physical, self.xl = tunings(axes, nl)
@@ -139,6 +153,20 @@ class GridAxes:
     def t_label_fine(self, i: int) -> str:
         u = self.tax.utc_str(i, seconds=True) if self.timed else None
         return u or str(i)
+
+    def _marks(self) -> tuple:
+        raise NotImplementedError
+
+    def set_marks(self, colour) -> None:
+        """The markers in colour (pens.mark: 1.4 px came out 1 px and grey at 1x), above the images."""
+        for ln in self._marks():
+            ln.setZValue(max(ln.zValue(), 10.0) + 1)
+            pens.mark(ln, colour)
+
+    def clear_marks(self) -> None:
+        """The classic look's red markers."""
+        for ln in self._marks():
+            pens.mark(ln, CURSOR_PEN.color())
 
 
 class LambdaTPanel(GridAxes):
@@ -215,16 +243,8 @@ class LambdaTPanel(GridAxes):
         """The colour table of the lambda-t image (the modern look's colour part); None: grey."""
         self.img.setLookupTable(lut)
 
-    def set_marks(self, colour) -> None:
-        """The t and lambda markers in colour (pens.mark: 1.4 px came out 1 px and grey at 1x), above the image."""
-        for ln in (self.t_line, self.l_line):
-            ln.setZValue(max(ln.zValue(), 10.0) + 1)
-            pens.mark(ln, colour)
-
-    def clear_marks(self) -> None:
-        """The classic look's red markers again."""
-        for ln in (self.t_line, self.l_line):
-            pens.mark(ln, CURSOR_PEN.color())
+    def _marks(self) -> tuple:
+        return self.t_line, self.l_line
 
     def set_markers(self, t: int, l: int) -> None:  # noqa: E741
         self.t_line.setValue(t + 0.5)
@@ -285,14 +305,7 @@ class TimeCurve(GridAxes):
         (nothing finite: the curve empty). A curve has no gamma."""
         v = np.asarray(lt, float).reshape(-1)[:self.nt]
         self.steps = time_samples(self.nt, len(v)) if len(v) < self.nt else None
-        ok = np.isfinite(v)
-        if not ok.any():
-            self.curve.setData([], [])
-            return
-        self.curve.setData(self.x[:len(v)] if self.steps is None else self.steps + 0.5, v, connect="finite")
-        lo, hi = float(v[ok].min()), float(v[ok].max())
-        pad = (hi - lo) * 0.05 if hi > lo else max(abs(lo) * 0.05, 1e-12)
-        self.w.setYRange(lo - pad, hi + pad, padding=0)
+        show_curve(self.curve, self.w, self.x[:len(v)] if self.steps is None else self.steps + 0.5, v)
 
     def clear(self) -> None:
         self.curve.setData([], [])
@@ -303,12 +316,8 @@ class TimeCurve(GridAxes):
     def set_gamma(self, gamma: float) -> None:
         """Nor a gamma: its values are drawn as they are."""
 
-    def set_marks(self, colour) -> None:
-        self.t_line.setZValue(max(self.t_line.zValue(), 10.0) + 1)
-        pens.mark(self.t_line, colour)
-
-    def clear_marks(self) -> None:
-        pens.mark(self.t_line, CURSOR_PEN.color())
+    def _marks(self) -> tuple:
+        return (self.t_line,)
 
     def set_markers(self, t: int, l: int = 0) -> None:  # noqa: E741
         self.t_line.setValue(t + 0.5)

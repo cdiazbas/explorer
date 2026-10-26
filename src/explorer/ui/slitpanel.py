@@ -19,9 +19,8 @@ from PySide6 import QtCore
 from ..core.levels import gamma_panel
 from ..data.axes import dlam_label
 from ..data.tsample import nearest_sample, time_samples
-from . import pens, style
-from .imageview import CURSOR_PEN
-from .lambda_t import MARGIN, GridAxes, IndexAxis, TimeCurve, TuningAxis, axis_style
+from . import style
+from .lambda_t import MARGIN, GridAxes, IndexAxis, TimeCurve, TuningAxis, axis_style, show_curve
 from .spectra import fixed_plot
 
 ALONG = "along the slit [px]"
@@ -166,8 +165,9 @@ class SlitPanel(GridAxes):
                 continue
             self._shown[k] = a
             self._raw[k] = (a, lv)
-            if k == 0 and self.flat:
-                self._show_curve(a)
+            if k == 0 and self.flat:                    # a 2D map's one-row slice: its values along the slit
+                v = np.asarray(a, float).reshape(-1)
+                show_curve(self.curve, self.ts, np.arange(len(v)) + 0.5, v)
                 continue
             lv = lv if lv is not None else (0.0, 1.0)
             if not np.isfinite(a).any():                # nothing read yet, or padding all along
@@ -179,18 +179,6 @@ class SlitPanel(GridAxes):
             if k == 0:
                 self.steps = time_samples(self.nt, a.shape[0]) if a.shape[0] < self.nt else None
             item.setRect(QtCore.QRectF(0, 0, a.shape[1], max(a.shape[0], self.nt) if k == 0 else a.shape[0]))
-
-    def _show_curve(self, a) -> None:
-        """A 2D map's one-row slice: its values along the slit, the y range theirs."""
-        v = np.asarray(a, float).reshape(-1)
-        ok = np.isfinite(v)
-        if not ok.any():
-            self.curve.setData([], [])
-            return
-        self.curve.setData(np.arange(len(v)) + 0.5, v, connect="finite")
-        lo, hi = float(v[ok].min()), float(v[ok].max())
-        pad = (hi - lo) * 0.05 if hi > lo else max(abs(lo) * 0.05, 1e-12)
-        self.ts.setYRange(lo - pad, hi + pad, padding=0)
 
     def clear(self) -> None:
         self.curve.setData([], [])
@@ -235,16 +223,8 @@ class SlitPanel(GridAxes):
         self.ts_img.setLookupTable(lut)
         self.sl_img.setLookupTable(lut)
 
-    def set_marks(self, colour) -> None:
-        """The markers in colour (pens.mark), above the images."""
-        for ln in (self.t_line, self.l_line, *self.cur_lines):
-            ln.setZValue(max(ln.zValue(), 10.0) + 1)
-            pens.mark(ln, colour)
-
-    def clear_marks(self) -> None:
-        """The classic look's red markers."""
-        for ln in (self.t_line, self.l_line, *self.cur_lines):
-            pens.mark(ln, CURSOR_PEN.color())
+    def _marks(self) -> tuple:
+        return self.t_line, self.l_line, *self.cur_lines
 
     def set_light(self, light: bool) -> None:
         """The axes and a map's curve in this theme's ink; the background is the shell's (a card, or the plots' own)."""
