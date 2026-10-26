@@ -88,6 +88,12 @@ def accent() -> QtGui.QColor:
     return c if c.isValid() else QtGui.QColor(ACCENT[_mode()])
 
 
+def look_accent(look) -> QtGui.QColor:
+    """The accent of look (look.Look): glass's in glass, the style's otherwise (style.accent). The markers, the slit
+    panels' marks and the mask's outline take it."""
+    return accent() if look.has("glass") else style.accent()
+
+
 def _luminance(c: QtGui.QColor) -> float:
     def f(u):
         return u / 12.92 if u <= 0.03928 else ((u + 0.055) / 1.055) ** 2.4

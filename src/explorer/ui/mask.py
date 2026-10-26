@@ -15,7 +15,7 @@ computed while t steps; shown again, it is the outline at the t of then. Not kep
 
     outlines = MaskOutlines(session, mask, pool)    # pool None: computed on the calling thread
     outlines.attach(view)                       # an ImageView: the outline drawn now, and each one after
-    outlines.set_colour(mask_colour(look))
+    outlines.set_colour(glass.look_accent(look))
     outlines.set_visible(False)                 # on no image, and nothing read until shown again
 """
 from concurrent.futures import Executor, Future
@@ -25,18 +25,12 @@ import pyqtgraph as pg
 from PySide6 import QtGui
 
 from ..obs import get_logger
-from . import glass, style
+from . import style
 
 log = get_logger("ui")
 
 WIDTH = 1.5                                             # px, as the slit's line
 AHEAD = 2                                               # the next t's outlines computed after each step in t
-
-
-def mask_colour(look) -> QtGui.QColor:
-    """The outline's colour in look (look.Look): its accent, glass's in glass and the style's otherwise. The one
-    place the mask's colour is decided."""
-    return glass.accent() if look.has("glass") else style.accent()
 
 
 class MaskOutlines:

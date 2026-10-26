@@ -45,7 +45,7 @@ from .gestures import Gestures
 from .imageview import CURSOR_PEN
 from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync
 from .loop import QtLoop
-from .mask import MaskOutlines, mask_colour
+from .mask import MaskOutlines
 from .overlays import ColourKey, gamma_text
 from .scalekey import ScaleCard, scale_menu
 from .slit import SlitHint, SlitTool
@@ -409,7 +409,7 @@ class Shell(QtWidgets.QMainWindow):
         self.look, L = look, look
         light = style.is_light()
         st = QtWidgets.QApplication.style()
-        acc = glass.accent() if L.has("glass") else style.accent()
+        acc = glass.look_accent(L)
         if hasattr(st, "SLIDER"):                       # the sliders in the colour of the markers they move
             st.SLIDER = acc if L.has("glass") else None if L.has("marks") else CURSOR_PEN.color()
             for sl in self.nav.sliders.values():
@@ -460,7 +460,7 @@ class Shell(QtWidgets.QMainWindow):
             c.key.update()
         self._place_slit_hint()
         if self.mask_outlines is not None:
-            self.mask_outlines.set_colour(mask_colour(L))
+            self.mask_outlines.set_colour(acc)
         for c in self.linked:
             c.set_look(L, acc, light)
 

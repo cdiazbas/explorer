@@ -148,17 +148,17 @@ def accent_pixels(w, colour):
 
 
 def test_drawn_on_the_image(qapp, window):
-    from explorer.ui.mask import mask_colour
+    from explorer.ui.glass import look_accent
 
     w = window
-    n = accent_pixels(w, mask_colour(w.look))
+    n = accent_pixels(w, look_accent(w.look))
     print("pixels in the outline's colour:", n)
     assert n > 50
 
 
 def test_nothing_without_a_mask(qapp, cubes):
     from explorer.data.dataset import Dataset
-    from explorer.ui.mask import mask_colour
+    from explorer.ui.glass import look_accent
     from explorer.ui.shell import Shell
 
     ds = Dataset.open(cubes["main"])
@@ -172,7 +172,7 @@ def test_nothing_without_a_mask(qapp, cubes):
         # ui.mask's items are the only curves drawn as pairs of points
         curves = [it for v in images(w) for it in v.vb.allChildren()
                   if type(it).__name__ == "PlotCurveItem" and it.opts.get("connect") == "pairs"]
-        n = accent_pixels(w, mask_colour(w.look))
+        n = accent_pixels(w, look_accent(w.look))
         print("outlines:", w.mask_outlines, "curves:", len(curves), "pixels in the accent:", n)
         assert w.mask_outlines is None and not curves
     finally:
@@ -204,7 +204,7 @@ def test_hidden_and_shown_by_the_menu_and_by_h_on_every_image(qapp, window):
     from PySide6 import QtCore
 
     from explorer.ui import termkeys as T
-    from explorer.ui.mask import mask_colour
+    from explorer.ui.glass import look_accent
 
     w = window
     w.set_grid(True)
@@ -215,7 +215,7 @@ def test_hidden_and_shown_by_the_menu_and_by_h_on_every_image(qapp, window):
     assert "mask: hide · show" in w.sheet.text()
     w.set_grid(False)
     qapp.processEvents()
-    colour = mask_colour(w.look)
+    colour = look_accent(w.look)
 
     def state(how):
         qapp.processEvents()
