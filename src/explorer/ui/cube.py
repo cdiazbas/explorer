@@ -160,10 +160,9 @@ class CubeView:
 
     def start(self, sink=None) -> None:
         """Its scheduler (sink: where its results go; its own panels by default), and the state followed from now
-        on. Q U V's noise levels are read when its spectra draw them (ui.spectra NOISE_VAR)."""
-        noise = self.spectra is not None and self.spectra.noise_mode != "off"
+        on. Q U V's noise levels are read for its spectra (core.noise: in a cube of 4 Stokes with a continuum)."""
         self.scheduler = Scheduler(self.session, sink if sink is not None else CubeSink(self), member=self.k,
-                                   noise=noise)
+                                   noise=self.spectra is not None)
         self._off = self.session.store.subscribe(self._on_state)
         self.follow(self.session.member_state(self.k), None)
 
@@ -227,6 +226,7 @@ class CubeView:
             self.view.reticle.set_colour(reticle_colour(look))
         if self.spectra is not None:
             self.spectra.set_marks(acc, light) if look.has("marks") else self.spectra.clear_marks()
+            self.spectra.set_noise_style("band" if look.has("band") else "lines")
         if self.lambda_t is not None:
             self.lambda_t.set_marks(acc) if look.has("marks") else self.lambda_t.clear_marks()
         card = card_colour(look, light)

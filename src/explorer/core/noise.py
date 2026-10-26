@@ -1,4 +1,4 @@
-"""The noise levels of Q U V at the t shown, for their +-sigma on the spectra (a trial: ui.spectra NOISE_VAR).
+"""The noise levels of Q U V at the t shown, for their +-sigma on the spectra (ui.spectra: lines or a band, by look).
 
 CRISPEX reads the ns frames at the continuum tuning at every change of t and takes, per Stokes, the standard
 deviation of S/I_c over the whole frame (crispex.pro L21033-21043), drawn at +-1 sigma on each profile (L8554-8562).

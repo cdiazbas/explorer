@@ -1,7 +1,7 @@
 """The spectra panel (ROADMAP E4.3): one plot per Stokes, the four of I Q U V as 2x2 (I Q / U V), any other number in
 a column; x shared, delta-lambda [Å] below and the Doppler velocity above when the header gives the wavelengths,
 the tuning index otherwise; the cursor's lambda as a line; Stokes I titled in its power of ten of BUNIT, Q U V in % of
-I_c when the continuum tuning is known, with their noise level at +-sigma (a trial: NOISE_VAR).
+I_c when the continuum tuning is known, with their noise level at +-sigma: lines or a band, as the look says.
 
 What is drawn and in which units is decided by the core: spectra in plot units (yrange.spectrum, plot_units), each
 plot's y range (yrange: grows while the cursor moves, refits at rest, fixed by the padlock) and I's power of ten.
@@ -29,18 +29,11 @@ DOT, RING = 4, 9                                        # px: each measured poin
 X_PAD = 0.04                                            # of the lambda span, each side
 AXIS_W = 56                                             # px: tick digits changing never re-lays out the plots
 FREEZE_VAR = f"{APP_NAME.upper()}_RESIZE_FREEZE"
-# Q U V's +-sigma (core.noise), a trial of two ways to draw it: CRISPEX's dashed lines at +-1 sigma in the curves'
-# colour (crispex.pro L8554-8562), or a band between them; off draws none and reads nothing
-NOISE_VAR = f"{APP_NAME.upper()}_TRY_SIGMA"
-NOISE_MODES = ("lines", "band", "off")
+# Q U V's +-sigma (core.noise): CRISPEX's dashed lines at +-1 sigma in the curves' colour (crispex.pro L8554-8562), or
+# a band between them; which, the look says (its part "band": modern and glass)
+NOISE_STYLES = ("lines", "band")
 NOISE_ALPHA = {"lines": 150, "band": 34}                # of the curves' ink: the lines', the band's fill
 NOISE_DASH = [5, 3]                                     # longer than the modern look's zero line, which is dashed too
-
-
-def noise_mode() -> str:
-    """How Q U V's +-sigma is drawn, from NOISE_VAR: lines, band or off; lines without it or for anything else."""
-    v = os.environ.get(NOISE_VAR, "lines").strip().lower()
-    return v if v in NOISE_MODES else "lines"
 
 
 def decimals(spacing: float) -> int:
@@ -245,8 +238,9 @@ class SpectraPanel:
         self._classic = [(c.opts["pen"], c.opts["symbolPen"], c.opts["symbolBrush"]) for c in self.curves]
         self._zeros: list = []
         self.light = light
-        self.noise_mode = noise_mode() if ns == len(STOKES) else "off"
+        self.noise_style = "lines"                      # until the look says (set_noise_style)
         self._noise: dict[int, list] = {}               # Stokes -> its +-sigma: two lines, or one band
+        self._sigma: dict = {}                          # the sigma drawn, for a change of style
         # the x axes are linked: their values once, on the outer edges (delta-lambda under the bottom row, v over the
         # top one), as two rows of the same numbers between the plots read as a third axis. Inner axes keep their
         # line, the box's edge. The velocity ticks point out, to their labels: it has no grid, and inward they hung
@@ -342,13 +336,15 @@ class SpectraPanel:
         self.iscale = iscale
         self.label_stokes()
 
-    # ---------------------------------------------------------------- Q U V's +-sigma (a trial: NOISE_VAR)
+    # ---------------------------------------------------------------- Q U V's +-sigma
     def set_noise(self, sigma: dict) -> None:
-        """Q U V's noise levels (Stokes -> sigma in % of I_c, core.noise) at +-sigma, as lines or a band (NOISE_VAR);
-        in data coordinates, so they follow each plot's y range. Only on Q U V of a panel of the 4 Stokes; a Stokes
-        without a sigma has none. They never take the mouse: a click on them picks lambda as anywhere on the plot."""
-        if self.noise_mode == "off":
+        """Q U V's noise levels (Stokes -> sigma in % of I_c, core.noise) at +-sigma, as lines or a band (the look's:
+        set_noise_style); in data coordinates, so they follow each plot's y range. Only on Q U V of a panel of the 4
+        Stokes; a Stokes without a sigma has none. They never take the mouse: a click on them picks lambda as anywhere
+        on the plot."""
+        if self.ns != len(STOKES):
             return
+        self._sigma = dict(sigma)
         for k in range(1, len(STOKES)):
             sig = sigma.get(k)
             items = self._noise.get(k)
@@ -360,25 +356,45 @@ class SpectraPanel:
                 it.setVisible(sig is not None)
             if sig is None:
                 continue
-            if self.noise_mode == "band":
+            if self.noise_style == "band":
                 items[0].setRegion((-sig, sig))
             else:
                 items[0].setValue(sig)
                 items[1].setValue(-sig)
+
+    def set_noise_style(self, style: str) -> None:
+        """Lines or band (NOISE_STYLES), as the look says (ui.cube CubeView.set_look): the items of the other style
+        leave the plots, and the sigma shown is drawn again in this one."""
+        if style not in NOISE_STYLES:
+            raise ValueError(f"sigma style {style!r}: one of {', '.join(NOISE_STYLES)}")
+        if style == self.noise_style:
+            return
+        for k, items in self._noise.items():
+            for it in items:
+                self.plots[k].removeItem(it)
+        self._noise.clear()
+        self.noise_style = style
+        if self._sigma:
+            self.set_noise(self._sigma)
+
+    def noise_items(self) -> list:
+        """Every +-sigma item on the plots now, of either style (as the plots hold them, not as this panel does)."""
+        return [it for p in self.plots for it in p.items if getattr(it, "is_noise", False)]
 
     def noise_at(self, k: int) -> tuple[float, float] | None:
         """(-sigma, +sigma) as plot k draws it, or None when it draws none."""
         items = self._noise.get(k)
         if not items or not items[0].isVisible():
             return None
-        if self.noise_mode == "band":
+        if self.noise_style == "band":
             lo, hi = items[0].getRegion()
             return float(lo), float(hi)
         return float(items[1].value()), float(items[0].value())
 
     def _make_noise(self, k: int) -> list:
         p = self.plots[k]
-        if self.noise_mode == "band":
+        items: list
+        if self.noise_style == "band":
             items = [pg.LinearRegionItem(orientation="horizontal", movable=False)]
             items[0].setZValue(-10)                     # under the curve and the markers
         else:
@@ -386,6 +402,7 @@ class SpectraPanel:
             for ln in items:
                 ln.setZValue(-1)
         for it in items:
+            it.is_noise = True                          # noise_items
             for part in [it, *getattr(it, "lines", [])]:
                 part.setAcceptedMouseButtons(QtCore.Qt.MouseButton.NoButton)
                 part.setAcceptHoverEvents(False)
@@ -397,8 +414,8 @@ class SpectraPanel:
         """In the curves' ink, as CRISPEX draws them in its plot colour: dashed lines, or a faint band without
         edges."""
         ink = QtGui.QColor(30, 30, 34) if self.light else QtGui.QColor(255, 255, 255)
-        ink.setAlpha(NOISE_ALPHA[self.noise_mode])
-        if self.noise_mode == "band":
+        ink.setAlpha(NOISE_ALPHA[self.noise_style])
+        if self.noise_style == "band":
             band = items[0]
             band.setBrush(pg.mkBrush(ink))
             band.setHoverBrush(pg.mkBrush(ink))

@@ -1,7 +1,8 @@
-"""Q U V's noise levels (core.noise) and their +-sigma on the spectra (ui.spectra NOISE_VAR, a trial): sigma is
-CRISPEX's, the standard deviation of S/I_c over the frame at the continuum tuning (crispex.pro L21033-21043), in % of
-I_c; read once per t, nothing again for a t seen; none for Stokes I, nor for a cube without 4 Stokes or without a
-continuum tuning; drawn at +-sigma in each plot's coordinates, as lines or a band that never takes the mouse."""
+"""Q U V's noise levels (core.noise) and their +-sigma on the spectra (ui.spectra): sigma is CRISPEX's, the standard
+deviation of S/I_c over the frame at the continuum tuning (crispex.pro L21033-21043), in % of I_c; read once per t,
+nothing again for a t seen; none for Stokes I, nor for a cube without 4 Stokes or without a continuum tuning; drawn at
++-sigma in each plot's coordinates, as lines in the classic look and a band in modern and glass, never taking the
+mouse."""
 import json
 import time
 
@@ -157,12 +158,13 @@ def test_none_without_four_stokes_or_a_continuum_or_when_not_asked(cube, tmp_pat
         assert counters().get("core.noise.jobs", 0) == jobs, p
 
 
-# ---------------------------------------------------------------- the display
-def panel(qapp, monkeypatch, mode):
-    from explorer.ui.spectra import NOISE_VAR, SpectraPanel
 
-    monkeypatch.setenv(NOISE_VAR, mode)
+# ---------------------------------------------------------------- the display
+def panel(qapp, style):
+    from explorer.ui.spectra import SpectraPanel
+
     sp = SpectraPanel(4, 5, None)
+    sp.set_noise_style(style)
     sp.widget.resize(700, 500)
     sp.widget.show()
     for k in range(4):
@@ -171,19 +173,29 @@ def panel(qapp, monkeypatch, mode):
     return sp
 
 
-@pytest.mark.parametrize("mode", ["lines", "band"])
-def test_drawn_at_plus_minus_sigma_on_q_u_v_in_plot_coordinates(qapp, monkeypatch, mode):
+def kinds(sp):
+    """The +-sigma items on the plots, by kind."""
+    import pyqtgraph as pg
+
+    items = sp.noise_items()
+    return (sum(isinstance(it, pg.InfiniteLine) for it in items), sum(isinstance(it, pg.LinearRegionItem)
+                                                                      for it in items))
+
+
+@pytest.mark.parametrize("style", ["lines", "band"])
+def test_drawn_at_plus_minus_sigma_on_q_u_v_in_plot_coordinates(qapp, style):
     from PySide6 import QtCore
 
-    sp = panel(qapp, monkeypatch, mode)
+    sp = panel(qapp, style)
     sp.set_noise({1: 0.25, 2: 0.5, 3: 0.125})
     assert sp.noise_at(0) is None                       # never on Stokes I
     assert [sp.noise_at(k) for k in (1, 2, 3)] == [(-0.25, 0.25), (-0.5, 0.5), (-0.125, 0.125)]
+    assert kinds(sp) == ((6, 0) if style == "lines" else (0, 3))
     p = sp.plots[2]
     items = sp._noise[2]
     sp.set_range(2, (-2.0, 3.0))                        # in data coordinates: they follow the y range
     qapp.processEvents()
-    if mode == "band":
+    if style == "band":
         rect = items[0].mapRectToScene(items[0].boundingRect())
         top, bottom = rect.top(), rect.bottom()
     else:
@@ -197,43 +209,59 @@ def test_drawn_at_plus_minus_sigma_on_q_u_v_in_plot_coordinates(qapp, monkeypatc
     sp.widget.close()
 
 
-def test_off_draws_nothing_and_a_panel_without_four_stokes_neither(qapp, monkeypatch):
-    from explorer.ui.spectra import NOISE_VAR, SpectraPanel
-
-    sp = panel(qapp, monkeypatch, "off")
+def test_a_change_of_style_leaves_no_items_of_the_other(qapp):
+    sp = panel(qapp, "lines")
     sp.set_noise({1: 0.25, 2: 0.5, 3: 0.125})
-    assert all(sp.noise_at(k) is None for k in range(4)) and not sp._noise
-    monkeypatch.setenv(NOISE_VAR, "band")
-    one = SpectraPanel(1, 5, None)
-    assert one.noise_mode == "off"
+    for style, want in (("band", (0, 3)), ("lines", (6, 0)), ("band", (0, 3))):
+        sp.set_noise_style(style)
+        assert kinds(sp) == want, style                 # the sigma shown, drawn again in the new style
+        assert [sp.noise_at(k) for k in (1, 2, 3)] == [(-0.25, 0.25), (-0.5, 0.5), (-0.125, 0.125)]
+    with pytest.raises(ValueError):
+        sp.set_noise_style("off")
     sp.widget.close()
 
 
-@pytest.mark.parametrize("mode", ["lines", "band", "off"])
-def test_the_window_reads_and_draws_as_the_setting_says(qapp, monkeypatch, cube, mode):
-    """In the window: the core's sigma on Q U V with lines or band; off asks the core for none. A press inside the
-    band, or on a line, still picks lambda."""
+def test_a_panel_without_four_stokes_draws_none(qapp):
+    from explorer.ui.spectra import SpectraPanel
+
+    one = SpectraPanel(1, 5, None)
+    one.set_noise({1: 0.25})
+    assert not one.noise_items() and one.noise_at(1) is None
+
+
+def test_the_trial_switch_is_gone(cube, monkeypatch):
+    """EXPLORER_TRY_SIGMA chose the style while it was tried; the look chooses it now, and the variable does
+    nothing."""
+    import explorer.ui.spectra as spectra
+
+    assert not hasattr(spectra, "NOISE_VAR") and not hasattr(spectra, "noise_mode")
+    monkeypatch.setenv("EXPLORER_TRY_SIGMA", "off")
+    with Driver.open(cube[0], noise=True) as d:          # the window asks for the noise whatever it says
+        assert d.shown.noise is not None
+
+
+@pytest.mark.parametrize("look, style", [("classic", "lines"), ("modern", "band"), ("glass", "band")])
+def test_each_look_draws_its_style_and_m_switches_it(qapp, cube, look, style):
+    """Lines in classic, a band in modern and glass, with the core's sigma; changing the look (M) changes it, and
+    nothing of the other stays. A press inside the band, or on a line, still picks lambda."""
     from PySide6 import QtCore
     from test_gestures import mouse
 
     from explorer.data.dataset import Dataset
+    from explorer.look import get_look
     from explorer.ui.shell import Shell
-    from explorer.ui.spectra import NOISE_VAR
 
-    monkeypatch.setenv(NOISE_VAR, mode)
     path, a = cube
     ds = Dataset.open(path)
-    w = Shell(ds)
+    w = Shell(ds, look=get_look(look))
     try:
         w.resize(1400, 900)
         w.show()
         assert spin(qapp, lambda: w.first_image_s is not None and "spectra" in w.last)
         sp = w.spectra
-        if mode == "off":
-            assert w.scheduler.noise is None and sp.noise_at(1) is None
-            return
         want = by_hand(a, 0)
         assert spin(qapp, lambda: sp.noise_at(3) is not None)
+        assert sp.noise_style == style and kinds(sp) == ((6, 0) if style == "lines" else (0, 3))
         for k in (1, 2, 3):
             lo, hi = sp.noise_at(k)
             assert hi == pytest.approx(want[k], rel=1e-6) and lo == -hi
@@ -244,6 +272,12 @@ def test_the_window_reads_and_draws_as_the_setting_says(qapp, monkeypatch, cube,
             mouse(sp.w, pt, E.MouseButtonPress, B.LeftButton, B.LeftButton)
             mouse(sp.w, pt, E.MouseButtonRelease, B.LeftButton, B.NoButton)
             assert w.session.state.l == lam
+        other = "modern" if look == "classic" else "classic"
+        w.set_look(get_look(other))
+        qapp.processEvents()
+        assert sp.noise_style == ("band" if other == "modern" else "lines")
+        assert kinds(sp) == ((0, 3) if other == "modern" else (6, 0))
+        assert sp.noise_at(1)[1] == pytest.approx(want[1], rel=1e-6)
     finally:
         w.close()
         ds.close()
