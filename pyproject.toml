@@ -7,6 +7,8 @@ name = "explorer"                       # provisional (docs/decisions/0003): not
 dynamic = ["version"]
 description = "Viewer for solar spectropolarimetric cubes [t, Stokes, lambda, y, x], successor of CRISPEX"
 readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"        # the prototype was measured on 3.12.13
 # Pins are the versions the prototype was measured with (docs/measured.md). Intel Macs get the last numba
 # with x86_64 macOS wheels (0.62.1) and the numpy/llvmlite that go with it; its kernels were checked
