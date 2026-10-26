@@ -309,9 +309,18 @@ class Shell(QtWidgets.QMainWindow):
         if mask is not None:                            # its outlines computed on the main cube's io thread
             ex = getattr(dataset, "executors", None)
             self.mask_outlines = MaskOutlines(self.session, mask, ex.io if ex is not None else None)
+        # shown or hidden on all of them by H and Panels → Mask, which stay in step (set_mask_shown); a new start
+        # shows it
+        self.mask_action: QtGui.QAction | None = None
         if self.mask_outlines is not None:
             for v in [self.view, *(c.view for c in self.linked)]:
                 self.mask_outlines.attach(v)
+            act = QtGui.QAction("Mask", self)
+            act.setCheckable(True)
+            act.setChecked(True)
+            act.setToolTip("The mask's outline on every image (H). Unticked, on none, and the mask is not read")
+            act.toggled.connect(self.set_mask_shown)
+            self.mask_action = act
         self.setAnimated(False)
         # each linked cube in a window of its own beside this one, or back in it (Panels; detach_cubes)
         self.detach_action: QtGui.QAction | None = None
@@ -1360,8 +1369,11 @@ class Shell(QtWidgets.QMainWindow):
                    ("Ctrl+G", self.reset_gamma))),
                  ("C \u21e7C", "colour map: next, previous",
                   (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1)))),
-                 ("M · T", "look · dark \u21c4 light", ((K.Key_M, self.toggle_look), (K.Key_T, self.toggle_theme))),
-                 ("F12", "status: cube, storage, memory",
+                 ("M · T", "look · dark \u21c4 light", ((K.Key_M, self.toggle_look), (K.Key_T, self.toggle_theme)))]
+        mo = self.mask_outlines
+        if mo is not None:                              # a row only with a mask: without one, H is bound to nothing
+            rows.append(("H", "mask: hide · show", ((K.Key_H, lambda: self.set_mask_shown(not mo.visible)),)))
+        rows += [("F12", "status: cube, storage, memory",
                   ((K.Key_F12, lambda: self.set_diagnostics(not self.diagnostics)),)),
                  # Q: on a Mac the application menu's own, which closes through closeEvent and keeps the layout
                  (f"{mod}W {mod}M {mod}Q", "close · minimise · quit",
@@ -1503,6 +1515,19 @@ class Shell(QtWidgets.QMainWindow):
         same slit, or one tab, of the cube the slit is drawn on."""
         if self.linked:
             self.session.set_slit_tabs(on)
+
+    def set_mask_shown(self, on: bool) -> None:
+        """H or Panels → Mask: the mask's outline on every image, or on none, the menu's tick as it is (ui.mask).
+        Without a mask, nothing."""
+        mo = self.mask_outlines
+        if mo is None:
+            return
+        mo.set_visible(on)
+        a = self.mask_action
+        if a is not None and a.isChecked() != mo.visible:
+            a.blockSignals(True)
+            a.setChecked(mo.visible)
+            a.blockSignals(False)
 
     def _slit_tabs_changed(self, on: bool) -> None:
         """The tabs after ViewState.slit_tabs: the linked cubes' in (on) or out; a cube in a window of its own has

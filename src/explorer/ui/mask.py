@@ -10,9 +10,13 @@ same way, as the image's frames are read ahead, so that playback finds them kept
 with a per-t mask on a 2k cube spent ~29 ms reading and outlining the frame before the new image could be painted.
 A request whose frame is no longer wanted when its turn comes is skipped.
 
+Hidden (H, or Panels → Mask: Shell.set_mask_shown), the outline is on no image and nothing of the mask is read or
+computed while t steps; shown again, it is the outline at the t of then. Not kept between sessions: each start shows it.
+
     outlines = MaskOutlines(session, mask, pool)    # pool None: computed on the calling thread
     outlines.attach(view)                       # an ImageView: the outline drawn now, and each one after
     outlines.set_colour(mask_colour(look))
+    outlines.set_visible(False)                 # on no image, and nothing read until shown again
 """
 from concurrent.futures import Executor, Future
 
@@ -48,6 +52,7 @@ class MaskOutlines:
         self._wanted: frozenset[int] = frozenset()      # that frame and the ones ahead: the jobs worth running
         self._busy: set[int] = set()                    # frames being computed on pool
         self._closed = False
+        self.visible = True                             # the outline on the images (set_visible)
         self._xy: tuple[np.ndarray, np.ndarray] = (np.empty(0), np.empty(0))
         self.show(session.state.t)
         self._off = session.store.subscribe(self._on_state)
@@ -56,11 +61,32 @@ class MaskOutlines:
         """Drawn on view (an ImageView) too, from now on."""
         item = pg.PlotCurveItem(connect="pairs", pen=pg.mkPen(self.colour, width=WIDTH), antialias=False)
         item.setData(*self._xy)
+        item.setVisible(self.visible)
         view.vb.addItem(item, ignoreBounds=True)        # the view's range stays the image's
         self.items.append(item)
 
+    def set_visible(self, on: bool) -> None:
+        """The outline on every image (on), or on none: then no frame is wanted, so the jobs on their way skip theirs
+        and the t steps read nothing until it is shown again, at the session's t. The outline of another frame, the
+        one hidden, is never shown again: the images have none until the session's comes."""
+        on = bool(on)
+        if on == self.visible:
+            return
+        self.visible = on
+        t = self.session.state.t
+        if not on:
+            self.want, self._wanted = None, frozenset()
+        elif self.frame is not None and self.mask.frame_at(t) != self.frame:
+            self.frame, self._xy = None, (np.empty(0), np.empty(0))
+            for item in self.items:
+                item.setData(*self._xy)
+        for item in self.items:
+            item.setVisible(on)
+        if on:
+            self.show(t)
+
     def _on_state(self, st, changed) -> None:
-        if "t" in changed:
+        if "t" in changed and self.visible:
             self.show(st.t)
 
     def show(self, t: int) -> None:

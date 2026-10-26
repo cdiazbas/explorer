@@ -322,7 +322,8 @@ class NavBar:
     def _panel_entries(menu: QtWidgets.QMenu, shell) -> None:
         """Every panel's entry, made again as the menu opens: the slit's (enabled with a slit; the prototype's
         viewer.py:1131), each linked cube's image and, while it is a window of its own, its spectra and lambda-t
-        there (ui.linked), the entry that puts them all apart or back, and the one for a slit tab per cube."""
+        there (ui.linked), the entry that puts them all apart or back, the one for a slit tab per cube and, opened with
+        a mask, the one that shows or hides its outline (Shell.set_mask_shown, as H)."""
         menu.clear()
         for d in (shell.spec_dock, shell.lt_dock, shell.slit_dock):
             menu.addAction(d.toggleViewAction())
@@ -331,11 +332,11 @@ class NavBar:
             if c.windowed:
                 for pane in c.panes.values():
                     menu.addAction(pane.toggleViewAction())
-        if getattr(shell, "detach_action", None) is not None:
+        more = [a for a in (getattr(shell, name, None) for name in ("detach_action", "slit_tabs_action", "mask_action"))
+                if a is not None]
+        if more:
             menu.addSeparator()
-            menu.addAction(shell.detach_action)
-        if getattr(shell, "slit_tabs_action", None) is not None:
-            menu.addAction(shell.slit_tabs_action)
+            menu.addActions(more)
 
     def restyle(self) -> None:
         """Another theme (Shell.set_theme): the Stokes segments make their sheet again."""

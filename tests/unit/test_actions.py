@@ -226,21 +226,29 @@ def shown_as(seq) -> str:
 
 @pytest.fixture
 def linked_shell(qapp, cube, tmp_path):
-    """Four Stokes, t, lambda and a linked cube: every row the sheet can have."""
+    """Four Stokes, t, lambda, a linked cube and a mask: every row the sheet can have."""
+    import numpy as np
+    from astropy.io import fits
+
     from explorer.data.dataset import Dataset
+    from explorer.data.mask import Mask
     from explorer.ui.shell import Shell
 
     other = synth.write_dataset(tmp_path, "o", shape=SHAPE, seed=2, sp=False, icube=False)["im"]
+    box = np.zeros(SHAPE[-2:], np.uint8)
+    box[10:30, 5:20] = 1
+    fits.PrimaryHDU(box).writeto(tmp_path / "mask.fits")
     ds = Dataset.open(cube)
     lk = Dataset.open(other, executors=ds.executors)
-    w = Shell(ds, linked=[lk])
+    mask = Mask.open(tmp_path / "mask.fits", ds)
+    w = Shell(ds, linked=[lk], mask=mask)
     w.resize(1440, 900)
     w.show()
     assert spin(qapp, lambda: w.first_image_s is not None)
     yield w
     w.close()
-    lk.close()
-    ds.close()
+    for c in (mask, lk, ds):
+        c.close()
 
 
 def test_every_bound_key_is_shown_on_its_row(linked_shell):
