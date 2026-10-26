@@ -35,6 +35,16 @@ explorer update                  # when told there is something new: this copy b
 
 `explorer --help` lists the options (theme, look, layout). Inside the window, `?` shows the keys.
 
+**Without a clone, as an application** (for using it, not for developing it):
+
+```bash
+uv tool install --python 3.12 git+https://github.com/cdiazbas/explorer.git
+```
+
+This puts the `explorer` command on your PATH in an environment of its own. `--python 3.12` matters: a recent uv
+otherwise picks a newer Python, which numba does not support yet. The repository is private for now, so this needs
+the same GitHub access as a clone. Update it with `uv tool upgrade explorer`.
+
 **Reporting a problem:** run it again with `--log` (`explorer --log cube_im.fits`, or `explorer demo --log`). The
 session then keeps traces of the window (every move and resize) and, over ssh, of what goes to the X server. When the
 window closes, the terminal names the files (in `~/.cache/explorer/logs/`): send them with what you saw. Without
@@ -75,6 +85,13 @@ window closes, the terminal names the files (in `~/.cache/explorer/logs/`): send
   the terminal says when the two orders differ. Without a time in every file, t is the name order and an index.
   Files at the same time, or of another shape, stored type, scaling, `WAVELNTH`, `INSTRUME` or `BUNIT`, are refused,
   with the files of each group. Without `--series`, several files are linked cubes, as below.
+
+### Noise levels in Q, U, V
+
+The Q/I, U/I and V/I spectra show ±1σ of the noise, as CRISPEX does: the standard deviation of each over the whole
+image at the continuum tuning, at the t shown, in % of I_c. Classic draws dashed lines, modern and glass a shaded
+band. The continuum is the one the header gives; when it gives none (La Palma `.icube`), explorer takes the tuning
+with the least signal in Q, U and V among 500 random profiles, and the status line says which.
 
 ### Linked cubes
 
@@ -127,8 +144,9 @@ explorer update                  # this copy brought to the latest version, and 
 - **Installed with or without `--dev`:** the same; both run the code of your clone.
 - **A copy without git** (synced or copied from another, e.g. a shared one): its keeper brings it up to date;
   `explorer update` says so and does nothing.
-- **Installed with `pip install git+https://…`** instead of from a clone: update it the same way, with
-  `pip install --upgrade git+https://github.com/cdiazbas/explorer.git`; `explorer update` says so.
+- **Installed without a clone:** `explorer update` says the command of the installer you used:
+  `uv tool upgrade explorer`, `pipx upgrade explorer`, or `pip install --upgrade git+https://…`. Installed from a
+  wheel file, neither uv nor pipx can follow it: install the newer wheel with `uv tool install --force <file>`.
 - **Reporting a problem:** `explorer --version` names the exact commit you run.
 
 ### Notes
@@ -137,6 +155,9 @@ explorer update                  # this copy brought to the latest version, and 
   once on each kind of machine; each builds its own environment.
 - **Remote, over ssh:** `ssh -Y host`, then `explorer cube_im.fits`. The window is drawn on your screen (on a
   Mac, through XQuartz); explorer picks the best way to draw over the link by itself.
+- **Linux without libxcb-cursor** (RHEL 9, for one): Qt's own X11 needs that library. On a local X display
+  explorer then draws the window through its own X11 bridge, and says so. For Qt's own X11, install
+  `xcb-util-cursor` (RHEL 9: from EPEL; Debian, Ubuntu: `libxcb-cursor0`). Over `ssh -Y` the bridge is used anyway.
 - **Without touching your startup files:** `scripts/setup_env.sh --link --no-update-shell` says what to add.
   Without `--link`, run explorer as `scripts/run.sh cube_im.fits` from the checkout.
 - **Uninstalling:** delete the checkout, the `explorer` link that `setup_env.sh` reported (usually

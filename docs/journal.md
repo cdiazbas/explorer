@@ -5225,3 +5225,50 @@ dice «no slit yet: click points, double click to finish».
 - Las nuevas fallan antes y pasan después.
 - Suites en bellatrix: `tests/unit` y `tests/golden` 1019 pasan, 16 saltadas; `tests/xvfb` 43; carga 1.1-1.7.
 - Capturas en `archive/images/2026-10-17_small_fixes/`.
+
+### 2026-10-26 (1): ±σ por aspecto, el continuo sin cabecera, la instalación pública y la licencia (ROADMAP X.27-X.31)
+
+**±σ (X.27).**
+- *Qué hace CRISPEX:* en cada t lee las imágenes de Q, U y V en `contpos` y toma `STDDEV(S/I_c, /NAN)` de toda la imagen
+  (`crispex.pro:21033-21043`). Lo dibuja a ±1σ discontinuo (`:8554-8562`). `contpos` lo da quien lo lanza
+  (`SCALE_STOKES`) o vale 0; «Use current» lo cambia a mano (`:17426`). No elige el continuo por sí mismo.
+- *Hecho:* la misma σ en % de I_c, una vez por t, en segundo plano, nada al reproducir.
+- *Estilo:* elegido por el usuario: líneas en classic, banda en modern y glass. Lo decide la parte «band» del aspecto y
+  cambia con M.
+- *Coste* (Mac, sintético 768², caché de páginas, ABBA): paso hasta los espectros 1.15 → 1.43 ms (A/A +0.04 ms); σ a
+  los 6 ms; el cursor igual.
+- *Negativo:* la MAD sale un 7-8 % menor en los sintéticos y cuesta 8 veces más. Se queda la std de CRISPEX.
+
+**El continuo sin cabecera.**
+- *El problema:* el usuario no veía σ con el `stokes_6173_im.icube`. Ese cubo no trae continuo (`axes.cont` None); el
+  `.fits` de los mismos datos sí (λ 26, `PRPARA`). Su regla: que el formato no importe; sin cabecera, la λ con menos
+  señal, «a ojo, no preciso».
+- *Medido en bellatrix* (sqrt(std(Q/I)² + std(U/I)² + std(V/I)²) por λ):
+  - las imágenes completas en t = 0 dan la λ 25 (0.65 %), luego 26 (0.73 %), 1 y 0; el centro de línea, 3.4 %;
+  - con perfiles al azar en t al azar, 100 perfiles saltan entre 26, 24, 1 y 0; 1000 dan 26 o 1 (0.33 s).
+- *Elegido por el usuario:* 500 perfiles.
+- *Comprobado en bellatrix:* el icube elige la 26 a los 0.74 s de abrir, con σ igual que el `.fits`. Si la cabecera da
+  continuo, manda ella.
+
+**La instalación pública** (medido; sin publicar nada).
+- *Mac:* la rueda (439 kB) se instala con `uv tool install` (1.4 GB + Python 3.12); `doctor` y la demo pasan.
+- *bellatrix:* el uv nuevo (0.13.5) elige Python 3.15, que numba no admite, así que hace falta `--python 3.12`
+  (955 MB). El `LD_LIBRARY_PATH` de conda ya lo limpiaba `cli.clean_library_path`: `doctor` pasa con él.
+- *libxcb-cursor (X.28):* falta en RHEL 9 y en la rueda de PySide6. Con una pantalla local, Qt abortaba con un core;
+  con el puente funcionaba. Ahora `auto` usa el puente y lo dice; `native` para con un mensaje. Comprobado en bellatrix
+  con el `LD_LIBRARY_PATH` de conda: la nota, la primera imagen a 5.8 s, el mensaje y salida 1 sin core, el buscador en
+  2.9 ms, y con `.qtlibs/only` sigue xcb.
+- *`explorer update` (X.29):* dice la orden del instalador (uv, pipx, pip).
+  - Negativo, medido con un paquete de dos versiones: ni `uv tool upgrade` ni `pipx upgrade` siguen una rueda. A quien
+    instaló una rueda se le dice `install --force <rueda nueva>`.
+
+**La licencia (X.30):** BSD-3-Clause, como astropy (BSD-3) y SunPy y numba (BSD-2). PySide6 y python-xlib (LGPL) se
+instalan aparte, sin copiarse. CRISPEX no tiene licencia en GitHub; explorer reimplementa su comportamiento sin copiar su
+IDL. `CITATION.cff` pide citar explorer y CRISPEX.
+
+**Pruebas:**
+- `test_noise`, `test_auto_continuum`, `test_display_plan` y `test_update`: fallan antes y pasan después.
+- Suites en bellatrix: `tests/unit` y `tests/golden` 1065 pasan, 16 saltadas; `tests/xvfb` 43; carga 0.2-2.4.
+
+**Falta (X.31):** el nombre definitivo; si el repositorio pasa a público; la integración continua; el aviso de versión
+nueva por PyPI; que `doctor` no diga FAIL cuando el puente funciona; la línea «over ssh» con pantalla local.
