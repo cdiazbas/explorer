@@ -122,8 +122,8 @@ def main():
         run_case("slab", lambda iy, ix: V.read_slit_slab(proto_sp, iy, ix, threads=a.threads)[0],
                  lambda iy, ix: slits.read_slit_slab(ours_sp, iy, ix, pool=slab_pool)[0])
     s, lam, t = min(3, roles.ns - 1), roles.nl // 2, roles.nt // 2
-    t_idx = [slits.frame_index(nlead, roles, t=k, s=s, l=lam) for k in range(roles.nt)]
-    l_idx = [slits.frame_index(nlead, roles, t=t, s=s, l=k) for k in range(roles.nl)]
+    t_idx = [axes.frame_index(nlead, roles, t=k, s=s, l=lam) for k in range(roles.nt)]
+    l_idx = [axes.frame_index(nlead, roles, t=t, s=s, l=k) for k in range(roles.nl)]
     run_case("bands_t", lambda iy, ix: V.read_slit_bands(proto, [list(j) for j in t_idx], iy, ix, band_threads),
              lambda iy, ix: slits.read_slit_bands(fr, t_idx, iy, ix, band_threads))
     run_case("bands_lambda", lambda iy, ix: V.read_slit_bands(proto, [list(j) for j in l_idx], iy, ix, band_threads),

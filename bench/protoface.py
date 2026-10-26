@@ -317,7 +317,7 @@ class ProtoViewer:
 
     def _frame_index(self, t, s, l):  # noqa: E741
         """The frame at (t, s, lambda): its leading-axes index, which the cube's frame_offset takes."""
-        from explorer.data.slits import frame_index
+        from explorer.data.axes import frame_index
 
         return frame_index(len(self._w.dataset.shape) - 2, self._pf_roles, t=t, s=s, l=l)
 

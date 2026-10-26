@@ -14,7 +14,7 @@ from typing import Protocol
 
 import numpy as np
 
-from ..data.axes import Roles
+from ..data.axes import Roles, frame_index
 from ..data.link import frames
 from ..obs import counter
 from .levels import GAMMA_MAX, GAMMA_MIN, RULE_DEFAULT, RULES
@@ -131,14 +131,8 @@ class Session:
 
     def index_of(self, member: int, st: ViewState) -> tuple:
         """The leading-axes index of member k's frame for a state already its own (member_state)."""
-        m = self.members[member]
-        r = m.dataset.roles
-        vals = {"t": st.t, "s": st.s, "l": st.l}
-        idx = [0] * len(m.dataset.shape[:-2])
-        for name, pos in (("t", r.t), ("s", r.s), ("l", r.l)):
-            if pos is not None:
-                idx[pos] = int(vals[name])
-        return tuple(idx)
+        ds = self.members[member].dataset
+        return frame_index(len(ds.shape) - 2, ds.roles, t=st.t, s=st.s, l=st.l)
 
     # ---------------------------------------------------------------- changes
     def hover(self, y: int, x: int) -> None:

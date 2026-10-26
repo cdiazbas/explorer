@@ -54,8 +54,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..data.axes import frame_index
 from ..data.executors import Generations, ShownGate
-from ..data.slits import SLIT_BLOCKS, SlitCache, frame_index, slit_path, slit_pixels
+from ..data.slits import SLIT_BLOCKS, SlitCache, slit_path, slit_pixels
 from ..data.tsample import time_samples
 from ..obs import counter, get_logger
 from .levels import panel_levels

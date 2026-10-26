@@ -180,11 +180,3 @@ def read_slit_bands(frames: FrameReader, idxs, iy, ix, threads=8):
     at = (iy - y0) * frames.nx + ix                     # flat, once: 2-D fancy indexing cost ~9 us more per frame
     return frames.band_values([tuple(j) for j in idxs], y0, y1 + 1, at, threads)
 
-
-def frame_index(nlead: int, roles, t=0, s=0, l=0) -> tuple:  # noqa: E741
-    """The leading-axes index of the frame at (t, s, lambda); axes the cube lacks are skipped, others stay 0."""
-    j = [0] * nlead
-    for a, v in ((roles.t, t), (roles.s, s), (roles.l, l)):
-        if a is not None:
-            j[a] = int(v)
-    return tuple(j)

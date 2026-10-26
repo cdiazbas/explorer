@@ -10,7 +10,6 @@ from explorer.data import axes, formats
 from explorer.data.io import FrameReader
 from explorer.data.pixel import open_pixel
 from explorer.data.slits import (
-    frame_index,
     pixel_runs,
     read_slit_bands,
     read_slit_blocks,
@@ -63,7 +62,7 @@ def test_slab_and_bands_equal_the_fits_data(dataset):
             assert np.array_equal(read_slit_slab(sp, iy, ix, pool=pool)[0], slab, equal_nan=True)
         blocks, n = read_slit_blocks(sp, [(int(iy[0]), int(ix[0]))])
         assert n == 1 and np.array_equal(blocks[(int(iy[0]), int(ix[0]))], slab[0], equal_nan=True)
-        idxs = [frame_index(3, roles, t=t, s=2, l=1) for t in range(SHAPE[0])]
+        idxs = [axes.frame_index(3, roles, t=t, s=2, l=1) for t in range(SHAPE[0])]
         bands = read_slit_bands(fr, idxs, iy, ix)
         assert np.array_equal(bands, data[:, 2, 1][:, iy, ix], equal_nan=True)
 
@@ -84,4 +83,4 @@ def test_points_read_pixels_at_their_own_frames(dataset):
 
 def test_frame_index_skips_absent_axes():
     r = axes.roles(("WAVE", "UTC", "HPLT", "HPLN"), (7, 3, 8, 8))
-    assert frame_index(2, r, t=2, s=3, l=5) == (5, 2)
+    assert axes.frame_index(2, r, t=2, s=3, l=5) == (5, 2)

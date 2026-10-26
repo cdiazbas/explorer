@@ -123,6 +123,15 @@ def roles(names, shape, axes: str | None = None) -> Roles:
 
 # ---------------------------------------------------------------- physical axes
 
+def frame_index(nlead: int, roles: Roles, t=0, s=0, l=0) -> tuple:  # noqa: E741
+    """The leading-axes index of the frame at (t, s, lambda); axes the cube lacks are skipped, others stay 0."""
+    j = [0] * nlead
+    for a, v in ((roles.t, t), (roles.s, s), (roles.l, l)):
+        if a is not None:
+            j[a] = int(v)
+    return tuple(j)
+
+
 class Axes:
     """Physical values for indices of the cube. Attributes are None when the header does not say."""
 

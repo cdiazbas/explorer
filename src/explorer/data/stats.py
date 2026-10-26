@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
-from .axes import Roles
+from .axes import Roles, frame_index
 from .io import FrameReader
 from .kernels import absmax_into
 
@@ -190,12 +190,7 @@ def quv_amplitude_ranges(frames: FrameReader, roles: Roles, cont, t, threads=8, 
     tio = [0.0]
 
     def read(s_, lam):
-        j = [0] * len(frames.shape[:-2])
-        if roles.t is not None:
-            j[roles.t] = int(t)
-        j[sa] = s_
-        if roles.l is not None:
-            j[roles.l] = lam
+        j = frame_index(len(frames.shape) - 2, roles, t=t, s=s_, l=lam)
         q = time.perf_counter()
         b = frames.read_raw(j, chunks=1)                # one read per frame: `threads` frames run at once
         tio[0] += time.perf_counter() - q
@@ -203,13 +198,7 @@ def quv_amplitude_ranges(frames: FrameReader, roles: Roles, cont, t, threads=8, 
 
     def masked(scale, s_, lam):
         """scale, 0 where I is negative at this lambda (a copy only when somewhere it is)."""
-        j = [0] * len(frames.shape[:-2])
-        if roles.t is not None:
-            j[roles.t] = int(t)
-        j[sa] = s_
-        if roles.l is not None:
-            j[roles.l] = lam
-        neg = frames.negative_i(j)
+        neg = frames.negative_i(frame_index(len(frames.shape) - 2, roles, t=t, s=s_, l=lam))
         if neg is None or not neg.size:
             return scale
         out = scale.copy()

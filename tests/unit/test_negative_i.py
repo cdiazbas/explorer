@@ -12,10 +12,11 @@ from astropy.io import fits
 
 from explorer.core.levels import image_levels, panel_levels
 from explorer.data import axes, formats
+from explorer.data.axes import frame_index
 from explorer.data.dataset import Dataset
 from explorer.data.io import FrameReader
 from explorer.data.rowbands import RowBands
-from explorer.data.slits import frame_index, slit_path
+from explorer.data.slits import slit_path
 from explorer.data.stats import quv_amplitude_ranges, sample_profiles
 from explorer.testing import synth
 

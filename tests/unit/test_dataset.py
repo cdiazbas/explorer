@@ -6,8 +6,9 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
+from explorer.data.axes import frame_index
 from explorer.data.dataset import Dataset
-from explorer.data.slits import frame_index, slit_path
+from explorer.data.slits import slit_path
 from explorer.testing import synth
 
 SHAPE = (3, 4, 5, 48, 40)
