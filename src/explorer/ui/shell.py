@@ -40,7 +40,7 @@ from ..obs import get_logger
 from . import docks, glass, icons, overlays, pens, style, titlebar
 from .actions import ActionRegistry, KeySheet, mod_key, per_pixel_sheet_html
 from .cards import MacSeams, Rounder
-from .cube import CubeView, card_colour, reticle_colour
+from .cube import CubeSink, CubeView, card_colour, reticle_colour
 from .gestures import Gestures
 from .imageview import CURSOR_PEN
 from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync
@@ -96,15 +96,17 @@ class _Follow(QtCore.QObject):
         return False
 
 
-class _Sink:
-    """The scheduler's results on screen: the image now; the other panels come in E4 and are kept until then."""
+class _Sink(CubeSink):
+    """The main cube's results: on its panels as a linked cube's (CubeSink, whose paint_colour does nothing for it),
+    and on the window's parts: what was last shown, glass, the colour key, the status line, the 2x2 view, the slit."""
 
     def __init__(self, shell: "Shell"):
+        super().__init__(shell.main)
         self.shell = shell
 
     def image(self, idx, img, levels):
         self.shell.last["image"] = (idx, levels)
-        self.shell.view.set_image(img, levels, gamma=self.shell.main.gamma_now())
+        super().image(idx, img, levels)
         if self.shell.glass is not None:
             self.shell.glass.image_changed()
         self.shell._paint_colour()
@@ -115,37 +117,20 @@ class _Sink:
 
     def spectra(self, spec, pixel, t):
         self.shell.last["spectra"] = (spec, pixel, t)
-        if self.shell.spectra is not None:
-            self.shell.spectra.show(spec)
+        super().spectra(spec, pixel, t)
         self.shell.update_status()                      # I_c for Q U V in % comes with the spectrum
 
     def lambda_t(self, lt, pixel, s, levels):
         self.shell.last["lambda_t"] = (lt, pixel, s, levels)
-        self.shell.main.last_s = s
+        super().lambda_t(lt, pixel, s, levels)
         if self.shell.lambda_t is not None:
-            self.shell.lambda_t.show(lt, levels, gamma=self.shell.session.gamma(0, s))
             cols = self.shell.maps_for(s)
             self.shell.lambda_t.set_lut(cols.lut(s) if cols is not None else None)
 
     def cleared(self, pixel):
         self.shell.last.pop("spectra", None)
         self.shell.last.pop("lambda_t", None)
-        if self.shell.spectra is not None:
-            self.shell.spectra.clear()
-        if self.shell.lambda_t is not None:
-            self.shell.lambda_t.clear()
-
-    def y_range(self, k, r):
-        if self.shell.spectra is not None:
-            self.shell.spectra.set_range(k, r)
-
-    def units(self, iscale):
-        if self.shell.spectra is not None:
-            self.shell.spectra.set_units(iscale)
-
-    def noise(self, sigma, t):
-        if self.shell.spectra is not None:
-            self.shell.spectra.set_noise(sigma)
+        super().cleared(pixel)
 
     def continuum(self, k, text):
         """The continuum chosen from the sample: said once on the terminal and the status line; the lambda slider's
