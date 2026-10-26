@@ -439,12 +439,6 @@ class Scheduler:
             return (lo, hi)
         return self.levels.image(idx, s > 0, img, rule)
 
-    def levels_now(self) -> tuple[float, float] | None:
-        """The levels of the image on screen; None before the first."""
-        if self.img is None or self.img_idx is None:
-            return None
-        return self.image_levels(self.state.s, self.img_idx, self.img)
-
     def fix_levels(self, on: bool, refit: bool = False) -> None:
         """The image padlock, for its cube's Stokes now (Session.scale): on fixes the levels to the image shown, by
         its rule (refit: to its 1-99 percentiles again, when already fixed); off gives each image its own again (the

@@ -101,7 +101,6 @@ class SlitCache:
         self._keep: set = set()
         self._lock = threading.Lock()
         self.version = 0                                # changes with what is kept: a slice made from it is reused
-        self.trims = 0
 
     def keep(self, pixels) -> None:
         """The pixels whose blocks are never dropped (the slit shown)."""
@@ -154,7 +153,6 @@ class SlitCache:
         self._blocks = {k: b.copy() for k, b in self._blocks.items() if k in self._keep}
         self._bytes = sum(b.nbytes for b in self._blocks.values())
         self.version += 1
-        self.trims += 1
 
     def nbytes(self) -> int:
         return self._bytes
