@@ -21,7 +21,8 @@ from ..data.axes import dlam_label
 from ..data.tsample import nearest_sample, time_samples
 from . import pens, style
 from .imageview import CURSOR_PEN
-from .lambda_t import MARGIN, GridAxes, IndexAxis, TimeCurve, TuningAxis, axis_style, fixed_plot
+from .lambda_t import MARGIN, GridAxes, IndexAxis, TimeCurve, TuningAxis, axis_style
+from .spectra import fixed_plot
 
 ALONG = "along the slit [px]"
 

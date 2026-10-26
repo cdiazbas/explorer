@@ -22,7 +22,7 @@ from ..data.axes import dlam_label, fmt_signed, tunings
 from ..data.tsample import nearest_sample, time_samples
 from . import pens, style
 from .imageview import CURSOR_PEN
-from .spectra import SignedAxis
+from .spectra import SignedAxis, fixed_plot
 from .stokeslabel import StokesLabel
 
 MARGIN = 9                                              # px round the plot, as the spectra's layout keeps
@@ -107,14 +107,6 @@ class IndexAxis(pg.AxisItem):
         if self.fine_of is not None and len(set(shown)) < len(shown):
             out = [self.fine_of(i) if 0 <= i < self.n else "" for i in cells]
         return out
-
-
-def fixed_plot(pi) -> None:
-    """A panel's plot as a control: no zoom, no pan, no pyqtgraph menu nor its buttons; a click picks."""
-    pi.setMouseEnabled(x=False, y=False)
-    pi.setMenuEnabled(False)
-    pi.vb.setMenuEnabled(False)
-    pi.hideButtons()
 
 
 def axis_style(a: pg.AxisItem) -> None:

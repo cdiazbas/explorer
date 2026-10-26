@@ -90,6 +90,17 @@ def test_it_draws_the_cores_spectrum_with_the_cores_ranges_and_lambda(qapp, shel
     assert spin(qapp, lambda: all(ln.value() == sp.xl[s.state.l] for ln in sp.lines))
 
 
+def test_no_auto_range_button_under_the_pointer(qapp, shell):
+    # with auto-range off, pyqtgraph shows its "A" under the pointer; a click on it moved lambda out of x_range
+    sp = shell.spectra
+    for p in sp.plots:
+        p.mouseHovering = True
+        p.updateButtons()
+        assert p.buttonsHidden and not p.autoBtn.isVisible()
+        p.mouseHovering = False
+        p.updateButtons()
+
+
 def test_padding_leaves_the_plots_empty(qapp, shell):
     sp = shell.spectra
     sp.show(np.full((4, SHAPE[2]), np.nan))

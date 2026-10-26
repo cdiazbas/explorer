@@ -175,6 +175,14 @@ class ResizeFreezer(QtCore.QObject):
         return False
 
 
+def fixed_plot(pi) -> None:
+    """A panel's plot as a control: no zoom, no pan, no pyqtgraph menu nor its buttons; a click picks."""
+    pi.setMouseEnabled(x=False, y=False)
+    pi.setMenuEnabled(False)
+    pi.vb.setMenuEnabled(False)
+    pi.hideButtons()
+
+
 class SpectraPanel:
     """ns plots in a GraphicsLayoutWidget; widget: what goes in the dock."""
 
@@ -208,9 +216,7 @@ class SpectraPanel:
                 p.setXLink(self.plots[0])
             p.disableAutoRange()
             p.setXRange(*self.x_range, padding=0)
-            p.setMouseEnabled(x=False, y=False)             # a control: click or drag picks lambda (gestures)
-            p.setMenuEnabled(False)                     # no pyqtgraph menu (the prototype turned it off)
-            p.vb.setMenuEnabled(False)
+            fixed_plot(p)                   # click or drag picks lambda (gestures); no menu (the prototype had none)
             if not self.physical:
                 p.getAxis("bottom").setTickSpacing(major=max(1, -(-nl // 7)), minor=1)
             # antialiased (a 1.5-px line drew stairs at dpr 1 and over X11: greys only, so grey tiles still), each
