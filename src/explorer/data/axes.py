@@ -464,7 +464,7 @@ def fmt_sig(v, n=4) -> str:
     return f"{v / 10 ** k:.{n - 1}f} × 10{str(k).translate(SUP)}".replace("-", "−")
 
 
-LAM0_DECIMALS = 2       # λ₀ in Å, two decimals (the user, 2026-10-11); the exact value in lam0_nm
+LAM0_DECIMALS = 2       # λ₀ in Å, two decimals; the exact value in lam0_nm
 
 
 def lam0_text(ax) -> str:
@@ -485,14 +485,14 @@ def tunings(ax, nl: int) -> tuple[bool, np.ndarray]:
 
 def dlam_label(ax) -> str:
     """The label of an axis in delta-lambda, as the wavelength less the line centre it is measured from:
-    'λ − 6173.34 Å' (the user, 2026-10-11); 'Δλ [Å]' when that is not known."""
+    'λ − 6173.34 Å'; 'Δλ [Å]' when that is not known."""
     lam0 = lam0_text(ax)
     return f"λ − {lam0}" if lam0 else "Δλ [Å]"
 
 
 def fmt_offset(v, nd=3) -> str:
     """A wavelength as the line centre and its offset, λ = λ₀ + Δλ: 'λ₀ +0.031 Å', 'λ₀ −0.031 Å' (the sign on the
-    number, a typographic minus: the user, 2026-10-11), 'λ₀ +0.000 Å' at the centre."""
+    number, a typographic minus), 'λ₀ +0.000 Å' at the centre."""
     s = f"{v:.{nd}f}"
     neg = s.startswith("-") and float(s) != 0
     return f"λ₀ {'−' if neg else '+'}{s.lstrip('-')}\u00a0Å"
