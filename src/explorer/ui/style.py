@@ -224,7 +224,6 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
     THEME = "dark"
     INK = staticmethod(WHITE)                       # overlays and glyphs: white at an alpha (light: black)
     ACC, SEL, SEL_HOVER, SEL_DOWN = _A, SELECTED, SELECTED_HOVER, SELECTED_DOWN
-    SLIDER = None                                   # slider fill, if not ACC
     CTRL = None                                     # the controls' (ACC, SEL, SEL_HOVER, SEL_DOWN), if not those
     SEP, LABEL = SEPARATOR, LABEL
     MENU, POPUP, SCROLL = MENU_QSS, POPUP_QSS, SCROLL_QSS
@@ -633,7 +632,7 @@ class MacDarkStyle(QtWidgets.QProxyStyle):
                 filled = QtCore.QRectF(track.left(), track.top(), t, c.y() - track.top())
         p.setBrush(self.TRACK[0 if en else 1])
         p.drawRoundedRect(track, t / 2, t / 2)
-        p.setBrush((self.SLIDER or self._ctl(0)) if en else self.INK(0.22))
+        p.setBrush(self._ctl(0) if en else self.INK(0.22))
         p.drawRoundedRect(filled, t / 2, t / 2)
         knob = QtCore.QRectF(0, 0, d, d)
         knob.moveCenter(c)

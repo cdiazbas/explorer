@@ -410,12 +410,11 @@ class Shell(QtWidgets.QMainWindow):
         light = style.is_light()
         st = QtWidgets.QApplication.style()
         acc = glass.look_accent(L)
-        if hasattr(st, "SLIDER"):                       # the sliders in the colour of the markers they move
-            st.SLIDER = acc if L.has("glass") else None if L.has("marks") else CURSOR_PEN.color()
-            for sl in self.nav.sliders.values():
+        if hasattr(st, "set_controls"):
+            if not L.has("glass"):                      # glass tints them its own (GlassChrome._tint)
+                st.set_controls(None if L.has("marks") else CURSOR_PEN.color())     # classic: one accent, its red
+            for sl in self.nav.sliders.values():        # the sliders in the controls' colour
                 sl.update()
-        if hasattr(st, "set_controls") and not L.has("glass"):     # glass tints them its own (GlassChrome._tint)
-            st.set_controls(None if L.has("marks") else CURSOR_PEN.color())     # classic: one accent, its red
         self.main.set_look(L, acc, light)               # its reticle, marks and cards (ui.cube)
         if self.grid is not None:
             self.grid.set_reticle(L.has("reticle"))

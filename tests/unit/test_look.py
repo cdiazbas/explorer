@@ -125,7 +125,7 @@ def test_classic(themed, cube):
 
     w, ds = make(themed, cube, "classic")
     try:
-        assert themed.style().SLIDER == CURSOR_PEN.color()            # the sliders in the markers' red
+        assert themed.style()._ctl(0) == CURSOR_PEN.color()           # the sliders in the markers' red
         assert w.view.reticle is None and w.view.hl.isVisible()
         w.session.lock(True)
         themed.processEvents()
@@ -198,7 +198,7 @@ def test_modern(themed, cube):
 
     w, ds = make(themed, cube, "modern")
     try:
-        assert themed.style().SLIDER is None                           # the accent
+        assert themed.style()._ctl(0) == themed.style().ACC           # the accent
         assert w.view.reticle is not None and not w.view.hl.isVisible()
         w.session.lock(True)
         themed.processEvents()
@@ -265,7 +265,7 @@ def classic_state(w):
 
     return dict(lines=w.view.hl.isVisible(), reticle=w.view.reticle is not None and w.view.reticle.isVisible(),
                 drop=w.nav.drop is not None and w.nav.drop.isVisible(), combo=w.nav.stokes.isVisible(),
-                slider=QtGui.QGuiApplication.instance().style().SLIDER, lut=w.view.img.lut, lt_lut=w.lambda_t.img.lut,
+                slider=QtGui.QGuiApplication.instance().style()._ctl(0), lut=w.view.img.lut, lt_lut=w.lambda_t.img.lut,
                 mark=w.spectra.lines[0].pen.color().name(), curve=w.spectra.curves[0].opts["pen"],
                 zeros=any(z.isVisible() for z in w.spectra._zeros),
                 key=w.colour_key is not None and w.colour_key.isVisible(),
@@ -281,7 +281,7 @@ def test_m_goes_round_modern_and_glass_back_to_exactly_classic(themed, cube):
         fire(w, "M")
         themed.processEvents()
         assert w.look.name == "modern" and w.view.reticle.isVisible() and not w.view.hl.isVisible()
-        assert w.nav.drop.isVisible() and not w.nav.stokes.isVisible() and themed.style().SLIDER is None
+        assert w.nav.drop.isVisible() and not w.nav.stokes.isVisible() and themed.style()._ctl(0) == themed.style().ACC
         assert any(z.isVisible() for z in w.spectra._zeros) and w.colour_key.isVisible()
         fire(w, "C")                                                    # V on its first diverging map
         assert w.colours.maps[3] == "CET-D4" and w.view.img.lut is not None

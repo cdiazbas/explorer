@@ -81,7 +81,7 @@ def test_in_glass(qapp, shell):
     assert all(isinstance(d.titleBarWidget(), PanelTitle) for d in g.docks())
     assert w.colour_key.pos().y() == glass.MARGIN                          # the key at the top: the bar is below
     acc = glass.accent()
-    assert qapp.style().SLIDER == acc and w.view.reticle.colour == acc
+    assert qapp.style()._ctl(0) == acc and w.view.reticle.colour == acc
     assert w.spectra.lines[0].pen.color() == acc and w.lambda_t.t_line.pen.color() == acc
 
 
