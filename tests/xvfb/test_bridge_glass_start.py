@@ -62,7 +62,8 @@ def test_one_update_draws_the_grey_pieces_of_every_window_in_it(x):
     from explorer.platform.xbridge.transport import Transport
 
     sizes = {"panel": (560, 408), "main": (825, 863)}
-    wins = {n: _window(x, (40 + 900 * i, 20), s, 0xFF0000) for i, (n, s) in enumerate(sizes.items())}
+    # side by side within 1600x1000: GetImage refuses a window's part off the screen (BadMatch on a narrower Xvfb)
+    wins = {n: _window(x, (40 + 580 * i, 20), s, 0xFF0000) for i, (n, s) in enumerate(sizes.items())}
     t = Transport(app_display(XDISP), on_ready=lambda: None)
     try:
         assert t.started.wait(30) and t.failed is None, t.failed
