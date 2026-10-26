@@ -5272,3 +5272,25 @@ IDL. `CITATION.cff` pide citar explorer y CRISPEX.
 
 **Falta (X.31):** el nombre definitivo; si el repositorio pasa a público; la integración continua; el aviso de versión
 nueva por PyPI; que `doctor` no diga FAIL cuando el puente funciona; la línea «over ssh» con pantalla local.
+
+### 2026-10-26 (2): la máscara: negarse si no casa, el umbral y ocultarla (ROADMAP E8.2)
+
+**Decidido** (el usuario, sobre la página de elecciones):
+- una máscara que no casa impide abrir, como IDL: con la ventana abierta nadie mira la terminal (`7c70a02`);
+- el umbral sigue en «≥ 1», como el `CONTOUR, LEVELS=1` de CRISPEX (`crispex.pro:7175-7176`): con una máscara binaria
+  es lo mismo que «> 0»;
+- ocultarla con `H` y con una casilla «Mask» en el menú Panels.
+
+**Ocultar la máscara** (`7937d65`):
+- `H`, también desde la terminal, y la casilla ocultan y muestran el contorno en las seis imágenes (principal, enlazada,
+  2×2). La casilla sigue a la tecla.
+- Oculta, ningún paso en t llama a la máscara: 0 llamadas en cuatro pasos. Al mostrarla, el contorno del t actual.
+- Píxeles del acento en la imagen principal: 1309 visible, 0 oculta (Mac, offscreen).
+- Sin máscara: ni casilla, ni atajo, ni fila en la hoja.
+- La hoja `?` con todas sus filas llega a 16, el límite de su prueba (401 px de alto): la próxima tecla compartirá fila.
+
+**Pruebas:**
+- `test_mask_drawn` y `test_actions`: las tres nuevas fallan antes y pasan después.
+- Grupos en el Mac: 21, 34, 36 y 48 pasan.
+- Capturas en `archive/images/2026-10-26_mask_toggle/`.
+- Suites en bellatrix: en la siguiente línea.
