@@ -5337,3 +5337,64 @@ nueva por PyPI; que `doctor` no diga FAIL cuando el puente funciona; la línea �
 - Sin probar: el botón con un puntero real (el paso del ratón, simulado con `mouseHovering`); el rango en y de la
   curva plana de la rendija no sale en las capturas (lo cubre `test_without_lambda`).
 - Suites en bellatrix (copia en `/tmp`, carga 2.7 → 1.7): `tests/unit` + `tests/golden` 1070 pasan, 16 saltadas (18 min 32 s); `tests/xvfb` 43 pasan, 2 saltadas (4 min 39 s), en un Xvfb privado de 2560x1440.
+
+### 2026-10-26 (4): lo que afecta a otras máquinas: Python 3.13, doctor, la línea «over ssh» (ROADMAP X.32-X.36)
+
+**Python 3.13** (`c7e2e4c`, X.32). Medido sobre una copia con el límite abierto, sin tocar el árbol:
+- Las mismas versiones (numba 0.67.0, numpy 2.5.3, PySide6 6.11.2, pyqtgraph 0.14.0, astropy 8.0.1) instalan en
+  3.13 y 3.14, en el Mac y en bellatrix.
+- Suites en bellatrix:
+
+  | Python | `unit` + `golden` | `xvfb` |
+  |---|---|---|
+  | 3.13.17 | 1069 pasan, 1 falla, 16 saltadas (19 min 17 s) | 43 pasan, 2 saltadas (4 min 26 s) |
+  | 3.14.9 | 1069 pasan, 1 falla, 16 saltadas (19 min 19 s) | 43 pasan, 2 saltadas (4 min 23 s) |
+
+  La que falla, `test_demo_on_a_given_cube`, es la comprobación de `doctor` («explorer needs 3.12»), que este cambio
+  abre. Carga 0.3 → 1.6.
+- En el Mac, 16 grupos uno a uno con 3.13.13 y 3.14.5: todos pasan; los mismos avisos que con 3.12.
+- El límite queda en `<3.14`: el numba 0.62.1 y el llvmlite 0.45.1 de los Mac Intel solo tienen ruedas de 3.12 y
+  3.13. Comprobado con `uv pip compile --only-binary :all:`: con 3.13 hay ruedas de todo en Linux (glibc 2.34), Mac
+  arm64 y Mac Intel; con 3.14 el Mac Intel falla por llvmlite. Sin probar: una instalación real en un Mac Intel.
+- El lock tiene las mismas 51 versiones; añade las ruedas de 3.13, y los `requirements/*.txt` sus hashes.
+  `pip --dry-run` con ellos sobre la venv compartida de bellatrix: nada que instalar. Al ver el lock nuevo, `run.sh`
+  llama a `setup_env.sh`, que allí solo reinstala explorer editable.
+
+**Retirado: «el uv nuevo elige Python 3.15».** No se reproduce. uv 0.13.5 en bellatrix, con un directorio de Pythons
+nuevo o con solo un 3.15.1 instalado, elige dentro del límite al instalar una rueda, el código o un repositorio git
+(`git+file://`, como el `git+https` del README): 3.12.15 con `<3.13`, 3.14.9 con `<3.15`. uv 0.11.15 en el Mac,
+igual. No sé cómo salió el 3.15 la otra vez. El README ya no pide `--python 3.12`.
+
+**`doctor` sin `libxcb-cursor`** (`47aeda4`, X.33): explorer arranca por el puente con Qt offscreen, pero `doctor`
+comprobaba el X11 de Qt y decía FAIL, con salida 1. Ahora comprueba el Qt del puente y avisa (WARN); FAIL solo si se
+pide el X11 de Qt. En bellatrix, en un Xvfb local sin `.qtlibs`: WARN y salida 0.
+
+**«over ssh» con una pantalla local** (`75d0784`, X.34): la línea lo tomaba de `plan.remote`, que todo puente pone
+(es lo que activa la medida del enlace). Ahora pregunta a `plan.screen_over_ssh`, la regla que el plan ya usaba;
+`remote` sigue igual. En bellatrix: «… ; X11 bridge)», sin «over ssh», y el enlace medido (682 MB/s, 10 fps).
+
+**La prueba de la máscara gris en 1600 px** (`d1c4929`, X.35): ponía una ventana de 825 px en x = 940, que salía de
+la pantalla, y GetImage la rechazaba (BadMatch). En bellatrix, solo esa prueba:
+
+| Colocación | Arreglo de `d988644` | 1600x1000 | 2560x1440 |
+|---|---|---|---|
+| vieja | presente | falla (BadMatch) | — |
+| nueva | presente | pasa | pasa |
+| vieja | quitado | — | falla: 228480 de 228480 px, 2 errores X |
+| nueva | quitado | falla: igual | falla: igual |
+
+Negativo de por medio: la primera vez el caso «quitado» pasó, porque solo había quitado la mitad del arreglo (la
+máscara seguía hecha del tamaño mayor al empezar la actualización).
+
+**Las herramientas, en el árbol** (`703cdcb`, X.36):
+- `bench/captures.py` y `bench/captures_compare.py`: el arnés de la limpieza, que vivía en `/tmp` y hubo que rehacer
+  una vez. En el Mac, sobre `c7e2e4c`:
+  - dos tandas: 0/104 PNG y 0/16 JSON distintos;
+  - frente al guion viejo: 0/104 y 0/16;
+  - control (un píxel y una hoja cambiados a mano): 1/104 y 1/16, la hoja nombrada, salida 1.
+- `scripts/suites.sh`: unit, golden y xvfb en un Xvfb propio, con su PID y un resumen. Estrenado con las suites de
+  esta rama en bellatrix (copia en `/tmp`, carga 1.0 → 1.3): `tests/unit` + `tests/golden` 1084 pasan, 16 saltadas
+  (19 min 8 s; las 1070 de antes y las 14 nuevas); `tests/xvfb` 43 pasan, 2 saltadas (4 min 41 s), en 2560x1440.
+
+**La nota de `test_doctor`:** decía que en una copia en `/tmp` falla siempre, pero no falló en ninguna de las cuatro
+suites de hoy. Desde `4b3e2d9` (2026-10-10) la prueba corre `run.sh` con la venv del propio pytest.
