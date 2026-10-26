@@ -37,7 +37,7 @@ GET_XCB_CURSOR = "install xcb-util-cursor (RHEL 9: from EPEL; Debian, Ubuntu: li
 class DisplayPlan:
     platform: str | None                                # Qt platform to ask for (QT_QPA_PLATFORM), None: Qt's default
     bridge: bool = False                                # windows drawn by the X11 bridge
-    remote: bool = False                                # the screen is at the other end of an ssh link
+    remote: bool = False                                # pixels as X11 requests: over ssh, or the bridge's
     stop: str | None = None                             # why the app cannot show a window here (then nothing else)
     env: dict = field(default_factory=dict)             # variables to set before Qt starts
     notes: tuple[str, ...] = ()
@@ -76,6 +76,13 @@ def find_xcb_cursor(env: Mapping) -> str | None:
     return None
 
 
+def screen_over_ssh(env, platform: str) -> bool:
+    """The screen is at the other end of an ssh link: a DISPLAY under ssh that is not this machine's ":N" (a Mac has
+    no X server of its own, so there any). DisplayPlan.remote is wider: every bridge's pixels go as X11 requests."""
+    disp = env.get("DISPLAY", "")
+    return bool(env.get("SSH_CONNECTION")) and bool(disp) and (platform == "darwin" or not disp.startswith(":"))
+
+
 def choose_display(env, platform: str, x11: str = "auto",
                    xcb_cursor: Callable[[Mapping], str | None] | None = None) -> DisplayPlan:
     """env: the process environment (a mapping); platform: sys.platform; x11: --x11 (auto, native or bridge);
@@ -97,7 +104,7 @@ def choose_display(env, platform: str, x11: str = "auto",
         if not wants_bridge:
             return DisplayPlan(qpa, remote=remote)
     else:
-        remote_display = ssh and bool(disp) and (mac or not disp.startswith(":"))
+        remote_display = screen_over_ssh(env, platform)
         if mac and ssh and not disp:
             return DisplayPlan(None, stop="macOS over ssh has no window server: connect with ssh -Y (the window "
                                           "then comes through X11), or run it in a Terminal on that Mac")

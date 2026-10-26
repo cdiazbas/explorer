@@ -156,3 +156,23 @@ def test_the_finder_is_asked_only_for_xcb_on_linux():
         choose_display(env, platform, x11, xcb_cursor=never)
     assert choose_display(LOCAL, "linux", xcb_cursor=lambda env: None).bridge
     assert choose_display(LOCAL, "linux", xcb_cursor=lambda env: "/x/libxcb-cursor.so.0").platform == "xcb"
+
+
+@pytest.mark.parametrize("env, platform, want", [
+    ({"DISPLAY": "localhost:10.0", **SSH}, "linux", True),
+    ({"DISPLAY": "bellatrix.uio.no:10.0", **SSH}, "linux", True),
+    ({**LOCAL, **SSH}, "linux", False),                             # ssh to the machine, its own display
+    (LOCAL, "linux", False),
+    ({"DISPLAY": "localhost:10.0"}, "linux", False),               # not under ssh
+    (SSH, "linux", False),
+    ({"DISPLAY": "/private/tmp/launchd/org.xquartz:0", **SSH}, "darwin", True),   # a Mac has no X server of its own
+])
+def test_the_screen_over_ssh(env, platform, want):
+    """What the first-image line says: the bridge on a local display is not over ssh, although its plan is remote."""
+    assert plan.screen_over_ssh(env, platform) is want
+
+
+def test_the_bridge_on_a_local_display_is_remote_but_not_over_ssh(monkeypatch):
+    _ldconfig(monkeypatch, CACHE_WITHOUT)
+    p = choose_display(LOCAL, "linux")
+    assert p.bridge and p.remote and not plan.screen_over_ssh(LOCAL, "linux")

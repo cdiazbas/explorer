@@ -199,7 +199,7 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     before = process_age()                              # Python's start and the imports up to here
     phases: dict[str, float] = {}
     from ..platform.display import NoDisplay, for_plan
-    from ..platform.plan import choose_display
+    from ..platform.plan import choose_display, screen_over_ssh
 
     plan = choose_display(os.environ, sys.platform, x11)
     for note in plan.notes:
@@ -286,7 +286,7 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         shell = Shell(ds, title=f"{names} — {APP_NAME}", t0=t0, look=get_look(look), linked=others, mask=masked)
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
-        shell.breakdown = (before, phases, shown, plan.remote)
+        shell.breakdown = (before, phases, shown, plan.remote, screen_over_ssh(os.environ, sys.platform))
         ops = shell.window_ops = disp.ops(shell)        # before show: our title bar makes the window frameless
         shell.title_bar = chrome(app, shell, ops, disp.ops, bridge=plan.bridge)
         shell.layout_store = store

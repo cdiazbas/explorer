@@ -40,6 +40,24 @@ def shell(qapp, cube):
     ds.close()
 
 
+@pytest.mark.parametrize("ssh, said", [(False, False), (True, True)])
+def test_the_first_image_line_says_over_ssh_only_over_ssh(qapp, cube, capsys, ssh, said):
+    """The bridge on a local display (no libxcb-cursor) has a remote plan; the line says 'over ssh' only when the
+    screen is at the other end of one."""
+    from explorer.data.dataset import Dataset
+    from explorer.ui.shell import Shell
+
+    with Dataset.open(cube) as ds:
+        w = Shell(ds)
+        w.breakdown = (None, {"window": 0.01}, "X11 bridge", True, ssh)
+        w.resize(640, 480)
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        line = next(x for x in capsys.readouterr().err.splitlines() if "first image handed" in x)
+        assert "X11 bridge" in line and ("over ssh" in line) is said, line
+        w.close()
+
+
 def test_first_image_keys_and_status(shell):
     from PySide6 import QtCore
     from PySide6.QtTest import QTest

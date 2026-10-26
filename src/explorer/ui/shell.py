@@ -1804,11 +1804,11 @@ class Shell(QtWidgets.QMainWindow):
         if self.breakdown is not None:                  # set by ui.app.run: where the time went
             # what the user waits for is the time since the command started (Python, its imports, anything run
             # before the window, as the demo's doctor): that leads; the breakdown follows
-            before, phases, platform, remote = self.breakdown
+            before, phases, platform, remote, ssh = self.breakdown
             rest = self.first_image_s - sum(phases.values())
             parts = ([f"start and imports {before:.2f} s"] if before is not None else []) + [
                 f"{k} {v:.2f} s" for k, v in phases.items()] + [f"first image {rest:.2f} s"]
-            where = f"{platform or 'default'}{' over ssh' if remote else ''}"
+            where = f"{platform or 'default'}{' over ssh' if ssh else ''}"
             if before is not None:
                 line = f"first image handed to the screen {before + self.first_image_s:.2f} s after the command started"
             line += f" ({', '.join(parts)}; {where})"
