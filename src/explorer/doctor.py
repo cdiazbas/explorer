@@ -23,6 +23,7 @@ from typing import Any
 from . import __version__
 from ._name import APP_NAME
 from ._paths import cache_dir
+from .platform.plan import find_xcb_cursor
 
 OK, WARN, FAIL = "ok", "WARN", "FAIL"
 
@@ -163,22 +164,6 @@ def c_numba(rep):
     return f"numba {numba.__version__}: compiled in {ms:.0f} ms; threading layer {layer}, {threads} threads"
 
 
-def _libxcb_cursor():
-    """Where libxcb-cursor.so.0 would come from, or None. Qt >= 6.5 needs it for X11; RHEL 9 lacks it."""
-    for d in filter(None, os.environ.get("LD_LIBRARY_PATH", "").split(":")):
-        p = os.path.join(d, "libxcb-cursor.so.0")
-        if os.path.exists(p):
-            return p
-    try:
-        out = subprocess.run(["/sbin/ldconfig", "-p"], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        out = ""
-    for line in out.splitlines():
-        if "libxcb-cursor.so.0" in line:
-            return line.split("=>")[-1].strip()
-    return None
-
-
 _QT_CHILD = r"""
 import json, sys, time
 from PySide6 import QtWidgets, QtCore
@@ -206,7 +191,7 @@ def c_qt(rep, show):
             env["QT_QPA_PLATFORM"], note = "offscreen", " (no display: Qt checked offscreen)"
         elif sys.platform == "darwin" and env.get("SSH_CONNECTION") and not env.get("DISPLAY"):
             env["QT_QPA_PLATFORM"], note = "offscreen", " (Mac over ssh: no window server here; Qt checked offscreen)"
-    if linux and env.get("DISPLAY") and env.get("QT_QPA_PLATFORM") in (None, "xcb") and _libxcb_cursor() is None:
+    if linux and env.get("DISPLAY") and env.get("QT_QPA_PLATFORM") in (None, "xcb") and find_xcb_cursor(env) is None:
         return FAIL, ("libxcb-cursor.so.0 not found: Qt cannot use X11 (ssh -Y) without it. Run scripts/setup_env.sh "
                       "(it installs it from conda-forge, no root), or: conda install -c conda-forge xcb-util-cursor")
     title = f"{APP_NAME} doctor: {rep.user}@{rep.host} {time.strftime('%H:%M:%S')}"

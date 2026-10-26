@@ -115,7 +115,8 @@ def main(argv=None) -> int:
     g.add_argument("--sp", help="this per-pixel file instead of the one found next to the cube")
     ap.add_argument("--moves", type=int, default=12, help="with --no-window: cursor moves in the walk (default 12)")
     ap.add_argument("--x11", choices=("auto", "native", "bridge"), default="auto",
-                    help="over ssh -Y: Qt's own X11 (native) or the X11 bridge; auto decides (the bridge over ssh)")
+                    help="Qt's own X11 (native) or the X11 bridge; auto decides: the bridge over ssh -Y, "
+                         "and where Qt's X11 would lack libxcb-cursor")
     ap.add_argument("--axes", help="what the leading axes are, slowest first, e.g. t,l or s,l (l is lambda); "
                                    "for cubes whose header does not say it")
     from .ui.app import window_options

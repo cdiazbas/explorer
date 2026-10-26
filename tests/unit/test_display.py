@@ -2,10 +2,17 @@
 import pytest
 
 from explorer._name import APP_NAME
+from explorer.platform import plan
 from explorer.platform.display import Display, NoDisplay, for_plan
 from explorer.platform.plan import DisplayPlan, choose_display
 
 SSH = {"SSH_CONNECTION": "1.2.3.4 5 6.7.8.9 22"}
+
+
+@pytest.fixture(autouse=True)
+def _with_xcb_cursor(monkeypatch):
+    """Qt's xcb in these plans, as on a system with libxcb-cursor (test_display_plan: without it)."""
+    monkeypatch.setattr(plan, "find_xcb_cursor", lambda env: "/usr/lib64/libxcb-cursor.so.0")
 
 
 def test_prepare_env_sets_what_the_plan_asks_or_stops():
