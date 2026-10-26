@@ -5293,4 +5293,4 @@ nueva por PyPI; que `doctor` no diga FAIL cuando el puente funciona; la línea �
 - `test_mask_drawn` y `test_actions`: las tres nuevas fallan antes y pasan después.
 - Grupos en el Mac: 21, 34, 36 y 48 pasan.
 - Capturas en `archive/images/2026-10-26_mask_toggle/`.
-- Suites en bellatrix: en la siguiente línea.
+- Suites en bellatrix (copia en `/tmp`, carga 0.2 → 0.9): `tests/unit` + `tests/golden` 1068 pasan, 16 saltadas (18 min 53 s); `tests/xvfb` 43 pasan, 2 saltadas (4 min 38 s), en un Xvfb privado de 2560x1440.
