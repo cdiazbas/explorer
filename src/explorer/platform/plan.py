@@ -100,7 +100,7 @@ def choose_display(env, platform: str, x11: str = "auto",
                                       "session, or connect with ssh -Y so the window reaches your screen")
     if qpa:                                             # chosen by whoever launched it
         wants_bridge = x11 == "bridge"
-        remote = wants_bridge or (qpa.startswith("xcb") and ssh and bool(disp) and not disp.startswith(":"))
+        remote = wants_bridge or (qpa.startswith("xcb") and screen_over_ssh(env, platform))
         if not wants_bridge:
             return DisplayPlan(qpa, remote=remote)
     else:

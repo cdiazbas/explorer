@@ -1,6 +1,7 @@
 """`explorer doctor` runs headless, reads a cube's header, and reports a failed check with exit code 1."""
 import json
 import os
+import subprocess
 import sys
 
 import numpy as np
@@ -117,3 +118,41 @@ def test_without_libxcb_cursor_the_bridge_is_a_warning_not_a_failure(headless, m
     assert "libxcb-cursor.so.0 not found" in msg
     if want == doctor.WARN:
         assert "on 'offscreen'" in msg and "X11 bridge" in msg
+
+
+SSH = {"SSH_CONNECTION": "1.2.3.4 5 6.7.8.9 22"}
+
+
+@pytest.mark.parametrize("env, platform, cursor, want", [
+    ({"DISPLAY": "localhost:10.0", **SSH}, "linux", True, ("offscreen", doctor.OK)),     # ssh -Y: the bridge
+    ({"DISPLAY": "localhost:10.0", **SSH}, "darwin", True, ("offscreen", doctor.OK)),
+    ({"DISPLAY": ":0", **SSH}, "linux", True, ("xcb", doctor.OK)),                       # its own display
+    ({"DISPLAY": ":0"}, "linux", True, ("xcb", doctor.OK)),
+    ({"DISPLAY": ":0"}, "linux", False, ("offscreen", doctor.WARN)),                     # the bridge stands in
+    ({}, "linux", True, ("offscreen", doctor.OK)),                                       # no display
+    ({**SSH}, "darwin", True, ("offscreen", doctor.OK)),                                 # no window server
+    ({}, "darwin", True, (None, doctor.OK)),                                             # cocoa, Qt's default
+    ({"QT_QPA_PLATFORM": "offscreen", "DISPLAY": "localhost:10.0", **SSH}, "linux", True, ("offscreen", doctor.OK)),
+])
+def test_qt_is_checked_on_the_platform_explorer_would_use(monkeypatch, env, platform, cursor, want):
+    """doctor asks explorer's display plan (platform.plan): over ssh -Y explorer draws through the X11 bridge with Qt
+    offscreen, and that is the Qt checked, not Qt's own X11 through the link. The child is not started: its
+    environment is what is checked."""
+    for k in ("DISPLAY", "WAYLAND_DISPLAY", "QT_QPA_PLATFORM", "SSH_CONNECTION", "EXPLORER_X11"):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(doctor.sys, "platform", platform)
+    monkeypatch.setattr(doctor, "find_xcb_cursor", lambda e: "/x/libxcb-cursor.so.0" if cursor else None)
+    seen, real, rep = {}, subprocess.run, doctor.Report()
+
+    def run(cmd, *a, env=None, **kw):
+        if cmd[:2] != [sys.executable, "-c"]:                         # platform's own commands
+            return real(cmd, *a, env=env, **kw)
+        seen["qpa"] = env.get("QT_QPA_PLATFORM")
+        d = dict(platform=env.get("QT_QPA_PLATFORM") or "default", qt="6", screens=[])
+        return subprocess.CompletedProcess(cmd, 0, stdout="QTJSON" + json.dumps(d), stderr="")
+    monkeypatch.setattr(doctor.subprocess, "run", run)
+    status, msg = doctor.c_qt(rep, False)
+    print(env, platform, cursor, seen, status, msg)
+    assert (seen["qpa"], status) == want, msg

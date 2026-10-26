@@ -55,6 +55,7 @@ def _with_xcb_cursor(monkeypatch):
     ({"DISPLAY": "localhost:10.0", **SSH}, "darwin", "native", ("ok", "xcb", True, False)),
     ({"DISPLAY": "/private/tmp/launchd/org.xquartz:0"}, "darwin", "auto", ("ok", "cocoa", False, False)),
     ({"QT_QPA_PLATFORM": "offscreen", **SSH}, "darwin", "auto", ("ok", "offscreen", False, False)),
+    ({"QT_QPA_PLATFORM": "xcb", "DISPLAY": ":0", **SSH}, "darwin", "auto", ("ok", "xcb", True, False)),  # Mac: remote
     # the choice in the environment
     ({"DISPLAY": "localhost:10.0", X11_VAR: "native", **SSH}, "linux", "auto", ("ok", "xcb", True, False)),
 ])
@@ -170,6 +171,16 @@ def test_the_finder_is_asked_only_for_xcb_on_linux():
 def test_the_screen_over_ssh(env, platform, want):
     """What the first-image line says: the bridge on a local display is not over ssh, although its plan is remote."""
     assert plan.screen_over_ssh(env, platform) is want
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+@pytest.mark.parametrize("disp", ["", ":0", "localhost:10.0", "/private/tmp/launchd/org.xquartz:0"])
+@pytest.mark.parametrize("ssh", [False, True])
+def test_qt_s_own_x11_asked_for_is_remote_where_the_screen_is_over_ssh(platform, disp, ssh):
+    """QT_QPA_PLATFORM=xcb set by whoever launched it: remote by the same rule as without it (screen_over_ssh), a
+    Mac's ":0" under ssh included."""
+    env = {"QT_QPA_PLATFORM": "xcb", **({"DISPLAY": disp} if disp else {}), **(SSH if ssh else {})}
+    assert choose_display(env, platform).remote is plan.screen_over_ssh(env, platform)
 
 
 def test_the_bridge_on_a_local_display_is_remote_but_not_over_ssh(monkeypatch):
