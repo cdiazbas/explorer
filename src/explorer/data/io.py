@@ -169,12 +169,16 @@ class FrameReader:
         i = self.to_float32(self.read_rows_raw(key, y0, y1)).reshape(-1)
         return masking.mask_where(v, (i if at is None else i[at]).reshape(v.shape))
 
+    def _rows(self, y0: int, y1: int) -> None:
+        """IndexError unless rows y0..y1-1 are in the image."""
+        if not 0 <= y0 < y1 <= self.ny:
+            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+
     def read_rows_raw(self, idx, y0: int, y1: int) -> np.ndarray:
         """Rows y0..y1-1 of a frame as stored, one read: the band a slit crosses, without the rest of the image.
         Read-only (a view of the bytes read): os.pread into bytes costs 7-15 us less per band than preadv into a
         new numpy array, and a slit reads one band per frame (bellatrix, 3.9 MB bands, pinned to one NUMA node)."""
-        if not 0 <= y0 < y1 <= self.ny:
-            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        self._rows(y0, y1)
         n = (y1 - y0) * self.nx * self.layout.dtype.itemsize
         b = os.pread(self.fd, n, self.frame_offset(idx) + y0 * self.nx * self.layout.dtype.itemsize)
         if len(b) != n:
@@ -182,17 +186,22 @@ class FrameReader:
         return np.frombuffer(b, self.layout.dtype).reshape(y1 - y0, self.nx)
 
     def band_values(self, idxs, y0: int, y1: int, at, threads: int = 8) -> np.ndarray:
-        """For each frame index in idxs, one read of rows y0..y1-1, then the values at flat positions `at` in that
-        band: (len(idxs), len(at)) float32 in physical units, reads on `threads` threads started for the call.
-        The values along a slit without a per-pixel file. Each worker computes its frame's offset and converts
-        its own values, as the prototype's read_slit_bands does: with 16 workers a leaner one (offsets computed
-        up front) measured 8-15 % slower, the reads then contending harder for the GIL (bellatrix, 186 frames of
-        3.9 MB, pinned to one NUMA node)."""
-        if not 0 <= y0 < y1 <= self.ny:
-            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        """For each frame index in idxs, rows y0..y1-1, then the values at flat positions `at` in that band:
+        (len(idxs), len(at)) float32 in physical units. The values along a slit without a per-pixel file."""
+        self._rows(y0, y1)
         at = np.asarray(at, np.int64)
         if at.size and not (0 <= at.min() and at.max() < (y1 - y0) * self.nx):
             raise IndexError(f"positions outside a band of {y1 - y0} rows of {self.nx}")
+        idxs = list(idxs)
+        if not idxs:
+            return np.empty((0, at.size), np.float32)
+        return self._band_values(idxs, y0, y1, at, threads)
+
+    def _band_values(self, idxs: list, y0: int, y1: int, at: np.ndarray, threads: int) -> np.ndarray:
+        """band_values, checked: one read of the rows per frame, on `threads` threads started for the call. Each
+        worker computes its frame's offset and converts its own values, as the prototype's read_slit_bands does:
+        with 16 workers a leaner one (offsets computed up front) measured 8-15 % slower, the reads then contending
+        harder for the GIL (bellatrix, 186 frames of 3.9 MB, pinned to one NUMA node)."""
         isz = self.layout.dtype.itemsize
         n = (y1 - y0) * self.nx * isz
         skip = y0 * self.nx * isz
@@ -205,9 +214,6 @@ class FrameReader:
                 raise ShortRead(f"read {len(b)} of {n} bytes of frame {j} in {self.layout.path}")
             return self._masked(j, self.to_float32(np.frombuffer(b, dt)[at]), y0, y1, at)
 
-        idxs = list(idxs)
-        if not idxs:
-            return np.empty((0, at.size), np.float32)
         with span("data.bands.read"), ThreadPoolExecutor(max(1, min(threads, len(idxs)))) as ex:
             return np.stack(list(ex.map(one, idxs)))
 
@@ -238,8 +244,6 @@ class FrameReader:
         indices along an axis (series_frames). Read from the file every time, in the numba reader's threads (call it
         from the one thread that runs parallel numba).
         A series of Q, U or V gathers I's in the same call, for the negative-I rule (twice the requests)."""
-        from .gather import gather_limited
-
         if not 0 <= y < self.ny or not 0 <= x < self.nx:
             raise IndexError(f"pixel ({y}, {x}) outside {self.ny}x{self.nx}")
         sizes, fn = self.series_frames(idx, free_axes, at)
@@ -247,14 +251,20 @@ class FrameReader:
         if self.i_index(idx, free_axes) is not None:
             assert self.stokes is not None
             fn = np.concatenate([fn, fn - int(idx[self.stokes]) * self.strides[self.stokes]])
+        v = self._pixel_values(y, x, fn)
+        return self.mask_series(v[:n].reshape(sizes), idx, free_axes, v[n:].reshape(sizes) if v.size > n else None)
+
+    def _pixel_values(self, y: int, x: int, fn: np.ndarray) -> np.ndarray:
+        """Pixel (y, x) of frames number fn, float32 in physical units: one gathered request per frame."""
+        from .gather import gather_limited
+
         it = self.layout.dtype.itemsize
         offs = (self.layout.offset + fn * self.frame_bytes + (int(y) * self.nx + int(x)) * it).astype(np.int64)
         out = np.empty(offs.size * it, np.uint8)
         with span("data.series.read"):
             if gather_limited(self.fd, offs, it, out, self.gather_threads):
                 raise ShortRead(f"short reads for pixel ({y}, {x}) in {self.layout.path}")
-        v = self.to_float32(out.view(self.layout.dtype))
-        return self.mask_series(v[:n].reshape(sizes), idx, free_axes, v[n:].reshape(sizes) if v.size > n else None)
+        return self.to_float32(out.view(self.layout.dtype))
 
     def mask_series(self, v: np.ndarray, idx, free_axes, i: np.ndarray | None = None) -> np.ndarray:
         """The negative-I rule on a series v along free_axes (the other axes fixed at idx), in place: along the
@@ -278,8 +288,7 @@ class FrameReader:
         every pixel in the rows comes with the one asked for."""
         from .gather import gather_limited
 
-        if not 0 <= y0 < y1 <= self.ny:
-            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        self._rows(y0, y1)
         sizes, fn = self.series_frames(idx, free_axes, at)
         n = (y1 - y0) * self.nx * self.layout.dtype.itemsize
         offs = (self.layout.offset + fn * self.frame_bytes + y0 * self.nx * self.layout.dtype.itemsize)
@@ -494,23 +503,15 @@ class PerPixelFrames(FrameReader):
             self._ready = {}
 
     def read_rows_raw(self, idx, y0: int, y1: int) -> np.ndarray:
-        if not 0 <= y0 < y1 <= self.ny:
-            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        self._rows(y0, y1)
         return self.frames_rows([self._frame_number(idx)], y0, y1)[0]
 
-    def band_values(self, idxs, y0: int, y1: int, at, threads: int = 8) -> np.ndarray:
-        if not 0 <= y0 < y1 <= self.ny:
-            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
-        at = np.asarray(at, np.int64)
-        idxs = list(idxs)
-        if not idxs:
-            return np.empty((0, at.size), np.float32)
+    def _band_values(self, idxs: list, y0: int, y1: int, at: np.ndarray, threads: int) -> np.ndarray:
         raw = self.frames_rows([self._frame_number(j) for j in idxs], y0, y1).reshape(len(idxs), -1)[:, at]
         return np.stack([self._masked(j, self.to_float32(r), y0, y1, at) for j, r in zip(idxs, raw, strict=True)])
 
     def row_band(self, idx, free_axes, y0: int, y1: int, at=None) -> np.ndarray:
-        if not 0 <= y0 < y1 <= self.ny:
-            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        self._rows(y0, y1)
         sizes, fn = self.series_frames(idx, free_axes, at)
         return self.frames_rows(fn, y0, y1).reshape(*sizes, y1 - y0, self.nx)
 
@@ -520,17 +521,9 @@ class PerPixelFrames(FrameReader):
             raise ShortRead(f"read {len(b)} of {self.record} bytes of pixel ({y}, {x}) in {self.sp.path}")
         return np.frombuffer(b, self.sp.dtype)
 
-    def series(self, y: int, x: int, idx, free_axes, at=None) -> np.ndarray:
-        if not 0 <= y < self.ny or not 0 <= x < self.nx:
-            raise IndexError(f"pixel ({y}, {x}) outside {self.ny}x{self.nx}")
-        sizes, fn = self.series_frames(idx, free_axes, at)
-        n = fn.size
-        if self.i_index(idx, free_axes) is not None:
-            assert self.stokes is not None
-            fn = np.concatenate([fn, fn - int(idx[self.stokes]) * self.strides[self.stokes]])
+    def _pixel_values(self, y: int, x: int, fn: np.ndarray) -> np.ndarray:
         with span("data.series.read"):
-            v = self.to_float32(self._pixel_record(y, x)[self._record_pos(fn)])
-        return self.mask_series(v[:n].reshape(sizes), idx, free_axes, v[n:].reshape(sizes) if v.size > n else None)
+            return self.to_float32(self._pixel_record(y, x)[self._record_pos(fn)])
 
     def _gather_points(self, ys, xs, fn) -> np.ndarray:
         with span("data.points.read"):
@@ -693,8 +686,7 @@ class SeriesReader(FrameReader):
         return raw
 
     def read_rows_raw(self, idx, y0: int, y1: int) -> np.ndarray:
-        if not 0 <= y0 < y1 <= self.ny:
-            raise IndexError(f"rows {y0}..{y1} outside 0..{self.ny}")
+        self._rows(y0, y1)
         t = self._t(idx)
         if self.layout.compressed:
             return self._decompressed(t, slice(y0, y1)).reshape(y1 - y0, self.nx)
@@ -726,24 +718,15 @@ class SeriesReader(FrameReader):
         with ThreadPoolExecutor(min(self.threads, len(items))) as ex:
             return list(ex.map(step, items))
 
-    def band_values(self, idxs, y0: int, y1: int, at, threads: int = 8) -> np.ndarray:
-        at = np.asarray(at, np.int64)
-        if at.size and not (0 <= at.min() and at.max() < (y1 - y0) * self.nx):
-            raise IndexError(f"positions outside a band of {y1 - y0} rows of {self.nx}")
-        idxs = list(idxs)
-        if not idxs:
-            return np.empty((0, at.size), np.float32)
+    def _band_values(self, idxs: list, y0: int, y1: int, at: np.ndarray, threads: int) -> np.ndarray:
         with span("data.bands.read"):
             return np.stack(self._map(lambda j: self.to_float32(self.read_rows_raw(j, y0, y1).reshape(-1)[at]),
                                       idxs))
 
-    def series(self, y: int, x: int, idx, free_axes, at=None) -> np.ndarray:
-        if not 0 <= y < self.ny or not 0 <= x < self.nx:
-            raise IndexError(f"pixel ({y}, {x}) outside {self.ny}x{self.nx}")
-        sizes, fn = self.series_frames(idx, free_axes, at)
+    def _pixel_values(self, y: int, x: int, fn: np.ndarray) -> np.ndarray:
         with span("data.series.read"):
             raw = np.array(self._map(lambda t: self._pixel_raw(int(t), int(y), int(x)), fn), self.layout.dtype)
-        return self.to_float32(raw).reshape(sizes)
+        return self.to_float32(raw)
 
     def row_band(self, idx, free_axes, y0: int, y1: int, at=None) -> np.ndarray:
         sizes, fn = self.series_frames(idx, free_axes, at)

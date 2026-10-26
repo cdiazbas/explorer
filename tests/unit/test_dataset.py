@@ -157,3 +157,20 @@ def test_a_per_pixel_file_alone_reads_what_its_image_cube_holds(tmp_path):
         assert np.array_equal(a.frames.points(ys, xs, fn), b.frames.points(ys, xs, fn), equal_nan=True)
         assert np.array_equal(a.pixel_block(4, 3).result().transpose(1, 0, 2),
                               a.frames.series(4, 3, (0, 0, 0), [0, 1, 2]), equal_nan=True)
+
+
+def test_positions_outside_the_band_are_refused_with_or_without_a_per_pixel_file(tmp_path):
+    """A band of 3 rows of 7 holds positions 0..20: -1 (numpy would take it from the band's end) and 21 are refused,
+    by io.PerPixelFrames as by FrameReader."""
+    from explorer.data.io import PerPixelFrames
+
+    d = synth.write_dataset(tmp_path, "c", shape=(3, 4, 5, 9, 7), icube=False)
+    alone = tmp_path / "alone"
+    alone.mkdir()
+    sp = synth.write_sp_fits(d["im"], alone / "c_sp.fits", wcs=True)
+    with Dataset.open(sp) as a, Dataset.open(d["im"], no_sp=True) as b:
+        assert isinstance(a.frames, PerPixelFrames)
+        for r in (a.frames, b.frames):
+            for at in ([-1], [0, 21]):
+                with pytest.raises(IndexError, match="positions outside a band of 3 rows of 7"):
+                    r.band_values([(0, 1, 2)], 2, 5, at)
