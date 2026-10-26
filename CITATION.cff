@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use explorer in your research, please cite it as below, and CRISPEX, whose way of working it follows."
+title: "explorer: a viewer for solar spectropolarimetric cubes"
+type: software
+authors:
+  - family-names: "Díaz Baso"
+    given-names: "C. J."
+license: BSD-3-Clause
+repository-code: "https://github.com/cdiazbas/explorer"
+keywords:
+  - solar physics
+  - spectropolarimetry
+  - data visualization
+  - CRISPEX
+references:
+  - type: article
+    title: "Flocculent flows in the chromospheric canopy of a sunspot"
+    authors:
+      - family-names: "Vissers"
+        given-names: "G."
+      - family-names: "Rouppe van der Voort"
+        given-names: "L."
+    journal: "The Astrophysical Journal"
+    volume: 750
+    start: 22
+    year: 2012

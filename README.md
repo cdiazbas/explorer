@@ -152,3 +152,9 @@ scripts/run.sh doctor          # check the environment, numba, Qt and the displa
 scripts/check.sh               # everything CI would run: hygiene, lint, layers, types, tests
 python3 scripts/sync.py -n     # what would go to bellatrix (needs the ssh master connection open)
 ```
+
+## License and citation
+
+explorer is distributed under the BSD 3-Clause license ([LICENSE](LICENSE)). If you use it in your research, please
+cite it ([CITATION.cff](CITATION.cff)) and CRISPEX, whose way of working it follows: Vissers & Rouppe van der Voort
+(2012), ApJ 750, 22.
