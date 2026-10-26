@@ -22,11 +22,11 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.levels import RULE_DEFAULT, gamma_step
+from ..data.axes import STOKES
 from . import glass, style
 from .imageview import CURSOR_PEN
 from .overlays import GAMMA, ColourKey, _num, _sci, draw_text, gamma_font, gamma_number, gamma_text
 
-STOKES = "IQUV"
 RULE_TEXT = {"p1": "Automatic, 1–99 % per frame", "p05": "0.5–99.5 % per frame",
              "minmax": "Min–max per frame", "fixed": "Frozen to this frame"}
 RULE_SHORT = {"p1": "auto 1–99 %", "p05": "auto 0.5–99.5 %", "minmax": "min–max", "fixed": "fixed"}
@@ -52,8 +52,9 @@ def slider_of_gamma(g: float) -> int:
 
 
 def accent(look, light: bool) -> QtGui.QColor:
-    """The hot key's handles and transfer curve in the look's accent, the markers' (Shell.set_look): classic's the
-    cursor's red, glass's its orange, the modern look's blue (darker on the light key)."""
+    """The hot key's handles and transfer curve in the look's accent, as the markers' (Shell.set_look): classic's the
+    cursor's red, glass's its orange, the modern look's blue, its own: darker on the light key than style.accent(),
+    and not the system's under the native macOS style."""
     if look.has("glass"):
         return glass.accent()
     if look.has("marks"):
