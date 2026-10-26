@@ -83,11 +83,7 @@ def test_companions_best_first_and_through_links(dataset, tmp_path):
 def _lp_frames(path, frames, ns=None):
     """An LP cube written as SSTRED writes one without a per-pixel file: frames (n, ny, nx), a header with or without
     stokes=."""
-    n, ny, nx = frames.shape
-    head = (f"stokes=[I], ns={ns} :  " if ns else " :  ") + \
-        f"datatype=4 (float), dims=3, nx={nx}, ny={ny}, nt={n}, endian=l"
-    path.write_bytes(head.encode().ljust(512, b"\0") + frames.astype("<f4").tobytes())
-    return path
+    return synth.write_lp(path, frames, head=f"stokes=[I], ns={ns} :  " if ns else " :  ")
 
 
 def test_an_lp_map_without_per_pixel_file_is_a_time_series(tmp_path):

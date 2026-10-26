@@ -28,10 +28,7 @@ def cubes(tmp_path_factory):
     d = tmp_path_factory.mktemp("mask_drawn")
     main = synth.write_dataset(d, "main", shape=SHAPE, icube=False)["im"]
     blos = d / "Blos.map.fcube"
-    with open(blos, "wb") as f:
-        f.write(f"datatype=4 (float), dims=3, nx={SHAPE[4]}, ny={SHAPE[3]}, nt={SHAPE[0]}, endian=l".encode()
-                .ljust(512, b"\0"))
-        f.write(np.random.default_rng(1).normal(size=(SHAPE[0], SHAPE[3], SHAPE[4])).astype("<f4").tobytes())
+    synth.write_lp(blos, np.random.default_rng(1).normal(size=(SHAPE[0], SHAPE[3], SHAPE[4])))
     m = np.zeros((SHAPE[0], SHAPE[3], SHAPE[4]), np.uint8)
     for k in range(SHAPE[0]):                           # a box moving right by 3 px per t
         m[k, 10:30, 5 + 3 * k:20 + 3 * k] = 1

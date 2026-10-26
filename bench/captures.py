@@ -29,10 +29,10 @@ SHAPE = (3, 4, 5, 60, 48)
 
 def lp_map(path, n, ny=SHAPE[3], nx=SHAPE[4]):
     """A La Palma map cube (nt frames, no axes in the file), opened with --axes t."""
+    from explorer.testing import synth
+
     if not os.path.exists(path):
-        with open(path, "wb") as f:
-            f.write(f"datatype=4 (float), dims=3, nx={nx}, ny={ny}, nt={n}, endian=l".encode().ljust(512, b"\0"))
-            f.write(np.random.default_rng(n).normal(size=(n, ny, nx)).astype("<f4").tobytes())
+        synth.write_lp(path, np.random.default_rng(n).normal(size=(n, ny, nx)))
     return path
 
 

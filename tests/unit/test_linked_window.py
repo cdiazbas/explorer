@@ -21,10 +21,7 @@ def spin(qapp, until, timeout=10.0):
 
 
 def lp_map(path, n, ny=SHAPE[3], nx=SHAPE[4]):
-    with open(path, "wb") as f:
-        f.write(f"datatype=4 (float), dims=3, nx={nx}, ny={ny}, nt={n}, endian=l".encode().ljust(512, b"\0"))
-        f.write(np.random.default_rng(n).normal(size=(n, ny, nx)).astype("<f4").tobytes())
-    return path
+    return synth.write_lp(path, np.random.default_rng(n).normal(size=(n, ny, nx)))
 
 
 @pytest.fixture(scope="module")

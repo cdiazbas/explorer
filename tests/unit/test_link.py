@@ -20,12 +20,7 @@ def cubes(tmp_path_factory):
 
 def lp_map(directory, name, n, ny=SHAPE[3], nx=SHAPE[4]):
     """An LP map as SSTRED writes field and velocity maps: n frames, and no scans in its name to say what they are."""
-    path = directory / name
-    head = f"datatype=4 (float), dims=3, nx={nx}, ny={ny}, nt={n}, endian=l".encode().ljust(512, b"\0")
-    with open(path, "wb") as f:
-        f.write(head)
-        f.write(np.random.default_rng(n).normal(size=(n, ny, nx)).astype("<f4").tobytes())
-    return path
+    return synth.write_lp(directory / name, np.random.default_rng(n).normal(size=(n, ny, nx)))
 
 
 def show(link):

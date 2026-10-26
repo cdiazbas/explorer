@@ -35,10 +35,7 @@ def cubes(tmp_path_factory):
     single = synth.write_dataset(d, "single", shape=(SHAPE[0], 1, SHAPE[2], SHAPE[3], SHAPE[4]), seed=5,
                                  icube=False, sp=False)["im"]
     blos = d / "Blos.map.fcube"
-    with open(blos, "wb") as f:
-        f.write(f"datatype=4 (float), dims=3, nx={SHAPE[4]}, ny={SHAPE[3]}, nt={SHAPE[0]}, endian=l".encode()
-                .ljust(512, b"\0"))
-        f.write(np.random.default_rng(1).normal(size=(SHAPE[0], SHAPE[3], SHAPE[4])).astype("<f4").tobytes())
+    synth.write_lp(blos, np.random.default_rng(1).normal(size=(SHAPE[0], SHAPE[3], SHAPE[4])))
     return {"main": main, "other": other, "single": single, "map": blos}
 
 

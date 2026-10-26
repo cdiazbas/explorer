@@ -231,6 +231,17 @@ def write_sp_icube(sp_fits_path, icube_path, scale=ICUBE_SCALE):
     return icube_path
 
 
+def write_lp(path, frames, head=""):
+    """An LP cube without a per-pixel file, as SSTRED writes field and velocity maps: frames (nt, ny, nx) as
+    little-endian float32 after a 512-byte header; head, what comes before its "datatype=" (SSTRED's "stokes=[I],
+    ns=1 :  ", or " :  "). Returns path."""
+    nt, ny, nx = np.shape(frames)
+    with open(path, "wb") as f:
+        f.write(f"{head}datatype=4 (float), dims=3, nx={nx}, ny={ny}, nt={nt}, endian=l".encode().ljust(512, b"\0"))
+        f.write(np.asarray(frames).astype("<f4").tobytes())
+    return path
+
+
 def write_dataset(directory, name="synth_stokes", shape=DEFAULT_SHAPE, seed=0, sp=True, icube=True):
     """Write <name>_im.fits and, next to it, <name>_sp.fits and <name>_sp.icube; returns their paths."""
     os.makedirs(directory, exist_ok=True)

@@ -348,10 +348,7 @@ def test_a_linked_cube_reads_its_frame_when_it_changes_and_only_then(cube, tmp_p
     d, _ = cube
     other = synth.write_dataset(tmp_path, "o", shape=(SHAPE[0], SHAPE[1], 7, SHAPE[3], SHAPE[4]), seed=5,
                                 icube=False, sp=False)["im"]
-    still = tmp_path / "still.fcube"
-    with open(still, "wb") as f:                          # an LP map of one frame
-        f.write(f"datatype=4 (float), dims=3, nx={SHAPE[4]}, ny={SHAPE[3]}, nt=1, endian=l".encode().ljust(512, b"\0"))
-        f.write(np.ones((SHAPE[3], SHAPE[4]), "<f4").tobytes())
+    still = synth.write_lp(tmp_path / "still.fcube", np.ones((1, SHAPE[3], SHAPE[4])))     # an LP map of one frame
     # the main cube's executors: with a numba thread of its own, the linked cube's spectra aborted the process
     # ("Numba workqueue threading layer is terminating: Concurrent access has been detected", Mac)
     with Dataset.open(d["im"], no_sp=True) as ds, Dataset.open(other, executors=ds.executors) as o, \
