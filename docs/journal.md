@@ -5398,3 +5398,29 @@ máscara seguía hecha del tamaño mayor al empezar la actualización).
 
 **La nota de `test_doctor`:** decía que en una copia en `/tmp` falla siempre, pero no falló en ninguna de las cuatro
 suites de hoy. Desde `4b3e2d9` (2026-10-10) la prueba corre `run.sh` con la venv del propio pytest.
+
+### 2026-10-26 (5): las venvs al lock nuevo, y la versión 0.0.0 en bellatrix (ROADMAP X.37)
+
+**Las venvs, al lock de X.32:**
+- bellatrix (conda, sin uv): `setup_env.sh --dev` sobre la venv compartida, 19 s; ningún paquete nuevo, Python
+  3.12.14, `doctor` pasa.
+- Mac (uv): 3 s; Python 3.12.13, `doctor` pasa.
+
+**El defecto que salió al hacerlo:** en bellatrix, después, `explorer --version` decía 0.0.0. La instalación editable,
+sin `.git`, la construye hatch-vcs, que escribe su versión de reserva en `src/explorer/_version.py` encima de la que
+puso `sync.py`. Pasaba en cada reconstrucción de `run.sh` por un lock nuevo, hasta el siguiente `sync.py`; un
+`sync.py` la devolvió.
+
+**El arreglo** (`60e0c7e`): `setup_env.sh` guarda el fichero si no hay `.git` y lo devuelve al acabar la
+instalación, antes de su `doctor` (o al salir, si la instalación falla). En bellatrix, en una copia sin `.git` y con
+una venv conda nueva:
+
+| `setup_env.sh` | versión después | `doctor` dice | tiempo |
+|---|---|---|---|
+| el de `main` | `0.0.0` | explorer 0.0.0 | 119 s (venv nueva) |
+| el arreglado, misma venv | `0.0.1.dev581+gd982fdee6` | esa | 6 s |
+
+Sin probar: el camino de uv en una copia sin `.git` (bellatrix no tiene uv); el guardado es el mismo para los dos.
+
+**Negativo, mío:** la primera vez pasé `--venv` con una ruta relativa en el Mac, y el `explorer.app` no se pudo
+rehacer (su enlace al Python quedó relativo). Con la ruta absoluta, como la pasa `run.sh`, se rehízo.
