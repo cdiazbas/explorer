@@ -122,13 +122,14 @@ def plan_links(path, others, axes=None) -> list:
 
 def open_mask(path, main):
     """data.mask's Mask at path over the first cube (main, a Dataset), how its frames follow t on stderr; None, and
-    why, when it cannot be drawn on it (the window opens without it, as a cube that cannot be linked)."""
+    why, when it cannot be drawn on it: then nothing opens (start), since a window without the mask asked for would
+    hide the reason in a terminal nobody is looking at."""
     from ..data.mask import Mask, MaskRefused
 
     try:
         mask = Mask.open(path, main)
     except MaskRefused as e:
-        print(f"[{APP_NAME}] no mask: {e}", file=sys.stderr)
+        print(f"[{APP_NAME}] not opened: the mask {e}. Without --mask the cube opens without it", file=sys.stderr)
         return None
     print(f"[{APP_NAME}] {mask.describe()}", file=sys.stderr)
     return mask
@@ -261,6 +262,11 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
         ds.close()
         return None
     masked = open_mask(mask, ds) if mask is not None else None
+    if mask is not None and masked is None:             # a mask asked for and refused: nothing opens, as IDL
+        for d in others:
+            d.close()
+        ds.close()
+        return None
     phases["cube"] = time.perf_counter() - q
     try:
         q = time.perf_counter()

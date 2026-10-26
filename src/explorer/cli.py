@@ -65,7 +65,7 @@ explorer --demo is explorer demo""")
     ap.add_argument("--mask", metavar="FILE",
                     help="a mask on the first cube's pixels, outlined on every image where it is 1 or more: FITS or "
                          "a La Palma .icube / .fcube, one frame (y, x) shown at every t, or one per t (t, y, x); "
-                         "another grid or number of frames is left out, with the reason")
+                         "with another grid or number of frames nothing opens, and the terminal says why")
     ap.add_argument("--x11", choices=("auto", "native", "bridge"), default="auto",
                     help="Qt's own X11 (native) or the X11 bridge; auto decides: the bridge over ssh -Y, "
                          "and where Qt's X11 would lack libxcb-cursor")

@@ -208,14 +208,23 @@ def test_a_mask_that_does_not_exist(main, capsys):
     assert "no such file" in capsys.readouterr().err
 
 
-def test_a_refused_mask_is_left_out_saying_why(main, capsys):
+def test_a_refused_mask_is_said_and_nothing_opens(main, capsys, monkeypatch):
+    """A mask that cannot be drawn on the first cube (here 5 frames against 6 times) stops the start, as IDL does:
+    a window opened without it would leave the reason in a terminal nobody looks at."""
+    from explorer.ui import app as app_mod
     from explorer.ui.app import open_mask
 
     d, info = main
-    assert open_mask(lp_mask(d / "five.icube", boxes(5)), info) is None
+    bad = lp_mask(d / "five.icube", boxes(5))
+    assert open_mask(bad, info) is None
     err = capsys.readouterr().err
     print(err)
-    assert "no mask: five.icube: 5 frames against 6 times" in err
+    assert "not opened: the mask five.icube: 5 frames against 6 times" in err
+    assert "Without --mask the cube opens without it" in err
+    shells = []
+    monkeypatch.setattr("explorer.ui.shell.Shell.__init__", lambda self, *a, **k: shells.append(1) or None)
+    assert app_mod.start(info.path, mask=bad, saved_layout=False) is None
+    assert shells == []                                         # no window was made
     m = open_mask(lp_mask(d / "six.icube", boxes(6)), info)
     try:
         assert m is not None and "its 6 frames are the 6 times of main_im.fits" in capsys.readouterr().err
