@@ -47,7 +47,7 @@ from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync
 from .loop import QtLoop
 from .mask import MaskOutlines
 from .overlays import ColourKey, gamma_text
-from .padlock import PanelLock
+from .padlock import GRID_LOCK_ZOOM, PanelLock
 from .scalekey import ScaleCard, ScaleKey
 from .slit import SlitHint, SlitTool
 from .slitpanel import SlitPanel
@@ -641,7 +641,7 @@ class Shell(QtWidgets.QMainWindow):
     def _grid_lock(self, s: int, v) -> PanelLock:
         """The padlock of panel s (ImageView v), at its top right as the image's: it fixes or releases Stokes s by
         the frame that panel shows, whichever Stokes the session's is: the padlock fixes the Stokes looked at."""
-        lock = PanelLock(v.widget, IMAGE_TIP, light=style.is_light())
+        lock = PanelLock(v.widget, IMAGE_TIP, light=style.is_light(), zoom=GRID_LOCK_ZOOM)
         lock.toggled.connect(lambda on: self.scheduler.fix_levels(on, s=s, img=v._full))
 
         def refit() -> None:

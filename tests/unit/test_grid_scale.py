@@ -124,6 +124,33 @@ def test_the_padlock_over_each_panel_fixes_that_panel_s_stokes(grid):
     assert all(sess.scale(0, s)[0] == "p1" for s in range(4)) and not lock_over(w, 1).isChecked()
 
 
+def test_a_panel_s_padlock_is_0_75_of_the_image_s_and_clicked_anywhere_on_it(grid):
+    """The panels' padlocks at 75 % of the image's (the user, 2026-10-27), 17 px for 22: the button no smaller than
+    what it draws (16.5 px), and a click on any of its pixels takes; the image's padlock as it was."""
+    from PySide6 import QtCore
+    from PySide6.QtTest import QTest
+
+    w, qapp = grid
+    for s in range(4):
+        lock = lock_over(w, s)
+        assert (lock.width(), lock.height()) == (17, 17) and lock.zoom == 0.75, (s, lock.size())
+        assert lock.width() >= lock.SIZE * lock.zoom
+        v = w.grid.views[s].widget
+        assert lock.geometry().topRight() == QtCore.QPoint(v.width() - lock.MARGIN - 1, lock.MARGIN)
+    lock = lock_over(w, 1)
+    for corner in (QtCore.QPoint(0, 0), QtCore.QPoint(16, 16)):     # its first and last pixels
+        QTest.mouseClick(lock, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier, corner)
+        qapp.processEvents()
+    assert w.session.scale(0, 1)[0] == "p1" and not lock.isChecked()   # closed, then open again
+    QTest.mouseClick(lock, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                     QtCore.QPoint(16, 0))
+    qapp.processEvents()
+    assert w.session.scale(0, 1)[0] == "fixed" and lock.isChecked()
+    w.set_grid(False)
+    qapp.processEvents()
+    assert (w.image_lock.width(), w.image_lock.height()) == (22, 22) and w.image_lock.zoom == 1.0
+
+
 def test_each_panel_s_padlock_shows_its_stokes_and_its_right_click_fits_its_frame(grid):
     w, qapp = grid
     sess = w.session
@@ -364,6 +391,7 @@ def test_with_a_linked_cube_its_image_keeps_its_label_and_its_key_no_menu(qapp, 
         c = w.linked[0]
         assert c.view.stokes.isVisible() and c.view.stokes.toPlainText() == "Stokes I"
         assert c.key.isVisible() and c.key.zoom == 1.0 and (c.key.width(), c.key.height()) == (230, 50)
+        assert (c.image_lock.width(), c.image_lock.height(), c.image_lock.zoom) == (22, 22, 1.0)
         right_click(c.key)
         qapp.processEvents()
         assert not visible_menus(w)
