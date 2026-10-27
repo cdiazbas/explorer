@@ -104,16 +104,19 @@ class ColourKey(QtWidgets.QWidget):
     only when the limits, the Stokes or the map change, never with the cursor. After C the map's name takes the
     numbers' row for NOTE_MS, so the key keeps its size. The power of ten goes with the unit on the top row, as the
     spectra's axis titles write it; the numbers under the bar carry none (after the last one only it reads as that
-    number's). Its text in pixels, 11 px: in points, max(7, size - 2) was 7 px on a Mac (72 dpi) and 9 over X11."""
+    number's). Its text in pixels, 11 px: in points, max(7, size - 2) was 7 px on a Mac (72 dpi) and 9 over X11.
+    zoom: the whole key drawn that many times its size, text included (W, H, TEXT_PX and the rest in its own units):
+    a panel of the 2x2 view has its key at half size (ui.scalekey.GRID_ZOOM)."""
     W, H = 230, 50
     TEXT_PX = 11
     NOTE_MS = 1500
 
-    def __init__(self, view: QtWidgets.QWidget, unit: str = ""):
+    def __init__(self, view: QtWidgets.QWidget, unit: str = "", zoom: float = 1.0):
         super().__init__(view)
         self.unit = unit
+        self.zoom = float(zoom)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.resize(self.W, self.H)
+        self.resize(round(self.W * self.zoom), round(self.H * self.zoom))
         self.state: tuple | None = None
         self.lut = None
         self.note = None
@@ -161,13 +164,15 @@ class ColourKey(QtWidgets.QWidget):
         name, lo, hi, _ = self.state
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        r = QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        z = self.zoom
+        p.scale(z, z)                                   # from here on in its own units (zoom)
+        r = QtCore.QRectF(0, 0, self.width() / z, self.height() / z).adjusted(0.5, 0.5, -0.5, -0.5)
         lt = style.is_light()                           # over a white image in light: a light key, dark text
         p.setPen(QtCore.Qt.PenStyle.NoPen)
         # alpha 185: at 150, over the brightest granules the white text stood at 4.3:1; now about 9:1
         p.setBrush(QtGui.QColor(255, 255, 255, 215) if lt else QtGui.QColor(0, 0, 0, 185))
         p.drawRoundedRect(r, 8, 8)
-        W = self.width()                                # W, or the image's width when narrower (ui.scalekey)
+        W = self.width() / z                            # W, or the image's width when narrower (ui.scalekey)
         bar = QtCore.QRectF(12, 22, W - 24, 6)
         g = QtGui.QLinearGradient(bar.topLeft(), bar.topRight())
         lut = self.lut if self.lut is not None else np.repeat(np.arange(256, dtype=np.uint8)[:, None], 3, 1)

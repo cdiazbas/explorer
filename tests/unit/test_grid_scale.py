@@ -190,12 +190,36 @@ def test_a_panel_s_key_grows_under_the_pointer_within_its_panel(grid):
         assert key is not None, s
         enter(key)
         qapp.processEvents()
-        assert key.hot and key.height() == key.H_HOT, s
+        assert key.hot and key.height() == round(key.H_HOT * key.zoom), s
         assert w.grid.views[s].widget.rect().contains(key.geometry()), (s, key.geometry())
         assert not any(key_of(w, o).hot for o in range(4) if o != s)
         leave(key)
         qapp.processEvents()
-        assert not key.hot and key.height() == key.H
+        assert not key.hot and key.height() == round(key.H * key.zoom)
+
+
+def test_a_panel_s_key_is_half_the_image_s_and_the_image_s_is_as_it_was(grid):
+    """Four keys over four panels at the image key's size crowded them (the user, 2026-10-27): each panel's is half
+    of it, at rest and hot, its text too; the image's own key keeps its size and its 11 px text."""
+    w, qapp = grid
+    for s in range(4):
+        key = key_of(w, s)
+        assert w.grid.views[s].widget.width() - 24 >= 160, w.grid.views[s].widget.width()   # room for it
+        assert (key.width(), key.height()) == (115, 25) and key.zoom == 0.5, (s, key.size())
+        enter(key)
+        qapp.processEvents()
+        assert (key.width(), key.height()) == (160, 56), (s, key.size())
+        leave(key)
+        qapp.processEvents()
+    w.set_grid(False)
+    qapp.processEvents()
+    key = w.main.key
+    assert w.view.widget.width() - 24 >= 320
+    assert (key.width(), key.height()) == (230, 50) and (key.zoom, key.TEXT_PX) == (1.0, 11)
+    enter(key)
+    qapp.processEvents()
+    assert (key.width(), key.height()) == (320, 112)
+    leave(key)
 
 
 def test_dragging_a_panel_s_handle_fixes_that_stokes_and_closes_its_padlock(grid):

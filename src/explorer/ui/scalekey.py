@@ -40,6 +40,7 @@ HINTS = ("drag ▲ · wheel γ · double click: automatic, γ = 1", "drag ▲ ·
          "double click: reset")
 KEY_MENU = False                                        # the menu on a right click over a key: off for now
 GAMMAS = (1.0, 0.7, 0.5, 0.3)
+GRID_ZOOM = 0.5                                         # a panel of the 2x2 view: its key at half size, text too
 HIST_BINS = 128
 
 
@@ -112,10 +113,10 @@ class ScaleKey(ColourKey):
     LABEL_GAP = 4                                       # px under the Stokes label, when placed there (under_label)
     under_label = False                                 # at the top left under the label, not at the bottom left
 
-    def __init__(self, shell, view, k: int, unit: str = "", stokes: int | None = None):
+    def __init__(self, shell, view, k: int, unit: str = "", stokes: int | None = None, zoom: float = 1.0):
         """The key of view (an ImageView), cube k's image: at cube k's Stokes now, or at Stokes stokes always (a
-        panel of the 2x2 view)."""
-        super().__init__(view.widget, unit)
+        panel of the 2x2 view). zoom: its size, as ColourKey's; GRAB stays in screen pixels."""
+        super().__init__(view.widget, unit, zoom)
         self.shell, self.view, self.k, self.stokes = shell, view, k, stokes
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.PreventContextMenu)   # its own, on the right press
@@ -161,8 +162,9 @@ class ScaleKey(ColourKey):
 
     def _fit(self, view) -> None:
         """Its own width, or the image's less the margins when narrower (a cube's window may be 270 px wide)."""
-        w = max(self.MIN_W, min(self.W_HOT if self.hot else self.W, view.width() - 24))
-        h = self.H_HOT if self.hot else self.H
+        z = self.zoom
+        w = max(round(self.MIN_W * z), min(round((self.W_HOT if self.hot else self.W) * z), view.width() - 24))
+        h = round((self.H_HOT if self.hot else self.H) * z)
         if (w, h) != (self.width(), self.height()):
             self.resize(w, h)
 
@@ -180,11 +182,13 @@ class ScaleKey(ColourKey):
 
     # ---------------------------------------------------------------- the histogram band
     def _band(self) -> QtCore.QRectF:
-        return QtCore.QRectF(12, 22, self.width() - 24, self.H_HOT - 22 - 46)
+        """The histogram's band, in the widget's pixels (as the mouse gives them): its own units times zoom."""
+        z = self.zoom
+        return QtCore.QRectF(12 * z, 22 * z, self.width() - 24 * z, (self.H_HOT - 22 - 46) * z)
 
     def _bar(self) -> QtCore.QRectF:
-        b = self._band()
-        return QtCore.QRectF(b.left(), b.bottom() + 2, b.width(), 7)
+        b, z = self._band(), self.zoom
+        return QtCore.QRectF(b.left(), b.bottom() + 2 * z, b.width(), 7 * z)
 
     def axis(self) -> tuple[float, float]:
         if self._axis is not None:
@@ -240,7 +244,7 @@ class ScaleKey(ColourKey):
             return
         x = e.position().x()
         w = self._handle_near(x)
-        if w is None and self._band().adjusted(0, 0, 0, 20).contains(e.position()):
+        if w is None and self._band().adjusted(0, 0, 0, 20 * self.zoom).contains(e.position()):
             lo, hi = self.levels()                     # a press on the band: the nearer handle jumps there
             w = "lo" if abs(x - self.x_of(lo)) < abs(x - self.x_of(hi)) else "hi"
         if w is not None:
@@ -314,9 +318,12 @@ class ScaleKey(ColourKey):
         lt = style.is_light()
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        z = self.zoom
+        p.scale(z, z)                                   # from here on in its own units (ColourKey.zoom)
+        W, H = self.width() / z, self.height() / z
         p.setPen(QtCore.Qt.PenStyle.NoPen)
         p.setBrush(QtGui.QColor(255, 255, 255, 225) if lt else QtGui.QColor(0, 0, 0, 200))
-        p.drawRoundedRect(QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+        p.drawRoundedRect(QtCore.QRectF(0, 0, W, H).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
         ink = QtGui.QColor(0, 0, 0, 217) if lt else QtGui.QColor(255, 255, 255, 215)
         faint = QtGui.QColor(ink)
         faint.setAlpha(130)
@@ -325,7 +332,6 @@ class ScaleKey(ColourKey):
         f.setPixelSize(self.TEXT_PX)
         p.setFont(f)
         AL = QtCore.Qt.AlignmentFlag
-        W = self.width()
         kpow, pw = _sci(max(abs(lo), abs(hi)))
         name = self.name
         unit = (f"[{pw.replace(' ×', '')} {self.unit}]" if pw else f"[{self.unit}]") if self.unit else \
@@ -338,11 +344,11 @@ class ScaleKey(ColourKey):
             if gtext else 0
         title = "   ".join(t for t in (name, unit, (RULE_SHORT_SYM if sym else RULE_SHORT)[rule]) if t)
         # cut at its end (…) short of gamma: on a narrow key the two ran into each other
-        title = fm.elidedText(title, QtCore.Qt.TextElideMode.ElideRight, W - 24 - gw)
+        title = fm.elidedText(title, QtCore.Qt.TextElideMode.ElideRight, int(W - 24 - gw))
         p.drawText(QtCore.QRectF(12, 3, W - 24, 16), AL.AlignLeft | AL.AlignVCenter, title)
         if gtext:
             draw_text(p, QtCore.QRectF(12, 3, W - 24, 16), AL.AlignRight | AL.AlignVCenter, gtext)
-        band, bar = self._band(), self._bar()
+        band, bar = (QtCore.QRectF(r.topLeft() / z, r.size() / z) for r in (self._band(), self._bar()))
         a0, a1 = self.axis()
         h = self._counts((a0, a1))
         n = h.size
@@ -374,7 +380,7 @@ class ScaleKey(ColourKey):
         p.setPen(QtGui.QPen(faint, 1))
         p.drawRect(bar)
         for which, v in (("lo", lo), ("hi", hi)):
-            x = self.x_of(v)
+            x = self.x_of(v) / z
             on = which in (self.near, self.drag)
             c = acc if on else ink
             p.setPen(QtGui.QPen(c, 1, QtCore.Qt.PenStyle.DashLine))
@@ -389,7 +395,7 @@ class ScaleKey(ColourKey):
             r.moveLeft(min(max(r.left(), 4), W - 84))
             p.drawText(r, AL.AlignHCenter | AL.AlignTop, ("+" if sym and which == "hi" else "") + _num(v / kpow))
         p.setPen(faint)
-        draw_text(p, QtCore.QRectF(8, self.height() - 16, W - 16, 14), AL.AlignHCenter, hint(fm, W - 16))
+        draw_text(p, QtCore.QRectF(8, H - 16, W - 16, 14), AL.AlignHCenter, hint(fm, W - 16))
         p.end()
 
 

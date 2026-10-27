@@ -48,7 +48,7 @@ from .loop import QtLoop
 from .mask import MaskOutlines
 from .overlays import ColourKey, gamma_text
 from .padlock import PanelLock
-from .scalekey import ScaleCard, ScaleKey, scale_menu
+from .scalekey import GRID_ZOOM, ScaleCard, ScaleKey, scale_menu
 from .slit import SlitHint, SlitTool
 from .slitpanel import SlitPanel
 from .status import diagnostics_text, pixel_text
@@ -565,7 +565,7 @@ class Shell(QtWidgets.QMainWindow):
                     if self.mask_outlines is not None:
                         self.mask_outlines.attach(v)
                 self.grid_locks = [self._grid_lock(s, v) for s, v in enumerate(self.grid.views)]
-                self.grid_keys = [ScaleKey(self, v, 0, self.main.key.unit, stokes=s)
+                self.grid_keys = [ScaleKey(self, v, 0, self.main.key.unit, stokes=s, zoom=GRID_ZOOM)
                                   for s, v in enumerate(self.grid.views)]
                 self._place_grid_keys()
             self.grid.setGeometry(self.view.widget.rect())
