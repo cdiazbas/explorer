@@ -60,7 +60,8 @@ class Roles(NamedTuple):
     indices, and must not be labelled lambda or t), "--axes" (given by the user), "inversion" (an inversion's file:
     its parameters on s, by_parameter), "variables" (a snapshot's variables, a file each: formats.variables_layout).
     planes: what the s axis holds, "stokes", "parameter" (an inversion's), or a snapshot's variables by name (a
-    tuple: "log₁₀(tg)", "bz", ...); each a plane of its own with its own levels, picked as a Stokes is."""
+    tuple: "log₁₀(tg)", "bz", ...); each a plane of its own with its own levels, picked as a Stokes is. signs: which
+    planes hold a signed quantity (Blos, bz), as Q U V do, by their names (read); () when none or not known."""
     t: int | None
     s: int | None
     l: int | None  # noqa: E741
@@ -69,6 +70,7 @@ class Roles(NamedTuple):
     nl: int
     how: str = "header"
     planes: "Planes" = "stokes"
+    signs: tuple[bool, ...] = ()    # plane s signed about 0 by what it shows (axes.read: SIGNED), Q U V aside
 
 
 Planes = str | tuple[str, ...]      # Roles.planes: "stokes", "parameter", or the variables' names
@@ -99,9 +101,22 @@ def stokes(r: Roles) -> bool:
     return r.s is not None and r.planes == "stokes"
 
 
+# what a quantity's name says is signed about 0, as Q U V are (lower case): a vector's components (Bifrost's bx, by, bz,
+# its velocities ux and momenta px; SHARP's Br, Bp, Bt), the line-of-sight field and velocities; never a modulus, an
+# angle or a log
+SIGNED = {"blos", "vlos", "vdop", "doppler", "br", "bp", "bt",
+          *(f"{v}{c}" for v in "buvpej" for c in "xyz")}
+
+
+def is_signed(name) -> bool:
+    """Whether a quantity so named (data.names.quantity: "Blos", "bz") is signed about 0 (SIGNED)."""
+    return str(name).strip().lower() in SIGNED
+
+
 def signed(r: Roles, s: int) -> bool:
-    """Whether plane s along the cube's s axis is Q, U or V: signed, its levels symmetric about 0."""
-    return s > 0 and r.planes == "stokes"
+    """Whether plane s along the cube's s axis is signed, its levels symmetric about 0 and its maps diverging: Q, U or
+    V, or a plane whose quantity is (Roles.signs)."""
+    return (s > 0 and r.planes == "stokes") or (0 <= s < len(r.signs) and r.signs[s])
 
 
 def parse_axes(spec: str, n_lead: int) -> tuple:
@@ -273,10 +288,12 @@ def read(path, layout, axes: str | None = None) -> tuple[Roles, Axes]:
     """The roles of a cube's leading axes (roles, with axes as --axes) and its physical axes (from_fits, from_lp),
     checked against each other (check): what Dataset opens a cube with and data.link plans it with, so the plan
     never accepts a cube that its opening refuses. layout: the cube's (formats.open_layout). An inversion's file
-    has its parameters on s (by_parameter), unless --axes says otherwise."""
+    has its parameters on s (by_parameter), unless --axes says otherwise. A plane is signed (Roles.signs) by its
+    quantity's name: a snapshot's variable by its own, a cube of one plane by what it shows (names.quantity)."""
     if layout.kind == "variables":                     # (variable, z, y, x): the variables on s, z where lambda is
         nv, nz = layout.shape[:2]
-        r = Roles(None, 0, 1, 1, nv, nz, "variables", tuple(logs(b) for b in layout.btypes))
+        names = tuple(logs(b) for b in layout.btypes)
+        r = Roles(None, 0, 1, 1, nv, nz, "variables", names, tuple(is_signed(b) for b in names))
         ax = from_variables(layout)
         check(ax, r, layout.axes)
         return r, ax
@@ -286,6 +303,9 @@ def read(path, layout, axes: str | None = None) -> tuple[Roles, Axes]:
     ax = (from_fits(path) if layout.kind == "fits" else from_series(layout) if layout.kind == "series"
           else from_lp(path, r))
     check(ax, r, layout.axes)
+    if r.ns == 1:                                      # one plane: signed by what the cube shows (a Blos map, bz)
+        from .names import quantity  # here, not above: names imports this module
+        r = r._replace(signs=(is_signed(quantity(path, ax)),))
     return r, ax
 
 

@@ -126,9 +126,10 @@ def open_window(qapp, paths):
 
 
 def test_the_window_picks_a_variable_and_z_moves_them_all(qapp, six):
-    """The toolbar picks the variable by name (keys 1-6, All); z moves every one; each image its own levels (bz's not
-    symmetric about 0 as Q's), its own scale and γ; the image and its key say which and in what unit; the status
-    line the variable's value with its unit. Before: no variables cube."""
+    """The toolbar picks the variable by name (keys 1-6, All); z moves every one; each image its own levels (bz's
+    symmetric about 0 as Q's, a signed quantity: data.axes.SIGNED; log₁₀(tg)'s not), its own scale and γ; the image
+    and its key say which and in what unit; the status line the variable's value with its unit. Before: no variables
+    cube."""
     from explorer.data.axes import unit_text
 
     w, close = open_window(qapp, six)
@@ -151,7 +152,9 @@ def test_the_window_picks_a_variable_and_z_moves_them_all(qapp, six):
             assert got[k][0] == NAMES[v] and got[k][1] == unit_text(UNITS[v])
             assert got[k][3].startswith(f"{NAMES[v]} ")
         lo, hi = got["bz"][2]
-        assert not np.isclose(lo, -hi)                  # its own levels, not Q's -m..m
+        assert np.isclose(lo, -hi) and hi > 0           # signed: -m..m, as Q's
+        lo, hi = got["lgtg"][2]
+        assert not np.isclose(lo, -hi)                  # its own levels
         w.session.set_scale(0, 5, "fixed", 4.0, 5.0)
         w.session.set_gamma(0, 3, 0.5)
         assert w.session.scale(0, 0)[0] != "fixed" and w.session.scale(0, 5)[0] == "fixed"

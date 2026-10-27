@@ -119,6 +119,8 @@ class CubeView:
         # its axis other than t named as data.names says (not lambda unless known to be), the main cube's as a linked
         # one's; the main cube's lambda of several tunings as it always was (None)
         names = slice_names(r, ds.axes, getattr(ds, "path", ""))
+        # what one plane shows, for its key: "I" along a lambda, else the quantity ("Blos", "log₁₀(tg)")
+        self.value = "I" if names.spectral else value_name(getattr(ds, "path", ""), ds.axes)
         self.slices = names if k or names.mapped or not names.spectral else None
         # a cube without lambda has no spectra; one whose axis is not known to be lambda has them named as its
         # lambda-t and slit are, and its values by what they are when it has no Stokes
@@ -277,8 +279,9 @@ class CubeView:
         if self.lambda_t is not None:
             lt = self.shell.maps_for(self.last_s)
             self.lambda_t.set_lut(lt.lut(self.last_s) if lt is not None else None)
-        if self.view._full is not None:                 # its key: its name, its Stokes, its levels and gamma
-            name = "   ".join(t for t in (self.name, plane_text(s, self.ns, self.planes)) if t)
+        if self.view._full is not None:                 # its key: its name, its plane, its levels and gamma
+            what = plane_text(s, self.ns, self.planes) or (self.value if self.value not in self.name else "")
+            name = "   ".join(t for t in (self.name, what) if t)
             self.key.set(name, self.view._lim, cols.lut(s) if cols is not None else self.view.base_lut,
                          cols.maps[s] if cols is not None else None, gamma=self.session.gamma(self.k, s))
 

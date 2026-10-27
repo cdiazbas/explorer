@@ -32,7 +32,7 @@ from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
 from ..data import slitfits
-from ..data.axes import unit_text
+from ..data.axes import signed, unit_text
 from ..data.names import cube_names, plane_text, slice_names, value_name
 from ..look import ENV_OFF, LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
@@ -429,8 +429,9 @@ class Shell(QtWidgets.QMainWindow):
         for p in self.slit_panels:
             p.set_marks(acc) if L.has("marks") else p.clear_marks()
         if (L.has("colour") or L.has("cmap")) and self.colours is None:
+            r = self.dataset.roles
             self.colours = ColormapRegistry(self.session.ns, light, colour=L.has("colour"),
-                                            signed=self.main.planes == "stokes")
+                                            signed=tuple(signed(r, s) for s in range(max(1, self.session.ns))))
         elif self.colours is not None:
             self.colours.set_start(L.has("colour"))
         if self.colour_key is not None:
@@ -710,8 +711,9 @@ class Shell(QtWidgets.QMainWindow):
             self._shown_lut = tab
         last = self.last.get("image")
         if self.colour_key is not None and last is not None:
-            # named as the image's label is (ui.stokeslabel): "Stokes Q" with the four, nothing for one plane
-            self.colour_key.set(plane_text(s, self.session.ns, self.main.planes), last[1],
+            # named as the image's label is (ui.stokeslabel): "Stokes Q" with the four; one plane by what it shows, as
+            # the status line names it (value_name: "I", "log₁₀(tg)", "Blos"), never by its unit alone
+            self.colour_key.set(plane_text(s, self.session.ns, self.main.planes) or self.value_name(), last[1],
                                 cols.lut(s) if cols is not None else self.view.base_lut,
                                 cols.maps[s] if cols is not None else None, gamma=self.session.gamma(0, s))
 

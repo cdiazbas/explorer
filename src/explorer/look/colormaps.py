@@ -78,12 +78,15 @@ def image_table(lut: np.ndarray | None, light: bool) -> np.ndarray | None:
 
 
 class ColormapRegistry:
-    """The map each Stokes wears: I the first sequential, Q U V the first diverging (grey without the look's colour
-    part: set_start); C steps the shown one's, and a Stokes stepped keeps its map in every look."""
+    """The map each Stokes wears: I the first sequential, Q U V (and any plane signed about 0) the first diverging (grey
+    without the look's colour part: set_start); C steps the shown one's, and a Stokes stepped keeps its map in every
+    look."""
 
-    def __init__(self, ns: int, light: bool = False, colour: bool = True, signed: bool = True):
-        """signed: the planes after the first are Q U V (else an inversion's parameters, each as I is)."""
-        self.light, self.signed = light, signed
+    def __init__(self, ns: int, light: bool = False, colour: bool = True, signed: bool | tuple = True):
+        """signed: the planes after the first are Q U V (else an inversion's parameters, each as I is); or, per plane,
+        which are signed (data.axes.signed: Q U V, a Blos map, bz), each of those as Q U V are."""
+        self.light = light
+        self.signs = tuple(signed) if isinstance(signed, tuple) else tuple(s > 0 and signed for s in range(max(1, ns)))
         self.chosen: set = set()                        # the Stokes stepped with C
         self.maps = [SEQUENTIAL[0]] * max(1, ns)
         self.set_start(colour)
@@ -108,7 +111,7 @@ class ColormapRegistry:
             table(m)
 
     def _qu(self, s: int) -> bool:
-        return s > 0 and self.signed
+        return s < len(self.signs) and self.signs[s]
 
     def names_for(self, s: int) -> tuple:
         return _divergings(self.light) if self._qu(s) else SEQUENTIAL
