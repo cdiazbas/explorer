@@ -5574,3 +5574,45 @@ y con el estilo nativo de macOS el del sistema, como ellos. Capturas de antes y 
 `test_grid_colour_key` y `test_look`, 58 pasan en el Mac.
 - Suites en bellatrix (`scripts/suites.sh`, copia sin `.git`, carga 0.3 → 1.8): `tests/unit` + `tests/golden` 1115
   pasan, 16 saltadas (22 min 58 s); `tests/xvfb` 43 pasan, 2 saltadas (4 min 42 s).
+
+### 2026-10-27 (4): la 2×2 con una leyenda y un candado por panel; el candado, por Stokes (ROADMAP E5.33)
+
+**Decidido** (el usuario, en varias vueltas sobre las capturas):
+- el candado fija el Stokes que se ve, no el cubo;
+- en la 2×2, una leyenda y un candado por panel;
+- la leyenda, a 0.73 del tamaño (a la mitad, como se pidió primero, el texto quedaba en 5.5 px, ilegible) y el candado,
+  al 75 %;
+- sin etiquetas «Stokes Q» en los paneles: la leyenda los nombra y lleva el menú de escala que tenía la etiqueta;
+- en un panel estrecho, el título sin la unidad;
+- sin menú en la leyenda de una imagen.
+
+**Lo que había** (medido sin pantalla en `fdcefd1`): fuera de la 2×2 el candado ya era por Stokes (prueba nueva,
+`4e1d0f4`); en la 2×2 había un solo candado, en la esquina del panel de Q, que fijaba el Stokes de la sesión (I, si no
+se había pulsado otro panel); los paneles no tenían leyenda.
+
+**Hecho** (`4e1d0f4`..`82ea3e6`, rebasado sobre `c88e616`):
+- **Candados:** uno por panel, para su Stokes, a 17 px (`GRID_LOCK_ZOOM` 0.75); el de la imagen se oculta en la 2×2; los
+  de la imagen, las enlazadas y los espectros siguen en 22 px. La zona donde se pulsa cubre los 17×17 (probado en sus
+  dos esquinas).
+- **Leyendas:** una por panel, la misma `ScaleKey` con su Stokes, a 0.73 (`GRID_ZOOM`: 168×36 en reposo, 234×82
+  abierta, texto de 8 px; tinta 7 px el título, 6 px los números), dibujada entera a escala (`ColourKey.zoom`). G y C
+  dicen su nota en la leyenda del panel; «Scale…» abre la tarjeta junto a ella.
+- **Sin etiquetas:** el menú de escala pasa a la leyenda del panel, solo en la 2×2; donde estaba la etiqueta, el clic
+  derecho suelta el cursor; el aviso de la rendija va arriba a la izquierda; en glass las leyendas, arriba a la
+  izquierda, lejos de la barra. Las enlazadas conservan su etiqueta, su leyenda sin menú y su candado.
+- **Título estrecho:** con dos cubos enlazados (paneles de 159 px) «Stokes Q   [10⁻¹¹ W m⁻² Hz⁻¹ sr⁻¹]» pide 176
+  unidades y hay 161; se escribe «Stokes Q   ×10⁻¹¹» (92), con la potencia de diez porque los números de la barra no la
+  llevan.
+
+**Medido** (Mac, sin pantalla):
+- Las pruebas nuevas de `test_grid_scale` (41), y las de la 2×2 de `test_stokes_label` y `test_slit_draw`, fallan antes
+  y pasan después; tras el rebase, la leyenda, la 2×2, el aspecto y la escala: 100 pasan.
+- Capturas (`bench/captures.py`): ruido de dos tandas de la base 0 de 104; la rama frente a la base, 4 de 104, solo
+  los estados de la 2×2 (7894-11927 px); JSON 0 de 16. Cada imagen única y cada imagen enlazada, idénticas.
+- Negativo, corregido (`41fdf1c`): en una imagen estrecha de glass la leyenda tapaba el candado (109 px) porque la 2×2
+  ya no lo levantaba; ese orden dependía, ya en la base, de si se había abierto la 2×2.
+
+**Sin probar:** cubos reales y el puente X11.
+
+**Por decidir:** en un panel estrecho, la leyenda abierta corta su regla («Stokes Q   ×10⁻¹¹   auto |x| 9…», 172
+unidades frente a 161); si el candado de una imagen estrecha va siempre encima de la leyenda (punto 21).
