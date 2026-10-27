@@ -5559,3 +5559,16 @@ pasan en el Mac. Negativo de por medio: la prueba de arranque dejaba la aplicaci
 (`test_c_in_classic_recolours…`) fallaba; ahora restaura el estilo y la paleta, como la prueba del tema.
 - Suites en bellatrix (`scripts/suites.sh`, copia sin `.git`, carga 0.3 → 2.2): `tests/unit` + `tests/golden` 1115
   pasan, 16 saltadas (22 min 45 s); `tests/xvfb` 43 pasan, 2 saltadas (4 min 43 s).
+
+### 2026-10-27 (3): un solo azul en modern: la clave de color, como los marcadores (S38)
+
+**La pregunta del usuario:** por qué dos azules. Rastreado: el `#0063d1` de la clave en claro se escribió a mano al
+hacerla (`5f3dc55`, 2026-10-11), sin motivo en el commit, el código ni el journal, y no sale de oscurecer `#007aff`
+(S38). Su único efecto medido: más contraste sobre la leyenda clara, 5.67:1 sobre blanco y 4.33:1 en el peor caso
+(blanco al 88 % sobre negro), frente a 4.02 y 3.07:1 de `#007aff`; los dos pasan el 3:1 de una línea.
+
+**Decidido** (el usuario): un solo color. **Hecho** (`e7571f4`): la clave toma `style.accent()`, el de los marcadores,
+y con el estilo nativo de macOS el del sistema, como ellos. Capturas de antes y después, en la página de elecciones.
+
+**Pruebas:** la de la clave caliente (`test_over_image`) falla en `main` y pasa; con `test_scale_gui`,
+`test_grid_colour_key` y `test_look`, 58 pasan en el Mac.
