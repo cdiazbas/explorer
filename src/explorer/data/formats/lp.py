@@ -64,7 +64,7 @@ def lp_pair_layouts(im_path, sp_path) -> tuple[Layout, Layout]:
     """Layouts of an LP image cube and its per-pixel file.
 
     Image (nt, ns, nl, ny, nx); per-pixel (ny, nx, ns, nt, nl), Stokes before t inside a pixel as the prototype's
-    SpLP reads it (not checked yet against a real multi-Stokes _sp.icube)."""
+    SpLP reads it: checked on a real IQUV 6173 _sp.icube against its _sp.fits (ROADMAP E1.19)."""
     im, sp = lp_header(im_path), lp_header(sp_path)
     nx, ny, nframes = im.nx, im.ny, im.nt
     nl, nt, ns = sp.nx, sp.ny, sp.ns
