@@ -10,7 +10,12 @@ The line comes from the header first (axes.line), else from a four-digit wavelen
 (6173, 8542, 6563), matched to the known lines (axes.LINES) within MATCH_A. Cubes that would share a name are told
 apart by their format (FITS, LP), else by their files. Nothing left to go on: the file's own name, cut in the middle
 to MAX_CHARS.
+
+The panels of an axis not known to be lambda name it by what the cube shows (quantity, ROADMAP E8.8): its header's
+BTYPE or CONTENT, an inversion's line, the map's word, an imager's instrument and band ("AIA 171 Å"), else
+"Quantity"; and the axis by its own name in the header when it has one (axis_word: BIFROST's z).
 """
+import math
 import os
 import re
 from typing import NamedTuple
@@ -25,6 +30,14 @@ QUANTITIES = {"blos": "Blos", "bstr": "Bstr", "btr": "Btr", "binc": "Binc", "baz
               "inversion": "Inversion"}
 SUFFIXES = (".fits", ".icube", ".fcube")
 _WAVE = re.compile(r"(?<![0-9])([3-9][0-9]{3}|1[0-9]{4})(?![0-9])")      # 3000-19999 Å, alone
+# what a header says of every cube, so names nothing: such a BTYPE or CONTENT gives way to the rules after it
+GENERIC = {"intensity", "data", "image", "value", "values", "counts", "main", "primary", "blank", "unknown",
+           "hmi observable"}
+INVERSION = {"meinv", "inversion", "inv"}       # a word of an inversion's file name: its planes are parameters
+FALLBACK = "Quantity"                           # what a cube shows when nothing names it
+# an axis's own name (CNAMEn, CTYPEn) that says nothing explorer's own names do not: by its first word
+GENERIC_AXIS = {"", "wave", "awav", "freq", "wavelength", "stokes", "utc", "time", "tai", "hpln", "hplt", "spatial",
+                "frame", "index", "pixel", "axis"}
 
 
 def stem(path) -> str:
@@ -71,15 +84,103 @@ def short_name(path, axes=None) -> str:
     return cut(s)
 
 
-def quantity(path, axes=None) -> str:
-    """What the cube shows, for the panels of an axis not known to be lambda: the header's BTYPE, else the word that
-    names a map at the start of its file name (QUANTITIES), else its file's name, cut."""
-    btype = getattr(axes, "btype", None)
-    if btype and str(btype).strip():
-        return str(btype).strip()
+def card(axes, key: str) -> str:
+    """A naming card of the cube's header (data.axes.naming_cards), "" without it."""
+    return str((getattr(axes, "cards", None) or {}).get(key, "")).strip()
+
+
+def is_inversion(path) -> bool:
+    """Whether the cube is an inversion's output, by a word of its file name (meinv_6173, inversion_6173_im,
+    WFA_inversion_8542): its planes along the axis taken for lambda are parameters, never lambda."""
+    return any(w in INVERSION for w in re.split(r"[^a-z]+", stem(path).lower()))
+
+
+def map_word(path) -> str | None:
+    """What a map is, by the first word of its file name (QUANTITIES: "Blos"), or by the segment a JSOC file name
+    ends in (hmi.sharp_cea_720s.377.20140205_030000_TAI.Br: "Br"); None without either."""
     s = stem(path)
     word = re.split(r"[^A-Za-z]+", s)[0].lower() if s else ""
-    return QUANTITIES.get(word) or cut(s)
+    if word in QUANTITIES:
+        return QUANTITIES[word]
+    if word in ("hmi", "aia") and "." in s:
+        seg = s.rsplit(".", 1)[-1]
+        if seg.isalpha() and seg.lower() not in GENERIC:
+            return seg
+    return None
+
+
+def passband(axes) -> str | None:
+    """An imager's instrument and passband from its header: "AIA 171 Å", "EUI/FSI 174 Å", "EUVI 171 Å", "GONG Hα".
+    The instrument: TELESCOP after its first "/", else DETECTOR when it is one word, else TELESCOP's last word, else
+    INSTRUME. The band: WAVELNTH in its WAVEUNIT (Å without one), the known line within MATCH_A when there is one,
+    else in Å. None without a WAVELNTH in a unit it reads."""
+    try:
+        w = float(card(axes, "WAVELNTH"))
+    except ValueError:
+        return None
+    unit = card(axes, "WAVEUNIT").lower()
+    if unit in ("-9", "nm", "nanometer", "nanometers"):
+        w *= 10.0
+    elif unit not in ("", "-10", "angstrom", "angstroms", "a", "å"):
+        return None
+    if not (math.isfinite(w) and w > 0):
+        return None
+    tel, det = card(axes, "TELESCOP"), card(axes, "DETECTOR")
+    if "/" in tel:
+        inst = tel.split("/", 1)[1]
+    elif det.isalpha():
+        inst = det
+    elif tel:
+        inst = re.split(r"[-\s]", tel)[-1].strip("()")
+    else:
+        inst = card(axes, "INSTRUME")
+    best = min(LINES.values(), key=lambda v: abs(v[1] * 10 - w))
+    band = best[0] if abs(best[1] * 10 - w) <= MATCH_A else f"{w:g} Å"
+    return f"{inst} {band}".strip()
+
+
+def quantity(path, axes=None) -> str:
+    """What the cube shows, for the panels of an axis not known to be lambda; the first rule that gives a name:
+    1. BTYPE, unless generic (GENERIC: "Intensity");
+    2. CONTENT, unless generic;
+    3. an inversion (is_inversion): "<line> inversion", "Inversion" without a line;
+    4. the map's word in its file name (map_word: "Blos");
+    5. without WAVEBAND (an SST cube's WAVELNTH is its prefilter): the imager's instrument and band (passband);
+    6. the generic BTYPE;
+    7. the line, from the header's WAVEBAND or a wavelength in the file name (line_of);
+    8. FALLBACK, "Quantity": the file's name is the cube's tab and tooltip already."""
+    btype = str(getattr(axes, "btype", None) or "").strip()
+    if btype and btype.lower() not in GENERIC:
+        return btype
+    content = card(axes, "CONTENT")
+    if content and content.lower() not in GENERIC:
+        return content.lower()
+    if is_inversion(path):
+        line = line_of(path, axes)
+        return f"{line} inversion" if line else "Inversion"
+    word = map_word(path)
+    if word:
+        return word
+    band = passband(axes) if not card(axes, "WAVEBAND") else None
+    return band or btype or line_of(path, axes) or FALLBACK
+
+
+def axis_word(roles, axes) -> str | None:
+    """The name the header gives the cube's axis other than t (CNAMEn, else CTYPEn before its "-"), unless it says
+    nothing explorer's own names do not (GENERIC_AXIS); None without one."""
+    if roles.l is None:
+        return None
+    try:
+        n = int(card(axes, "NAXIS")) - roles.l      # FITS numbers the axes the other way round
+    except ValueError:
+        return None
+    for key in (f"CNAME{n}", f"CTYPE{n}"):
+        v = card(axes, key)
+        v = v.split("-")[0].strip() if key.startswith("CTYPE") else v
+        first = re.split(r"[^a-z]+", v.lower())[0] if v else ""
+        if v and first not in GENERIC_AXIS:
+            return v
+    return None
 
 
 class SliceNames(NamedTuple):
@@ -99,34 +200,34 @@ KNOWN_LAMBDA = ("header", "--axes", "SOLARNET order")   # Roles.how that name la
 
 
 def value_name(path, axes=None) -> str:
-    """What a cube's values are, without their unit: its BTYPE, else the word naming a map in its file name, else
-    "value"."""
-    btype = str(getattr(axes, "btype", None) or "").strip()
-    s = stem(path)
-    word = re.split(r"[^A-Za-z]+", s)[0].lower() if s else ""
-    return btype or QUANTITIES.get(word) or "value"
+    """What a cube's values are, without their unit: what it shows (quantity)."""
+    return quantity(path, axes)
 
 
 def value_label(path, axes=None) -> str:
-    """What a cube's values are, for the axis of a curve: value_name, with BUNIT in brackets when the header gives
-    it."""
+    """What a cube's values are, for the axis of a curve: value_name, with its unit in brackets when the header gives
+    one (BUNIT, else PIXLUNIT: an AIA file's DN)."""
     q = value_name(path, axes)
-    unit = str(getattr(axes, "bunit", None) or "").strip()
+    unit = str(getattr(axes, "bunit", None) or "").strip() or card(axes, "PIXLUNIT")
     return f"{q} [{unit}]" if unit else q
 
 
 def slice_names(roles, axes, path) -> SliceNames:
     """The names of a cube's axis other than t, in one place. Known to be lambda (its tunings in Å, or so named by
-    the header, by --axes or by SOLARNET's order of three axes), with more than one tuning: "λ–t" and "λ index", as
-    always. Otherwise (a map, a single tuning, or an unnamed axis taken for lambda by default) by what the cube shows:
-    its quantity (quantity), "Blos–t", "Blos index"; a single tuning known to be lambda by its line ("Fe I 617.3–t")."""
+    the header, by --axes or by SOLARNET's order of three axes; never in an inversion's file), with more than one
+    tuning: "λ–t" and "λ index", as always. Otherwise by what the cube shows (quantity): "Blos–t", "Blos index"; a
+    single tuning known to be lambda by its line ("Fe I 617.3–t"); an axis of several planes by its own name too,
+    the header's (axis_word: "lg(tg) (z–t)", "z index") or an inversion's "parameter"."""
     dl = axes.dlam_A() if axes is not None and roles.l is not None else None
-    spectral = roles.l is not None and ((dl is not None and len(dl) == roles.nl) or roles.how in KNOWN_LAMBDA)
+    spectral = (roles.l is not None and not is_inversion(path)
+                and ((dl is not None and len(dl) == roles.nl) or roles.how in KNOWN_LAMBDA))
     mapped = roles.l is None or roles.nl <= 1
     if spectral and not mapped:
         return SliceNames("λ–t", "λ index", True, False)
     q = (line_of(path, axes) if spectral else None) or quantity(path, axes)
-    return SliceNames(f"{q}–t", f"{q} index", spectral, mapped, value_label(path, axes))
+    x = None if mapped else axis_word(roles, axes) or ("parameter" if is_inversion(path) else None)
+    panel, label = (f"{q} ({x}–t)", f"{x} index") if x else (f"{q}–t", f"{q} index")
+    return SliceNames(panel, label, spectral, mapped, value_label(path, axes))
 
 
 def cube_names(datasets) -> list[str]:

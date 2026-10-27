@@ -65,7 +65,8 @@ def open_window(qapp, main, linked=(), **kw):
 
 def test_a_single_tuning_or_none_is_named_by_what_the_cube_shows():
     """One plane along lambda, or no lambda: mapped, its lambda-t named by the cube's line or quantity, its values by
-    BTYPE (else the map's word, else "value") with BUNIT; more than one tuning known to be lambda: as always."""
+    what it shows (data.names.quantity: BTYPE, the map's word, ..., the line) with BUNIT; more than one tuning known
+    to be lambda: as always."""
     from explorer.data.axes import Roles
     from explorer.data.names import slice_names
 
@@ -80,7 +81,7 @@ def test_a_single_tuning_or_none_is_named_by_what_the_cube_shows():
         (Roles(0, 1, 2, 5, 4, 7), Ax(line="Fe I 617.3", dl=list(range(7))), "x_im.fits",
          ("λ–t", "λ index", True, False)),
         (Roles(0, 1, 2, 5, 4, 1), Ax(line="Fe I 617.3", dl=[0.0], bunit="W"), "x_im.fits",
-         ("Fe I 617.3–t", "Fe I 617.3 index", True, True, "value [W]")),
+         ("Fe I 617.3–t", "Fe I 617.3 index", True, True, "Fe I 617.3 [W]")),
         (Roles(0, None, None, 5, 1, 1), Ax(btype="Blos", bunit="G"), "m.fits", ("Blos–t", "Blos index", False, True,
                                                                                "Blos [G]")),
         (Roles(0, None, None, 5, 1, 1), Ax(), "Vlos.6173_map.fcube", ("Vlos–t", "Vlos index", False, True, "Vlos")),

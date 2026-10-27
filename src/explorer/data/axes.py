@@ -147,6 +147,7 @@ class Axes:
         self.corner_px: tuple | None = None  # ((x0, x1), (y0, y1)) 0-based pixel indices of the corners
         self.bunit = None
         self.btype = None           # what the data are (BTYPE), when the header says
+        self.cards: dict[str, str] = {}     # the header's cards that name a cube (naming_cards), as text
         self.distortion = None      # the header's wavelength distortion (e.g. "WCSDVARR Lookup"), not applied
         self.source: list[str] = []  # what was read, for the status and about texts
 
@@ -249,6 +250,7 @@ def from_series(layout) -> Axes:
         with fits.open(layout.path, memmap=False, lazy_load_hdus=True) as h:
             hd = h[layout.hdus[0]].header
             ax.bunit, ax.btype = text(hd, "BUNIT"), text(hd, "BTYPE")
+            ax.cards = naming_cards(hd)
     except Exception as e:                                          # never block opening a cube
         ax.source.append(f"header not read: {type(e).__name__}: {e}")
     return ax
@@ -259,6 +261,29 @@ def text(hd, key: str) -> str | None:
     an unquoted BUNIT = T is FITS's logical true, which astropy reads as True and a label would show as "[True]"."""
     v = hd.get(key)
     return v.strip() or None if isinstance(v, str) else None
+
+
+# the cards data.names reads to name what a cube shows and its axes: an imager's instrument and passband, what a
+# map is (CONTENT), the unit of a series without BUNIT (PIXLUNIT: AIA), and each axis's own name (CTYPEn, CNAMEn)
+NAMING = ("TELESCOP", "INSTRUME", "DETECTOR", "WAVELNTH", "WAVEUNIT", "WAVEBAND", "CONTENT", "PIXLUNIT", "NAXIS")
+
+
+def naming_cards(hd) -> dict[str, str]:
+    """The header's NAMING cards and its axes' CTYPEn and CNAMEn, as text (numbers as written: WAVELNTH = 171 is
+    "171"); absent, blank and logical ones left out, as text leaves BUNIT = T out."""
+    keys = list(NAMING)
+    try:
+        n = int(hd.get("NAXIS", 0) or 0)
+    except (TypeError, ValueError):
+        n = 0
+    keys += [f"{c}{i}" for i in range(1, n + 1) for c in ("CTYPE", "CNAME")]
+    out = {}
+    for k in keys:
+        v = hd.get(k)
+        if v is None or isinstance(v, bool) or not str(v).strip():
+            continue
+        out[k] = str(v).strip()
+    return out
 
 
 def from_hdul(h) -> Axes:
@@ -275,6 +300,7 @@ def _read(h, ax: Axes) -> None:
     hd = h[0].header
     ax.bunit = text(hd, "BUNIT")
     ax.btype = text(hd, "BTYPE")
+    ax.cards = naming_cards(hd)
     # line: WAVEBAND -> laboratory wavelength
     wb = hd.get("WAVEBAND")
     if wb is not None and _norm(wb) in LINES:

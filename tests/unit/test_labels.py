@@ -41,7 +41,27 @@ def cubes(tmp_path_factory):
     blos_t = fits_cube(d / "blos_t.fits", planes, CTYPE1="HPLN-TAN", CTYPE2="HPLT-TAN", CTYPE3="UTC", BTYPE="Blos",
                        BUNIT="G")
     plain_t = fits_cube(d / "aia_like.fits", planes + 500, CTYPE3="UTC")         # no BTYPE, no BUNIT, no map word
-    return {"spec": spec, "unknown": unknown, "blos_t": blos_t, "plain_t": plain_t}
+    # two unnamed axes before the image: "default (t, lambda)", its second not known to be lambda
+    t_planes = fits_cube(d / "blos_t_planes.fits", np.stack([planes[:3] + 10 * t for t in range(NT)]), BTYPE="Blos",
+                         BUNIT="G")
+    return {"spec": spec, "unknown": unknown, "blos_t": blos_t, "plain_t": plain_t, "t_planes": t_planes}
+
+
+def test_the_main_cube_names_an_axis_not_known_to_be_lambda_as_a_linked_one(qapp, cubes):
+    """The main cube with an axis of several planes not known to be lambda (two unnamed axes: t and one taken for
+    lambda by default) names it as a linked cube does (data.names.slice_names: "Blos–t", "Blos index"): its lambda-t's
+    title and x axis, its Spectrum's x axis, its slit panel's spectral axis. Before: "λ–t" and "λ index"."""
+    w, close = open_window(qapp, cubes["t_planes"])
+    try:
+        assert w.dataset.roles.how == "default (t, lambda)"
+        got = {"title": w.lt_dock.windowTitle(),
+               "lambda-t": w.lambda_t.w.getPlotItem().getAxis("bottom").labelText,
+               "spectrum": w.main.spectra.plots[-1].getAxis("bottom").labelText,
+               "slit": w.slit_panel.sl.getAxis("left").labelText}
+        print(got)
+        assert got == {"title": "Blos–t", "lambda-t": "Blos index", "spectrum": "Blos index", "slit": "Blos index"}
+    finally:
+        close()
 
 
 def open_window(qapp, main, linked=(), size=(1200, 640)):
@@ -107,10 +127,10 @@ def test_every_axis_in_delta_lambda_says_the_line_centre_it_is_measured_from(qap
         close()
 
 
-@pytest.mark.parametrize("which, name", [("blos_t", "Blos"), ("plain_t", "value"), ("spec", "I")])
+@pytest.mark.parametrize("which, name", [("blos_t", "Blos"), ("plain_t", "Quantity"), ("spec", "I")])
 def test_the_status_bar_names_the_value_by_what_the_cube_shows_without_stokes(qapp, cubes, which, name):
     """A cube without Stokes and without lambda: the status bar names its value as its curve's axis does (BTYPE, the
-    map's word, else "value"); with I Q U V along lambda: I, then Q."""
+    map's word, ..., else "Quantity": data.names.quantity); with I Q U V along lambda: I, then Q."""
     w, close = open_window(qapp, cubes[which])
     try:
         w.session.hover(NY // 2, NX // 2)

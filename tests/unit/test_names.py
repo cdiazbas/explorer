@@ -73,9 +73,168 @@ def test_the_axis_other_than_t_is_lambda_only_when_known():
         (_roles(), _axes(btype="Magnetic field"), "Blos.6173_map.fcube",
          ("Magnetic field–t", "Magnetic field index", False)),
         (_roles(l=1, nl=6, how="default (t, lambda)"), _axes(), "meinv_6173_im.icube",
-         ("meinv_6173_im–t", "meinv_6173_im index", False)),
+         ("Fe I 617.3 inversion (parameter–t)", "parameter index", False)),
     ]
     for r, ax, path, want in cases:
         got = slice_names(r, ax, path)
         print(path, r.how, "->", got)
         assert got[:3] == want and got.mapped == (r.l is None)
+
+
+# ---------------------------------------------------------------- names from the header (ROADMAP E8.8)
+# Each header below is built like a real one the survey of 2026-10-11 read (docs/journal.md 2026-10-11 (7)): the same
+# cards, values and types (WAVELNTH a number, BIFROST's BUNIT = T a logical), on images of 8 x 10.
+
+NY8, NX10 = 8, 10
+T_OBS = "2025-07-05T00:{:02d}:00.00Z"
+
+
+def _write(path, data, cards):
+    from astropy.io import fits
+
+    h = fits.Header()
+    for k, v in cards.items():
+        h[k] = v
+    fits.PrimaryHDU(data, h).writeto(path)
+    return str(path)
+
+
+def _series(d, name, cards, n=3):
+    """n files of an imager, one image each, read as explorer reads --series: their layout, the first's header.
+    name: the files' names, file k's where {k} is (else name_k)."""
+    import numpy as np
+
+    from explorer.data import axes as _axes
+    from explorer.data.formats import series_layout
+
+    names = [name.format(k=k) if "{k}" in name else f"{name}_{k}" for k in range(n)]
+    paths = [_write(d / f"{f}.fits", np.full((NY8, NX10), k, np.int16), {**cards, "T_OBS": T_OBS.format(k)})
+             for k, f in enumerate(names)]
+    lay = series_layout(paths)
+    r, ax = _axes.read(lay.path, lay)
+    return r, ax, lay.path
+
+
+def _cube(path, shape, cards):
+    """One FITS cube as explorer opens it: its layout, then its roles and axes from its header."""
+    import numpy as np
+
+    from explorer.data import axes as _axes
+    from explorer.data.formats import open_layout
+
+    _write(path, np.zeros(shape, np.float32), cards)
+    lay = open_layout(path)
+    r, ax = _axes.read(str(path), lay)
+    return r, ax, str(path)
+
+
+AIA = {"TELESCOP": "SDO/AIA", "INSTRUME": "AIA_3", "WAVELNTH": 171, "WAVEUNIT": "angstrom", "WAVE_STR": "171_THIN",
+       "PIXLUNIT": "DN", "CTYPE1": "HPLN-TAN", "CTYPE2": "HPLT-TAN", "IMG_TYPE": "LIGHT"}
+EUI = {"TELESCOP": "SOLO/EUI/FSI", "DETECTOR": "FSI", "WAVELNTH": 174, "WAVEUNIT": "Angstrom", "BTYPE": "Intensity",
+       "BUNIT": "DN", "LEVEL": "L1", "CTYPE1": "HPLN-TAN", "CTYPE2": "HPLT-TAN"}
+EUVI = {"TELESCOP": "STEREO", "INSTRUME": "SECCHI", "DETECTOR": "EUVI", "WAVELNTH": 171, "BUNIT": "DN",
+        "CTYPE1": "HPLN-TAN", "CTYPE2": "HPLT-TAN"}
+GONG = {"TELESCOP": "NSO-GONG", "WAVELNTH": 6562.808, "IMTYPE": "H-ALPHA", "CTYPE1": "HPLN-TAN", "CTYPE2": "HPLT-TAN"}
+
+
+@pytest.mark.parametrize("cards,name,panel,value", [
+    (AIA, "aia.lev1_euv_12s.2025-07-05T005959Z.171.image", "AIA 171 Å–t", "AIA 171 Å [DN]"),
+    (EUI, "solo_L1_eui-fsi174-image_20250705T000000", "EUI/FSI 174 Å–t", "EUI/FSI 174 Å [DN]"),
+    (EUVI, "stereo_a_euvi_171_2025_07_05", "EUVI 171 Å–t", "EUVI 171 Å [DN]"),
+    (GONG, "20250705010042Lh", "GONG Hα–t", "GONG Hα"),
+])
+def test_an_imager_is_named_by_its_instrument_and_band(tmp_path, cards, name, panel, value):
+    """Rule 5, and rule 1 passing over a generic BTYPE ("Intensity"): a series of an imager without WAVEBAND, by its
+    instrument (TELESCOP after its "/", else DETECTOR, else TELESCOP's last word) and WAVELNTH in Å, a known line
+    within 6 Å by its name; its unit BUNIT, else PIXLUNIT. Before: the file's name, or "Intensity"."""
+    from explorer.data.names import slice_names
+
+    r, ax, path = _series(tmp_path, name, cards)
+    got = slice_names(r, ax, path)
+    print(name, "->", got)
+    assert got.mapped and (got.panel, got.value) == (panel, value)
+
+
+def test_an_sst_map_keeps_its_name(tmp_path):
+    """Rule 4 after rule 1: an SST map by the word of its file name ("Blos–t", as an LP map without a header always
+    was), whatever its generic BTYPE and its WAVELNTH (the prefilter: with WAVEBAND, rule 5 does not apply). Before:
+    "Intensity–t"."""
+    from explorer.data.names import slice_names
+
+    cards = {"CTYPE1": "HPLN-TAB", "CTYPE2": "HPLT-TAB", "CTYPE3": "UTC--TAB", "WAVEBAND": "Fe I 6173",
+             "WAVELNTH": 617.38, "WAVEUNIT": -9, "BTYPE": "Intensity", "INSTRUME": "CRISP",
+             "TELESCOP": "Swedish 1-meter Solar Telescope (SST)", "DETECTOR": "camXXXII,camXXXIII"}
+    r, ax, path = _cube(tmp_path / "Blos_6173_map=0-3.fits", (4, NY8, NX10), cards)
+    got = slice_names(r, ax, path)
+    print(got)
+    assert (got.panel, got.label) == ("Blos–t", "Blos index")
+
+
+def test_an_axis_named_by_the_header_is_called_so(tmp_path):
+    """The axis rule: BIFROST's [z, y, x], CTYPE3 = 'z': its axis other than t is z, and BTYPE names what it shows;
+    BUNIT = T (a logical) is no unit. Before: "lg(tg)–t", "lg(tg) index"."""
+    from explorer.data.names import slice_names
+
+    base = {"CTYPE1": "x", "CTYPE2": "y", "CTYPE3": "z", "OBJECT": "en024048_hion", "ORIGIN": "ITA/Oslo"}
+    r, ax, path = _cube(tmp_path / "BIFROST_en024048_hion_lgtg_385.fits", (6, NY8, NX10),
+                        {**base, "BTYPE": "lg(tg)", "BUNIT": "K"})
+    got = slice_names(r, ax, path)
+    print(r.how, got)
+    assert (got.panel, got.label, got.value, got.mapped) == ("lg(tg) (z–t)", "z index", "lg(tg) [K]", False)
+    r, ax, path = _cube(tmp_path / "BIFROST_en024048_hion_bz_385.fits", (6, NY8, NX10),
+                        {**base, "BTYPE": "bz", "BUNIT": True})
+    got = slice_names(r, ax, path)
+    print(r.how, got)
+    assert (got.label, got.value) == ("z index", "bz")
+
+
+def test_an_inversion_s_planes_are_never_lambda(tmp_path):
+    """Rule 3: an inversion's file (meinv, inversion, inv: a word of its name) by its line, its planes by
+    "parameter", whatever the LP pair layout (the meinv LP: [106, 1, 3], "header") or SOLARNET's order (the
+    headerless WFA_inversion_8542.fits: [83, 2, 3, y, x]) calls them. Before: "λ–t", "λ index"."""
+    from explorer.data.axes import Axes, Roles
+    from explorer.data.names import slice_names
+
+    got = slice_names(Roles(0, 1, 2, 106, 1, 3, "header"), Axes(), "data/lp/inversion_6173_im.icube")
+    print("meinv", got)
+    assert (got.panel, got.label, got.spectral) == ("Fe I 617.3 inversion (parameter–t)", "parameter index", False)
+    r, ax, path = _cube(tmp_path / "WFA_inversion_8542.fits", (5, 2, 3, NY8, NX10), {})
+    got = slice_names(r, ax, path)
+    print("wfa", r.how, got)
+    assert r.how == "SOLARNET order"
+    assert (got.panel, got.label, got.spectral) == ("Ca II 854.2 inversion (parameter–t)", "parameter index", False)
+
+
+def test_content_and_a_jsoc_segment_name_a_map(tmp_path):
+    """Rules 2 and 4: an HMI magnetogram by its CONTENT, a SHARP map by the segment its JSOC name ends in (its
+    CONTENT, "HMI observable", is generic). Before: the file's name."""
+    from explorer.data.names import slice_names
+
+    r, ax, path = _series(tmp_path, "hmi_m_nrt", {"TELESCOP": "SDO/HMI", "INSTRUME": "HMI_FRONT2",
+                                                  "CONTENT": "MAGNETOGRAM", "BUNIT": "Gauss", "WAVELNTH": 6173.0})
+    got = slice_names(r, ax, path)
+    print(got)
+    assert (got.panel, got.value) == ("magnetogram–t", "magnetogram [Gauss]")
+    d = tmp_path / "sharp"
+    d.mkdir()
+    r, ax, path = _series(d, "hmi.sharp_cea_720s.377.2014020{k}_030000_TAI.Br",
+                          {"TELESCOP": "SDO/HMI", "CONTENT": "HMI observable", "BUNIT": "Mx/cm^2"})
+    print(path)
+    got = slice_names(r, ax, path)
+    print(got)
+    assert got.panel == "Br–t"
+
+
+def test_without_a_name_in_the_header_the_line_of_the_file_then_quantity(tmp_path):
+    """Rules 7 and 8: a headerless cube [n, y, x] (one unnamed axis: "unknown") by the line in its file name, else
+    "Quantity", never by its file's name; its values the same. Before: the file's name, and "value"."""
+    from explorer.data.names import slice_names
+
+    r, ax, path = _cube(tmp_path / "delacruz_8542_denoise.fits", (5, NY8, NX10), {})
+    got = slice_names(r, ax, path)
+    print(r.how, got)
+    assert (got.panel, got.label) == ("Ca II 854.2–t", "Ca II 854.2 index")
+    r, ax, path = _cube(tmp_path / "flare_spt_denoised.fits", (5, NY8, NX10), {})
+    got = slice_names(r, ax, path)
+    print(r.how, got)
+    assert (got.panel, got.label, got.value) == ("Quantity–t", "Quantity index", "Quantity")

@@ -115,9 +115,10 @@ class CubeView:
         self.view = ImageView(on_hover=self._hover, strips=ex.strips, parts=ex.n_strips, light=light)
         self.view.widget.scene().sigMouseClicked.connect(self._click)
         r = ds.roles
-        # its axis other than t named as data.names says (not lambda unless known to be): a linked cube's, and the
-        # main cube's with one plane along it or none; the main cube's with lambda as it always was
-        self.slices = slice_names(r, ds.axes, getattr(ds, "path", "")) if k or r.l is None or r.nl <= 1 else None
+        # its axis other than t named as data.names says (not lambda unless known to be), the main cube's as a linked
+        # one's; the main cube's lambda of several tunings as it always was (None)
+        names = slice_names(r, ds.axes, getattr(ds, "path", ""))
+        self.slices = names if k or names.mapped or not names.spectral else None
         # a cube without lambda has no spectra; one whose axis is not known to be lambda has them named as its
         # lambda-t and slit are, and its values by what they are when it has no Stokes
         other = self.slices if self.slices is not None and not self.slices.spectral else None
