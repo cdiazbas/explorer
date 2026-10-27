@@ -5694,3 +5694,39 @@ FITS `T` (astropy: True), que es tesla (valores de ±0.2-0.3).
 
 **Por decidir:** un mapa divergente para bx, by, bz; la leyenda de un solo fichero dice «[K]» sin el nombre; el «0» de una
 leyenda estrecha con límites a los dos lados de cero se monta sobre el límite inferior.
+
+### 2026-10-27 (7): los planos con signo centrados en 0, la tecla Z y el nombre en la leyenda (ROADMAP E8.14, E8.16)
+
+**Decidido** (el usuario, sobre los puntos 31 y 32 de la página de pendientes):
+- «La leyenda debe llevar la cantidad no solo la unidad»;
+- «Los mapas divergentes deben centrarse en 0»;
+- la escala asimétrica centrada en 0, como opción: «dejalo en Z, sin menu».
+
+**Antes:** solo Q U V tenían signo (`data.axes.signed`: `s > 0 and planes == "stokes"`). bz, Blos y Vlos tenían límites
+propios, no centrados, y C no les ofrecía los mapas divergentes. La página de pendientes decía que los mapas de Blos ya
+usaban uno divergente: era falso, y se corrigió allí.
+
+**Hecho:**
+- `61e0654`: un plano tiene signo por el nombre de su magnitud (`SIGNED`), leído una vez en `axes.read` (`Roles.signs`);
+  los niveles, las leyendas y los mapas lo toman de ahí como de Q U V. La leyenda de un cubo de un plano dice qué es.
+- `6be1fa8`: «+» delante del límite superior solo si la barra cruza 0 (antes, «−3.3 … +−1.3» en log₁₀(p)).
+- `5f57cd5`: Z. El estado guarda los planos en asimétrico (`ViewState.zero`); los niveles, por los percentiles de cada lado
+  (`Session.symmetric`); el doblez, donde antes se distinguía lo simétrico por lo == −hi: la tabla de la imagen
+  (`kernels.centred_table`, igual byte a byte a la simétrica con el 0 en medio), `gamma_panel`, `transfer` y la barra en
+  reposo. Unos límites −m..m siguen por el código de siempre.
+
+**Medido:**
+- Mac, sin pantalla: `test_signed` (5), `test_zero` (6) y la prueba nueva de `test_key_limits` fallan con el código
+  anterior y pasan; 314 pruebas de escala, γ, niveles, rendija, disposición, 2×2 y Bifrost pasan.
+- Capturas frente a `main`: 8/104 PNG distintas, 0/16 JSON, todas por el Blos enlazado (−1.8..2 → −2..2); con Z las mismas
+  8 y los mismos píxeles.
+- bellatrix, ficheros reales, sin pantalla: Blos 6173 (2023-05-03) −1266.4..1266.4 G → −1165.2..898.0 G con Z, el blanco
+  de la barra sobre el «0»; Blos 2025, ±154.1 → −82.6..84.9; bz de Bifrost a z = 0, ±0.0599 → −0.0225..0.0278 T. La
+  asimetría de los tres es pequeña (1.03-1.3): casi todo el contraste de más con Z viene de que cada lado usa su percentil
+  (el 1 y el 99 de v) en vez del 99 de |v|.
+
+**Sin cambiar, visto de paso:** fuera del campo redondo, el Blos 2023 pinta su relleno como un campo positivo (rosado con
+RdBu_r), con o sin Z.
+
+**Por decidir:** un mapa divergente de color por defecto para B (hoy gris, como Q U V); el cero de la leyenda en reposo
+con Z: va donde cae, y en una barra estrecha puede montarse sobre un límite.
