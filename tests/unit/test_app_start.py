@@ -100,3 +100,33 @@ def test_the_theme_switched_with_t_is_the_next_starts(qapp, headless, monkeypatc
         qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
         qapp.setPalette(pal)
         qapp.setProperty("explorer_light", False)
+
+
+def test_the_slit_tab_choice_is_the_next_starts(qapp, headless, monkeypatch):
+    """Two linked cubes: a slit tab per cube at the first start; unticked, the next start has one tab, as left."""
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.ui.app import start
+
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())   # start() themes the application: put back
+    monkeypatch.setenv("EXPLORER_LAYOUT", str(headless / "layout.ini"))
+    shape = (3, 1, 5, 16, 12)
+    main = synth.write_stokes_cube(headless / "x_im.fits", shape=shape)
+    other = synth.write_stokes_cube(headless / "y_im.fits", shape=shape, seed=2)
+    try:
+        for want, then in ((True, False), (False, None)):
+            s = start(main, no_sp=True, linked=[other])
+            assert s is not None and s.linked
+            try:
+                act = s.shell.slit_tabs_action
+                assert act is not None and act.isChecked() is want
+                assert s.shell.session.state.slit_tabs is want
+                if then is not None:
+                    act.setChecked(then)                # Panels → A slit tab per cube, unticked
+            finally:
+                s.shell.close()
+                s.close()
+    finally:
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+        qapp.setProperty("explorer_light", False)

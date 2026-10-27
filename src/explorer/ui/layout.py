@@ -14,6 +14,8 @@ local Mac, Qt's own X11, the bridge, ...), as the prototype keeps them (app/view
 - A window with linked cubes (ROADMAP E8.1) keeps its geometry and panels apart: its images side by side want a
   wider window, and its panels have tabs a one-cube window does not (the look and the theme are shared). Its cubes'
   windows too (ROADMAP E8.3): which cubes are apart and the panels inside each one (Shell.cube_windows).
+- With linked cubes, whether the slit has a tab per cube (Panels → A slit tab per cube, Shift+S), one per way of
+  displaying as the theme.
 - Each cube's scale, its limit rule, fixed levels and gamma per Stokes (Shell.scale_settings), by its file's base
   name: for every way of displaying and every look, and kept for cubes not open now.
 """
@@ -64,8 +66,11 @@ class LayoutStore:
     def _theme_key(self) -> str:
         return f"ui/v{SCHEMA}.{self.for_look(None).base}/theme"     # glass's layout or not, one theme
 
+    def _slit_tabs_key(self) -> str:
+        return f"ui/v{SCHEMA}.{self.for_look(None).base}/slit_tabs"    # glass's layout or not, one choice
+
     def save(self, window: QtWidgets.QMainWindow, zoomed: bool = False, look: str | None = None,
-             theme: str | None = None) -> None:
+             theme: str | None = None, slit_tabs: bool | None = None) -> None:
         st = self._settings()
         if not (zoomed or window.isMaximized() or window.isFullScreen()):
             st.setValue(self.geometry_key, window.saveGeometry())
@@ -79,6 +84,8 @@ class LayoutStore:
             st.setValue(self.LOOK_KEY, look)
         if theme is not None:
             st.setValue(self._theme_key(), theme)
+        if slit_tabs is not None:
+            st.setValue(self._slit_tabs_key(), bool(slit_tabs))
         st.sync()
 
     def look(self) -> str | None:
@@ -90,6 +97,11 @@ class LayoutStore:
         """The theme the window was in when it last closed, on this way of displaying; None if none was kept."""
         v = self._settings().value(self._theme_key())
         return str(v) if v else None
+
+    def slit_tabs(self) -> bool | None:
+        """Whether the slit had a tab per cube when a window with linked cubes last closed; None if none was kept."""
+        v = self._settings().value(self._slit_tabs_key())
+        return None if v is None else str(v).lower() in ("true", "1")
 
     def restore(self, window: QtWidgets.QMainWindow, app) -> bool:
         """The last geometry if it still fits one monitor, else the first window's; the panels' places and sizes.

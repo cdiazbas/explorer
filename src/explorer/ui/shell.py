@@ -1839,8 +1839,9 @@ class Shell(QtWidgets.QMainWindow):
         if self.layout_store is not None and not self._closing:   # before the docks say hidden
             ops = self.window_ops
             store = self.layout_store.for_look(self.look.name)  # the glass look's own layout
+            act = self.slit_tabs_action                 # with linked cubes only
             store.save(self, zoomed=ops is not None and ops.unzoomed is not None, look=self.look.name,
-                       theme=self.theme)
+                       theme=self.theme, slit_tabs=act.isChecked() if act is not None else None)
             store.save_scale(self.scale_settings())
         self._closing = True                            # the docks then say hidden: nothing to read any more
         if self.scale_card is not None:                 # its filter on the application goes with it

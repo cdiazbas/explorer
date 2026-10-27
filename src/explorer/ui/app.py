@@ -295,6 +295,10 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
             shell._sized = True
         if store is not None:                           # each cube's limits and gamma, by its file name
             shell.restore_scale(store.scale())
+        act = shell.slit_tabs_action                    # with linked cubes: a slit tab per cube, or one, as last
+        tabs = store.slit_tabs() if store is not None and act is not None else None
+        if act is not None and tabs is not None:
+            act.setChecked(tabs)
         disp.attach(app, shell, ops)
         shell.session.pace.offer = disp.screen()        # held for once the link probe finds it slow (core.pace)
         from . import termkeys

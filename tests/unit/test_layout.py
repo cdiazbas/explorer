@@ -228,3 +228,21 @@ def test_linked_cubes_keep_a_layout_of_their_own_and_share_the_theme(qapp, store
     assert lk.restore(b, qapp) and (b.width(), b.height()) == (700, 420)
     assert store.theme() == "light" and store.look() == "modern"
     b.close()
+
+
+def test_the_slit_tab_choice_is_kept_per_way_of_displaying(qapp, store):
+    """With linked cubes, a slit tab per cube or one (Panels → A slit tab per cube, Shift+S): kept at the close,
+    glass's layout or not; another way of displaying keeps its own; nothing given keeps what was kept."""
+    from explorer.ui.layout import LayoutStore
+
+    lk = LayoutStore("test", store.path, linked=True)
+    assert lk.slit_tabs() is None
+    w = window(qapp)
+    lk.save(w, slit_tabs=False)
+    assert lk.slit_tabs() is False and lk.for_look("glass").slit_tabs() is False
+    assert LayoutStore("other", store.path, linked=True).slit_tabs() is None
+    lk.save(w)                                          # none given: the kept one stays
+    assert lk.slit_tabs() is False
+    lk.save(w, slit_tabs=True)
+    assert lk.slit_tabs() is True
+    w.close()
