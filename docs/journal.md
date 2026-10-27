@@ -5657,3 +5657,40 @@ meinv real sin su fichero por píxel, en tiempo.
 **Por decidir:** cómo llamar en el deslizador y la línea de estado a un eje que no es λ; la línea del nombre del fichero
 antes de «Quantity»; «Quantity» en lugar de «value» en la línea de estado; el nombre de la pestaña de un AIA (sigue
 siendo el fichero).
+
+### 2026-10-27 (6): los ejes que no son λ, los nombres de los cubos, Bifrost en sus unidades y sus variables juntas (ROADMAP E8.8, E8.14, E8.15)
+
+**Decidido** (el usuario, sobre lo pendiente de E8.8 y al ver un BIFROST real):
+- el eje que no es λ, por su nombre en el deslizador y la línea de estado («z»), si no «plane»;
+- el nombre de un cubo, el de la cabecera donde el fichero no dice nada («AIA 171 Å»);
+- la línea del nombre del fichero antes de «Quantity», y «Quantity» en la línea de estado, como estaban;
+- leer Bifrost como lo escribe helita (`helita/sim/tools.py` `writefits`, `muram.py` `trasn2fits`: «SI, vertical axis, z
+  and top corona is positive and last index»), y abrir las variables de una instantánea juntas, con selector («A»).
+
+**La cabecera real** (`BIFROST_en024048_hion_*_385.fits`, bellatrix, solo lectura): x e y en Mm (`CDELT` 0.0476);
+z, una extensión `z-coordinate` de 496 alturas no uniformes, de −2.444 a 14.367 Mm; `ZTAU51` = 0.061 Mm; `ELAPSED` =
+3850 s; `BTYPE` `lg(tg)`, `lg(ne)`, `lg(p)`, `bx`, `by`, `bz`; `BUNIT` en SI, salvo en bx, by, bz, donde es el lógico
+FITS `T` (astropy: True), que es tesla (valores de ±0.2-0.3).
+
+**Hecho** (`5c9b313`, `9ffebae`, `2442e29`, `e2b2513`, `5558ea0`, `03c004b`):
+- el deslizador, la barra de glass, la línea de estado y la hoja ? llaman a un eje por su nombre («z»), si no «plane»;
+- `short_name`, el de la cabecera donde el fichero no da línea ni mapa: «aia.lev1_euv_12…» → «AIA 171 Å»;
+- un eje con extensión `<CTYPE>-coordinate`, en sus coordenadas: «z [Mm]» en las alturas reales, «z 3.41 Mm»; x e y en
+  Mm; la línea «τ₅₀₀=1»; «bz [T]»; «log₁₀(tg) [K]», nunca «10⁰»; ELAPSED como t de una serie; «Profile» si el eje no es
+  λ; las leyendas con las cifras justas para que sus límites difieran;
+- las variables de una instantánea, un cubo (`Roles.planes`, una tupla de nombres), leídas cuadro a cuadro de su fichero;
+- de paso, el selector de planos de un enlazado se veía gris en el tema claro: alfa 200 (mediana 99 → 72).
+
+**Medido:**
+- Mac, sin pantalla, ficheros sintéticos con la cabecera real: las pruebas nuevas (`test_bifrost`, `test_key_limits`,
+  `test_snapshot`, `test_labels`, `test_names`) fallan antes y pasan después.
+- `bench/captures.py` frente a `a75208b`: 0/104 PNG y 0/16 JSON (ruido 0/104); ninguna leyenda de Stokes cambia de cifras.
+- bellatrix, ficheros reales, sin pantalla: la temperatura, en «z [Mm]» de −2 a 14 Mm con τ₅₀₀=1, «z −1.31 Mm», leyenda
+  «4.20 … 4.22». Las seis variables: «6 variables of one snapshot: one cube»; memoria 716 MB al arrancar, 802 como mucho,
+  con 3 GB de ficheros; mover z, mediana 56 ms (máx. 70) hasta que los seis paneles de la rejilla cambian; en la vista
+  única, mediana 181 ms (máx. 380), sin explicar. La carga subió de 2.8 a 10.8 durante la medida: tiempos aproximados.
+
+**Sin probar:** SHARP y HMI; la vista única de las variables, más lenta que la rejilla, sin rastrear.
+
+**Por decidir:** un mapa divergente para bx, by, bz; la leyenda de un solo fichero dice «[K]» sin el nombre; el «0» de una
+leyenda estrecha con límites a los dos lados de cero se monta sobre el límite inferior.
