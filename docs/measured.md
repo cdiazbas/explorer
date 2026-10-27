@@ -52,7 +52,11 @@ Copiado de `docs/plan.md` §4 el 2026-09-28.
 **Resultados negativos que no se vuelven a proponer:**
 - `memmap`;
 - `fadvise`;
-- OpenGL por `ssh -Y` (tampoco con IGLX ni VirtualGL);
+- bibliotecas OpenGL (vispy, gfx, napari) por `ssh -Y`: la ventana, vacía. IGLX y VirtualGL no se han medido con
+  explorer; lo que hay (2026-10-27): el XQuartz del usuario tiene el GL indirecto apagado (`enable_iglx = 0`,
+  arrancado con `-iglx`); en bellatrix, VirtualGL 3.1.2 está instalado pero no sirve a este usuario (por GLX no
+  abre `:0`, el de gdm; por EGL, «Could not load EGL functions»); eagle7 tiene GPU (4 Tesla T4) pero ni VirtualGL
+  ni servidor X;
 - napari como anfitrión;
 - matplotlib;
 - Dash;

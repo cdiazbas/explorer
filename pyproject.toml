@@ -25,7 +25,7 @@ dependencies = [
     # exact: the X11 bridge calls private symbols of this Qt build (docs/plan.md §3.5); needs macOS >= 13, glibc >= 2.34
     "PySide6==6.11.2",
     "pyqtgraph==0.14.0",
-    # the X11 bridge is the default on any remote X display (ssh -Y), so it is not an extra
+    # the resize outline the X server draws (platform/xoutline.py) uses it on any X display, so it is not an extra
     "python-xlib==0.33",
 ]
 

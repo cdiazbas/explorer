@@ -4,8 +4,8 @@
 # tests/unit and tests/golden offscreen; then tests/xvfb on a private X server of its own (BIN, started on :N and
 # stopped after), or skipped without --xvfb. Run it on a copy of the tree (only the files git tracks) so that a long
 # run does not see later edits, with the environment named by EXPLORER_VENV when the copy has none of its own; a
-# copy needs .qtlibs and ../data linked like the tree's for the Qt and real-data tests. --size: at least 1800 px wide
-# for the bridge's tests of whole windows (default 2560x1440). Done: LOGDIR/DONE; exit code = suites that failed.
+# copy needs .qtlibs and ../data linked like the tree's for the Qt and real-data tests. --size: default 2560x1440;
+# 1600x1000 also passes since d1c4929. Done: LOGDIR/DONE; exit code = suites that failed.
 # Over ssh, the whole command in one detached shell, or ssh waits for the suites to end:
 #   ssh host 'nohup bash -c "cd COPY && EXPLORER_VENV=... scripts/suites.sh LOGS --xvfb BIN" > out 2>&1 < /dev/null &'
 # and stop it by the PID it prints: a pattern given to pkill -f is in ssh's own command line too, and kills it.

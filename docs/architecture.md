@@ -4,6 +4,10 @@ Cómo es el código de explorer **hoy**. Se actualiza en el mismo commit que cam
 arquitectura. El diseño objetivo es el de [plan.md](plan.md) §3 (congelado); aquí solo lo que ya
 existe, y lo que difiere del plan, con el porqué.
 
+**Desactualizado:** describe el código del 2026-09-29, antes del visor, y no se ha puesto al día desde entonces. Lo
+vigente: las decisiones en [decisions/](decisions/), cada tarea con su evidencia en [roadmap.md](roadmap.md), y el
+código.
+
 ## Estado (2026-09-29): la orden y la observabilidad; todavía sin visor
 
 ```
@@ -35,8 +39,10 @@ src/explorer/
 ## Diferencias con el plan
 
 - **python-xlib va en las dependencias base, no en un extra** (plan §2): lo necesitaba el puente
-  del prototipo. El reescrito no lo usa (solo las pruebas y las medidas, como cliente X
-  independiente); pasarlo a un extra de desarrollo está pendiente, porque cambia el lock.
+  del prototipo. El reescrito no lo usa, pero el contorno de cambio de tamaño que dibuja el servidor X
+  (`platform/xoutline.py`, con `platform/xlibauth.py`) sí, con cualquier pantalla X: medido en bellatrix
+  (2026-10-27), 37 módulos de `Xlib` cargados con el puente y con el xcb de Qt, ninguno sin pantalla. Se queda en
+  las dependencias base.
 - **El puente X11 se reescribió, no se trajo partido en módulos** (plan §3.5,
   [ADR 0009](decisions/0009-puente-x11-reescrito.md)): cliente X11 propio y entrada en Qt solo
   por API pública. Directorio `platform/xbridge/` (el plan decía `x11bridge/`). El del

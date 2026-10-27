@@ -203,12 +203,16 @@ Pendiente:
 - la comprobación del usuario por `ssh -Y` en XQuartz, que la suite (Xvfb sin gestor) no cubre;
 - quitar la versión exacta de PySide6 (`pyproject.toml`), que exigía A: se decide aparte, porque
   cambia el lock;
-- python-xlib, a un extra de desarrollo (lo mismo).
+- python-xlib, a un extra de desarrollo (lo mismo). Retirado el 2026-10-27: el contorno de cambio de tamaño lo usa
+  en marcha (abajo).
 
 ## Consecuencias
 
 - **PySide6 ya no queda atado a una versión por el puente:** B usa API pública de Qt 6 y su propio
   cliente X11. python-xlib queda en las pruebas, como cliente independiente.
+  **Corregido el 2026-10-27:** el puente no usa python-xlib, pero el contorno de cambio de tamaño que dibuja el
+  servidor X (`platform/xoutline.py`, que llega después de este ADR) sí, con cualquier pantalla X. Medido en
+  bellatrix: 37 módulos de `Xlib` cargados con el puente y con el xcb de Qt; ninguno sin pantalla.
 - **Queda por hacer:**
   - dpr > 1 (B, como el prototipo, trabaja a dpr = 1);
   - la selección PRIMARY;
