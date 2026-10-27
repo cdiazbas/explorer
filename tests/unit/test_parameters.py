@@ -185,3 +185,52 @@ def test_parameters_start_in_a_sequential_map():
     cols = ColormapRegistry(NP, colour=True, signed=False)
     print(cols.maps)
     assert all(m == SEQUENTIAL[0] for m in cols.maps) and cols.names_for(1) == SEQUENTIAL
+
+
+def test_in_the_2x2_view_each_panel_s_key_is_named_by_its_parameter(qapp, cubes):
+    """An inversion side by side (All, key 4): each panel's key (ui.scalekey, the 2x2 view's names since E5.33) says
+    its parameter, "Quantity 1" .. "Quantity 3", in its title, hot or not, wide or narrow (the short rule, not Q U V's
+    |x| forms), and its scale menu's head; "Stokes" nowhere. Before (main a75208b): the planes along lambda, no 2x2
+    view at all."""
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.ui import style
+    from explorer.ui.scalekey import ScaleKey, scale_menu
+
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    style.apply_theme(qapp, "dark")
+    w, close = open_window(qapp, cubes["lp"])
+    try:
+        w.set_grid(True)
+        assert w.grid is not None and len(w.grid.views) == NP
+        assert spin(qapp, lambda: all(v._full is not None for v in w.grid.views))
+        spin(qapp, lambda: False, timeout=0.3)
+        texts = []
+        for s, v in enumerate(w.grid.views):
+            keys = [k for k in v.widget.findChildren(ScaleKey) if k.isVisible()]
+            assert len(keys) == 1, (s, keys)
+            key = keys[0]
+            f = QtGui.QFont(key.font())
+            f.setPixelSize(key.TEXT_PX)
+            fm = QtGui.QFontMetrics(f)
+            wide, narrow = key.hot_title(fm, 1000.0), key.hot_title(fm, 10.0)
+            menu = scale_menu(w, 0, s)
+            head = menu.actions()[0].text()
+            menu.close()
+            got = (key.state[0], key.title(fm, 10.0), wide, narrow, head)
+            print(s, got, "| levels", tuple(round(x, 1) for x in v._lim))
+            texts += list(got)
+            want = f"Quantity {s + 1}"
+            assert key.state[0] == want and head == want
+            assert wide.startswith(want) and wide.endswith("auto 1–99 %") and narrow == f"{want}   1–99 %"
+            assert v._lim[0] >= 0                       # its own levels, not -m..m
+        texts += [w.nav.stokes.itemText(i) for i in range(w.nav.stokes.count())] + [w.status.text()]
+        assert not any("Stokes" in t for t in texts), texts
+    finally:
+        for m in w.findChildren(QtWidgets.QMenu):
+            m.close()
+        close()
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+        qapp.setProperty("explorer_light", False)
+
