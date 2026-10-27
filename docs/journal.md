@@ -5572,3 +5572,5 @@ y con el estilo nativo de macOS el del sistema, como ellos. Capturas de antes y 
 
 **Pruebas:** la de la clave caliente (`test_over_image`) falla en `main` y pasa; con `test_scale_gui`,
 `test_grid_colour_key` y `test_look`, 58 pasan en el Mac.
+- Suites en bellatrix (`scripts/suites.sh`, copia sin `.git`, carga 0.3 → 1.8): `tests/unit` + `tests/golden` 1115
+  pasan, 16 saltadas (22 min 58 s); `tests/xvfb` 43 pasan, 2 saltadas (4 min 42 s).
