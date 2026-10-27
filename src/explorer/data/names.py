@@ -197,12 +197,16 @@ def value_name(path, axes=None) -> str:
     return quantity(path, axes)
 
 
+def unit(axes) -> str:
+    """The unit of a cube's values: BUNIT, else PIXLUNIT (an AIA file's DN); "" without either."""
+    return str(getattr(axes, "bunit", None) or "").strip() or card(axes, "PIXLUNIT")
+
+
 def value_label(path, axes=None) -> str:
     """What a cube's values are, for the axis of a curve: value_name, with its unit in brackets when the header gives
-    one (BUNIT, else PIXLUNIT: an AIA file's DN)."""
-    q = value_name(path, axes)
-    unit = str(getattr(axes, "bunit", None) or "").strip() or card(axes, "PIXLUNIT")
-    return f"{q} [{unit}]" if unit else q
+    one (unit)."""
+    q, u = value_name(path, axes), unit(axes)
+    return f"{q} [{u}]" if u else q
 
 
 def slice_names(roles, axes, path) -> SliceNames:

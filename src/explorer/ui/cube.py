@@ -19,7 +19,7 @@ from PySide6 import QtCore
 from .._name import APP_NAME
 from ..core.scheduler import Scheduler
 from ..data.axes import unit_text
-from ..data.names import plane_text, slice_names, value_name
+from ..data.names import plane_text, slice_names, unit, value_name
 from . import glass
 from .cards import CARD, CARD_LIGHT
 from .gestures import Gestures
@@ -150,7 +150,7 @@ class CubeView:
         self.image_lock.refit.connect(self.image_refit)
         self.view.over.add(self.image_lock)             # over the image (ui.overlays)
         # its colour key, interactive (ui.scalekey): the main cube's is the window's colour_key, which glass moves
-        self.key = ScaleKey(shell, self.view, k, unit_text(getattr(ds.axes, "bunit", None) or ""))
+        self.key = ScaleKey(shell, self.view, k, unit_text(unit(ds.axes)))      # BUNIT, else PIXLUNIT
         self.spec_lock: PanelLock | None = None
         if self.spectra is not None:
             self.spec_lock = PanelLock(self.spectra.w, SPEC_TIP.format(keys=keys), light=light, backed=False)

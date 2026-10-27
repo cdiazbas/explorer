@@ -238,3 +238,16 @@ def test_without_a_name_in_the_header_the_line_of_the_file_then_quantity(tmp_pat
     got = slice_names(r, ax, path)
     print(r.how, got)
     assert (got.panel, got.label, got.value) == ("Quantity–t", "Quantity index", "Quantity")
+
+
+def test_an_imager_s_unit_from_pixlunit_in_the_status_line_and_its_key(tmp_path):
+    """AIA has no BUNIT, its unit is PIXLUNIT = 'DN': the status line says it (and the image's colour key, from the
+    same data.names.unit), as the curve's axis does ("AIA 171 Å [DN]"). Before: the curve alone."""
+    from explorer.ui.status import pixel_text
+
+    r, ax, path = _series(tmp_path, "aia.lev1_euv_12s.2025-07-05T005959Z.171.image", AIA)
+    got = pixel_text(ax, 1, 2, 3, 0, 0, 0, 363.0, None, None, False, ("t",), "AIA 171 Å")
+    print(repr(got))
+    assert got.endswith("AIA 171 Å 363.0\u00a0DN")
+    from explorer.data.names import unit
+    assert unit(ax) == "DN"

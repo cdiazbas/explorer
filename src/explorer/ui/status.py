@@ -8,7 +8,7 @@ import math
 import numpy as np
 
 from ..data.axes import SUP, fmt_sig, fmt_signed, unit_text
-from ..data.names import plane
+from ..data.names import plane, unit
 
 SEP = "   ·   "
 NB = "\u00a0"                                           # between a number and its unit: never apart at a line end
@@ -44,7 +44,7 @@ def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, i
         else:
             f.append(f"λ {l}")
     name = plane(s, planes) if ns > 1 else value
-    bunit = unit_text(ax.bunit) if ax is not None and ax.bunit else ""
+    bunit = unit_text(unit(ax))                         # BUNIT, else PIXLUNIT (data.names.unit)
     if padding(v0, s):
         f.append(f"{name}  no data (padding)")
     elif s > 0 and ic and planes == "stokes":
