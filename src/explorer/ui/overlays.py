@@ -106,10 +106,12 @@ class ColourKey(QtWidgets.QWidget):
     spectra's axis titles write it; the numbers under the bar carry none (after the last one only it reads as that
     number's). Its text in pixels, 11 px: in points, max(7, size - 2) was 7 px on a Mac (72 dpi) and 9 over X11.
     zoom: the whole key drawn that many times its size, text included (W, H, TEXT_PX and the rest in its own units):
-    a panel of the 2x2 view has its key smaller (ui.scalekey.GRID_ZOOM)."""
+    a panel of the 2x2 view has its key smaller (ui.scalekey.GRID_ZOOM). fit_title: a title whose unit does not fit
+    leaves the unit out, its power of ten kept, rather than cut it (a panel's key, set by ui.scalekey)."""
     W, H = 230, 50
     TEXT_PX = 11
     NOTE_MS = 1500
+    fit_title = False
 
     def __init__(self, view: QtWidgets.QWidget, unit: str = "", zoom: float = 1.0):
         super().__init__(view)
@@ -158,6 +160,21 @@ class ColourKey(QtWidgets.QWidget):
         self.state, self.lut = st, lut
         self.update()
 
+    def title(self, fm: QtGui.QFontMetrics, room: float, extra: str = "") -> str:
+        """The top row: the name, the power of ten with the unit, as the spectra's axis titles write it, and extra
+        (the hot key's rule). With fit_title, when that is wider than room (in fm, the key's own units), the unit is
+        left out and the power of ten kept: the numbers under the bar carry none."""
+        name, lo, hi, _ = self.state if self.state is not None else ("", 0.0, 0.0, None)
+        power = _sci(max(abs(lo), abs(hi)))[1].replace(" ×", "")
+
+        def row(unit: str) -> str:
+            label = (f"[{power} {unit}]" if power else f"[{unit}]") if unit else (f"×{power}" if power else "")
+            return "   ".join(t for t in (name, label, extra) if t)
+        text = row(self.unit)
+        if self.fit_title and self.unit and fm.horizontalAdvance(text) > room:
+            text = row("")
+        return text
+
     def paintEvent(self, e):
         if self.state is None:
             return
@@ -187,16 +204,11 @@ class ColourKey(QtWidgets.QWidget):
         f = QtGui.QFont(p.font())
         f.setPixelSize(self.TEXT_PX)
         p.setFont(f)
-        k, pw = _sci(max(abs(lo), abs(hi)))
-        power = pw.replace(" ×", "")
-        if self.unit:
-            label = f"[{power} {self.unit}]" if power else f"[{self.unit}]"
-        else:
-            label = f"×{power}" if power else ""
+        k = _sci(max(abs(lo), abs(hi)))[0]
         A = QtCore.Qt.AlignmentFlag
         p.setPen(QtGui.QColor(0, 0, 0, 217) if lt else QtGui.QColor(255, 255, 255, 215))
         draw_text(p, QtCore.QRectF(12, 3, W - 24, 16), A.AlignLeft | A.AlignVCenter,
-                  "   ".join(t for t in (name, label) if t))
+                  self.title(QtGui.QFontMetrics(f), W - 24))
         ink = QtGui.QColor(0, 0, 0, 150) if lt else QtGui.QColor(255, 255, 255, 170)
         p.setPen(QtGui.QPen(ink, 1))                    # a short tick under each number's place on the bar
         ticks = [bar.left() + 0.5, bar.right() - 0.5] + ([bar.left() + bar.width() * (-lo) / (hi - lo)]

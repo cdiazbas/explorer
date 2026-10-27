@@ -120,6 +120,7 @@ class ScaleKey(ColourKey):
         super().__init__(view.widget, unit, GRID_ZOOM if stokes is not None else 1.0)
         self.shell, self.view, self.k, self.stokes = shell, view, k, stokes
         self.menu = KEY_MENU or stokes is not None
+        self.fit_title = stokes is not None             # in a narrow panel: no unit rather than half of one
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.PreventContextMenu)   # its own, on the right press
         self.setMouseTracking(True)
@@ -334,17 +335,14 @@ class ScaleKey(ColourKey):
         f.setPixelSize(self.TEXT_PX)
         p.setFont(f)
         AL = QtCore.Qt.AlignmentFlag
-        kpow, pw = _sci(max(abs(lo), abs(hi)))
-        name = self.name
-        unit = (f"[{pw.replace(' ×', '')} {self.unit}]" if pw else f"[{self.unit}]") if self.unit else \
-            pw.replace(" ×", "×")
+        kpow = _sci(max(abs(lo), abs(hi)))[0]
         p.setPen(ink)
         fm = QtGui.QFontMetrics(f)
         # gamma only when not 1, as at rest (the transfer curve shows it): the title keeps its room for the rule
         gtext = gamma_text(g) if g != 1.0 else ""
         gw = QtGui.QFontMetrics(gamma_font(f)).horizontalAdvance(GAMMA) + fm.horizontalAdvance(gtext[1:]) + 8 \
             if gtext else 0
-        title = "   ".join(t for t in (name, unit, (RULE_SHORT_SYM if sym else RULE_SHORT)[rule]) if t)
+        title = self.title(fm, W - 24 - gw, (RULE_SHORT_SYM if sym else RULE_SHORT)[rule])
         # cut at its end (…) short of gamma: on a narrow key the two ran into each other
         title = fm.elidedText(title, QtCore.Qt.TextElideMode.ElideRight, int(W - 24 - gw))
         p.drawText(QtCore.QRectF(12, 3, W - 24, 16), AL.AlignLeft | AL.AlignVCenter, title)

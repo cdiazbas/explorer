@@ -273,6 +273,39 @@ def test_a_panel_s_key_is_0_73_of_the_image_s_and_the_image_s_is_as_it_was(grid)
     leave(key)
 
 
+def test_in_a_narrow_panel_the_key_s_title_leaves_its_unit_out_not_cuts_it(qapp, cube, tmp_path):
+    """Two linked cubes leave each panel of the 2x2 view ~160 px wide: a title with its unit does not fit there, and
+    it reads "Stokes Q   ×10⁻¹¹", its power of ten kept (the numbers under the bar carry none), rather than a unit cut
+    mid-way (the user, 2026-10-27); hot, the same before its rule. In a wide panel, and on an image's key however
+    narrow, the unit stays."""
+    from PySide6 import QtGui
+
+    other = synth.write_dataset(tmp_path, "other", shape=(SHAPE[0], SHAPE[1], 7, SHAPE[3], SHAPE[4]), seed=4,
+                                icube=False, sp=False)["im"]
+
+    def drawn_title(key, extra=""):
+        f = QtGui.QFont(key.font())
+        f.setPixelSize(key.TEXT_PX)
+        fm, room = QtGui.QFontMetrics(f), key.width() / key.zoom - 24
+        return key.title(fm, room, extra), fm, room
+
+    with made(qapp, cube, "classic", linked=(other,)) as w:
+        key = key_of(w, 1)
+        t, fm, room = drawn_title(key)
+        print("narrow panel", w.grid.views[1].widget.width(), "px, key", key.width(), "px, room", room, "title", t)
+        assert w.grid.views[1].widget.width() < 200 and key.unit and "[" not in t and t.startswith("Stokes Q   ×10")
+        assert fm.horizontalAdvance(t) <= room
+        t, fm, room = drawn_title(key, "auto |x| 99 %")    # hot, with its rule
+        assert "[" not in t and t.startswith("Stokes Q   ×10") and t.endswith("auto |x| 99 %"), t
+        w.set_grid(False)
+        qapp.processEvents()
+        assert "[" in w.main.key.title(fm, 10.0)          # an image's key: its unit, fit or not
+    with made(qapp, cube, "classic") as w:
+        t, fm, room = drawn_title(key_of(w, 1))
+        print("wide panel: room", room, "title", t)
+        assert "[" in t and fm.horizontalAdvance(t) <= room
+
+
 def test_dragging_a_panel_s_handle_fixes_that_stokes_and_closes_its_padlock(grid):
     from PySide6 import QtCore
     from PySide6.QtTest import QTest
