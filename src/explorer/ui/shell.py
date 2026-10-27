@@ -144,7 +144,8 @@ class _Sink(CubeSink):
 
     def grid_image(self, s, idx, img, levels):
         if self.shell.grid is not None:
-            self.shell.grid.set_image(s, img, levels, gamma=self.shell.session.gamma(0, s))
+            self.shell.grid.set_image(s, img, levels, gamma=self.shell.session.gamma(0, s),
+                                      centred=self.shell.session.centred(0, s))
             self.shell._grid_key(s)
 
     def slit_path(self, pix):
@@ -154,7 +155,8 @@ class _Sink(CubeSink):
 
     def slit(self, ts, sl, s, ts_levels, sl_levels):
         self.shell.last["slit"] = s
-        self.shell.slit_panel.show(ts, sl, ts_levels, sl_levels, gamma=self.shell.session.gamma(self.shell._slit_on, s))
+        sess, k = self.shell.session, self.shell._slit_on
+        self.shell.slit_panel.show(ts, sl, ts_levels, sl_levels, gamma=sess.gamma(k, s), centred=sess.centred(k, s))
         cols = self.shell.maps_for(s)
         self.shell.slit_panel.set_lut(cols.lut(s) if cols is not None else None)
 
@@ -745,6 +747,20 @@ class Shell(QtWidgets.QMainWindow):
         self.statusBar().showMessage(f"{gamma_text(g)}{': ' + what if what else ''}  (G \u21e7G {mod_key()}G)", 3000)
         self.key_for(k, s).flash(gamma_text(g), GAMMA_NOTE_MS)
 
+    def toggle_zero(self) -> None:
+        """Z: the signed plane under the pointer (gamma_target) between -m..m and limits of its own on each side of 0,
+        0 the map's middle in both (Session.set_zero); a plane that is not signed stays as it is, and the status line
+        says so."""
+        k, s = self.gamma_target()
+        sess = self.session
+        what = " ".join(t for t in (self.cubes[k].name if self.linked else "",
+                                    plane_text(s, self.cubes[k].ns, self.cubes[k].planes) or self.cubes[k].value) if t)
+        if not sess.set_zero(k, s, not sess.zero(k, s)):
+            self.statusBar().showMessage(f"{what}: not signed about 0, Z leaves it as it is", 3000)
+            return
+        how = "each side of 0 its own limit" if sess.zero(k, s) else "symmetric about 0"
+        self.statusBar().showMessage(f"{what}: {how}  (Z)", 3000)
+
     # ---------------------------------------------------------------- the scale's menu and card (ui.scalekey)
     def scale_levels(self, k: int, s: int) -> tuple[float, float]:
         """The levels cube k's image at Stokes s is drawn with now: a panel of the 2x2 view's for the main cube when
@@ -774,12 +790,14 @@ class Shell(QtWidgets.QMainWindow):
 
     def scale_settings(self) -> dict:
         """What the layout keeps of each cube's scale (ui.layout.LayoutStore.save_scale): by the cube's file name and
-        Stokes, (rule, lo, hi, gamma) where not as at start."""
+        Stokes, (rule, lo, hi, gamma, zero) where not as at start (zero: key Z's limits on each side of 0)."""
         st, out = self.session.state, {}
         for k, s, rule, lo, hi in st.scale:
-            out[(self.cubes[k].scale_name(), s)] = [rule, lo, hi, 1.0]
+            out[(self.cubes[k].scale_name(), s)] = [rule, lo, hi, 1.0, False]
         for k, s, g in st.gamma:
-            out.setdefault((self.cubes[k].scale_name(), s), ["p1", 0.0, 0.0, 1.0])[3] = g
+            out.setdefault((self.cubes[k].scale_name(), s), ["p1", 0.0, 0.0, 1.0, False])[3] = g
+        for k, s in st.zero:
+            out.setdefault((self.cubes[k].scale_name(), s), ["p1", 0.0, 0.0, 1.0, False])[4] = True
         return {key: tuple(v) for key, v in out.items()}
 
     def restore_scale(self, kept: dict) -> None:
@@ -789,8 +807,9 @@ class Shell(QtWidgets.QMainWindow):
                 v = kept.get((c.scale_name(), s))
                 if v is None:
                     continue
-                rule, lo, hi, g = v
+                rule, lo, hi, g, zero = v
                 try:
+                    self.session.set_zero(c.k, s, zero)     # first: fixed levels of its own sides stay as kept
                     self.session.set_scale(c.k, s, rule, lo, hi)
                     self.session.set_gamma(c.k, s, g)
                 except ValueError as e:                 # a file edited by hand: that entry left out
@@ -1419,6 +1438,8 @@ class Shell(QtWidgets.QMainWindow):
         rows += [(f"G \u21e7G · {mod}G", "\u03b3: lower, higher · back to 1",
                   (("G", lambda: self.step_gamma(-1)), ("Shift+G", lambda: self.step_gamma(1)),
                    ("Ctrl+G", self.reset_gamma))),
+                 ("Z", "signed planes: symmetric about 0 \u21c4 each side its own",
+                  ((K.Key_Z, self.toggle_zero),)),
                  ("C \u21e7C", "colour map: next, previous",
                   (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1)))),
                  ("M · T", "look · dark \u21c4 light", ((K.Key_M, self.toggle_look), (K.Key_T, self.toggle_theme)))]
@@ -1821,7 +1842,7 @@ class Shell(QtWidgets.QMainWindow):
             self.grid.set_locked(st.locked)
         if "scale" in changed:
             self._grid_locks_follow()
-        if changed & {"scale", "gamma"}:                # a hot panel's key draws the rule and gamma
+        if changed & {"scale", "gamma", "zero"}:        # a hot panel's key draws the rule and gamma
             for key in self.grid_keys:
                 key.update()
         if changed & {"t", "l", "own"}:

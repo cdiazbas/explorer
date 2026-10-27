@@ -44,6 +44,9 @@ class ViewState:
                                                         # (data.tsample); None: every t
     scale: tuple[tuple[int, int, str, float, float], ...] = ()  # (cube, Stokes, rule, lo, hi) where the image's
                                                         # levels are not the default rule's (levels.RULES), sorted
+    zero: tuple[tuple[int, int], ...] = ()              # (cube, plane) of a signed plane whose levels are its own on
+                                                        # each side of 0, not -m..m, 0 still the map's middle (key Z:
+                                                        # Session.set_zero), sorted
 
 
 FIELDS = frozenset(f.name for f in dataclasses.fields(ViewState))

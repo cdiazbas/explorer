@@ -54,7 +54,9 @@ class CubeSink:
         self.cube = cube
 
     def image(self, idx, img, levels):
-        self.cube.view.set_image(img, levels, gamma=self.cube.gamma_now())
+        c = self.cube
+        s = c.session.member_state(c.k).s
+        c.view.set_image(img, levels, gamma=c.gamma_now(), centred=c.session.centred(c.k, s))
         self.cube.paint_colour()
 
     def spectra(self, spec, pixel, t):
@@ -64,7 +66,8 @@ class CubeSink:
     def lambda_t(self, lt, pixel, s, levels):
         self.cube.last_s = s
         if self.cube.lambda_t is not None:
-            self.cube.lambda_t.show(lt, levels, gamma=self.cube.session.gamma(self.cube.k, s))
+            self.cube.lambda_t.show(lt, levels, gamma=self.cube.session.gamma(self.cube.k, s),
+                                    centred=self.cube.session.centred(self.cube.k, s))
             self.cube.paint_colour()
 
     def cleared(self, pixel):
@@ -100,7 +103,8 @@ class CubeSink:
         if p is None:
             return
         self.cube.slit_s = s
-        p.show(ts, sl, ts_levels, sl_levels, gamma=self.cube.session.gamma(self.cube.k, s))
+        p.show(ts, sl, ts_levels, sl_levels, gamma=self.cube.session.gamma(self.cube.k, s),
+               centred=self.cube.session.centred(self.cube.k, s))
         cols = self.cube.shell.maps_for(s)
         p.set_lut(cols.lut(s) if cols is not None else None)
 
@@ -215,7 +219,7 @@ class CubeView:
                 self.lambda_t.set_gamma(self.session.gamma(self.k, self.last_s))
         if has("scale", "s", "own"):                    # the padlock says whether its Stokes now is fixed
             self.image_lock.set_closed(self.session.scale(self.k, st.s)[0] == "fixed")
-        if changed is not None and changed & {"gamma", "scale"}:
+        if changed is not None and changed & {"gamma", "scale", "zero"}:
             self.paint_colour()
             self.key.update()
 

@@ -24,7 +24,6 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.levels import RULE_DEFAULT, gamma_step
-from ..data.axes import signed
 from ..data.names import plane_text
 from . import glass, style
 from .imageview import CURSOR_PEN
@@ -79,11 +78,13 @@ def hint(fm: QtGui.QFontMetrics, width: float) -> str:
     return next((h for h in HINTS if fm.horizontalAdvance(h) <= width), "")
 
 
-def transfer(v, lo: float, hi: float, g: float, sym: bool):
+def transfer(v, lo: float, hi: float, g: float, centred: bool):
     """Where value v goes between the darkest and the brightest, 0..1, as the reduce kernel's gamma table puts it
-    (data.kernels.gamma_table): sign kept about 0 for symmetric levels."""
-    if sym:
-        u = np.clip(np.asarray(v, float) / hi, -1.0, 1.0)
+    (data.kernels.gamma_table, centred_table): for a signed plane (centred), 0 at the middle and the sign kept, each
+    side by its own limit (-m..m: both by m)."""
+    if centred and lo < 0 < hi:
+        v = np.asarray(v, float)
+        u = np.clip(np.where(v < 0, v / -lo, v / hi), -1.0, 1.0)
         return 0.5 + 0.5 * np.sign(u) * np.abs(u) ** g
     u = np.clip((np.asarray(v, float) - lo) / (hi - lo), 0.0, 1.0)
     return u ** g
@@ -152,6 +153,7 @@ class ScaleKey(ColourKey):
     # ---------------------------------------------------------------- size and place
     def set(self, name, lim, lut, cmap=None, gamma: float = 1.0):
         self.name = name
+        self.zero_mid = self.centred()
         super().set(name, lim, lut, cmap, gamma)
 
     def eventFilter(self, obj, e):
@@ -204,8 +206,12 @@ class ScaleKey(ColourKey):
         return axis_range(sample(self.frame()), lo, hi, self.symmetric())
 
     def symmetric(self) -> bool:
-        k, s = self.target()
-        return signed(self.shell.session.members[k].dataset.roles, s)
+        """Its levels -m..m: a signed plane's, unless Z gave it limits of its own on each side (Session.symmetric)."""
+        return self.shell.session.symmetric(*self.target())
+
+    def centred(self) -> bool:
+        """0 its map's middle: a signed plane (Session.centred)."""
+        return self.shell.session.centred(*self.target())
 
     def x_of(self, v: float) -> float:
         a0, a1 = self.axis()
@@ -330,7 +336,7 @@ class ScaleKey(ColourKey):
             return
         k, s = self.target()
         lo, hi = self.levels()
-        sym = self.symmetric()
+        centred = self.centred()
         g = self.shell.session.gamma(k, s)
         lt = style.is_light()
         p = QtGui.QPainter(self)
@@ -380,14 +386,14 @@ class ScaleKey(ColourKey):
         p.setBrush(fill)
         p.drawPath(path)
         xs = np.linspace(a0, a1, int(band.width()))     # the transfer curve: where gamma shows
-        ys = transfer(xs, lo, hi, g, sym)
+        ys = transfer(xs, lo, hi, g, centred)
         curve = QtGui.QPolygonF([QtCore.QPointF(band.left() + i, band.bottom() - y * band.height())
                                  for i, y in enumerate(ys)])
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.setPen(QtGui.QPen(acc, 1.6))
         p.drawPolyline(curve)
         lut = self.lut if self.lut is not None else np.repeat(np.arange(256, dtype=np.uint8)[:, None], 3, 1)
-        cols = np.asarray(lut)[(1 + np.round(254 * transfer(xs, lo, hi, g, sym))).astype(int), :3]
+        cols = np.asarray(lut)[(1 + np.round(254 * transfer(xs, lo, hi, g, centred))).astype(int), :3]
         cols = np.ascontiguousarray(cols, dtype=np.uint8)
         im = QtGui.QImage(cols.tobytes(), cols.shape[0], 1, 3 * cols.shape[0], QtGui.QImage.Format.Format_RGB888)
         p.drawImage(bar, im)                            # the bar along the data axis: each value its colour
@@ -408,7 +414,7 @@ class ScaleKey(ColourKey):
             p.setPen(ink)
             r = QtCore.QRectF(x - 40, bar.bottom() + 9, 80, 14)
             r.moveLeft(min(max(r.left(), 4), W - 84))
-            p.drawText(r, AL.AlignHCenter | AL.AlignTop, ("+" if sym and which == "hi" else "") + texts[which])
+            p.drawText(r, AL.AlignHCenter | AL.AlignTop, ("+" if centred and which == "hi" else "") + texts[which])
         p.setPen(faint)
         draw_text(p, QtCore.QRectF(8, H - 16, W - 16, 14), AL.AlignHCenter, hint(fm, W - 16))
         p.end()
@@ -427,7 +433,7 @@ def scale_menu(shell, k: int, s: int, parent: QtWidgets.QWidget | None = None) -
     m.addAction("Limits").setEnabled(False)
     rule = sess.scale(k, s)[0]
     rules = QtGui.QActionGroup(m)
-    for r, text in rule_texts(signed(shell.cubes[k].dataset.roles, s)).items():
+    for r, text in rule_texts(shell.session.symmetric(k, s)).items():
         a = m.addAction(text)
         a.setCheckable(True)
         a.setChecked(r == rule)
@@ -521,7 +527,7 @@ class ScaleCard(QtWidgets.QFrame):
         row = QtWidgets.QHBoxLayout()
         row.addWidget(QtWidgets.QLabel("limits"))
         self.rule = QtWidgets.QComboBox()
-        for r, text in rule_texts(signed(shell.cubes[k].dataset.roles, s)).items():
+        for r, text in rule_texts(shell.session.symmetric(k, s)).items():
             self.rule.addItem(text, r)
         self.rule.activated.connect(lambda i: set_rule(shell, k, s, self.rule.itemData(i)))
         row.addWidget(self.rule, 1)
@@ -563,7 +569,7 @@ class ScaleCard(QtWidgets.QFrame):
             lo, hi = float(self.lo.text()), float(self.hi.text())
         except ValueError:
             return
-        if signed(self.shell.cubes[self.k].dataset.roles, self.s):     # Q U V: symmetric, the typed field gives m
+        if self.shell.session.symmetric(self.k, self.s):   # -m..m (Q U V, bz): the typed field gives m
             m = abs(float(e.text()))
             lo, hi = -m, m
         if hi > lo and (lo, hi) != tuple(self.shell.scale_levels(self.k, self.s)):

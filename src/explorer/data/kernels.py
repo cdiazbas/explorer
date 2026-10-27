@@ -84,6 +84,22 @@ def gamma_table(gamma: float, symmetric: bool) -> np.ndarray:
     return t
 
 
+@functools.lru_cache(maxsize=64)
+def centred_table(gamma: float, zero: int) -> np.ndarray:
+    """gamma_table's bytes for a signed plane's limits on each side of 0, not -m..m (core.levels.two_sided): 0 at
+    place zero of TABLE_N (its place between the limits) is byte 128, the middle of the map; below it the lower limit's
+    side, above it the upper one's, each stretched to its own end with gamma kept about 0 (sign(x)|x/m|^gamma, m that
+    side's limit). With zero at the table's middle, gamma_table(gamma, True) to the byte. Cached by the place, a whole
+    number (one in 65535 of the range): a frame's own limits move it a little."""
+    i = np.arange(TABLE_N, dtype=np.float64)
+    c = float(min(max(int(zero), 1), TABLE_N - 2))
+    w = np.where(i < c, (i - c) / c, (i - c) / (TABLE_N - 1 - c))
+    b = 128 + np.sign(w) * np.floor(127 * np.abs(w) ** gamma + 0.5)
+    t = b.astype(np.uint8)
+    t.flags.writeable = False
+    return t
+
+
 def _edges(n: int, parts: int) -> list[tuple[int, int]]:
     e = np.linspace(0, n, parts + 1).astype(np.int64)
     return [(int(a), int(b)) for a, b in zip(e[:-1], e[1:], strict=True) if b > a]

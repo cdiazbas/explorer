@@ -68,6 +68,7 @@ class SlitPanel(GridAxes):
         self._shown: list = [None, None]                # the arrays on screen: the same one again is not drawn again
         self._raw: list = [(None, None), (None, None)]  # (array, levels) of each as the core gave them
         self.gamma = 1.0                                # their cube's at their Stokes (Session.gamma)
+        self.centred = False                            # that Stokes signed: 0 the map's middle (Session.centred)
         self._ranges(1)
         self.widget = self.w
 
@@ -151,9 +152,13 @@ class SlitPanel(GridAxes):
             self.ts.setRange(xRange=(0, max(1, n)), yRange=(0, self.nt), padding=0)
         self.sl.setYRange(0, self.nl, padding=0)
 
-    def show(self, ts, sl, ts_levels=None, sl_levels=None, gamma: float | None = None) -> None:
+    def show(self, ts, sl, ts_levels=None, sl_levels=None, gamma: float | None = None,
+             centred: bool | None = None) -> None:
         """ts: (nt, n) and sl: (nl, n), None to keep the one shown; their levels the core's (levels.panel_levels);
-        gamma: their cube's at their Stokes (None: the one it has; a new one draws both again)."""
+        gamma: their cube's at their Stokes, centred whether that Stokes is signed (None: the one it has; a new one
+        draws both again)."""
+        if centred is not None:
+            self.centred = bool(centred)
         if gamma is not None and float(gamma) != self.gamma:
             self.gamma, self._shown = float(gamma), [None, None]
             if ts is None:
@@ -173,7 +178,7 @@ class SlitPanel(GridAxes):
             if not np.isfinite(a).any():                # nothing read yet, or padding all along
                 item.setImage(np.zeros(a.shape, np.float32), levels=(0, 1))
             else:
-                a, lv = gamma_panel(a, lv, self.gamma)
+                a, lv = gamma_panel(a, lv, self.gamma, self.centred)
                 item.setImage(a, levels=(float(lv[0]), float(lv[1])))
             # the time slice's rows over every t: fewer rows than t are the t steps of data.tsample
             if k == 0:

@@ -181,6 +181,7 @@ class LambdaTPanel(GridAxes):
         self.w = pg.PlotWidget(axisItems={"bottom": bottom, "left": left})
         self.img = pg.ImageItem()
         self.gamma = 1.0                                # its cube's at the Stokes shown (Session.gamma)
+        self.centred = False                            # that Stokes signed: 0 the map's middle (Session.centred)
         self._shown: tuple | None = None                # (lt, levels) as the core gave them
         self.steps: np.ndarray | None = None            # the t of its rows when fewer than nt (data.tsample)
         self.w.addItem(self.img)
@@ -213,18 +214,21 @@ class LambdaTPanel(GridAxes):
         s None: nothing."""
         self.stokes.show_stokes(s, ns, planes)
 
-    def show(self, lt: np.ndarray, levels, gamma: float | None = None) -> None:
+    def show(self, lt: np.ndarray, levels, gamma: float | None = None, centred: bool | None = None) -> None:
         """lt: (nt, nl), or fewer rows: the t steps of data.tsample; levels: the core's; gamma: its cube's at its
-        Stokes (None: the one it has). With nothing finite (padding), an empty grid."""
+        Stokes, centred whether that Stokes is signed (None: the one it has). With nothing finite (padding), an
+        empty grid."""
         self._shown = (lt, levels)
         if gamma is not None:
             self.gamma = float(gamma)
+        if centred is not None:
+            self.centred = bool(centred)
         n, nl = lt.shape
         self.steps = time_samples(self.nt, n) if n < self.nt else None
         if not np.isfinite(lt).any():
             self.img.setImage(np.zeros((n, nl), np.float32), levels=(0, 1))
         else:
-            a, lv = gamma_panel(lt, levels, self.gamma)
+            a, lv = gamma_panel(lt, levels, self.gamma, self.centred)
             self.img.setImage(a, levels=(float(lv[0]), float(lv[1])))
         self.img.setRect(QtCore.QRectF(0, 0, nl, max(n, self.nt)))   # the rows over every t
 
@@ -301,9 +305,9 @@ class TimeCurve(GridAxes):
     def set_stokes(self, s: int | None, ns: int, planes: Planes = "stokes") -> None:
         self.stokes.show_stokes(s, ns, planes)
 
-    def show(self, lt: np.ndarray, levels=None, gamma: float | None = None) -> None:
+    def show(self, lt: np.ndarray, levels=None, gamma: float | None = None, centred: bool | None = None) -> None:
         """lt: (nt, 1) or (nt,), or fewer: the t steps of data.tsample, each at its t; the y range its finite values'
-        (nothing finite: the curve empty). A curve has no gamma."""
+        (nothing finite: the curve empty). A curve has no gamma, nor a middle."""
         v = np.asarray(lt, float).reshape(-1)[:self.nt]
         self.steps = time_samples(self.nt, len(v)) if len(v) < self.nt else None
         show_curve(self.curve, self.w, self.x[:len(v)] if self.steps is None else self.steps + 0.5, v)

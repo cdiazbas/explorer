@@ -18,9 +18,9 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore
 
-from ..core.levels import symmetric_levels
+from ..core.levels import symmetric_levels, two_sided
 from ..data.axes import Planes
-from ..data.kernels import gamma_table, reduce_u8
+from ..data.kernels import TABLE_N, centred_table, gamma_table, reduce_u8
 from . import pens
 from .overlays import OverImage
 from .stokeslabel import StokesLabel
@@ -87,6 +87,7 @@ class ImageView:
         self._full: np.ndarray | None = None
         self._lim = (0.0, 1.0)
         self._gamma = 1.0                               # its cube's at its Stokes (Session.gamma); 1: straight
+        self._centred = False                           # a signed plane: 0 the map's middle (Session.centred)
         self._first = True
         self.guard: ViewGuard | None = None
         # the lowest magnification (screen px per data pixel) its guard allows, when not its own fit: a linked image
@@ -124,11 +125,14 @@ class ImageView:
             self.on_hover(p.y(), p.x())
 
     # ---------------------------------------------------------------- drawing
-    def set_image(self, img: np.ndarray, levels, gamma: float | None = None) -> None:
-        """gamma: the image's (core.levels); None keeps the one it has."""
+    def set_image(self, img: np.ndarray, levels, gamma: float | None = None, centred: bool | None = None) -> None:
+        """gamma: the image's (core.levels); centred: a signed plane's (0 the map's middle, also between limits of
+        its own on each side: Session.set_zero); None keeps the one it has."""
         self._full, self._lim = img, (float(levels[0]), float(levels[1]))
         if gamma is not None:
             self._gamma = float(gamma)
+        if centred is not None:
+            self._centred = bool(centred)
         if self._first:
             ny, nx = img.shape
             self.vb.setRange(QtCore.QRectF(0, 0, nx, ny), padding=0)
@@ -224,7 +228,12 @@ class ImageView:
         f = max(1, int(min((vx1 - vx0) / max(1.0, vp.width() * dpr), (vy1 - vy0) / max(1.0, vp.height() * dpr))))
         h, w = (y1 - y0) // f, (x1 - x0) // f
         out = np.empty((h, w), np.uint8)
-        table = None if self._gamma == 1 else gamma_table(self._gamma, symmetric_levels(self._lim))
+        lo, hi = self._lim
+        table: np.ndarray | None = None
+        if two_sided(self._lim, self._centred):       # 0 between its own limits on each side: the map's middle
+            table = centred_table(self._gamma, round((TABLE_N - 1) * -lo / (hi - lo)))
+        elif self._gamma != 1:
+            table = gamma_table(self._gamma, symmetric_levels(self._lim))
         reduce_u8(img, y0, x0, f, self._lim[0], self._lim[1], out, self.strips, self.parts, table=table)
         self.img.setImage(out, levels=(0, 255), autoDownsample=False)
         self.img.setRect(QtCore.QRectF(x0, y0, w * f, h * f))      # keep data-pixel coordinates

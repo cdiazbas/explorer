@@ -231,6 +231,31 @@ class Session:
         rest = tuple(e for e in self.store.state.gamma if (e[0], e[1]) != (int(member), s))
         self.store.set(gamma=tuple(sorted(rest + (((int(member), s, g),) if g != 1 else ()))))
 
+    def centred(self, member: int, s: int) -> bool:
+        """Whether cube member's plane s is drawn with 0 at its map's middle: a signed plane (data.axes.signed)."""
+        return signed(self.members[member].dataset.roles, s)
+
+    def zero(self, member: int, s: int) -> bool:
+        """Whether cube member's signed plane s has levels of its own on each side of 0 (Session.set_zero)."""
+        return (int(member), int(s)) in self.store.state.zero
+
+    def symmetric(self, member: int, s: int) -> bool:
+        """Whether the levels of cube member's plane s are -m..m: a signed plane, unless set_zero gave it levels of its
+        own on each side of 0."""
+        return self.centred(member, s) and not self.zero(member, s)
+
+    def set_zero(self, member: int, s: int, on: bool) -> bool:
+        """A signed plane's levels (key Z): on, each side of 0 its own (the lower and upper percentiles of its rule,
+        or lo and hi as fixed), 0 still the map's middle, each half stretched to its limit; off, -m..m as Q U V's.
+        One per cube and plane, as gamma. False, and nothing set, for a plane that is not signed."""
+        if not 0 <= int(member) < len(self.members):
+            raise ValueError(f"no cube {member}: the session has {len(self.members)}")
+        if not self.centred(member, s):
+            return False
+        rest = tuple(e for e in self.store.state.zero if e != (int(member), int(s)))
+        self.store.set(zero=tuple(sorted(rest + (((int(member), int(s)),) if on else ()))))
+        return True
+
     def scale(self, member: int, s: int) -> tuple[str, float, float]:
         """How cube member's image at Stokes s finds its levels: (rule, lo, hi), lo and hi the fixed levels under
         the rule "fixed" (levels.RULES); the default rule, each frame's 1-99 percentiles, unless set."""
@@ -241,8 +266,8 @@ class Session:
 
     def set_scale(self, member: int, s: int, rule: str, lo: float = 0.0, hi: float = 0.0) -> None:
         """The rule for the levels of cube member's image at Stokes s, one per cube and Stokes as gamma; "fixed" with
-        its levels lo < hi, symmetric about 0 for Q U V (s > 0: -m..m, m the larger of |lo| and |hi|), as their
-        automatic levels are."""
+        its levels lo < hi, symmetric about 0 for Q U V and other signed planes (-m..m, m the larger of |lo| and |hi|),
+        as their automatic levels are, unless set_zero gave the plane levels of its own on each side."""
         if not 0 <= int(member) < len(self.members):
             raise ValueError(f"no cube {member}: the session has {len(self.members)}")
         if rule not in RULES:
@@ -251,7 +276,7 @@ class Session:
         s = int(np.clip(int(s), 0, (r.ns if r.s is not None else 1) - 1))
         lo, hi = (float(lo), float(hi)) if rule == "fixed" else (0.0, 0.0)
         if rule == "fixed":
-            if signed(r, s):
+            if self.symmetric(member, s):
                 m = max(abs(lo), abs(hi))
                 lo, hi = -m, m
             if not (np.isfinite(lo) and np.isfinite(hi) and hi > lo):

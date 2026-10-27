@@ -47,7 +47,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from ..data.axes import quietest_text, signed, stokes
+from ..data.axes import quietest_text, stokes
 from ..data.executors import Generations, ShownGate
 from ..data.masking import STOKES
 from ..data.stats import (
@@ -214,13 +214,15 @@ class Scheduler:
     # ---------------------------------------------------------------- changes of state
     def _on_change(self, st: ViewState, changed: frozenset) -> None:
         self.slit.on_change(st, changed)               # the whole state: the slit is not in a member's (member_state)
-        if "scale" in changed:                          # its levels' rule or fixed levels: drawn again from memory
-            mine = self._my_scale(st)
+        if changed & {"scale", "zero"}:                 # its levels' rule, fixed levels or sides: drawn again
+            mine = self._my_scale(st)                   # from memory
             if mine != self._scale_seen:
                 self._scale_seen = mine
                 self._show_image()
                 if self.grid:
                     self._request_grid(self.state)
+                if "zero" in changed:                   # the lambda-t's levels too: read again at the cursor
+                    self._evaluate(self.state, {"cursor"})
         if self.member:
             st, changed = self._as_member(st)
             if not changed:
@@ -308,7 +310,7 @@ class Scheduler:
         if rule == "fixed":
             return
         try:
-            self.levels.ahead(idx, signed(self.ds.roles, s), fut.result(), rule)
+            self.levels.ahead(idx, self.session.symmetric(self.member, s), fut.result(), rule)
         except Exception as e:                          # computed again when shown, where it reports
             log.warning("levels of %s not computed ahead: %r", idx, e)
 
@@ -408,7 +410,7 @@ class Scheduler:
         if self._closed:
             return
         if kind == "lambda_t":                          # Q U V symmetric about 0
-            self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=signed(self.ds.roles, at)))
+            self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=self.session.symmetric(self.member, at)))
         else:
             self._last_spec = (arr, pixel, at)          # as read: drawn again if the continuum comes later
             self.sink.spectra(self.yrange.spectrum(arr), pixel, at)
@@ -429,7 +431,7 @@ class Scheduler:
         self.sink.image(self.img_idx, self.img, self.image_levels(self.state.s, self.img_idx, self.img))
 
     def _my_scale(self, st: ViewState) -> tuple:
-        return tuple(e for e in st.scale if e[0] == self.member)
+        return tuple(e for e in st.scale if e[0] == self.member) + tuple(e for e in st.zero if e[0] == self.member)
 
     def image_levels(self, s: int, idx: tuple, img) -> tuple[float, float]:
         """The levels of img (the frame at idx, Stokes s) by its cube's rule at s (Session.scale): fixed, or its
@@ -437,7 +439,7 @@ class Scheduler:
         rule, lo, hi = self.session.scale(self.member, s)
         if rule == "fixed":
             return (lo, hi)
-        return self.levels.image(idx, signed(self.ds.roles, s), img, rule)
+        return self.levels.image(idx, self.session.symmetric(self.member, s), img, rule)
 
     def fix_levels(self, on: bool, refit: bool = False, s: int | None = None, img=None) -> None:
         """The image padlock, for its cube's Stokes now (Session.scale), or for Stokes s with img its frame shown (a
@@ -452,7 +454,7 @@ class Scheduler:
         if not on:
             self.session.set_scale(self.member, s, "p1")
         elif refit or rule != "fixed":
-            lim = rule_levels(img, signed(self.ds.roles, s), "p1" if rule == "fixed" else rule)
+            lim = rule_levels(img, self.session.symmetric(self.member, s), "p1" if rule == "fixed" else rule)
             self.session.set_scale(self.member, s, "fixed", *lim)
         self._scale_seen = self._my_scale(self.session.store.state)     # drawn now, not again at the notice
         self._show_image()

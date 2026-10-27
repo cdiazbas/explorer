@@ -139,6 +139,7 @@ class ColourKey(QtWidgets.QWidget):
         self.resize(round(self.W * self.zoom), round(self.H * self.zoom))
         self.state: tuple | None = None
         self.lut = None
+        self.zero_mid = False                           # a signed plane: 0 the map's middle (ui.scalekey)
         self.note = None
         self._note_t = QtCore.QTimer(self, singleShot=True, interval=self.NOTE_MS)
         self._note_t.timeout.connect(lambda: self.flash(None))
@@ -211,9 +212,12 @@ class ColourKey(QtWidgets.QWidget):
         bar = QtCore.QRectF(12, 22, W - 24, 6)
         g = QtGui.QLinearGradient(bar.topLeft(), bar.topRight())
         lut = self.lut if self.lut is not None else np.repeat(np.arange(256, dtype=np.uint8)[:, None], 3, 1)
-        for i in range(0, 256, 16):
-            g.setColorAt(i / 255, QtGui.QColor(*[int(c) for c in lut[i]]))
-        g.setColorAt(1.0, QtGui.QColor(*[int(c) for c in lut[255]]))
+        # a signed plane with limits of its own on each side of 0 (key Z): the map's middle where 0 is on the bar
+        z0 = -lo / (hi - lo) if self.zero_mid and lo < 0 < hi and lo != -hi else 0.5
+        for i in [*range(0, 256, 16), 255]:
+            f = i / 255
+            g.setColorAt(2 * f * z0 if f < 0.5 else z0 + (2 * f - 1) * (1 - z0),
+                         QtGui.QColor(*[int(c) for c in lut[i]]))
         p.setBrush(g)
         p.drawRoundedRect(bar, 3, 3)
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)       # a hairline round the bar: its dark end vanished into the key

@@ -14,7 +14,9 @@ sign-kept gamma, crispex.pro:8027-8036). The image reads it off a table in the r
 lambda-t and the slit's slices here (gamma_panel). Gamma 1 is the straight line, by the same code as without it.
 How the image's levels are found is a rule per cube and Stokes (Session.scale, next to gamma): the percentiles of
 each frame (1-99, the default, or 0.5-99.5), each frame's min-max, or fixed levels that hold while the index changes
-(the padlock closed, or limits dragged or typed). Q U V stay symmetric about 0 under every rule.
+(the padlock closed, or limits dragged or typed). Q U V and the other signed planes (bz, Blos) stay symmetric about 0
+under every rule, unless key Z gives one levels of its own on each side (Session.set_zero): then each half of the map
+is stretched to its own limit, 0 its middle still (two_sided; kernels.centred_table for the image).
 The image's levels are computed on the thread that read the frame (Levels.ahead), the frames read ahead too, so
 the UI thread finds them cached: with the 2x2 view a step in t computed four on it, ~11 ms of a ~47 ms step on
 bellatrix. A computation in progress on another thread is waited for, never repeated.
@@ -50,12 +52,25 @@ def symmetric_levels(levels) -> bool:
     return lo < 0 < hi and lo == -hi
 
 
-def gamma_panel(a, levels, gamma: float):
+def two_sided(levels, centred: bool) -> bool:
+    """Levels of a signed plane (centred) on each side of 0 but not -m..m (Session.set_zero): each half of the map
+    stretched to its own limit, 0 its middle."""
+    lo, hi = float(levels[0]), float(levels[1])
+    return centred and lo < 0 < hi and lo != -hi
+
+
+def gamma_panel(a, levels, gamma: float, centred: bool = False):
     """(values, levels) to draw a lambda-t or a slit's slice with gamma: as given at 1; else the values bent between
-    the levels, on (0, 1), or (-1, 1) for symmetric levels. NaN stays NaN (no data)."""
+    the levels, on (0, 1), or (-1, 1) for symmetric levels. A signed plane's levels on each side of 0 (centred,
+    two_sided): on (-1, 1), each side by its own limit, gamma 1 too. NaN stays NaN (no data)."""
+    lo, hi = float(levels[0]), float(levels[1])
+    if two_sided(levels, centred):
+        a = np.asarray(a, np.float32)
+        with np.errstate(invalid="ignore"):
+            u = np.clip(np.where(a < 0, a / -lo, a / hi), -1.0, 1.0)
+            return (np.sign(u) * np.abs(u) ** gamma).astype(np.float32), (-1.0, 1.0)
     if gamma == 1:
         return a, levels
-    lo, hi = float(levels[0]), float(levels[1])
     a = np.asarray(a, np.float32)
     with np.errstate(invalid="ignore"):
         if symmetric_levels(levels):

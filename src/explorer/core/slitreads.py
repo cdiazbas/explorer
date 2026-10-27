@@ -54,7 +54,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..data.axes import frame_index, signed
+from ..data.axes import frame_index
 from ..data.executors import Generations, ShownGate
 from ..data.slits import SLIT_BLOCKS, SlitCache, slit_path, slit_pixels
 from ..data.tsample import time_samples
@@ -149,8 +149,8 @@ class SlitReads:
             return
         if not front:
             return
-        if came or ("playing" in changed and not st.playing) or changed & ({"t", "s", "l", "own", "t_cap"} if self.cube
-                                                                           else {"t", "s", "l", "t_cap"}):
+        if came or ("playing" in changed and not st.playing) or changed & (
+                {"t", "s", "l", "own", "t_cap", "zero"} if self.cube else {"t", "s", "l", "t_cap", "zero"}):
             self._refresh(st)
 
     def _drawing(self, st: ViewState) -> bool:
@@ -278,9 +278,10 @@ class SlitReads:
         ver, got = blocks.along(zip(pix[0].tolist(), pix[1].tolist(), strict=True))
         r, n = ds.roles, len(pix[0])
         every = len(steps) >= r.nt
+        sym = self.session.symmetric(self.cube, s)      # -m..m, or each side its own (Session.set_zero)
         out = {}
         for kind, rows, u in (("ts", len(steps), l), ("sl", max(1, r.nl), t)):
-            key = (pid, ver, s, u) if kind == "sl" or every else (pid, ver, s, u, len(steps))
+            key = (pid, ver, s, u, sym) if kind == "sl" or every else (pid, ver, s, u, sym, len(steps))
             made = self._made.get(kind)
             if made is not None and made[0] == key:
                 out[kind] = made[1:]
@@ -289,7 +290,7 @@ class SlitReads:
             for i, b in enumerate(got):
                 if b is not None:
                     a[:, i] = (b[s, :, l] if every else b[s, steps, l]) if kind == "ts" else b[s, t, :]
-            out[kind] = (a, panel_levels(a, symmetric=signed(r, s)))
+            out[kind] = (a, panel_levels(a, symmetric=sym))
             self._made[kind] = (key, *out[kind])
         self.loop.post(lambda: self._show(g, pid, s, out["ts"], out["sl"], at=(l, steps)))
 
@@ -301,9 +302,10 @@ class SlitReads:
         r = ds.roles
         nlead = len(ds.shape) - 2
         every = len(steps) >= r.nt
+        sym = self.session.symmetric(self.cube, s)      # -m..m, or each side its own (Session.set_zero)
         spent = None                                    # this stage's reads, ms: whether the next waits (_quick)
         for kind, u in (("ts", l), ("sl", t)):
-            key = (pid, kind, s, u) if kind == "sl" or every else (pid, kind, s, u, len(steps))
+            key = (pid, kind, s, u, sym) if kind == "sl" or every else (pid, kind, s, u, sym, len(steps))
             hit = self._bands.get(key)
             if hit is not None:
                 self._bands.move_to_end(key)
@@ -323,7 +325,7 @@ class SlitReads:
                 self._stage_ms = spent
                 self.reads = self.reads[-999:] + [dict(kind=kind, frames=len(idxs), ms=round(ms, 2))]
                 counter("core.slit.band_reads")
-                hit = (a, panel_levels(a, symmetric=signed(r, s)))
+                hit = (a, panel_levels(a, symmetric=sym))
                 self._bands[key] = hit
                 while len(self._bands) > BANDS:
                     self._bands.popitem(last=False)

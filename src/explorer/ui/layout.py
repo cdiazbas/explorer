@@ -140,29 +140,32 @@ class LayoutStore:
     SCALE_GROUP = f"scale/v{SCHEMA}"
 
     def save_scale(self, kept: dict) -> None:
-        """Each cube's scale ({(file name, Stokes): (rule, lo, hi, gamma)}, Shell.scale_settings), the same for every
-        way of displaying and every look: it belongs to the data. A cube's entries are replaced as a whole; other
+        """Each cube's scale ({(file name, Stokes): (rule, lo, hi, gamma, zero)}, Shell.scale_settings), the same for
+        every way of displaying and every look: it belongs to the data. A cube's entries are replaced as a whole; other
         cubes' stay for when they are opened again."""
         st = self._settings()
         st.beginGroup(self.SCALE_GROUP)
         for name in {n for n, _ in kept}:
             st.remove(_scale_key(name))
-        for (name, s), (rule, lo, hi, g) in kept.items():
-            st.setValue(f"{_scale_key(name)}/{int(s)}", f"{rule} {float(lo)!r} {float(hi)!r} {float(g)!r}")
+        for (name, s), (rule, lo, hi, g, zero) in kept.items():
+            st.setValue(f"{_scale_key(name)}/{int(s)}",
+                        f"{rule} {float(lo)!r} {float(hi)!r} {float(g)!r}" + (" zero" if zero else ""))
         st.endGroup()
         st.sync()
 
     def scale(self) -> dict:
-        """What save_scale kept: {(file name, Stokes): (rule, lo, hi, gamma)}; entries that do not read are left
-        out."""
+        """What save_scale kept: {(file name, Stokes): (rule, lo, hi, gamma, zero)}; entries that do not read are
+        left out. One kept before key Z had four words: zero False."""
         st = self._settings()
         st.beginGroup(self.SCALE_GROUP)
         out: dict = {}
         for k in st.allKeys():
             name, _, s = k.rpartition("/")
             try:
-                rule, lo, hi, g = str(st.value(k)).split()
-                out[(_scale_name(name), int(s))] = (rule, float(lo), float(hi), float(g))
+                rule, lo, hi, g, *more = str(st.value(k)).split()
+                if more not in ([], ["zero"]):
+                    continue
+                out[(_scale_name(name), int(s))] = (rule, float(lo), float(hi), float(g), more == ["zero"])
             except ValueError:
                 continue
         st.endGroup()

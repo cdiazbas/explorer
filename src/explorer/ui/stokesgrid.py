@@ -82,14 +82,14 @@ class StokesGrid(QtWidgets.QWidget):
         p = vb.mapSceneToView(ev.scenePos())
         return p.y(), p.x()
 
-    def set_image(self, s: int, img, levels, gamma: float | None = None) -> None:
+    def set_image(self, s: int, img, levels, gamma: float | None = None, centred: bool | None = None) -> None:
         v = self.views[s]
         # a guard on every panel: the wheel turns the one under the pointer, and a guard on the first alone let the
         # others go out past the whole image (11x, the user saw it). The four are the same size and show the same
         # region, so their guards agree
         if v.guard is None:
             v.guard = ViewGuard(v.vb, img.shape[1], img.shape[0])
-        v.set_image(img, levels, gamma)
+        v.set_image(img, levels, gamma, centred)
 
     def set_crosshair(self, y: int, x: int) -> None:
         for v in self.views:
