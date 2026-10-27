@@ -147,10 +147,17 @@ def test_the_main_cube_picks_its_parameters_as_stokes(qapp, cubes):
         close()
 
 
-def test_a_linked_inversion_picks_its_own_parameters_over_its_image(qapp, cubes):
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a_linked_inversion_picks_its_own_parameters_over_its_image(qapp, cubes, theme):
     """A Stokes cube with an inversion linked: the inversion's planes are its own (not the main cube's I Q U V),
-    picked over its image's top left; a pick changes its plane, not the main cube's. Before: no picker, its planes
-    along "λ index"."""
+    picked over its image's top left; a pick changes its plane, not the main cube's; legible in either theme (in the
+    light one the view round the image is white). Before: no picker, its planes along "λ index"."""
+    from PySide6 import QtGui, QtWidgets
+
+    from explorer.ui import style
+
+    name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
+    style.apply_theme(qapp, theme)
     w, close = open_window(qapp, cubes["spec"], [cubes["lp"]])
     try:
         lk = w.linked[0]
@@ -164,7 +171,7 @@ def test_a_linked_inversion_picks_its_own_parameters_over_its_image(qapp, cubes)
         assert (w.session.member_state(lk.k).s, w.session.state.s) == (2, 0)
         assert lk.picker.group.checkedId() == 2
         # a plane not picked is legible over the image, in the window as grabbed: light ink on a dark card
-        from PySide6 import QtCore, QtGui
+        from PySide6 import QtCore
 
         qapp.processEvents()
         b = lk.picker.group.button(0)
@@ -176,6 +183,9 @@ def test_a_linked_inversion_picks_its_own_parameters_over_its_image(qapp, cubes)
         assert np.mean(lum > 180) > 0.01 and np.median(lum) < 90
     finally:
         close()
+        qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
+        qapp.setPalette(pal)
+        qapp.setProperty("explorer_light", False)
 
 
 def test_parameters_start_in_a_sequential_map():

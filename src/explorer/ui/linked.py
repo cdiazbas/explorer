@@ -318,12 +318,12 @@ class PlanePicker(StokesSegments):
         self.show()
 
     def restyle(self) -> None:
-        """On a dark card with light ink, legible over any image (the toolbar's, in the window's colours, left the
-        planes not picked dark on a dark image)."""
+        """On a dark card with light ink, legible over any image and over the light theme's white view (the
+        toolbar's, in the window's colours, left the planes not picked dark on a dark image)."""
         from . import style
 
         self.setStyleSheet(
-            "#stokes_segments { background: rgba(20, 20, 24, 170); border-radius: 7px; }"
+            "#stokes_segments { background: rgba(20, 20, 24, 200); border-radius: 7px; }"
             "QToolButton { border: none; border-radius: 5px; padding: 2px 10px; margin: 2px;"
             " color: rgb(235, 235, 235); background: transparent; }"
             "QToolButton:hover:!checked { background: rgba(255, 255, 255, 36); }"
