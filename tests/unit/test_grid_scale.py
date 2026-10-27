@@ -139,6 +139,16 @@ def test_each_panel_s_padlock_shows_its_stokes_and_its_right_click_fits_its_fram
     assert [lock_over(w, s).isChecked() for s in range(4)] == [False, False, True, True]
 
 
+def test_out_of_the_2x2_view_the_image_s_padlock_is_over_its_key_as_it_was(grid):
+    """Where a narrow image's key and padlock overlap (glass, three linked cubes), the padlock stays on top after the
+    2x2 view, as it did when that view raised it over the four panels (bench/captures.py: linked_light_glass)."""
+    w, qapp = grid
+    w.set_grid(False)
+    qapp.processEvents()
+    order = w.view.widget.children()                    # a widget's children in their stacking order, top last
+    assert order.index(w.image_lock) > order.index(w.main.key)
+
+
 # ---------------------------------------------------------------------------------------------- the keys
 def test_each_panel_has_a_key_for_its_stokes_with_its_levels_and_map(grid):
     w, qapp = grid

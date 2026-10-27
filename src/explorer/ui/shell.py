@@ -585,9 +585,10 @@ class Shell(QtWidgets.QMainWindow):
             self.view.vb.setRange(self.grid.region(), padding=0)
             self.grid.hide()
             self.image_lock.show()
+            self.image_lock.raise_()                    # over the image's key where a narrow image overlaps them
             self.scheduler.set_grid(False)
             self.view.set_paused(False)
-        if self.colour_key is not None:                 # no single Stokes' key over the four panels
+        if self.colour_key is not None:                 # no single Stokes' key over the four panels: each has its own
             self.colour_key.show_with(True, grid=on)
         self.nav.set_all(on)
         self._place_slit_hint()
