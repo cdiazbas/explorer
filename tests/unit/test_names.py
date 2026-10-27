@@ -251,3 +251,32 @@ def test_an_imager_s_unit_from_pixlunit_in_the_status_line_and_its_key(tmp_path)
     assert got.endswith("AIA 171 Å 363.0\u00a0DN")
     from explorer.data.names import unit
     assert unit(ax) == "DN"
+
+
+@pytest.mark.parametrize("kind", ["stokes", "blos", "aia", "euvi", "nothing"])
+def test_a_cube_s_short_name_is_the_header_s_where_its_file_name_says_nothing(tmp_path, kind):
+    """short_name (the cube's tab, its image's title, its window's): the map's word and the line, or the line, as
+    before (an SST Stokes cube, a Blos map); where those leave only the file's name cut, the header's own name for
+    what it shows (data.names.header_name: an AIA series "AIA 171 Å", an EUVI file "EUVI 195 Å"); a file whose header
+    says nothing keeps its name. Before: "aia.lev1_euv_12…", "stereo_a_euvi_…"."""
+    from explorer.data.names import cube_names, short_name
+
+    if kind == "stokes":
+        path, ax = "nb_6173_YYYY-MM-DDT08:16:57_08:16:57=0-185_stokes_corrected_im.fits", None
+        want = "Fe I 617.3"
+    elif kind == "blos":
+        path, ax, want = "Blos_6173_map=0-3.fcube", None, "Blos · Fe I 617.3"
+    elif kind == "aia":
+        r, ax, path = _series(tmp_path, "aia.lev1_euv_12s.2025-07-05T005959Z.171.image", AIA)
+        want = "AIA 171 Å"
+    elif kind == "euvi":
+        r, ax, path = _cube(tmp_path / "stereo_a_euvi_195_2025_07_05_00_05_30.fits", (NY8, NX10),
+                            {**EUVI, "WAVELNTH": 195})
+        want = "EUVI 195 Å"
+    else:
+        r, ax, path = _cube(tmp_path / "flare_spt_denoised.fits", (3, NY8, NX10), {})
+        want = "flare_spt_denoised"
+    got = short_name(path, ax)
+    print(kind, path.rsplit("/", 1)[-1], "->", got)
+    assert got == want
+    assert cube_names([types.SimpleNamespace(path=path, axes=ax)]) == [want]

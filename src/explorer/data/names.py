@@ -72,7 +72,9 @@ def line_of(path, axes=None) -> str | None:
 
 
 def short_name(path, axes=None) -> str:
-    """The name the window shows for the cube at path (axes: its data.axes.Axes, for the header's line)."""
+    """The name the window shows for the cube at path (axes: its data.axes.Axes, for the header's line and name):
+    the map's word and the line, the line, else the header's own name for what it shows (header_name: "AIA 171 Å",
+    "lg(tg)"), else its file's name, cut."""
     s = stem(path)
     word = re.split(r"[^A-Za-z]+", s)[0].lower() if s else ""
     quantity = QUANTITIES.get(word)
@@ -81,7 +83,7 @@ def short_name(path, axes=None) -> str:
         return f"{quantity} · {line}"
     if line:
         return line
-    return cut(s)
+    return cut(header_name(axes) or s)
 
 
 def card(axes, key: str) -> str:
@@ -131,6 +133,18 @@ def passband(axes) -> str | None:
     best = min(LINES.values(), key=lambda v: abs(v[1] * 10 - w))
     band = best[0] if abs(best[1] * 10 - w) <= MATCH_A else f"{w:g} Å"
     return f"{inst} {band}".strip()
+
+
+def header_name(axes) -> str | None:
+    """What the header alone says a cube shows, by quantity's rules that read it: BTYPE or CONTENT, unless generic;
+    without WAVEBAND, the imager's instrument and band (passband). None when it says nothing of its own."""
+    btype = str(getattr(axes, "btype", None) or "").strip()
+    if btype and btype.lower() not in GENERIC:
+        return btype
+    content = card(axes, "CONTENT")
+    if content and content.lower() not in GENERIC:
+        return content.lower()
+    return passband(axes) if not card(axes, "WAVEBAND") else None
 
 
 def quantity(path, axes=None) -> str:
