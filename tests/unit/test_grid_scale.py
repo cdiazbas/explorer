@@ -2,10 +2,12 @@
 and its own colour key, both for that panel's Stokes, as the single image has one for the Stokes it shows.
 - The padlock over a panel fixes or releases that panel's Stokes, a right click on it fixes the levels to that
   panel's frame, and it shows whether that Stokes is fixed; the single image's padlock is not over the panels.
-- The key of a panel names its Stokes and holds that panel's levels and map; under the pointer it grows within its
-  panel, a drag fixes that Stokes's limit, the wheel steps that Stokes's gamma, a double click gives that Stokes its
-  automatic levels and gamma 1 again. A right click on it opens no menu; the one on the panel's Stokes label stays.
-- G over a panel says the new gamma on that panel's key, and C the map's name on the key of the panel it recolours."""
+- The key of a panel names its Stokes (the panels have no Stokes label) and holds that panel's levels and map; under
+  the pointer it grows within its panel, a drag fixes that Stokes's limit, the wheel steps that Stokes's gamma, a
+  double click gives that Stokes its automatic levels and gamma 1 again, a right click opens that Stokes's scale menu
+  (the image's key opens none). At the bottom left, in glass at the top left, clear of glass's bar.
+- G over a panel says the new gamma on that panel's key, and C the map's name on the key of the panel it recolours.
+- With a linked cube, its image keeps its label and its key without a menu."""
 import contextlib
 import time
 
@@ -33,7 +35,7 @@ def cube(tmp_path_factory):
 
 
 @contextlib.contextmanager
-def made(qapp, cube, look):
+def made(qapp, cube, look, linked=()):
     from PySide6 import QtGui, QtWidgets
 
     from explorer.data.dataset import Dataset
@@ -44,11 +46,13 @@ def made(qapp, cube, look):
     name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
     style.apply_theme(qapp, "dark")
     ds = Dataset.open(cube)
-    w = Shell(ds, title="c_im.fits", look=get_look(look, {}))
+    more = [Dataset.open(p, executors=ds.executors) for p in linked]
+    w = Shell(ds, title="c_im.fits", look=get_look(look, {}), linked=more)
     w.setGeometry(60, 50, 1100, 760)
     w.show()
     try:
-        assert spin(qapp, lambda: w.first_image_s is not None and "lambda_t" in w.last)
+        assert spin(qapp, lambda: w.first_image_s is not None and "lambda_t" in w.last
+                    and all(c.scheduler.img is not None for c in w.linked))
         w.set_grid(True)
         assert spin(qapp, lambda: all(v._full is not None for v in w.grid.views))
         spin(qapp, timeout=0.2)
@@ -57,7 +61,8 @@ def made(qapp, cube, look):
         for m in w.findChildren(QtWidgets.QMenu):
             m.close()
         w.close()
-        ds.close()
+        for d in [ds, *more][::-1]:
+            d.close()
         qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
         qapp.setPalette(pal)
         qapp.setProperty("explorer_light", False)
@@ -162,12 +167,28 @@ def test_each_panel_has_a_key_for_its_stokes_with_its_levels_and_map(grid):
                              cols.maps[s] if cols is not None else v.base_lut is None), (s, key.state)
         assert key.lut is (cols.lut(s) if cols is not None else v.base_lut)
         assert key.frame() is v._full and key.levels() == v._lim
-        label = v.widget.mapFromScene(v.stokes.sceneBoundingRect()).boundingRect()
-        assert v.widget.rect().contains(key.geometry()) and not key.geometry().intersects(label), \
-            (s, key.geometry(), label)
+        assert not v.stokes.isVisible()                 # no label: the key names it
+        assert placed(w, s), (w.look.name, s, key.geometry(), v.widget.size())
     w.session.step("t", 1)                              # a step in t: each key with its panel's new levels
     assert spin(qapp, lambda: all(key_of(w, s).state[1:3] == tuple(round(x, 12) for x in v._lim)
                                   and v._full is not None for s, v in enumerate(w.grid.views)))
+
+
+def placed(w, s):
+    """Panel s's key where it goes: at the bottom left, as the image's; in glass at the top left, as glass puts the
+    image's, clear of glass's bar."""
+    from PySide6 import QtCore
+
+    from explorer.ui import glass
+
+    key, v = key_of(w, s), w.grid.views[s].widget
+    if not v.rect().contains(key.geometry()):
+        return False
+    if w.glass is None:
+        return key.pos() == QtCore.QPoint(12, v.height() - key.height() - 12)
+    bar = w.glass.bar
+    return key.pos() == QtCore.QPoint(glass.MARGIN, glass.MARGIN) and \
+        not (bar.isVisible() and global_rect(bar).intersects(global_rect(key)))
 
 
 def enter(key):
@@ -286,27 +307,35 @@ def visible_menus(w):
     return [m for m in w.findChildren(QtWidgets.QMenu) if m.isVisible()]
 
 
-def test_a_right_click_on_a_panel_s_key_opens_no_menu_and_its_label_s_menu_stays(grid):
+def right_click(key):
     from PySide6 import QtCore
     from PySide6.QtTest import QTest
+
+    QTest.mousePress(key, QtCore.Qt.MouseButton.RightButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                     QtCore.QPoint(20, 6))
+    QTest.mouseRelease(key, QtCore.Qt.MouseButton.RightButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                       QtCore.QPoint(20, 6))                     # no button left held for the tests after
+
+
+def test_a_right_click_on_a_panel_s_key_opens_its_stokes_s_scale_menu(grid):
+    """The menu the panel's Stokes label had moves to its key (the user, 2026-10-27); where the label was, a right
+    click releases the cursor, as anywhere on the image."""
+    from PySide6 import QtCore
 
     w, qapp = grid
     key = key_of(w, 1)
     assert key is not None
-    QTest.mousePress(key, QtCore.Qt.MouseButton.RightButton, QtCore.Qt.KeyboardModifier.NoModifier,
-                     QtCore.QPoint(20, 6))
-    qapp.processEvents()
-    QTest.mouseRelease(key, QtCore.Qt.MouseButton.RightButton, QtCore.Qt.KeyboardModifier.NoModifier,
-                       QtCore.QPoint(20, 6))
-    assert not visible_menus(w)
-    v = w.grid.views[2]                                 # a right click on U's label: U's scale menu
-    pos = v.stokes.sceneBoundingRect().center()
-    ev = type("Click", (), dict(scenePos=lambda self: pos, double=lambda self: False,
-                                button=lambda self: QtCore.Qt.MouseButton.RightButton))()
-    v.widget.scene().sigMouseClicked.emit(ev)
+    right_click(key)
     qapp.processEvents()
     menus = visible_menus(w)
-    assert len(menus) == 1 and menus[0].actions()[0].text() == "Stokes U"
+    assert len(menus) == 1 and menus[0].actions()[0].text() == "Stokes Q"
+    rules = {a.data(): a for a in menus[0].actions() if a.data() is not None}
+    rules[("rule", "p05")].trigger()                    # it acts on Q
+    menus[0].close()
+    assert w.session.scale(0, 1) == ("p05", 0.0, 0.0) and w.session.scale(0, 0)[0] == "p1"
+    right_click(key_of(w, 2))
+    qapp.processEvents()
+    menus = visible_menus(w)
     card = next(a for a in menus[0].actions() if a.data() == ("card", None))
     menus[0].close()
     card.trigger()                                      # "Scale...": the card by U's panel's key
@@ -315,6 +344,39 @@ def test_a_right_click_on_a_panel_s_key_opens_no_menu_and_its_label_s_menu_stays
     assert w.scale_card is not None and w.scale_card.isVisible() and (w.scale_card.k, w.scale_card.s) == (0, 2)
     assert w.scale_card.x() == key.parentWidget().mapTo(w, key.geometry().topLeft()).x()
     w.scale_card.close()
+    w.session.lock(True)                                # where the label was: the image, which releases
+    qapp.processEvents()
+    v = w.grid.views[2]
+    pos = v.vb.mapToScene(QtCore.QPointF(14, 10))
+    ev = type("Click", (), dict(scenePos=lambda self: pos, double=lambda self: False,
+                                button=lambda self: QtCore.Qt.MouseButton.RightButton))()
+    v.widget.scene().sigMouseClicked.emit(ev)
+    qapp.processEvents()
+    assert not visible_menus(w) and not w.session.state.locked
+
+
+def test_with_a_linked_cube_its_image_keeps_its_label_and_its_key_no_menu(qapp, cube, tmp_path):
+    """Only the main cube shows the 2x2 view: a linked cube's image keeps its Stokes label, and a right click on its
+    key opens no menu, as the main image's key out of the 2x2 view."""
+    other = synth.write_dataset(tmp_path, "other", shape=(SHAPE[0], SHAPE[1], 7, SHAPE[3], SHAPE[4]), seed=4,
+                                icube=False, sp=False)["im"]
+    with made(qapp, cube, "classic", linked=(other,)) as w:
+        c = w.linked[0]
+        assert c.view.stokes.isVisible() and c.view.stokes.toPlainText() == "Stokes I"
+        assert c.key.isVisible() and c.key.zoom == 1.0 and (c.key.width(), c.key.height()) == (230, 50)
+        right_click(c.key)
+        qapp.processEvents()
+        assert not visible_menus(w)
+        right_click(key_of(w, 3))                       # the main cube's panel: its menu
+        qapp.processEvents()
+        assert [m.actions()[0].text() for m in visible_menus(w)] == ["c_im · Stokes V"]
+        w.set_grid(False)
+        qapp.processEvents()
+        for m in visible_menus(w):
+            m.close()
+        right_click(w.main.key)                         # the image's key, out of the 2x2 view: none
+        qapp.processEvents()
+        assert not visible_menus(w)
 
 
 def test_g_over_a_panel_says_the_gamma_on_that_panel_s_key(grid):
@@ -357,8 +419,7 @@ def test_the_keys_follow_a_look_and_a_theme_switch_in_the_2x2_view(grid):
         spin(qapp, timeout=0.2)
         assert all(key_of(w, s) is not None for s in range(4)) and not w.colour_key.isVisible(), look
         for s, v in enumerate(w.grid.views):
-            label = v.widget.mapFromScene(v.stokes.sceneBoundingRect()).boundingRect()
-            assert not key_of(w, s).geometry().intersects(label), (look, s)
+            assert not v.stokes.isVisible() and placed(w, s), (look, s, key_of(w, s).geometry())
     w.set_theme("light")
     qapp.processEvents()
     assert style.is_light() and all(key_of(w, s) is not None for s in range(4))

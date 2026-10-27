@@ -48,7 +48,7 @@ from .loop import QtLoop
 from .mask import MaskOutlines
 from .overlays import ColourKey, gamma_text
 from .padlock import PanelLock
-from .scalekey import GRID_ZOOM, ScaleCard, ScaleKey, scale_menu
+from .scalekey import ScaleCard, ScaleKey
 from .slit import SlitHint, SlitTool
 from .slitpanel import SlitPanel
 from .status import diagnostics_text, pixel_text
@@ -565,7 +565,7 @@ class Shell(QtWidgets.QMainWindow):
                     if self.mask_outlines is not None:
                         self.mask_outlines.attach(v)
                 self.grid_locks = [self._grid_lock(s, v) for s, v in enumerate(self.grid.views)]
-                self.grid_keys = [ScaleKey(self, v, 0, self.main.key.unit, stokes=s, zoom=GRID_ZOOM)
+                self.grid_keys = [ScaleKey(self, v, 0, self.main.key.unit, stokes=s)  # they name the panels
                                   for s, v in enumerate(self.grid.views)]
                 self._place_grid_keys()
             self.grid.setGeometry(self.view.widget.rect())
@@ -625,10 +625,10 @@ class Shell(QtWidgets.QMainWindow):
         key.update()                                    # hot, it draws the rule and gamma too
 
     def _place_grid_keys(self) -> None:
-        """The panels' keys at the bottom left, as the image's; in glass at the top left under each panel's label,
-        clear of glass's bar (the image's own key goes to the top left there, but the label keeps its menu)."""
+        """The panels' keys at the bottom left, as the image's; in glass at the top left, as glass puts the image's,
+        clear of its bar."""
         for key in self.grid_keys:
-            key.under_label = self.glass is not None
+            key.at_top = self.glass is not None
             key._place(key.parentWidget())
 
     def key_for(self, k: int, s: int) -> ScaleKey:
@@ -658,15 +658,10 @@ class Shell(QtWidgets.QMainWindow):
 
     def _grid_click(self, s: int, ev) -> None:
         """A click on panel s: the cursor locked there and that Stokes the session's, so lambda-t shows it; right
-        click: released; double click: the whole image."""
+        click: released (on the panel's key: its scale menu, ui.scalekey); double click: the whole image."""
         if self.grid is None or self.slit_tool.click(ev, self.grid.views[s].vb):
             return
         if ev.button() == QtCore.Qt.MouseButton.RightButton:
-            label = self.grid.views[s].stokes
-            if label.isVisible() and label.sceneBoundingRect().contains(ev.scenePos()):
-                # its scale's menu (ui.scalekey), which a right click on a key does not open (KEY_MENU)
-                scale_menu(self, 0, s).popup(QtGui.QCursor.pos())
-                return
             self.session.lock(False)
             return
         p = self.grid.panel_point(s, ev)
@@ -1774,18 +1769,21 @@ class Shell(QtWidgets.QMainWindow):
     def _place_slit_hint(self) -> None:
         """What sits at the image's top left: the Stokes label (ui.stokeslabel), but not under glass's colour key,
         which glass moves there and whose top row names the Stokes; the slit's hint below the label, below the key
-        (the prototype's app/look_glass.py:1015-1021) or below the 2x2 view's panel's label."""
+        (the prototype's app/look_glass.py:1015-1021). In the 2x2 view, no label (the keys name the panels): the hint
+        at the top left, below the top-left panel's key in glass, which puts it there."""
         x = y = SlitHint.MARGIN
         key = self.colour_key
         keyed = self.glass is not None and key is not None and key.isVisibleTo(self.view.widget)
         self.main.named = keyed
         self.main.show_stokes(self.session.state.s)
-        if keyed and key is not None:
+        if self.grid is not None and self.grid.isVisibleTo(self.view.widget):
+            if self.glass is not None and self.grid_keys:
+                k0 = self.grid_keys[0]                  # its panel at the 2x2 view's top left: the same corner
+                x, y = glass.MARGIN, k0.y() + k0.height() + 8
+        elif keyed and key is not None:
             x, y = glass.MARGIN, key.y() + key.height() + 8
-        labelled = self.grid.views[0] if self.grid is not None and self.grid.isVisibleTo(self.view.widget) else \
-            self.view if self.view.stokes.isVisible() else None
-        if labelled is not None:
-            y = max(y, labelled.below_stokes())
+        elif self.view.stokes.isVisible():
+            y = max(y, self.view.below_stokes())
         self.slit_hint.move(x, y)
 
     # ---------------------------------------------------------------- state

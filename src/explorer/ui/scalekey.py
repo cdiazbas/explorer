@@ -2,16 +2,17 @@
 image made interactive, and a card with the numbers.
 
 - ScaleKey: the colour key (ui.overlays.ColourKey) of one cube's image, or of one panel of the 2x2 view (for that
-  panel's Stokes, within that panel), the same at rest. Under the pointer it grows into the histogram of the frame
+  panel's Stokes, within that panel, smaller: GRID_ZOOM; the panels have no Stokes label, their keys name them), the
+  same at rest. Under the pointer it grows into the histogram of the frame
   (its [::8, ::8] subsample, the one the automatic levels read: data.stats.limits) with the transfer curve over it,
   so gamma shows, and a handle at each limit, both in the look's accent (accent).
   An overlay of its image (ui.overlays.OverImage): the pointer over it is off the image. Dragging a handle fixes that
   limit (Session.set_scale "fixed"; Q U V move both ends, symmetric about 0); the wheel steps gamma as G and Shift+G
   do; a double click gives the image its automatic levels and gamma 1 again. It takes the image's width when narrower
-  than its own. A right click on it opens nothing for now (KEY_MENU): it reaches the image below, which releases the
-  cursor.
-- scale_menu: on a right click over the Stokes label of a panel of the 2x2 view (and over a key, with KEY_MENU, a
-  panel's too): the limit rule, gamma presets, "Scale...", and a reset.
+  than its own. A right click on a panel's key opens scale_menu; on an image's key nothing for now (KEY_MENU): it
+  reaches the image below, which releases the cursor.
+- scale_menu: on a right click over a panel's key of the 2x2 view (and over any key, with KEY_MENU): the limit rule,
+  gamma presets, "Scale...", and a reset.
 - ScaleCard: from "Scale...": min and max typed, CRISPEX's logarithmic gamma slider (0.1-10, 10^(v/500 - 1),
   crispex.pro:24436-24441), the limit rule and a reset. A child of the window (one X window less through the bridge);
   Esc or a click outside closes it.
@@ -110,14 +111,15 @@ class ScaleKey(ColourKey):
     W_HOT = 320                                         # wider while hot, as the image allows
     GRAB = 8                                            # px either side of a handle that grab it
     MIN_W = 120
-    LABEL_GAP = 4                                       # px under the Stokes label, when placed there (under_label)
-    under_label = False                                 # at the top left under the label, not at the bottom left
+    at_top = False                                      # at the top left (a panel's in glass), not at the bottom left
 
-    def __init__(self, shell, view, k: int, unit: str = "", stokes: int | None = None, zoom: float = 1.0):
-        """The key of view (an ImageView), cube k's image: at cube k's Stokes now, or at Stokes stokes always (a
-        panel of the 2x2 view). zoom: its size, as ColourKey's; GRAB stays in screen pixels."""
-        super().__init__(view.widget, unit, zoom)
+    def __init__(self, shell, view, k: int, unit: str = "", stokes: int | None = None):
+        """The key of view (an ImageView), cube k's image: at cube k's Stokes now, or at Stokes stokes always, a
+        panel of the 2x2 view's key: GRID_ZOOM its size (GRAB stays in screen pixels), and its Stokes's scale_menu on
+        a right click."""
+        super().__init__(view.widget, unit, GRID_ZOOM if stokes is not None else 1.0)
         self.shell, self.view, self.k, self.stokes = shell, view, k, stokes
+        self.menu = KEY_MENU or stokes is not None
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.PreventContextMenu)   # its own, on the right press
         self.setMouseTracking(True)
@@ -153,10 +155,10 @@ class ScaleKey(ColourKey):
         return super().eventFilter(obj, e)
 
     def _place(self, view) -> None:
-        """At the bottom left (ColourKey), or under_label at the top left below its image's Stokes label: a panel of
-        the 2x2 view in glass, whose bar runs along the bottom and whose label keeps its menu."""
-        if self.under_label:
-            self.move(12, self.view.below_stokes() + self.LABEL_GAP)
+        """At the bottom left (ColourKey), or at_top at the top left, where glass puts the image's key: a panel's of
+        the 2x2 view in glass, whose bar runs along the bottom."""
+        if self.at_top:
+            self.move(glass.MARGIN, glass.MARGIN)
         else:
             super()._place(view)
 
@@ -235,7 +237,7 @@ class ScaleKey(ColourKey):
 
     def mousePressEvent(self, e):
         if e.button() == QtCore.Qt.MouseButton.RightButton:
-            if KEY_MENU:
+            if self.menu:
                 self.open_menu(e.globalPosition().toPoint())
             else:
                 e.ignore()                              # to the image below: it releases the cursor

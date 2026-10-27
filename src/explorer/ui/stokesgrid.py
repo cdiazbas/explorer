@@ -4,9 +4,10 @@ Four ImageViews, one per Stokes, their views linked: a zoom or a pan in one move
 what it shows only, at the resolution it is shown (ImageView.render: the visible region reduced to the screen's
 pixels), with its own levels (Q U V symmetric about 0) and its Stokes's colour table. The cursor's crosshair is
 drawn in all four; the mouse over any of them moves the cursor, a click locks it there and makes that panel's Stokes
-the session's (so lambda-t shows it), a right click releases it, a double click shows the whole image. The core
-reads the frames (Scheduler.set_grid). From the prototype's app/look_glass.py StokesGrid (221-315) and set_grid
-(600-614), on explorer's ImageView (crop and reduce_u8, where the prototype strided down).
+the session's (so lambda-t shows it), a right click releases it, a double click shows the whole image. No Stokes
+label on the panels: the window gives each a colour key that names it (ui.scalekey). The core reads the frames
+(Scheduler.set_grid). From the prototype's app/look_glass.py StokesGrid (221-315) and set_grid (600-614), on
+explorer's ImageView (crop and reduce_u8, where the prototype strided down).
 
     grid = StokesGrid(parent, ns, on_hover, on_click, light=..., strips=..., parts=...)
     grid.set_image(s, img, levels); grid.set_crosshair(y, x); grid.set_locked(on); grid.set_lut(s, table)
@@ -44,7 +45,6 @@ class StokesGrid(QtWidgets.QWidget):
             v.vb.setMenuEnabled(False)
             v.widget.viewport().setCursor(QtCore.Qt.CursorShape.CrossCursor)
             v.vb.sigRangeChanged.connect(lambda *_a, v=v: self._follow(v))
-            v.set_stokes(k, ns)                         # "Stokes Q" at the top left (ui.stokeslabel)
             v.widget.scene().sigMouseClicked.connect(lambda ev, k=k: on_click(k, ev))
             lay.addWidget(v.widget, k // cols, k % cols)
             self.views.append(v)

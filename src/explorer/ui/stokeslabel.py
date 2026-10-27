@@ -1,10 +1,10 @@
-"""The Stokes shown ("Stokes I", Q, U, V) at a view's top left, where it is read: on each panel of the 2x2 view
-(ui.stokesgrid), and on the image and lambda-t of every cube (ui.cube). Only for a cube with the four Stokes: with one
-plane along the axis, or none, nothing says whether it is Stokes I, a magnetic field or anything else. One look for
-all: the theme's ink over a halo of the other end (dark under light text, light under dark), as the reticle's
-(overlays.Reticle): the plain text read at 1.2-1.9:1 over bright granulation in the dark theme. POS px into the view
-box, a child of the box and not of its data (it neither moves with a zoom nor counts in the box's range). Made hidden;
-the same words on every view.
+"""The Stokes shown ("Stokes I", Q, U, V) at a view's top left, where it is read: on the image and lambda-t of every
+cube (ui.cube); not on the panels of the 2x2 view, whose keys name them (ui.scalekey). Only for a cube with the four
+Stokes: with one plane along the axis, or none, nothing says whether it is Stokes I, a magnetic field or anything
+else. One look for all: the theme's ink over a halo of the other end (dark under light text, light under dark), as
+the reticle's (overlays.Reticle): the plain text read at 1.2-1.9:1 over bright granulation in the dark theme. POS px
+into the view box, a child of the box and not of its data (it neither moves with a zoom nor counts in the box's
+range). Made hidden; the same words on every view.
 
     label = StokesLabel(vb, light); label.show_stokes(s, ns); label.show_stokes(None, ns); label.set_light(light)
 """

@@ -1,6 +1,7 @@
 """The Stokes shown, "Stokes I" to "Stokes V" (ui.stokeslabel), offscreen: on the image and on lambda-t of every
 cube with the four Stokes, the main cube's and a linked one's, following the Stokes of the session at once; none on a
-cube with one plane along the Stokes axis nor on a map; on each panel of the 2x2 view; in the theme's ink,
+cube with one plane along the Stokes axis nor on a map; none on the panels of the 2x2 view, whose keys name them
+(ui.scalekey); in the theme's ink,
 drawn so; not under glass's colour key, whose top row names the Stokes there; the slit's hint below it. Each test
 prints what it measured."""
 import time
@@ -124,19 +125,33 @@ def test_every_cube_with_stokes_names_the_one_shown_on_its_image_and_lambda_t(qa
         assert seen[blos.name] == (None, None)
 
 
-def test_the_2x2_view_keeps_a_letter_per_panel_and_lambda_t_names_the_session_s(qapp, window):
+def test_the_2x2_view_s_panels_are_named_by_their_keys_and_lambda_t_names_the_session_s(qapp, window):
+    """No label on the 2x2 view's panels (the user, 2026-10-27): each panel's key names its Stokes; the slit's hint at
+    the top left where the label was, below the top-left panel's key in glass, which puts it there."""
+    from explorer.look import get_look
+
     w = window
     w.session.store.set(path=((10.5, 10.5), (30.5, 30.5)))          # a slit drawn: its hint at the top left
     w.set_grid(True)
     w.session.set_index("s", 2)
-    assert spin(qapp, lambda: letter(w.lambda_t.stokes) == "Stokes U" and w.slit_hint.isVisible())
+    assert spin(qapp, lambda: letter(w.lambda_t.stokes) == "Stokes U" and w.slit_hint.isVisible()
+                and all(k.state is not None for k in w.grid_keys))
     panels = [letter(v.stokes) for v in w.grid.views]
-    v = w.grid.views[0]
-    label = v.widget.mapFromScene(v.stokes.sceneBoundingRect()).boundingRect()
-    print("2x2 panels:", panels, "lambda-t:", letter(w.lambda_t.stokes), "top-left panel's letter box",
-          label.getRect(), "hint", w.slit_hint.geometry().getRect())
-    assert panels == ["Stokes I", "Stokes Q", "Stokes U", "Stokes V"]
-    assert w.slit_hint.y() >= label.bottom()        # below the letter (the box's last row: its text's margin)
+    keys = [k.state[0] for k in w.grid_keys]
+    print("2x2 panels' labels:", panels, "keys:", keys, "lambda-t:", letter(w.lambda_t.stokes), "hint",
+          w.slit_hint.geometry().getRect())
+    assert panels == [None] * 4 and keys == ["Stokes I", "Stokes Q", "Stokes U", "Stokes V"]
+    assert w.slit_hint.pos().y() == w.slit_hint.MARGIN
+    w.set_look(get_look("glass", {}))
+    assert spin(qapp, lambda: w.glass is not None)
+    from PySide6 import QtCore
+
+    k0 = w.grid_keys[0]
+    key = QtCore.QRect(k0.parentWidget().mapTo(w.view.widget, k0.pos()), k0.size())     # in the hint's widget
+    hint = w.slit_hint.geometry()
+    print("glass: key", key.getRect(), "hint", hint.getRect())
+    assert hint.top() >= key.bottom() and not hint.intersects(key)
+    w.set_look(get_look("classic", {}))
     w.set_grid(False)
 
 

@@ -302,7 +302,7 @@ def test_in_the_2x2_view_the_slit_is_on_the_four_and_drawn_on_any(qapp, shell):
     assert w.grid is not None and w.grid.isVisible() and len(w.slit_tool.marks) == 5
     main = line_xy(w.slit_tool.marks[0].line)
     assert all(np.array_equal(line_xy(m.line), main) for m in w.slit_tool.marks[1:])
-    assert w.slit_hint.isVisible() and w.slit_hint.y() >= 30         # below the panel's Stokes label
+    assert w.slit_hint.isVisible() and w.slit_hint.y() == w.slit_hint.MARGIN    # no label on the panels
     s0, locked0 = w.session.state.s, w.session.state.locked
     w.set_slit_mode(True)
     assert all(v.widget.viewport().cursor().shape() == C.BitmapCursor for v in w.grid.views)
