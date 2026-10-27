@@ -616,7 +616,7 @@ class GlassChrome:
             lay.addLayout(r)
         ink = INK[_mode()]
         self._made: list[QtWidgets.QWidget] = []
-        for row, axis, name in ((0, "t", "t"), (1, "l", "λ")):
+        for row, axis, name in ((0, "t", "t"), (1, "l", nav.l_name)):
             s = nav.sliders.get(axis)
             if s is None:
                 continue

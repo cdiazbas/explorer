@@ -22,7 +22,7 @@ def padding(v0: float, s: int) -> bool:
 
 def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, ic: float | None,  # noqa: E741
                iscale: float | None, locked: bool, present=("t", "l"), value: str = "I",
-               planes: str = "stokes") -> str:
+               planes: str = "stokes", axis: str = "λ") -> str:
     """The cursor's pixel, fields separated by thin dots: helioprojective x, y when the header gives the field's
     corners (else the pixel), t in UT (else its index), lambda in Å, delta-lambda and the Doppler velocity (else the
     tuning index), the value: Q U V in % of this pixel's I_c when it is known, I (and Q U V without I_c) in its
@@ -42,7 +42,7 @@ def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, i
             f.append(f"Δλ {fmt_signed(float(dl[l]), 3)}{NB}Å")
             f.append(f"v {fmt_signed(ax.vel_kms(l), 2)}{NB}km s⁻¹")
         else:
-            f.append(f"λ {l}")
+            f.append(f"{axis} {l}")                     # its index, named as its slider (SliceNames.axis)
     name = plane(s, planes) if ns > 1 else value
     bunit = unit_text(unit(ax))                         # BUNIT, else PIXLUNIT (data.names.unit)
     if padding(v0, s):

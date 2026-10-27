@@ -1377,7 +1377,8 @@ class Shell(QtWidgets.QMainWindow):
         mod = mod_key()
         rows: list[tuple[str, str, tuple]] = []
         arrows = [(keys, name, binds) for ax, keys, name, binds in (
-            ("l", "← →", "λ", ((K.Key_Left, lambda: s.step("l", -1)), (K.Key_Right, lambda: s.step("l", 1)))),
+            ("l", "← →", self.nav.l_name, ((K.Key_Left, lambda: s.step("l", -1)),
+                                           (K.Key_Right, lambda: s.step("l", 1)))),
             ("t", "↓ ↑", "t", ((K.Key_Down, lambda: s.step("t", -1)), (K.Key_Up, lambda: s.step("t", 1)))))
             if s.present[ax]]
         if arrows:
@@ -1430,15 +1431,16 @@ class Shell(QtWidgets.QMainWindow):
         _click."""
         rows = [("image: click · right click", "lock · release the cursor"),
                 ("S, then: click · double · right", "slit: point · finish · undo")]
-        picks = [(where, what) for where, what, has in (("spectrum", "λ", self.spectra is not None),
-                                                        ("λ–t", "t and λ", self.lambda_t is not None)) if has]
+        x, lt = self.nav.l_name, self.lt_dock.windowTitle()             # "λ", "λ–t"; "z", "lg(tg) (z–t)"
+        picks = [(where, what) for where, what, has in (("spectrum", x, self.spectra is not None),
+                                                        (lt, f"t and {x}", self.lambda_t is not None)) if has]
         if picks:
             rows.append(("click: " + " · ".join(p[0] for p in picks), "pick " + " · ".join(p[1] for p in picks)))
         if self.spectra is not None:
             rows.append(("spectrum's y axis: drag · wheel · double", "move · stretch (or right drag) · automatic"))
-        rows.append(("slit panel: click", "cursor, t or λ there"))
+        rows.append(("slit panel: click", f"cursor, t or {x} there"))
         if self.session.present["t"]:
-            rows.append(("number in λ–t, Slit titles: click · wheel", "t steps: 25, 50, 100, all"))
+            rows.append((f"number in {lt}, Slit titles: click · wheel", "t steps: 25, 50, 100, all"))
         if self.session.present["s"] and self.session.sizes["s"] > 1:
             rows.append(("side by side: click · right click label", "lock there · limits, γ, Scale…"))
         rows += [("padlock: click · right click", "fixed \u21c4 automatic · fit to view"),
@@ -1837,7 +1839,7 @@ class Shell(QtWidgets.QMainWindow):
         present = tuple(a for a in ("t", "l") if self.session.present[a])
         iscale = self.spectra.iscale if self.spectra is not None else None
         self.status.setText(pixel_text(self.dataset.axes, self.session.ns, y, x, st.t, st.l, st.s, v, ic, iscale,
-                                       st.locked, present, self.value_name(), self.main.planes))
+                                       st.locked, present, self.value_name(), self.main.planes, self.nav.l_name))
         if self.glass is not None:
             self.glass.readout()
 

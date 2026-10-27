@@ -44,7 +44,10 @@ def cubes(tmp_path_factory):
     # two unnamed axes before the image: "default (t, lambda)", its second not known to be lambda
     t_planes = fits_cube(d / "blos_t_planes.fits", np.stack([planes[:3] + 10 * t for t in range(NT)]), BTYPE="Blos",
                          BUNIT="G")
-    return {"spec": spec, "unknown": unknown, "blos_t": blos_t, "plain_t": plain_t, "t_planes": t_planes}
+    # BIFROST-like: its axis named by the header (CTYPE3 = 'z'), no t
+    z = fits_cube(d / "BIFROST_en024048_hion_lgtg_385.fits", planes / 100 + 3, CTYPE1="x", CTYPE2="y", CTYPE3="z",
+                  BTYPE="lg(tg)", BUNIT="K")
+    return {"spec": spec, "unknown": unknown, "blos_t": blos_t, "plain_t": plain_t, "t_planes": t_planes, "z": z}
 
 
 def test_the_main_cube_names_an_axis_not_known_to_be_lambda_as_a_linked_one(qapp, cubes):
@@ -143,5 +146,29 @@ def test_the_status_bar_names_the_value_by_what_the_cube_shows_without_stokes(qa
         if which == "spec":
             w.session.set_index("s", 1)
             assert spin(qapp, lambda: w.status.text().split("   ·   ")[-1].startswith("Q"))
+    finally:
+        close()
+
+
+@pytest.mark.parametrize("which, name", [("z", "z"), ("unknown", "plane"), ("spec", "λ")])
+def test_the_slider_and_the_status_line_name_an_axis_not_known_to_be_lambda(qapp, cubes, which, name):
+    """The axis other than t, where the toolbar's slider, the status line and the ? sheet count along it: "λ" when
+    known to be lambda (as before); else its own name from the header (BIFROST's CTYPE3 = 'z', data.names.axis_word),
+    else "plane". Before: "λ" for all three."""
+    from PySide6 import QtWidgets
+
+    w, close = open_window(qapp, cubes[which])
+    try:
+        w.session.hover(NY // 2, NX // 2)
+        qapp.processEvents()
+        labels = [x.text().strip() for x in w.nav.tb.findChildren(QtWidgets.QLabel)]
+        status = w.status.text().split("   ·   ")
+        sheet = [r[1] for r in w.key_table()] + [r[1] for r in w.mouse_table()]
+        print(which, "| toolbar", labels, "| status", status, "| sheet", [t for t in sheet if name in t])
+        assert name in labels and (name == "λ" or "λ" not in labels)
+        assert any(f.startswith(f"{name} ") for f in status)
+        assert any(t.startswith((f"{name} ", f"{name}:")) for t in sheet)
+        if name != "λ":
+            assert not any(f.startswith("λ") for f in status) and not any("λ" in t for t in sheet)
     finally:
         close()

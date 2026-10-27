@@ -34,6 +34,7 @@ _WAVE = re.compile(r"(?<![0-9])([3-9][0-9]{3}|1[0-9]{4})(?![0-9])")      # 3000-
 GENERIC = {"intensity", "data", "image", "value", "values", "counts", "main", "primary", "blank", "unknown",
            "hmi observable"}
 FALLBACK = "Quantity"                           # what a cube shows when nothing names it
+PLANE = "plane"                                 # an axis not known to be lambda that nothing names, as counted
 # an axis's own name (CNAMEn, CTYPEn) that says nothing explorer's own names do not: by its first word
 GENERIC_AXIS = {"", "wave", "awav", "freq", "wavelength", "stokes", "utc", "time", "tai", "hpln", "hplt", "spatial",
                 "frame", "index", "pixel", "axis"}
@@ -181,12 +182,15 @@ class SliceNames(NamedTuple):
     axis's label in index units ("λ index"; in Ångström the panels say "Δλ [Å]" themselves); spectral: the axis is
     known to be lambda; mapped: the cube has no axis but t, or one plane along the other (a map, a single tuning), so
     a slice along that axis is one row and says nothing: lambda-t is a curve against t, the slit's spectral slice is
-    left out; value: what a curve's values are, with their unit when the header gives it ("Blos [G]")."""
+    left out; value: what a curve's values are, with their unit when the header gives it ("Blos [G]"); axis: that
+    axis's own name where a slider or the status line counts along it: "λ" when known to be lambda, else the
+    header's name for it (axis_word: "z"), an inversion's "parameter", else "plane"."""
     panel: str
     label: str
     spectral: bool
     mapped: bool
     value: str = "value"
+    axis: str = "λ"
 
 
 KNOWN_LAMBDA = ("header", "--axes", "SOLARNET order")   # Roles.how that name lambda; else it is a guess
@@ -222,9 +226,11 @@ def slice_names(roles, axes, path) -> SliceNames:
     if spectral and not mapped:
         return SliceNames("λ–t", "λ index", True, False)
     q = (line_of(path, axes) if spectral else None) or quantity(path, axes)
-    x = None if mapped else axis_word(roles, axes) or ("parameter" if is_inversion(path) else None)
+    word = axis_word(roles, axes) or ("parameter" if is_inversion(path) else None)
+    x = None if mapped else word
     panel, label = (f"{q} ({x}–t)", f"{x} index") if x else (f"{q}–t", f"{q} index")
-    return SliceNames(panel, label, spectral, mapped, value_label(path, axes))
+    return SliceNames(panel, label, spectral, mapped, value_label(path, axes),
+                      "λ" if spectral else word or PLANE)
 
 
 def plane(s: int, planes: str = "stokes") -> str:

@@ -169,12 +169,14 @@ class NavBar:
         r = shell.dataset.roles
         self.n = {"t": r.nt, "l": r.nl, "s": r.ns}
         self.planes = r.planes                          # Stokes, or an inversion's parameters
+        # the name of the axis other than t, its slider's: "λ", or what data.names calls an axis not known to be it
+        self.l_name = shell.main.slices.axis if shell.main.slices is not None else "λ"
         tb = self.tb = shell.addToolBar("Navigation")
         tb.setObjectName("nav")
         self.sliders: dict[str, JumpSlider] = {}
         self.labels: dict[str, QtWidgets.QLabel] = {}
         st = s.state
-        for name, axis in (("t", "t"), ("λ", "l")):
+        for name, axis in (("t", "t"), (self.l_name, "l")):
             if not s.present[axis] or self.n[axis] < 2:
                 continue
             tb.addWidget(QtWidgets.QLabel(f" {name} "))
