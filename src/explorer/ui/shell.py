@@ -48,7 +48,7 @@ from .loop import QtLoop
 from .mask import MaskOutlines
 from .overlays import ColourKey, gamma_text
 from .padlock import PanelLock
-from .scalekey import ScaleCard, scale_menu
+from .scalekey import ScaleCard, ScaleKey, scale_menu
 from .slit import SlitHint, SlitTool
 from .slitpanel import SlitPanel
 from .status import diagnostics_text, pixel_text
@@ -145,6 +145,7 @@ class _Sink(CubeSink):
     def grid_image(self, s, idx, img, levels):
         if self.shell.grid is not None:
             self.shell.grid.set_image(s, img, levels, gamma=self.shell.session.gamma(0, s))
+            self.shell._grid_key(s)
 
     def slit_path(self, pix):
         reads = self.shell.scheduler.slit               # the main cube's scheduler has them
@@ -366,7 +367,8 @@ class Shell(QtWidgets.QMainWindow):
         self.colour_key: ColourKey | None = self.main.key     # in every look (ui.scalekey), hidden in the 2x2 view
         self.scale_card: ScaleCard | None = None
         self.grid: StokesGrid | None = None             # the 2x2 view (ui.stokesgrid), made the first time it is asked
-        self.grid_locks: list[PanelLock] = []           # its panels' padlocks, one per Stokes (set_grid)
+        self.grid_locks: list[PanelLock] = []           # its panels' padlocks and colour keys, one per Stokes
+        self.grid_keys: list[ScaleKey] = []             # (set_grid)
         self.pointer = 0                                # the cube whose image the mouse last moved over (CubeView)
         self.glass: glass.GlassChrome | None = None     # the glass look's chrome (ui.glass), while worn
         # (zoom state, geometry): the size glass put under a zoom it gave back on leaving (GlassChrome.remove)
@@ -459,6 +461,7 @@ class Shell(QtWidgets.QMainWindow):
         self.slit_tool.set_colour(acc if L.has("marks") or L.has("glass") else CURSOR_PEN.color())
         for c in self.cubes:                            # a hot key in the look's accent (ui.scalekey.accent)
             c.key.update()
+        self._place_grid_keys()
         self._place_slit_hint()
         if self.mask_outlines is not None:
             self.mask_outlines.set_colour(acc)
@@ -562,6 +565,9 @@ class Shell(QtWidgets.QMainWindow):
                     if self.mask_outlines is not None:
                         self.mask_outlines.attach(v)
                 self.grid_locks = [self._grid_lock(s, v) for s, v in enumerate(self.grid.views)]
+                self.grid_keys = [ScaleKey(self, v, 0, self.main.key.unit, stokes=s)
+                                  for s, v in enumerate(self.grid.views)]
+                self._place_grid_keys()
             self.grid.setGeometry(self.view.widget.rect())
             self.grid.set_region(self.view.vb.viewRect())
             st = self.session.state
@@ -602,6 +608,34 @@ class Shell(QtWidgets.QMainWindow):
         for s in range(len(self.grid.views)):
             cols = self.maps_for(s)
             self.grid.set_lut(s, cols.image_lut(s) if cols is not None else None)
+            self._grid_key(s)
+
+    def _grid_key(self, s: int) -> None:
+        """Panel s's colour key (ui.scalekey): named as its label is, with the panel's levels and its map."""
+        if s >= len(self.grid_keys) or self.grid is None:
+            return
+        key, v = self.grid_keys[s], self.grid.views[s]
+        if v._full is None:
+            return
+        cols = self.maps_for(s)
+        key.set(f"Stokes {STOKES[s]}" if self.session.ns == len(STOKES) else "", v._lim,
+                cols.lut(s) if cols is not None else v.base_lut, cols.maps[s] if cols is not None else None,
+                gamma=self.session.gamma(0, s))
+        key.update()                                    # hot, it draws the rule and gamma too
+
+    def _place_grid_keys(self) -> None:
+        """The panels' keys at the bottom left, as the image's; in glass at the top left under each panel's label,
+        clear of glass's bar (the image's own key goes to the top left there, but the label keeps its menu)."""
+        for key in self.grid_keys:
+            key.under_label = self.glass is not None
+            key._place(key.parentWidget())
+
+    def key_for(self, k: int, s: int) -> ScaleKey:
+        """The key that shows cube k's image at Stokes s: a panel's of the 2x2 view for the main cube while that view
+        is on, else the cube's."""
+        if k == 0 and self.grid is not None and self.grid.isVisible() and s < len(self.grid_keys):
+            return self.grid_keys[s]
+        return self.cubes[k].key
 
     def _grid_lock(self, s: int, v) -> PanelLock:
         """The padlock of panel s (ImageView v), at its top right as the image's: it fixes or releases Stokes s by
@@ -629,7 +663,7 @@ class Shell(QtWidgets.QMainWindow):
         if ev.button() == QtCore.Qt.MouseButton.RightButton:
             label = self.grid.views[s].stokes
             if label.isVisible() and label.sceneBoundingRect().contains(ev.scenePos()):
-                # its scale's menu (ui.scalekey): the 2x2 view's panels have no key of their own
+                # its scale's menu (ui.scalekey), which a right click on a key does not open (KEY_MENU)
                 scale_menu(self, 0, s).popup(QtGui.QCursor.pos())
                 return
             self.session.lock(False)
@@ -705,7 +739,7 @@ class Shell(QtWidgets.QMainWindow):
                                     f"Stokes {STOKES[s]}" if ns == len(STOKES) else "") if t)
         # the colour key at rest says gamma only for a moment after a key, in every look; its hot view always does
         self.statusBar().showMessage(f"{gamma_text(g)}{': ' + what if what else ''}  (G \u21e7G {mod_key()}G)", 3000)
-        self.cubes[k].key.flash(gamma_text(g), GAMMA_NOTE_MS)
+        self.key_for(k, s).flash(gamma_text(g), GAMMA_NOTE_MS)
 
     # ---------------------------------------------------------------- the scale's menu and card (ui.scalekey)
     def scale_levels(self, k: int, s: int) -> tuple[float, float]:
@@ -718,14 +752,15 @@ class Shell(QtWidgets.QMainWindow):
         return float(v._lim[0]), float(v._lim[1])
 
     def open_scale_card(self, k: int, s: int) -> ScaleCard:
-        """The card with the numbers of cube k at Stokes s, by its key (or, for the 2x2 view, at the image's top
-        left); one at a time."""
+        """The card with the numbers of cube k at Stokes s, by its key (a panel's, in the 2x2 view; at the image's top
+        left when it has none shown); one at a time."""
         if self.scale_card is not None:
             self.scale_card.close()
         card = self.scale_card = ScaleCard(self, k, s)
-        key = self.cubes[k].key
-        w = key.parentWidget() if key.isVisible() else self.cubes[k].view.widget
-        at = w.mapTo(self, key.geometry().topLeft() if key.isVisible() else QtCore.QPoint(12, 12))
+        key = self.key_for(k, s)
+        w = key.parentWidget() if key.isVisible() else None
+        at = w.mapTo(self, key.geometry().topLeft()) if w is not None else \
+            self.cubes[k].view.widget.mapTo(self, QtCore.QPoint(12, 12))
         y = at.y() - card.height() - 8 if at.y() > self.height() // 2 else at.y() + key.height() + 8
         card.move(max(0, min(at.x(), self.width() - card.width())), max(0, min(y, self.height() - card.height())))
         card.show()
@@ -791,7 +826,7 @@ class Shell(QtWidgets.QMainWindow):
             if c.slit_panel is not None and c.slit_s == s:
                 c.slit_panel.set_lut(lut)
         if self.colour_key is not None:
-            self.colour_key.flash(name)
+            self.key_for(0, s).flash(name)
 
     # ---------------------------------------------------------------- panels
     def _panel_shown(self, panel: str, on: bool) -> None:
@@ -1775,6 +1810,9 @@ class Shell(QtWidgets.QMainWindow):
             self.grid.set_locked(st.locked)
         if "scale" in changed:
             self._grid_locks_follow()
+        if changed & {"scale", "gamma"}:                # a hot panel's key draws the rule and gamma
+            for key in self.grid_keys:
+                key.update()
         if changed & {"t", "l", "own"}:
             self._slit_markers()
         if "gamma" in changed:                          # each cube's image and lambda-t: CubeView.follow

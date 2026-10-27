@@ -1,7 +1,7 @@
-"""What is drawn over an image (ui.overlays.OverImage), offscreen: every overlay registered with its image; the pointer
-over one is off the image, so the crosshair stays where the pointer left the image; the hot colour key shrinking as
-the pointer leaves it onto the image leaves no pixel of the old crosshair on screen; the hot key in the look's
-accent, through a look or theme switch."""
+"""What is drawn over an image (ui.overlays.OverImage), offscreen: every overlay registered with its image, the 2x2
+view's panels' too; the pointer over one is off the image, so the crosshair stays where the pointer left the image;
+the hot colour key shrinking as the pointer leaves it onto the image leaves no pixel of the old crosshair on screen;
+the hot key in the look's accent, through a look or theme switch."""
 import time
 
 import numpy as np
@@ -81,6 +81,12 @@ def test_every_overlay_is_registered_with_its_image(qapp, cubes):
         vp = w.view.widget.viewport()
         assert w.view.over.covers(vp.mapFrom(w.view.widget, key.geometry().center()))
         assert not w.view.over.covers(vp.rect().center())
+        w.set_grid(True)                                # each panel of the 2x2 view: its key, padlock and label
+        for s, v in enumerate(w.grid.views):
+            over = v.over.items
+            assert w.grid_keys[s] in over and w.grid_locks[s] in over and v.stokes in over
+            vp = v.widget.viewport()
+            assert v.over.covers(vp.mapFrom(v.widget, w.grid_keys[s].geometry().center()))
     finally:
         w.close()
         for d in reversed(dss):

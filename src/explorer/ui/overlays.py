@@ -124,7 +124,8 @@ class ColourKey(QtWidgets.QWidget):
 
     def show_with(self, colour: bool, grid: bool) -> None:
         """Shown with the look's colour part, hidden while the 2x2 view is on: there I Q U V have each their own map
-        and levels, and one Stokes' key would describe none of the four. Kept up to date while hidden (set), so it
+        and levels, and each panel its own key (ui.scalekey); one Stokes' key over the four would describe none of
+        them. Kept up to date while hidden (set), so it
         comes back for the Stokes in the image. The prototype's grid covered it the same way: the key is made on the
         image's widget first (app/look.py:327), the grid over it later (app/look_glass.py:928) and raised above it
         (935), the key seen again when the grid hides (945)."""

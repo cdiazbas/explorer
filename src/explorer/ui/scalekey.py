@@ -1,16 +1,17 @@
 """The image's levels and gamma set on the image itself (ROADMAP E5, the scale's interface): the colour key of every
 image made interactive, and a card with the numbers.
 
-- ScaleKey: the colour key (ui.overlays.ColourKey) of one cube's image, the same at rest. Under the pointer it grows
-  into the histogram of the frame (its [::8, ::8] subsample, the one the automatic levels read: data.stats.limits)
-  with the transfer curve over it, so gamma shows, and a handle at each limit, both in the look's accent (accent).
+- ScaleKey: the colour key (ui.overlays.ColourKey) of one cube's image, or of one panel of the 2x2 view (for that
+  panel's Stokes, within that panel), the same at rest. Under the pointer it grows into the histogram of the frame
+  (its [::8, ::8] subsample, the one the automatic levels read: data.stats.limits) with the transfer curve over it,
+  so gamma shows, and a handle at each limit, both in the look's accent (accent).
   An overlay of its image (ui.overlays.OverImage): the pointer over it is off the image. Dragging a handle fixes that
   limit (Session.set_scale "fixed"; Q U V move both ends, symmetric about 0); the wheel steps gamma as G and Shift+G
   do; a double click gives the image its automatic levels and gamma 1 again. It takes the image's width when narrower
   than its own. A right click on it opens nothing for now (KEY_MENU): it reaches the image below, which releases the
   cursor.
-- scale_menu: on a right click over the Stokes label of a panel of the 2x2 view (and over a key, with KEY_MENU): the
-  limit rule, gamma presets, "Scale...", and a reset.
+- scale_menu: on a right click over the Stokes label of a panel of the 2x2 view (and over a key, with KEY_MENU, a
+  panel's too): the limit rule, gamma presets, "Scale...", and a reset.
 - ScaleCard: from "Scale...": min and max typed, CRISPEX's logarithmic gamma slider (0.1-10, 10^(v/500 - 1),
   crispex.pro:24436-24441), the limit rule and a reset. A child of the window (one X window less through the bridge);
   Esc or a click outside closes it.
@@ -103,15 +104,19 @@ def axis_range(a: np.ndarray, lo: float, hi: float, sym: bool) -> tuple[float, f
 
 
 class ScaleKey(ColourKey):
-    """The colour key of one cube's image (any cube, any look), interactive: see the module."""
+    """The colour key of one image (any cube, any look, a panel of the 2x2 view), interactive: see the module."""
     H_HOT = 112
     W_HOT = 320                                         # wider while hot, as the image allows
     GRAB = 8                                            # px either side of a handle that grab it
     MIN_W = 120
+    LABEL_GAP = 4                                       # px under the Stokes label, when placed there (under_label)
+    under_label = False                                 # at the top left under the label, not at the bottom left
 
-    def __init__(self, cube, unit: str = ""):
-        super().__init__(cube.view.widget, unit)
-        self.cube, self.shell = cube, cube.shell
+    def __init__(self, shell, view, k: int, unit: str = "", stokes: int | None = None):
+        """The key of view (an ImageView), cube k's image: at cube k's Stokes now, or at Stokes stokes always (a
+        panel of the 2x2 view)."""
+        super().__init__(view.widget, unit)
+        self.shell, self.view, self.k, self.stokes = shell, view, k, stokes
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.PreventContextMenu)   # its own, on the right press
         self.setMouseTracking(True)
@@ -121,19 +126,19 @@ class ScaleKey(ColourKey):
         self._axis: tuple[float, float] | None = None   # held while dragging: the handle stays under the pointer
         self._hist: tuple | None = None                 # (frame id, axis, symmetric, counts)
         self.name = ""                                  # what it names (set), without the gamma the rest key adds
-        self._fit(cube.view.widget)
-        cube.view.over.add(self)                        # over the image (ui.overlays)
+        self._fit(view.widget)
+        view.over.add(self)                             # over the image (ui.overlays)
 
     # ---------------------------------------------------------------- what it describes
     def target(self) -> tuple[int, int]:
         """(cube, Stokes) of its image now."""
-        return self.cube.k, self.shell.session.member_state(self.cube.k).s
+        return self.k, self.stokes if self.stokes is not None else self.shell.session.member_state(self.k).s
 
     def frame(self):
-        return self.cube.view._full
+        return self.view._full
 
     def levels(self) -> tuple[float, float]:
-        lo, hi = self.cube.view._lim
+        lo, hi = self.view._lim
         return float(lo), float(hi)
 
     # ---------------------------------------------------------------- size and place
@@ -145,6 +150,14 @@ class ScaleKey(ColourKey):
         if e.type() == QtCore.QEvent.Type.Resize:
             self._fit(obj)
         return super().eventFilter(obj, e)
+
+    def _place(self, view) -> None:
+        """At the bottom left (ColourKey), or under_label at the top left below its image's Stokes label: a panel of
+        the 2x2 view in glass, whose bar runs along the bottom and whose label keeps its menu."""
+        if self.under_label:
+            self.move(12, self.view.below_stokes() + self.LABEL_GAP)
+        else:
+            super()._place(view)
 
     def _fit(self, view) -> None:
         """Its own width, or the image's less the margins when narrower (a cube's window may be 270 px wide)."""

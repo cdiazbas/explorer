@@ -1,8 +1,9 @@
 """The colour key and the 2x2 view (ROADMAP E5.30), offscreen, in the modern and the glass look: the key describes
-one Stokes' map and levels, and the four panels have each their own, so no key is shown while the 2x2 view is on,
-whichever way it came (key 5, All in the Stokes control) and whatever happens in it (a click on a panel, C, M, T);
-out of it (keys 1-4, a Stokes in the control, key 5 again) the key is back for the Stokes in the image, with its map
-and its levels. C in the 2x2 view recolours the panel of the session's Stokes."""
+one Stokes' map and levels, and the four panels have each their own (and their own key: test_grid_scale), so the
+image's key is not shown while the 2x2 view is on, whichever way it came (key 5, All in the Stokes control) and
+whatever happens in it (a click on a panel, C, M, T); out of it (keys 1-4, a Stokes in the control, key 5 again) the
+key is back for the Stokes in the image, with its map and its levels. C in the 2x2 view recolours the panel of the
+session's Stokes."""
 import contextlib
 import time
 
