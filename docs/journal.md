@@ -5557,3 +5557,5 @@ se guarda al cerrar y se aplica al arrancar con cubos enlazados.
 segundo arranque seguía con la opción marcada) y pasan después. Con `test_linked_window` y `test_slit_layout`: 67
 pasan en el Mac. Negativo de por medio: la prueba de arranque dejaba la aplicación con su tema y una prueba posterior
 (`test_c_in_classic_recolours…`) fallaba; ahora restaura el estilo y la paleta, como la prueba del tema.
+- Suites en bellatrix (`scripts/suites.sh`, copia sin `.git`, carga 0.3 → 2.2): `tests/unit` + `tests/golden` 1115
+  pasan, 16 saltadas (22 min 45 s); `tests/xvfb` 43 pasan, 2 saltadas (4 min 43 s).
