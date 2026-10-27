@@ -306,6 +306,44 @@ def test_in_a_narrow_panel_the_key_s_title_leaves_its_unit_out_not_cuts_it(qapp,
         assert "[" in t and fm.horizontalAdvance(t) <= room
 
 
+def test_in_a_narrow_panel_the_hot_key_s_rule_is_short_and_its_title_whole(qapp, cube, tmp_path):
+    """Hot in a narrow panel, "Stokes Q   ×10⁻¹¹   auto |x| 99 %" did not fit and was cut ("… 9…"): the rule takes its
+    short form there, "99 %" (the user, 2026-10-27), and the title is whole. Where the full form fits (a wide panel, an
+    image's key) it stays."""
+    from PySide6 import QtGui
+
+    from explorer.ui.scalekey import RULE_SHORT, RULE_SHORT_SYM
+
+    other = synth.write_dataset(tmp_path, "other", shape=(SHAPE[0], SHAPE[1], 7, SHAPE[3], SHAPE[4]), seed=4,
+                                icube=False, sp=False)["im"]
+
+    def hot_title(key):
+        enter(key)
+        qapp.processEvents()
+        f = QtGui.QFont(key.font())
+        f.setPixelSize(key.TEXT_PX)
+        fm, room = QtGui.QFontMetrics(f), key.width() / key.zoom - 24
+        t = key.hot_title(fm, room)
+        leave(key)
+        qapp.processEvents()
+        return t, fm.horizontalAdvance(t), room
+
+    with made(qapp, cube, "classic", linked=(other,)) as w:
+        t, need, room = hot_title(key_of(w, 1))
+        print("narrow hot:", repr(t), need, "of", room)
+        assert t == "Stokes Q   ×10⁻¹¹   99 %" and need <= room
+        t, need, room = hot_title(key_of(w, 0))         # I: its short rule too
+        assert t.endswith("   1–99 %") and not t.endswith("auto 1–99 %") and need <= room, (t, need, room)
+        w.set_grid(False)
+        qapp.processEvents()
+        t, need, room = hot_title(w.main.key)           # the image's key: the full form
+        assert t.endswith(RULE_SHORT["p1"]) and "[" in t, t
+    with made(qapp, cube, "classic") as w:
+        t, need, room = hot_title(key_of(w, 1))         # a wide panel: the full form, its unit
+        print("wide hot:", repr(t), need, "of", room)
+        assert t.endswith(RULE_SHORT_SYM["p1"]) and "[" in t and need <= room, t
+
+
 def test_dragging_a_panel_s_handle_fixes_that_stokes_and_closes_its_padlock(grid):
     from PySide6 import QtCore
     from PySide6.QtTest import QTest

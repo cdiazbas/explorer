@@ -36,6 +36,9 @@ RULE_SHORT = {"p1": "auto 1–99 %", "p05": "auto 0.5–99.5 %", "minmax": "min�
 RULE_TEXT_SYM = {"p1": "Automatic, 99 % of |value| per frame", "p05": "99.5 % of |value| per frame",
                  "minmax": "Max |value| per frame", "fixed": "Frozen to this frame"}
 RULE_SHORT_SYM = {"p1": "auto |x| 99 %", "p05": "auto |x| 99.5 %", "minmax": "max |x|", "fixed": "fixed"}
+# shorter still, where a panel's hot title has no room for the above (fit_title): the numbers alone
+RULE_TINY = {"p1": "1–99 %", "p05": "0.5–99.5 %", "minmax": "min–max", "fixed": "fixed"}
+RULE_TINY_SYM = {"p1": "99 %", "p05": "99.5 %", "minmax": "max", "fixed": "fixed"}
 # the hot key's last line, the longest that fits its width (a cube's window may be 230 px wide); none: left out
 HINTS = ("drag ▲ · wheel γ · double click: automatic, γ = 1", "drag ▲ · wheel γ · double click: reset",
          "double click: reset")
@@ -307,6 +310,16 @@ class ScaleKey(ColourKey):
         return m
 
     # ---------------------------------------------------------------- paint
+    def hot_title(self, fm: QtGui.QFontMetrics, room: float) -> str:
+        """The hot key's top row: title (ColourKey) with the rule after it; with fit_title, the rule's short form
+        (RULE_TINY) where the full one leaves the row wider than room (in fm, its own units)."""
+        k, s = self.target()
+        rule, sym = self.shell.session.scale(k, s)[0], self.symmetric()
+        text = self.title(fm, room, (RULE_SHORT_SYM if sym else RULE_SHORT)[rule])
+        if self.fit_title and fm.horizontalAdvance(text) > room:
+            text = self.title(fm, room, (RULE_TINY_SYM if sym else RULE_TINY)[rule])
+        return text
+
     def paintEvent(self, e):
         if not self.hot:
             super().paintEvent(e)
@@ -317,7 +330,6 @@ class ScaleKey(ColourKey):
         lo, hi = self.levels()
         sym = self.symmetric()
         g = self.shell.session.gamma(k, s)
-        rule = self.shell.session.scale(k, s)[0]
         lt = style.is_light()
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
@@ -342,7 +354,7 @@ class ScaleKey(ColourKey):
         gtext = gamma_text(g) if g != 1.0 else ""
         gw = QtGui.QFontMetrics(gamma_font(f)).horizontalAdvance(GAMMA) + fm.horizontalAdvance(gtext[1:]) + 8 \
             if gtext else 0
-        title = self.title(fm, W - 24 - gw, (RULE_SHORT_SYM if sym else RULE_SHORT)[rule])
+        title = self.hot_title(fm, W - 24 - gw)
         # cut at its end (…) short of gamma: on a narrow key the two ran into each other
         title = fm.elidedText(title, QtCore.Qt.TextElideMode.ElideRight, int(W - 24 - gw))
         p.drawText(QtCore.QRectF(12, 3, W - 24, 16), AL.AlignLeft | AL.AlignVCenter, title)
