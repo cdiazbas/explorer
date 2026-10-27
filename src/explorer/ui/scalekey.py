@@ -24,7 +24,8 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.levels import RULE_DEFAULT, gamma_step
-from ..data.axes import STOKES
+from ..data.axes import signed
+from ..data.names import plane_text
 from . import glass, style
 from .imageview import CURSOR_PEN
 from .overlays import GAMMA, ColourKey, _num, _sci, draw_text, gamma_font, gamma_number, gamma_text
@@ -203,7 +204,8 @@ class ScaleKey(ColourKey):
         return axis_range(sample(self.frame()), lo, hi, self.symmetric())
 
     def symmetric(self) -> bool:
-        return self.target()[1] > 0
+        k, s = self.target()
+        return signed(self.shell.session.members[k].dataset.roles, s)
 
     def x_of(self, v: float) -> float:
         a0, a1 = self.axis()
@@ -424,7 +426,7 @@ def scale_menu(shell, k: int, s: int, parent: QtWidgets.QWidget | None = None) -
     m.addAction("Limits").setEnabled(False)
     rule = sess.scale(k, s)[0]
     rules = QtGui.QActionGroup(m)
-    for r, text in rule_texts(s > 0).items():
+    for r, text in rule_texts(signed(shell.cubes[k].dataset.roles, s)).items():
         a = m.addAction(text)
         a.setCheckable(True)
         a.setChecked(r == rule)
@@ -455,8 +457,8 @@ def scale_menu(shell, k: int, s: int, parent: QtWidgets.QWidget | None = None) -
 
 def scale_title(shell, k: int, s: int) -> str:
     c = shell.cubes[k]
-    return " · ".join(t for t in (c.name if shell.linked or c.ns != len(STOKES) else "",
-                                       f"Stokes {STOKES[s]}" if c.ns == len(STOKES) else "") if t) or "Image"
+    what = plane_text(s, c.ns, c.planes)
+    return " · ".join(t for t in (c.name if shell.linked or not what else "", what) if t) or "Image"
 
 
 def set_rule(shell, k: int, s: int, rule: str) -> None:
@@ -518,7 +520,7 @@ class ScaleCard(QtWidgets.QFrame):
         row = QtWidgets.QHBoxLayout()
         row.addWidget(QtWidgets.QLabel("limits"))
         self.rule = QtWidgets.QComboBox()
-        for r, text in rule_texts(s > 0).items():
+        for r, text in rule_texts(signed(shell.cubes[k].dataset.roles, s)).items():
             self.rule.addItem(text, r)
         self.rule.activated.connect(lambda i: set_rule(shell, k, s, self.rule.itemData(i)))
         row.addWidget(self.rule, 1)
@@ -560,7 +562,7 @@ class ScaleCard(QtWidgets.QFrame):
             lo, hi = float(self.lo.text()), float(self.hi.text())
         except ValueError:
             return
-        if self.s > 0:                                  # Q U V: symmetric, the field typed gives m
+        if signed(self.shell.cubes[self.k].dataset.roles, self.s):     # Q U V: symmetric, the typed field gives m
             m = abs(float(e.text()))
             lo, hi = -m, m
         if hi > lo and (lo, hi) != tuple(self.shell.scale_levels(self.k, self.s)):

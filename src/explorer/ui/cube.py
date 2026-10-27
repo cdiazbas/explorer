@@ -18,8 +18,8 @@ from PySide6 import QtCore
 
 from .._name import APP_NAME
 from ..core.scheduler import Scheduler
-from ..data.axes import STOKES, unit_text
-from ..data.names import slice_names, value_name
+from ..data.axes import unit_text
+from ..data.names import plane_text, slice_names, value_name
 from . import glass
 from .cards import CARD, CARD_LIGHT
 from .gestures import Gestures
@@ -123,7 +123,7 @@ class CubeView:
         # lambda-t and slit are, and its values by what they are when it has no Stokes
         other = self.slices if self.slices is not None and not self.slices.spectral else None
         self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, ds.axes, light=light,
-                                    label=other.label if other else None,
+                                    label=other.label if other else None, planes=r.planes,
                                     value=value_name(getattr(ds, "path", ""), ds.axes) if other else None) \
             if r.l is not None else None
         # lambda-t needs t; with one plane along the other axis it is one cell wide, a curve against t
@@ -140,7 +140,7 @@ class CubeView:
         self.last_s = 0                                 # the Stokes of the lambda-t shown (its colour map)
         self.slit_panel: SlitPanel | None = None        # its slit tab's panel (ui.slitpanel), made by the shell
         self.slit_s = 0                                 # the Stokes of the slices it shows
-        self.ns = r.ns
+        self.ns, self.planes = r.ns, r.planes           # Stokes, or an inversion's parameters (data.axes.Roles)
         # its Stokes named in the image's top left by something else: the main cube's colour key, which glass puts there
         self.named = False
         self.scheduler: Scheduler                       # made in start(); the padlocks and picks ask it
@@ -212,9 +212,9 @@ class CubeView:
     def show_stokes(self, s: int) -> None:
         """The label of Stokes s ("Stokes Q") on its image and its lambda-t (ui.stokeslabel), when it has the four
         Stokes; on the image, not while something else names it there (named)."""
-        self.view.set_stokes(None if self.named else s, self.ns)
+        self.view.set_stokes(None if self.named else s, self.ns, self.planes)
         if self.lambda_t is not None:
-            self.lambda_t.set_stokes(s, self.ns)
+            self.lambda_t.set_stokes(s, self.ns, self.planes)
 
     # ---------------------------------------------------------------- the look and the theme
     def set_look(self, look, acc, light: bool) -> None:
@@ -257,7 +257,7 @@ class CubeView:
             lt = self.shell.maps_for(self.last_s)
             self.lambda_t.set_lut(lt.lut(self.last_s) if lt is not None else None)
         if self.view._full is not None:                 # its key: its name, its Stokes, its levels and gamma
-            name = "   ".join(t for t in (self.name, f"Stokes {STOKES[s]}" if self.ns == len(STOKES) else "") if t)
+            name = "   ".join(t for t in (self.name, plane_text(s, self.ns, self.planes)) if t)
             self.key.set(name, self.view._lim, cols.lut(s) if cols is not None else self.view.base_lut,
                          cols.maps[s] if cols is not None else None, gamma=self.session.gamma(self.k, s))
 

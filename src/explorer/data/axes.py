@@ -57,7 +57,9 @@ class Roles(NamedTuple):
     """Positions of t, Stokes and lambda among the leading axes (None if absent), their sizes (1 if absent), and how
     they were decided: "header" (CTYPE), "SOLARNET order" (three unnamed axes: t, s, lambda), "default (t, lambda)"
     (two unnamed axes), "unknown" (one unnamed axis: whatever it is, it is stepped and plotted as a profile in
-    indices, and must not be labelled lambda or t), "--axes" (given by the user)."""
+    indices, and must not be labelled lambda or t), "--axes" (given by the user), "inversion" (an inversion's file:
+    its parameters on s, by_parameter). planes: what the s axis holds, "stokes" or "parameter" (an inversion's), each
+    a plane of its own with its own levels, picked as a Stokes is."""
     t: int | None
     s: int | None
     l: int | None  # noqa: E741
@@ -65,6 +67,37 @@ class Roles(NamedTuple):
     ns: int
     nl: int
     how: str = "header"
+    planes: str = "stokes"
+
+
+INVERSION = {"meinv", "inversion", "inv"}       # a word of an inversion's file name: its planes are parameters
+
+
+def is_inversion(path) -> bool:
+    """Whether the cube at path is an inversion's output, by a word of its file name (meinv_6173, inversion_6173_im,
+    WFA_inversion_8542): its planes are parameters, never lambda nor Stokes, whatever its layout calls them."""
+    return any(w in INVERSION for w in re.split(r"[^a-z]+", os.path.basename(str(path)).lower()))
+
+
+def by_parameter(r: Roles) -> Roles:
+    """An inversion's roles: its parameters on s (planes "parameter"), each picked and scaled as a Stokes is, never
+    side by side along a lambda. An s axis of several planes holds them; else the axis taken for lambda does (the meinv
+    LP: (106, 1, 3) by its per-pixel file's sizes, its 3 planes called WAVE), and the cube has no lambda."""
+    if r.s is not None and r.ns > 1:
+        return r._replace(how="inversion", planes="parameter")
+    if r.l is not None and r.nl > 1:
+        return Roles(r.t, r.l, None, r.nt, r.nl, 1, "inversion", "parameter")
+    return r
+
+
+def stokes(r: Roles) -> bool:
+    """Whether the cube's s axis holds Stokes parameters (I first, Q U V signed about 0)."""
+    return r.s is not None and r.planes == "stokes"
+
+
+def signed(r: Roles, s: int) -> bool:
+    """Whether plane s along the cube's s axis is Q, U or V: signed, its levels symmetric about 0."""
+    return s > 0 and r.planes == "stokes"
 
 
 def parse_axes(spec: str, n_lead: int) -> tuple:
@@ -213,8 +246,11 @@ def check(ax: Axes, r: Roles, names=()) -> None:
 def read(path, layout, axes: str | None = None) -> tuple[Roles, Axes]:
     """The roles of a cube's leading axes (roles, with axes as --axes) and its physical axes (from_fits, from_lp),
     checked against each other (check): what Dataset opens a cube with and data.link plans it with, so the plan
-    never accepts a cube that its opening refuses. layout: the cube's (formats.open_layout)."""
+    never accepts a cube that its opening refuses. layout: the cube's (formats.open_layout). An inversion's file
+    has its parameters on s (by_parameter), unless --axes says otherwise."""
     r = roles(layout.axes, layout.shape, axes)
+    if not axes and is_inversion(path):
+        r = by_parameter(r)
     ax = (from_fits(path) if layout.kind == "fits" else from_series(layout) if layout.kind == "series"
           else from_lp(path, r))
     check(ax, r, layout.axes)

@@ -175,10 +175,10 @@ class ImageView:
         self.hl.setVisible(not on)
         self.vl.setVisible(not on)
 
-    def set_stokes(self, s: int | None, ns: int) -> None:
-        """The label of Stokes s of ns ("Stokes Q") at the view's top left, when ns is 4 (ui.stokeslabel); s None:
-        nothing."""
-        self.stokes.show_stokes(s, ns)
+    def set_stokes(self, s: int | None, ns: int, planes: str = "stokes") -> None:
+        """The label of Stokes s of ns ("Stokes Q") at the view's top left, when ns is 4, or of a parameter
+        (ui.stokeslabel); s None: nothing."""
+        self.stokes.show_stokes(s, ns, planes)
 
     def below_stokes(self) -> int:
         """px from the widget's top to the bottom of the Stokes label's box (its text's margin included), where what

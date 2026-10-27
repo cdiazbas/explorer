@@ -81,8 +81,9 @@ class ColormapRegistry:
     """The map each Stokes wears: I the first sequential, Q U V the first diverging (grey without the look's colour
     part: set_start); C steps the shown one's, and a Stokes stepped keeps its map in every look."""
 
-    def __init__(self, ns: int, light: bool = False, colour: bool = True):
-        self.light = light
+    def __init__(self, ns: int, light: bool = False, colour: bool = True, signed: bool = True):
+        """signed: the planes after the first are Q U V (else an inversion's parameters, each as I is)."""
+        self.light, self.signed = light, signed
         self.chosen: set = set()                        # the Stokes stepped with C
         self.maps = [SEQUENTIAL[0]] * max(1, ns)
         self.set_start(colour)
@@ -90,7 +91,7 @@ class ColormapRegistry:
     def set_start(self, colour: bool) -> None:
         """Q U V not stepped with C at the look's start: the first diverging with the colour part, else grey."""
         first = _divergings(self.light)[0] if colour else "gray"
-        self.maps = [m if s == 0 or s in self.chosen else first for s, m in enumerate(self.maps)]
+        self.maps = [m if not self._qu(s) or s in self.chosen else first for s, m in enumerate(self.maps)]
         for m in set(self.maps):
             table(m)                                    # read now, not on the first frame of V
 
@@ -99,14 +100,18 @@ class ColormapRegistry:
         if light == self.light:
             return
         old, new = _divergings(self.light), _divergings(light)
-        self.maps = [m if s == 0 or m in new else new[min(old.index(m), len(new) - 1)] if m in old else new[0]
+        self.maps = [m if not self._qu(s) or m in new else new[min(old.index(m), len(new) - 1)] if m in old
+                     else new[0]
                      for s, m in enumerate(self.maps)]
         self.light = light
         for m in set(self.maps):
             table(m)
 
+    def _qu(self, s: int) -> bool:
+        return s > 0 and self.signed
+
     def names_for(self, s: int) -> tuple:
-        return SEQUENTIAL if s == 0 else _divergings(self.light)
+        return _divergings(self.light) if self._qu(s) else SEQUENTIAL
 
     def lut(self, s: int) -> np.ndarray | None:
         return table(self.maps[s])

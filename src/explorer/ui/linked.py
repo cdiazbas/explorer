@@ -21,6 +21,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from . import docks, glass, style, titlebar
 from .cards import Rounder
 from .cube import CubeView
+from .toolbar import StokesSegments
 
 TITLE_PAD = 1               # px above and below an image's name: thin, it takes little of the image's height
 TITLE_SMALLER = 1.5         # pt below the window's font (4 px and the full font took 28 px of a zoomed image's 844)
@@ -300,6 +301,35 @@ class _Rounded(QtCore.QObject):
         return False
 
 
+class PlanePicker(StokesSegments):
+    """A linked cube's own planes picked over its image's top left, as the toolbar picks the main cube's: its own
+    Stokes, or an inversion's parameters beside a Stokes cube (core.session.Member.link_s off), each its own image,
+    levels and gamma (Session.scale and Session.gamma, per cube and plane). It names the plane shown, so the image's
+    own label does not (CubeView.named)."""
+    MARGIN = 6                                          # px from the image's top left
+
+    def __init__(self, cube: "LinkedCube"):
+        r = cube.dataset.roles
+        super().__init__(r.ns, 0, lambda s: cube.session.set_member_index(cube.k, "s", s), r.planes, keys=False,
+                         parent=cube.view.widget)
+        self.adjustSize()
+        self.move(self.MARGIN, self.MARGIN)
+        cube.view.over.add(self)                        # over the image (ui.overlays)
+        self.show()
+
+    def restyle(self) -> None:
+        """On a dark card with light ink, legible over any image (the toolbar's, in the window's colours, left the
+        planes not picked dark on a dark image)."""
+        from . import style
+
+        self.setStyleSheet(
+            "#stokes_segments { background: rgba(20, 20, 24, 170); border-radius: 7px; }"
+            "QToolButton { border: none; border-radius: 5px; padding: 2px 10px; margin: 2px;"
+            " color: rgb(235, 235, 235); background: transparent; }"
+            "QToolButton:hover:!checked { background: rgba(255, 255, 255, 36); }"
+            f"QToolButton:checked {{ background: {style.selected().name()}; color: white; }}")
+
+
 class LinkedCube(CubeView):
     """A linked cube (member k): a CubeView whose image is a panel of its own, titled with its name, between the main
     image and the spectra; closed (or behind another), nothing is read for it. As a window of its own (the mock the
@@ -327,6 +357,22 @@ class LinkedCube(CubeView):
         self._rounded = _Rounded(self.dock)
         self._rounders = [Rounder(w) for w in [self.view.widget] + [p.widget for p in (self.spectra, self.lambda_t)
                                                                     if p is not None]]
+        # its planes its own (another number, or parameters beside Stokes): picked over its image (PlanePicker)
+        r = self.dataset.roles
+        self.picker: PlanePicker | None = None
+        if r.s is not None and r.ns > 1 and not shell.session.members[k].link_s:
+            self.picker = PlanePicker(self)
+            self.named = True
+
+    def show_stokes(self, s: int) -> None:
+        super().show_stokes(s)
+        if self.picker is not None:
+            self.picker.set(s)
+
+    def set_light(self, light: bool) -> None:
+        super().set_light(light)
+        if self.picker is not None:
+            self.picker.restyle()
 
     def set_docked_margin(self, m: int) -> None:
         """Its margin while docked (glass: none, as the main image's); floating it keeps PANEL_GUTTER."""

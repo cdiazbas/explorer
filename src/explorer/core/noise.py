@@ -15,6 +15,7 @@ Here the same sigma (data.stats.stokes_noise), in % of I_c as Q U V are plotted:
 from collections.abc import Callable
 from concurrent.futures import Future
 
+from ..data.axes import stokes
 from ..data.executors import Generations
 from ..data.masking import STOKES
 from ..data.stats import stokes_noise
@@ -32,7 +33,8 @@ class NoiseReads:
         lambda l of state st; state(): the cube's state now."""
         self.ds, self.loop, self._show, self._track, self._index, self._state = ds, loop, show, track, index, state
         r = ds.roles
-        self._can = r.s is not None and r.ns == STOKES and r.l is not None and not getattr(ds, "images_from_sp", False)
+        self._can = (stokes(r) and r.ns == STOKES and r.l is not None
+                     and not getattr(ds, "images_from_sp", False))
         self.known: dict[int, dict[int, float]] = {}   # t -> sigma
         self.gens = Generations()
         self._closed = False

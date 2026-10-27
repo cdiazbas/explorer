@@ -27,8 +27,10 @@ MAX_BYTES = 32 << 20        # NegativeI: 0.2 % of a 2k frame is ~34 kB of indice
 
 
 def stokes_axis(roles) -> int | None:
-    """The leading axis the rule masks along (Stokes I at its index 0), or None when the cube has not 4 Stokes."""
-    return roles.s if roles.s is not None and roles.ns == STOKES else None
+    """The leading axis the rule masks along (Stokes I at its index 0), or None when the cube has not 4 Stokes (an
+    inversion's parameters are not: data.axes.Roles.planes)."""
+    planes = getattr(roles, "planes", "stokes")
+    return roles.s if roles.s is not None and roles.ns == STOKES and planes == "stokes" else None
 
 
 def mask_along(a: np.ndarray, axis: int) -> np.ndarray:

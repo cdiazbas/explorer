@@ -32,8 +32,7 @@ from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
 from ..data import slitfits
-from ..data.axes import STOKES
-from ..data.names import cube_names, slice_names, value_name
+from ..data.names import cube_names, plane_text, slice_names, value_name
 from ..look import ENV_OFF, LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
 from ..obs import get_logger
@@ -427,7 +426,8 @@ class Shell(QtWidgets.QMainWindow):
         for p in self.slit_panels:
             p.set_marks(acc) if L.has("marks") else p.clear_marks()
         if (L.has("colour") or L.has("cmap")) and self.colours is None:
-            self.colours = ColormapRegistry(self.session.ns, light, colour=L.has("colour"))
+            self.colours = ColormapRegistry(self.session.ns, light, colour=L.has("colour"),
+                                            signed=self.main.planes == "stokes")
         elif self.colours is not None:
             self.colours.set_start(L.has("colour"))
         if self.colour_key is not None:
@@ -612,14 +612,15 @@ class Shell(QtWidgets.QMainWindow):
             self._grid_key(s)
 
     def _grid_key(self, s: int) -> None:
-        """Panel s's colour key (ui.scalekey): named as its label is, with the panel's levels and its map."""
+        """Panel s's colour key (ui.scalekey): named by its plane ("Stokes Q", "Quantity 2": data.names.plane_text),
+        with the panel's levels and its map."""
         if s >= len(self.grid_keys) or self.grid is None:
             return
         key, v = self.grid_keys[s], self.grid.views[s]
         if v._full is None:
             return
         cols = self.maps_for(s)
-        key.set(f"Stokes {STOKES[s]}" if self.session.ns == len(STOKES) else "", v._lim,
+        key.set(plane_text(s, self.session.ns, self.main.planes), v._lim,
                 cols.lut(s) if cols is not None else v.base_lut, cols.maps[s] if cols is not None else None,
                 gamma=self.session.gamma(0, s))
         key.update()                                    # hot, it draws the rule and gamma too
@@ -705,7 +706,7 @@ class Shell(QtWidgets.QMainWindow):
         last = self.last.get("image")
         if self.colour_key is not None and last is not None:
             # named as the image's label is (ui.stokeslabel): "Stokes Q" with the four, nothing for one plane
-            self.colour_key.set(f"Stokes {STOKES[s]}" if self.session.ns == len(STOKES) else "", last[1],
+            self.colour_key.set(plane_text(s, self.session.ns, self.main.planes), last[1],
                                 cols.lut(s) if cols is not None else self.view.base_lut,
                                 cols.maps[s] if cols is not None else None, gamma=self.session.gamma(0, s))
 
@@ -732,7 +733,7 @@ class Shell(QtWidgets.QMainWindow):
         g = self.session.gamma(k, s)
         ns = self.cubes[k].ns
         what = " ".join(t for t in (self.cubes[k].name if self.linked else "",
-                                    f"Stokes {STOKES[s]}" if ns == len(STOKES) else "") if t)
+                                    plane_text(s, ns, self.cubes[k].planes)) if t)
         # the colour key at rest says gamma only for a moment after a key, in every look; its hot view always does
         self.statusBar().showMessage(f"{gamma_text(g)}{': ' + what if what else ''}  (G \u21e7G {mod_key()}G)", 3000)
         self.key_for(k, s).flash(gamma_text(g), GAMMA_NOTE_MS)
@@ -1383,8 +1384,8 @@ class Shell(QtWidgets.QMainWindow):
             rows.append((" · ".join(a[0] for a in arrows), " · ".join(a[1] for a in arrows) + ": previous, next",
                          tuple(b for a in arrows for b in a[2])))
         if s.present["s"] and s.sizes["s"] > 1:
-            n = s.sizes["s"]
-            rows.append((f"1–{n} · {n + 1}", "one Stokes · all side by side",
+            n, one = s.sizes["s"], "Stokes" if self.main.planes == "stokes" else "quantity"
+            rows.append((f"1–{n} · {n + 1}", f"one {one} · all side by side",
                          (*((str(k + 1), lambda k=k: self.pick_stokes(k)) for k in range(n)),
                           (str(n + 1), self.toggle_grid))))
         if s.present["t"] and s.sizes["t"] > 1:
@@ -1836,7 +1837,7 @@ class Shell(QtWidgets.QMainWindow):
         present = tuple(a for a in ("t", "l") if self.session.present[a])
         iscale = self.spectra.iscale if self.spectra is not None else None
         self.status.setText(pixel_text(self.dataset.axes, self.session.ns, y, x, st.t, st.l, st.s, v, ic, iscale,
-                                       st.locked, present, self.value_name()))
+                                       st.locked, present, self.value_name(), self.main.planes))
         if self.glass is not None:
             self.glass.readout()
 

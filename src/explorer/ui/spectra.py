@@ -17,6 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import APP_NAME
 from ..data.axes import C_KMS, STOKES, SUP, dlam_label, fmt_signed, tunings, unit_text
+from ..data.names import plane
 from . import pens, style
 from .imageview import CURSOR_PEN
 from .padlock import PanelLock
@@ -187,11 +188,12 @@ class SpectraPanel:
     """ns plots in a GraphicsLayoutWidget; widget: what goes in the dock."""
 
     def __init__(self, ns: int, nl: int, axes, light: bool = False, label: str | None = None,
-                 value: str | None = None):
+                 value: str | None = None, planes: str = "stokes"):
         """axes: the cube's physical axes (data.axes.Axes); light: dark ink on a light background; label: the x axis
         in index units of an axis not known to be lambda ("Blos index", data.names.slice_names), "λ index" without;
-        value: what a cube without Stokes holds when it is not intensity along lambda ("Blos"), "I" without."""
-        self.ns, self.nl, self.ax = ns, nl, axes
+        value: what a cube without Stokes holds when it is not intensity along lambda ("Blos"), "I" without; planes:
+        what its rows are (data.axes.Roles.planes: Stokes, or an inversion's parameters)."""
+        self.ns, self.nl, self.ax, self.planes = ns, nl, axes, planes
         self.value = value or "I"
         self.physical, self.xl = tunings(axes, nl)
         vk = C_KMS / (axes.lam0_nm * 10.0) if self.physical and axes.lam0_nm else None     # km/s per Å
@@ -277,7 +279,7 @@ class SpectraPanel:
         cont = getattr(self.ax, "cont", None)
         bunit = getattr(self.ax, "bunit", None)
         for k, p in enumerate(self.plots):
-            name = STOKES[k] if self.ns > 1 else self.value
+            name = plane(k, self.planes) if self.ns > 1 else self.value
             if k == 0 or cont is None:
                 e = f"10{str(int(np.log10(self.iscale))).translate(SUP)} " if self.iscale else ""
                 u = unit_text(bunit) if bunit else ""

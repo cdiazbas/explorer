@@ -14,7 +14,7 @@ from typing import Protocol
 
 import numpy as np
 
-from ..data.axes import Roles, frame_index
+from ..data.axes import Roles, frame_index, signed
 from ..data.link import frames
 from ..obs import counter
 from .levels import GAMMA_MAX, GAMMA_MIN, RULE_DEFAULT, RULES
@@ -73,7 +73,8 @@ class Session:
         its time nearest to it, by their axes' times (data.link.frames, as data.link.plan has checked); without
         times on both, the same t, so only with as many times (ValueError otherwise). Its lambda is its own by
         default (another line: lambda by index means nothing across lines); its Stokes are the main cube's when
-        both have the same number, else its own."""
+        both have the same number of the same planes (Roles.planes: an inversion's parameters are not Stokes), else
+        its own."""
         if (dataset.ny, dataset.nx) != (self.main.ny, self.main.nx):
             raise ValueError(f"{dataset.nx}x{dataset.ny} pixels against {self.main.nx}x{self.main.ny}: only cubes on "
                              f"the main cube's grid are linked yet")
@@ -82,7 +83,7 @@ class Session:
         if fr.t is None:
             raise ValueError(fr.note)
         if link_s is None:
-            link_s = r.s is not None and main.s is not None and r.ns == main.ns
+            link_s = r.s is not None and main.s is not None and (r.ns, r.planes) == (main.ns, main.planes)
         self.members.append(Member(dataset, link_l=bool(link_l) and r.nl == main.nl, link_s=bool(link_s),
                                    t=tuple(int(k) for k in fr.t)))
         own = (r.nl // 2 if r.l is not None else 0, 0)
@@ -250,7 +251,7 @@ class Session:
         s = int(np.clip(int(s), 0, (r.ns if r.s is not None else 1) - 1))
         lo, hi = (float(lo), float(hi)) if rule == "fixed" else (0.0, 0.0)
         if rule == "fixed":
-            if s > 0:
+            if signed(r, s):
                 m = max(abs(lo), abs(hi))
                 lo, hi = -m, m
             if not (np.isfinite(lo) and np.isfinite(hi) and hi > lo):

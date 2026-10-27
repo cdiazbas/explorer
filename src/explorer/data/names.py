@@ -20,7 +20,7 @@ import os
 import re
 from typing import NamedTuple
 
-from .axes import LINES
+from .axes import LINES, STOKES, is_inversion
 
 MAX_CHARS = 32              # a name longer than this is cut in the middle (…), its file in the tooltip
 MATCH_A = 6.0               # Å: a wavelength in a file name is a known line within this (the name rounds it: 6563)
@@ -33,7 +33,6 @@ _WAVE = re.compile(r"(?<![0-9])([3-9][0-9]{3}|1[0-9]{4})(?![0-9])")      # 3000-
 # what a header says of every cube, so names nothing: such a BTYPE or CONTENT gives way to the rules after it
 GENERIC = {"intensity", "data", "image", "value", "values", "counts", "main", "primary", "blank", "unknown",
            "hmi observable"}
-INVERSION = {"meinv", "inversion", "inv"}       # a word of an inversion's file name: its planes are parameters
 FALLBACK = "Quantity"                           # what a cube shows when nothing names it
 # an axis's own name (CNAMEn, CTYPEn) that says nothing explorer's own names do not: by its first word
 GENERIC_AXIS = {"", "wave", "awav", "freq", "wavelength", "stokes", "utc", "time", "tai", "hpln", "hplt", "spatial",
@@ -87,12 +86,6 @@ def short_name(path, axes=None) -> str:
 def card(axes, key: str) -> str:
     """A naming card of the cube's header (data.axes.naming_cards), "" without it."""
     return str((getattr(axes, "cards", None) or {}).get(key, "")).strip()
-
-
-def is_inversion(path) -> bool:
-    """Whether the cube is an inversion's output, by a word of its file name (meinv_6173, inversion_6173_im,
-    WFA_inversion_8542): its planes along the axis taken for lambda are parameters, never lambda."""
-    return any(w in INVERSION for w in re.split(r"[^a-z]+", stem(path).lower()))
 
 
 def map_word(path) -> str | None:
@@ -228,6 +221,23 @@ def slice_names(roles, axes, path) -> SliceNames:
     x = None if mapped else axis_word(roles, axes) or ("parameter" if is_inversion(path) else None)
     panel, label = (f"{q} ({x}–t)", f"{x} index") if x else (f"{q}–t", f"{q} index")
     return SliceNames(panel, label, spectral, mapped, value_label(path, axes))
+
+
+def plane(s: int, planes: str = "stokes") -> str:
+    """Plane s along a cube's s axis as its selector names it (planes: data.axes.Roles.planes): I, Q, U, V for
+    Stokes; "Quantity 1", "Quantity 2", … for an inversion's parameters (data.axes.by_parameter), which no file on
+    disk names."""
+    if planes == "parameter":
+        return f"{FALLBACK} {s + 1}"
+    return STOKES[s] if s < len(STOKES) else f"s{s}"
+
+
+def plane_text(s: int, ns: int, planes: str = "stokes") -> str:
+    """Plane s of ns as the image, its key and its scale say it: "Stokes Q" with the four Stokes, "Quantity 2" for a
+    parameter; "" otherwise (one Stokes, or not the four)."""
+    if planes == "parameter":
+        return plane(s, planes)
+    return f"Stokes {STOKES[s]}" if ns == len(STOKES) else ""
 
 
 def cube_names(datasets) -> list[str]:

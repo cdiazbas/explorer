@@ -169,7 +169,9 @@ class Dataset(Closing):
             self.pixel: PixelReader | None = None
             self.calibration = None
             self.frame_calibration: dict | None = None  # integer LP frames fitted to a FITS per-pixel file
-            if not no_sp:
+            # an inversion's parameters on s (axes.by_parameter): its per-pixel file's blocks keep them where the
+            # image's layout put them (the meinv LP's along WAVE), so its series come from the frames
+            if not no_sp and (self.roles.planes == "stokes" or self.images_from_sp):
                 self._open_pixel(sp)
             # after the per-pixel file's calibration, which fits the values as stored
             self.frames.stokes = stokes_axis(self.roles)

@@ -66,6 +66,9 @@ window closes, the terminal names the files (in `~/.cache/explorer/logs/`): send
 
   `--axes` names the leading axes of any cube whose header or name does not, slowest first: `t,s,l`, `s,l`, `t,l`
   or `t` (`l` is λ).
+- **Inversions** (a file name with `inversion`, `meinv` or `inv` in it: `inversion_6173_im.icube`): their planes are
+  parameters, never λ. They are picked as Stokes are (the toolbar for the first cube, over its image for a linked
+  one), each its own image and colour scale, named "Quantity 1", "Quantity 2", … `--axes` still says otherwise.
 - **A per-pixel file given as the cube** (`explorer stokes_6173_sp.fits`) is recognised (a FITS one by its header,
   whatever its name; an LP one by its image cube next to it, or by its name and dims) and its image cube next to it
   is opened with it; the terminal says so. Without its image cube nothing opens, and the terminal says which file

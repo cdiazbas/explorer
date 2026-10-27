@@ -47,7 +47,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from ..data.axes import quietest_text
+from ..data.axes import quietest_text, signed, stokes
 from ..data.executors import Generations, ShownGate
 from ..data.masking import STOKES
 from ..data.stats import (
@@ -136,7 +136,7 @@ class Scheduler:
         # for with it, the first image and spectra came within the noise: 512 x 512 synthetic, Mac, 16 windows each)
         self._noise_due = noise
         # no continuum in the header of a cube of 4 Stokes along lambda: the sample chooses one (_choose_cont)
-        self._needs_cont = (self._cont() is None and r.s is not None and r.ns == STOKES and r.l is not None
+        self._needs_cont = (self._cont() is None and stokes(r) and r.ns == STOKES and r.l is not None
                             and r.nl > 1)
         self._last_spec: tuple | None = None            # the spectrum last drawn, as read, its pixel and t
         self._off = session.store.subscribe(self._on_change)
@@ -308,7 +308,7 @@ class Scheduler:
         if rule == "fixed":
             return
         try:
-            self.levels.ahead(idx, s > 0, fut.result(), rule)
+            self.levels.ahead(idx, signed(self.ds.roles, s), fut.result(), rule)
         except Exception as e:                          # computed again when shown, where it reports
             log.warning("levels of %s not computed ahead: %r", idx, e)
 
@@ -408,7 +408,7 @@ class Scheduler:
         if self._closed:
             return
         if kind == "lambda_t":                          # Q U V symmetric about 0
-            self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=at > 0))
+            self.sink.lambda_t(arr, pixel, at, panel_levels(arr, symmetric=signed(self.ds.roles, at)))
         else:
             self._last_spec = (arr, pixel, at)          # as read: drawn again if the continuum comes later
             self.sink.spectra(self.yrange.spectrum(arr), pixel, at)
@@ -437,7 +437,7 @@ class Scheduler:
         rule, lo, hi = self.session.scale(self.member, s)
         if rule == "fixed":
             return (lo, hi)
-        return self.levels.image(idx, s > 0, img, rule)
+        return self.levels.image(idx, signed(self.ds.roles, s), img, rule)
 
     def fix_levels(self, on: bool, refit: bool = False, s: int | None = None, img=None) -> None:
         """The image padlock, for its cube's Stokes now (Session.scale), or for Stokes s with img its frame shown (a
@@ -452,7 +452,7 @@ class Scheduler:
         if not on:
             self.session.set_scale(self.member, s, "p1")
         elif refit or rule != "fixed":
-            lim = rule_levels(img, s > 0, "p1" if rule == "fixed" else rule)
+            lim = rule_levels(img, signed(self.ds.roles, s), "p1" if rule == "fixed" else rule)
             self.session.set_scale(self.member, s, "fixed", *lim)
         self._scale_seen = self._my_scale(self.session.store.state)     # drawn now, not again at the notice
         self._show_image()

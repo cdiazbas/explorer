@@ -97,13 +97,13 @@ def test_a_header_without_wcs_table_or_a_bad_file_gives_indices(tmp_path):
     (("WAVE", "Y", "X"), (7, 8, 8), (None, None, 0, 1, 1, 7, "header")),
 ])
 def test_roles_by_name_else_by_how_many_axes(names, shape, want):
-    assert tuple(axes.roles(names, shape)) == want
+    assert tuple(axes.roles(names, shape)) == (*want, "stokes")      # planes: Stokes, never parameters here
 
 
 @pytest.mark.parametrize("spec, want", [("s,l", (None, 0, 1, 1, 3, 4, "--axes")),
                                         ("l, t", (1, None, 0, 4, 1, 3, "--axes"))])
 def test_axes_given_by_the_user_win(spec, want):
-    assert tuple(axes.roles(("UTC", "WAVE", "Y", "X"), (3, 4, 8, 8), spec)) == want
+    assert tuple(axes.roles(("UTC", "WAVE", "Y", "X"), (3, 4, 8, 8), spec)) == (*want, "stokes")
 
 
 @pytest.mark.parametrize("spec", ["t", "t,t", "t,x", "t,s,l"])

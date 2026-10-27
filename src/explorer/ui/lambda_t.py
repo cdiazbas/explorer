@@ -208,9 +208,10 @@ class LambdaTPanel(GridAxes):
         style.default_axes(self.w)
         self.stokes.set_light(light)
 
-    def set_stokes(self, s: int | None, ns: int) -> None:
-        """The label of Stokes s of ns ("Stokes Q") at the top left, when ns is 4 (ui.stokeslabel); s None: nothing."""
-        self.stokes.show_stokes(s, ns)
+    def set_stokes(self, s: int | None, ns: int, planes: str = "stokes") -> None:
+        """The label of Stokes s of ns ("Stokes Q") at the top left, when ns is 4, or of a parameter (ui.stokeslabel);
+        s None: nothing."""
+        self.stokes.show_stokes(s, ns, planes)
 
     def show(self, lt: np.ndarray, levels, gamma: float | None = None) -> None:
         """lt: (nt, nl), or fewer rows: the t steps of data.tsample; levels: the core's; gamma: its cube's at its
@@ -297,8 +298,8 @@ class TimeCurve(GridAxes):
         self.curve.setPen(pg.mkPen(self._ink(light), width=1.5))
         self.stokes.set_light(light)
 
-    def set_stokes(self, s: int | None, ns: int) -> None:
-        self.stokes.show_stokes(s, ns)
+    def set_stokes(self, s: int | None, ns: int, planes: str = "stokes") -> None:
+        self.stokes.show_stokes(s, ns, planes)
 
     def show(self, lt: np.ndarray, levels=None, gamma: float | None = None) -> None:
         """lt: (nt, 1) or (nt,), or fewer: the t steps of data.tsample, each at its t; the y range its finite values'

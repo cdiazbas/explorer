@@ -201,7 +201,7 @@ def test_an_inversion_s_planes_are_never_lambda(tmp_path):
     r, ax, path = _cube(tmp_path / "WFA_inversion_8542.fits", (5, 2, 3, NY8, NX10), {})
     got = slice_names(r, ax, path)
     print("wfa", r.how, got)
-    assert r.how == "SOLARNET order"
+    assert (r.how, r.planes, r.ns, r.nl) == ("inversion", "parameter", 2, 3)        # SOLARNET order: t, s, lambda
     assert (got.panel, got.label, got.spectral) == ("Ca II 854.2 inversion (parameter–t)", "parameter index", False)
 
 

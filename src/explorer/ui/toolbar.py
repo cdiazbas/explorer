@@ -7,7 +7,8 @@ From the prototype's app/viewer.py: the toolbar (913-960), JumpSlider (364), _sl
 """
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..data.axes import STOKES, fmt_offset, lam0_text
+from ..data.axes import fmt_offset, lam0_text
+from ..data.names import plane
 from . import icons
 
 SLIDER_W = (86, 209)                                    # px, 0.95 of the prototype's: the sliders give way first
@@ -15,11 +16,19 @@ FPS = (1, 120, 10)                                      # the rate box: minimum,
 ALL = "All"                                             # every Stokes side by side (the 2x2 view, ui.stokesgrid)
 
 
-class StokesSegments(QtWidgets.QWidget):
-    """I Q U V as a segmented control (the prototype's app/look.py _stokes, 581), in the modern look's drop-down."""
+def what(planes: str) -> str:
+    """What the planes picked are called before them in the toolbar: "Stokes"; an inversion's parameters say it
+    themselves ("Quantity 2", data.names.plane)."""
+    return "Stokes" if planes == "stokes" else ""
 
-    def __init__(self, ns: int, current: int, pick):
-        super().__init__()
+
+class StokesSegments(QtWidgets.QWidget):
+    """I Q U V as a segmented control (the prototype's app/look.py _stokes, 581), in the modern look's drop-down; an
+    inversion's parameters the same way (planes: data.axes.Roles.planes); keys: the tooltips name the keys, and
+    All is the last segment (the main cube's; a linked cube's own planes have neither: ui.linked.PlanePicker)."""
+
+    def __init__(self, ns: int, current: int, pick, planes: str = "stokes", keys: bool = True, parent=None):
+        super().__init__(parent)
         self.setObjectName("stokes_segments")
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
         self.restyle()
@@ -28,12 +37,14 @@ class StokesSegments(QtWidgets.QWidget):
         lay.setSpacing(0)
         self.group = QtWidgets.QButtonGroup(self)
         self.group.setExclusive(True)
-        for k in range(ns + 1):                         # and All: every Stokes side by side
+        listed = (" " if planes == "stokes" else ", ").join(plane(j, planes) for j in range(ns))
+        for k in range(ns + 1 if keys else ns):         # and All: every Stokes side by side
             b = QtWidgets.QToolButton()
-            b.setText(STOKES[k] if k < ns else ALL)
+            b.setText(plane(k, planes) if k < ns else ALL)
             b.setCheckable(True)
-            b.setToolTip(f"Stokes {STOKES[k]} in the image (key {k + 1})" if k < ns else
-                         f"{' '.join(STOKES[:ns])} side by side, zoom linked (key {ns + 1})")
+            key = f" (key {k + 1})" if keys else ""
+            b.setToolTip(f"{what(planes)} {plane(k, planes)} in the image{key}".lstrip() if k < ns else
+                         f"{listed} side by side, zoom linked{key}")
             self.group.addButton(b, k)
             lay.addWidget(b)
         self.group.button(current).setChecked(True)
@@ -68,17 +79,19 @@ class StokesDrop(QtWidgets.QToolButton):
     window. Shown with show(), never a menu's exec(): a nested event loop inside the X11 bridge's timer hung the
     prototype."""
 
-    def __init__(self, ns: int, current: int, pick):
+    def __init__(self, ns: int, current: int, pick, planes: str = "stokes"):
         super().__init__()
         self.setObjectName("stokes_drop")
         self.setAutoRaise(True)
-        self.setToolTip("Stokes shown in the image: keys " + ", ".join(f"{k + 1} {STOKES[k]}" for k in range(ns)))
+        self.planes = planes
+        self.setToolTip(f"{what(planes) or 'Shown'} in the image: keys "
+                        + ", ".join(f"{k + 1} {plane(k, planes)}" for k in range(ns)))
         self.panel = QtWidgets.QFrame(self, QtCore.Qt.WindowType.Popup)
         self.panel.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
         self.panel.setAutoFillBackground(True)
         lay = QtWidgets.QHBoxLayout(self.panel)
         lay.setContentsMargins(4, 4, 4, 4)
-        self.segments = StokesSegments(ns, current, pick)
+        self.segments = StokesSegments(ns, current, pick, planes)
         self.segments.group.idClicked.connect(lambda _k: self.panel.hide())
         lay.addWidget(self.segments)
         self.clicked.connect(self.drop)
@@ -91,7 +104,7 @@ class StokesDrop(QtWidgets.QToolButton):
 
     def set(self, s: int, all_: bool = False) -> None:
         """s: the Stokes shown; all_: every Stokes side by side (All)."""
-        self.setText(f"Stokes {ALL if all_ else STOKES[s]} ▾")
+        self.setText(f"{what(self.planes)} {ALL if all_ else plane(s, self.planes)} ▾".lstrip())
         self.segments.set(len(self.segments.group.buttons()) - 1 if all_ else s)
 
 
@@ -155,6 +168,7 @@ class NavBar:
         self.ax = shell.dataset.axes
         r = shell.dataset.roles
         self.n = {"t": r.nt, "l": r.nl, "s": r.ns}
+        self.planes = r.planes                          # Stokes, or an inversion's parameters
         tb = self.tb = shell.addToolBar("Navigation")
         tb.setObjectName("nav")
         self.sliders: dict[str, JumpSlider] = {}
@@ -186,13 +200,13 @@ class NavBar:
         self._drop_act: QtGui.QAction | None = None
         self.all = False                                # every Stokes side by side (the 2x2 view)
         if s.present["s"] and self.n["s"] > 1:
-            self._stokes_label = tb.addWidget(QtWidgets.QLabel(" Stokes "))
+            self._stokes_label = tb.addWidget(QtWidgets.QLabel(f" {what(self.planes)} "))
             self.stokes = QtWidgets.QComboBox()
-            self.stokes.addItems(list(STOKES[:self.n["s"]]) + [ALL])
+            self.stokes.addItems([plane(k, self.planes) for k in range(self.n["s"])] + [ALL])
             self.stokes.setCurrentIndex(st.s)
             self.stokes.currentIndexChanged.connect(self._picked)
-            self.stokes.setToolTip("Stokes shown in the image: keys " + ", ".join(
-                f"{k + 1} {STOKES[k]}" for k in range(self.n["s"])))
+            self.stokes.setToolTip(f"{what(self.planes) or 'Shown'} in the image: keys " + ", ".join(
+                f"{k + 1} {plane(k, self.planes)}" for k in range(self.n["s"])))
             self._stokes_act = tb.addWidget(self.stokes)
         tb.addSeparator()
         self.play = QtWidgets.QToolButton()
@@ -273,7 +287,7 @@ class NavBar:
             return
         if on and self.drop is None:
             s = self.shell.session
-            self.drop = StokesDrop(self.n["s"], s.state.s, self._picked)
+            self.drop = StokesDrop(self.n["s"], s.state.s, self._picked, self.planes)
             self._drop_act = self.tb.insertWidget(self._stokes_label, self.drop)
         if self.drop is not None and self._drop_act is not None:     # made together
             self.drop.set(self.shell.session.state.s, self.all)

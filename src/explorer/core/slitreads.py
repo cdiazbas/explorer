@@ -54,7 +54,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..data.axes import frame_index
+from ..data.axes import frame_index, signed
 from ..data.executors import Generations, ShownGate
 from ..data.slits import SLIT_BLOCKS, SlitCache, slit_path, slit_pixels
 from ..data.tsample import time_samples
@@ -289,7 +289,7 @@ class SlitReads:
             for i, b in enumerate(got):
                 if b is not None:
                     a[:, i] = (b[s, :, l] if every else b[s, steps, l]) if kind == "ts" else b[s, t, :]
-            out[kind] = (a, panel_levels(a, symmetric=s > 0))
+            out[kind] = (a, panel_levels(a, symmetric=signed(r, s)))
             self._made[kind] = (key, *out[kind])
         self.loop.post(lambda: self._show(g, pid, s, out["ts"], out["sl"], at=(l, steps)))
 
@@ -323,7 +323,7 @@ class SlitReads:
                 self._stage_ms = spent
                 self.reads = self.reads[-999:] + [dict(kind=kind, frames=len(idxs), ms=round(ms, 2))]
                 counter("core.slit.band_reads")
-                hit = (a, panel_levels(a, symmetric=s > 0))
+                hit = (a, panel_levels(a, symmetric=signed(r, s)))
                 self._bands[key] = hit
                 while len(self._bands) > BANDS:
                     self._bands.popitem(last=False)
