@@ -5612,6 +5612,9 @@ se había pulsado otro panel); los paneles no tenían leyenda.
 - Negativo, corregido (`41fdf1c`): en una imagen estrecha de glass la leyenda tapaba el candado (109 px) porque la 2×2
   ya no lo levantaba; ese orden dependía, ya en la base, de si se había abierto la 2×2.
 
+- Suites en bellatrix (`scripts/suites.sh`, copia sin `.git`, carga 0.2 → 0.9): `tests/unit` + `tests/golden` 1158
+  pasan, 16 saltadas (23 min 59 s); `tests/xvfb` 43 pasan, 2 saltadas (4 min 41 s).
+
 **Sin probar:** cubos reales y el puente X11.
 
 **La regla en un panel estrecho** (el usuario: abreviada; `6cdb791`): la leyenda abierta cortaba su regla («Stokes Q
