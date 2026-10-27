@@ -5614,5 +5614,8 @@ se había pulsado otro panel); los paneles no tenían leyenda.
 
 **Sin probar:** cubos reales y el puente X11.
 
-**Por decidir:** en un panel estrecho, la leyenda abierta corta su regla («Stokes Q   ×10⁻¹¹   auto |x| 9…», 172
-unidades frente a 161); si el candado de una imagen estrecha va siempre encima de la leyenda (punto 21).
+**La regla en un panel estrecho** (el usuario: abreviada; `6cdb791`): la leyenda abierta cortaba su regla («Stokes Q
+×10⁻¹¹   auto |x| 9…», 174 unidades frente a 161); donde no cabe, la forma corta («Stokes Q   ×10⁻¹¹   99 %», 130).
+Donde cabe, la entera: la imagen única y los paneles anchos no cambian (capturas 0 de 104).
+
+**Por decidir:** si el candado de una imagen estrecha va siempre encima de la leyenda (punto 21).
