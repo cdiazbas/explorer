@@ -5541,3 +5541,19 @@ tabla de la entrada 2026-10-05 (1) y la fila X.11.
 
 **Sin resolver, del usuario:** la tabla «Decisiones pendientes» del roadmap dice que lo decidido pasa a un ADR y sale
 de ella; P9 (la licencia, decidida el 2026-10-26) sigue ahí sin ADR, y P5 y P7 parecen decididas.
+
+### 2026-10-27 (2): la rendija cerrada; las pestañas de rendija se recuerdan (ROADMAP E7.5, E7, E8.9)
+
+**Decidido** (el usuario, sobre la página de elecciones):
+- E7.5, opción A: la rendija se juzga por el tiempo total (130-141 ms frente a 124-239 del prototipo, medido el
+  2026-10-10), no por su parte propia, que sigue algo por encima. Con eso se cierra la etapa E7.
+- E8.9: se queda como está (⇧S, y solo se lee la pestaña de delante), y la elección de una pestaña por cubo se
+  recuerda con la disposición.
+
+**Hecho** (`4cc2944`): `LayoutStore.slit_tabs`, una por forma de mostrar como el tema, la del aspecto glass incluida;
+se guarda al cerrar y se aplica al arrancar con cubos enlazados.
+
+**Pruebas:** en `test_layout` y `test_app_start`, las dos nuevas fallan antes (sin `slit_tabs` en el almacén; el
+segundo arranque seguía con la opción marcada) y pasan después. Con `test_linked_window` y `test_slit_layout`: 67
+pasan en el Mac. Negativo de por medio: la prueba de arranque dejaba la aplicación con su tema y una prueba posterior
+(`test_c_in_classic_recolours…`) fallaba; ahora restaura el estilo y la paleta, como la prueba del tema.
