@@ -137,7 +137,7 @@ def test_the_layout_keeps_z_and_reads_what_it_kept_before(qapp, files, tmp_path)
     path = str(tmp_path / "layout.ini")
     w, close = open_window(qapp, files["bz"])
     try:
-        assert any(r[0] == "Z" for r in w.key_table())
+        assert any(r[0].endswith("· Z") for r in w.key_table())             # in C's row
         w.toggle_zero()
         kept = w.scale_settings()
         LayoutStore("x11", path).save_scale(kept)

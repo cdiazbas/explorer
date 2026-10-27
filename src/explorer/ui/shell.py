@@ -1438,10 +1438,10 @@ class Shell(QtWidgets.QMainWindow):
         rows += [(f"G \u21e7G · {mod}G", "\u03b3: lower, higher · back to 1",
                   (("G", lambda: self.step_gamma(-1)), ("Shift+G", lambda: self.step_gamma(1)),
                    ("Ctrl+G", self.reset_gamma))),
-                 ("Z", "signed planes: symmetric about 0 \u21c4 each side its own",
-                  ((K.Key_Z, self.toggle_zero),)),
-                 ("C \u21e7C", "colour map: next, previous",
-                  (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1)))),
+                 # Z in C's row: the sheet has 16 rows at most (a laptop's window); both are the colour scale's
+                 ("C \u21e7C · Z", "colour map · \u00b1m \u21c4 own sides",
+                  (("C", lambda: self.cycle_colours(1)), ("Shift+C", lambda: self.cycle_colours(-1)),
+                   (K.Key_Z, self.toggle_zero))),
                  ("M · T", "look · dark \u21c4 light", ((K.Key_M, self.toggle_look), (K.Key_T, self.toggle_theme)))]
         mo = self.mask_outlines
         if mo is not None:                              # a row only with a mask: without one, H is bound to nothing
