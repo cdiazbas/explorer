@@ -5464,3 +5464,43 @@ foco. `bench/captures.py` frente a `main`: 0/104 PNG y 0/16 JSON distintos.
 **Pruebas:** en `test_look`, las dos nuevas fallan antes y pasan después; `test_look`, `test_style`, `test_glass`,
 `test_toolbar` y `test_theme`: 66 pasan (Mac). Sin probar: el estilo nativo del Mac, que dibuja sus propios
 controles.
+
+### 2026-10-26 (7): simplificación, tercera pasada auditada y aplicada (ROADMAP X.14)
+
+**Auditado** sobre `de4f10b`, 14 commits desde la pasada anterior: S41-S48 nuevos, S49 ⚪ (`doctor.PYTHONS` no puede
+separarse de `requires-python`: lo vigila `test_doctor`). Los abiertos de antes (S1, S9, S24, S33, S34, S38), igual.
+
+**Aplicado** (todo, el usuario; ocho commits sobre `de4f10b`):
+- Sin cambio de comportamiento:
+  - la regla del acento del aspecto, en `glass.look_accent` (S39);
+  - glass tiñe los controles y `accent()` solo con `set_controls(..., accent=True)` (S42);
+  - el mapa de La Palma de las pruebas, con `synth.write_lp` (S47);
+  - la pluma de los glifos, `icons.glyph_pen` (S48);
+  - el deslizador, del color de los controles, sin `SLIDER` (S41).
+- Arreglos:
+  - `doctor` pregunta a `choose_display` y prueba el Qt que explorer arrancará; la regla «pantalla por ssh», una sola
+    (S44, S45). Con Mac + ssh + `DISPLAY=:0` + `QT_QPA_PLATFORM=xcb`, el único caso distinto, el plan pasa a remoto;
+  - en glass, los paneles de la ventana de un cubo toman el contorno de glass al cambiar de tamaño (S43).
+- `scripts/env.sh`: `plat`, `venv` y `qt_libs`, para `run.sh`, `check.sh` y `suites.sh` (S46).
+
+**Medido en el Mac** (offscreen):
+- Capturas: ruido 0/104 PNG y 0/16 JSON entre dos tandas de la base; cada commit sin cambio y la punta, 0/104 y 0/16.
+- S42: 98 instantáneas de los colores de los controles, iguales a las de la base. S48: 98 imágenes de los cinco
+  sitios, iguales. S47: 15 mapas, el mismo sha256.
+- S46: los tres guiones viejos y nuevos en 18 escenarios simulados, iguales.
+- Las pruebas nuevas de S43, S44 y S45 fallan con el código de antes.
+
+**Medido en bellatrix:**
+- S46: `run.sh` de `main` (árbol compartido) y de la rama (una copia sin `.git`), con el `LD_LIBRARY_PATH` de `kdb`
+  heredado: los dos ven `.qtlibs/only`, `doctor` pasa y la primera imagen llega. `suites.sh` arranca desde
+  `env.sh` en la copia.
+- S44, S45 por ssh -Y de verdad (Mac → bellatrix, XQuartz): `main` prueba Qt en `xcb` sobre la pantalla del Mac,
+  aunque explorer use el puente; la rama, en `offscreen`, «explorer draws through the X11 bridge», ok; con
+  `QT_QPA_PLATFORM=xcb`, en `xcb`. Sin ventanas.
+- Cambia el texto de `doctor` sin pantalla: dice que explorer se pararía y por qué.
+- Suites (`scripts/suites.sh`, copia sin `.git`, carga 0.6 → 1.0): `tests/unit` + `tests/golden` 1113 pasan, 16
+  saltadas (22 min 51 s; las 1086 de antes y 27 nuevas); `tests/xvfb` 43 pasan, 2 saltadas (4 min 41 s).
+
+**Sin probar:** el contorno de S43 visto en una pantalla mientras se arrastra. Lo cubren dos piezas: la prueba nueva
+(los colores que recibe el panel de la ventana de un cubo) y `tests/xvfb/test_xoutline_box.py` (el servidor X pinta
+los colores que recibe). El estilo nativo del Mac, para S41 y S42. `doctor --show` por ssh -Y ya no abre ventana.
