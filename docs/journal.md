@@ -5622,3 +5622,38 @@ se había pulsado otro panel); los paneles no tenían leyenda.
 Donde cabe, la entera: la imagen única y los paneles anchos no cambian (capturas 0 de 104).
 
 **Por decidir:** si el candado de una imagen estrecha va siempre encima de la leyenda (punto 21).
+
+### 2026-10-27 (5): el nombre de un eje que no es λ, desde la cabecera; los parámetros de una inversión, con su selector (ROADMAP E8.8)
+
+**Decidido** (el usuario): la propuesta P del 2026-10-11 (7), sin `--name`; «Quantity» donde la cabecera no dice nada
+útil, y «Quantity 1», «Quantity 2», … para los parámetros de una inversión; un selector como el de Stokes.
+
+**Los nombres** (`data/names.py`, un solo sitio): la primera regla que da un nombre, en este orden: BTYPE no genérico;
+CONTENT no genérico; «<línea> inversion»; la palabra del mapa o el segmento JSOC; sin WAVEBAND, el instrumento y la
+banda; el BTYPE genérico; la línea; «Quantity». El eje, por su CNAMEn o CTYPEn cuando no es genérico. El cubo principal
+sigue la misma regla. La unidad es BUNIT, si no PIXLUNIT, en la curva, la línea de estado y la leyenda (`c0f7898`).
+
+**El selector:** `axes.by_parameter` pone los planos de una inversión en s (`Roles.planes = "parameter"`); lo que es solo
+de Stokes queda en Stokes (`axes.stokes`, `axes.signed`: la simetría de Q U V, el % de I_c, el ruido, la máscara de I
+negativa, los mapas divergentes). El cubo principal los elige en la barra; uno enlazado, sobre su imagen. En la 2×2, la
+leyenda de cada panel dice su parámetro, como su menú (`ce42be2`). Una rendija guardada nunca lleva un nombre de Stokes
+que no es (`ae901b7`). Una inversión no usa su fichero por píxel.
+
+**Juntado sobre `main`** (`a75208b`): dos choques, el candado de un panel de la 2×2 (fija su cuadro con la regla del
+plano) y la 2×2 sin etiquetas (como en `main`). `test_axes` y `tests/real` contaban los papeles: arreglados (`2334fa0`).
+
+**Medido:**
+- Con ficheros reales en bellatrix, `main` frente a la rama, solo cabeceras y forma: AIA 171 (como serie) «AIA 171 Å–t»
+  y valores «AIA 171 Å [DN]» (antes, el nombre del fichero); STEREO/EUVI 195 «EUVI 195 Å–t»; BIFROST «lg(tg) (z–t)», «z
+  index»; la inversión WFA «Ca II 854.2 inversion», con selector; la meinv de La Palma, sus 3 planos en el selector (antes
+  «λ–t»). Blos, Doppler, Hα y el 6173 Stokes, iguales.
+- 12 pruebas nuevas fallan antes y pasan después; los grupos de nombres, selector, 2×2, núcleo, ventanas y datos pasan en
+  el Mac.
+- `bench/captures.py`: `main` frente a la rama, 0/104 PNG y 0/16 JSON (ruido 0/104).
+
+**Sin probar:** SHARP y HMI (un solo fichero de cada; una serie pide dos); qué eje del WFA guarda qué; la lectura de la
+meinv real sin su fichero por píxel, en tiempo.
+
+**Por decidir:** cómo llamar en el deslizador y la línea de estado a un eje que no es λ; la línea del nombre del fichero
+antes de «Quantity»; «Quantity» en lugar de «value» en la línea de estado; el nombre de la pestaña de un AIA (sigue
+siendo el fichero).
