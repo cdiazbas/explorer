@@ -40,7 +40,7 @@ HINTS = ("drag ▲ · wheel γ · double click: automatic, γ = 1", "drag ▲ ·
          "double click: reset")
 KEY_MENU = False                                        # the menu on a right click over a key: off for now
 GAMMAS = (1.0, 0.7, 0.5, 0.3)
-GRID_ZOOM = 0.5                                         # a panel of the 2x2 view: its key at half size, text too
+GRID_ZOOM = 0.73                                        # a panel of the 2x2 view: its key smaller, its text 8 px
 HIST_BINS = 128
 
 

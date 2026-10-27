@@ -198,17 +198,20 @@ def test_a_panel_s_key_grows_under_the_pointer_within_its_panel(grid):
         assert not key.hot and key.height() == round(key.H * key.zoom)
 
 
-def test_a_panel_s_key_is_half_the_image_s_and_the_image_s_is_as_it_was(grid):
-    """Four keys over four panels at the image key's size crowded them (the user, 2026-10-27): each panel's is half
-    of it, at rest and hot, its text too; the image's own key keeps its size and its 11 px text."""
+def test_a_panel_s_key_is_0_73_of_the_image_s_and_the_image_s_is_as_it_was(grid):
+    """Four keys at the image key's size crowded the four panels, and at half its size their text was 5.5 px: each
+    panel's is 0.73 of it (the user, 2026-10-27), text 8 px, at rest and hot, hot as wide as its panel allows; the
+    image's own key keeps its size and its 11 px text."""
     w, qapp = grid
     for s in range(4):
         key = key_of(w, s)
-        assert w.grid.views[s].widget.width() - 24 >= 160, w.grid.views[s].widget.width()   # room for it
-        assert (key.width(), key.height()) == (115, 25) and key.zoom == 0.5, (s, key.size())
+        room = w.grid.views[s].widget.width() - 24
+        assert room >= 168, room
+        assert (key.width(), key.height()) == (168, 36) and key.zoom == 0.73, (s, key.size())
+        assert key.TEXT_PX * key.zoom >= 8
         enter(key)
         qapp.processEvents()
-        assert (key.width(), key.height()) == (160, 56), (s, key.size())
+        assert (key.width(), key.height()) == (min(234, room), 82), (s, key.size(), room)
         leave(key)
         qapp.processEvents()
     w.set_grid(False)

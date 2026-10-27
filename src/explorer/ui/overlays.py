@@ -106,7 +106,7 @@ class ColourKey(QtWidgets.QWidget):
     spectra's axis titles write it; the numbers under the bar carry none (after the last one only it reads as that
     number's). Its text in pixels, 11 px: in points, max(7, size - 2) was 7 px on a Mac (72 dpi) and 9 over X11.
     zoom: the whole key drawn that many times its size, text included (W, H, TEXT_PX and the rest in its own units):
-    a panel of the 2x2 view has its key at half size (ui.scalekey.GRID_ZOOM)."""
+    a panel of the 2x2 view has its key smaller (ui.scalekey.GRID_ZOOM)."""
     W, H = 230, 50
     TEXT_PX = 11
     NOTE_MS = 1500
