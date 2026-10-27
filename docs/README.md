@@ -6,7 +6,7 @@ Estos ficheros van en español; la aplicación, en inglés ([ADR 0004](decisions
 | Fichero | Qué es | Cuándo se toca |
 |---|---|---|
 | [roadmap.md](roadmap.md) | Índice de trabajo: una fila por tarea, con estado y evidencia (commit o medida) | Al abrir o cerrar una tarea |
-| [handoff.md](handoff.md) | Dónde lo dejamos, para retomar en otra sesión o máquina | Al final de cada sesión (se reescribe, no crece) |
+| [handoff.md](handoff.md) | Dónde lo dejamos, para retomar en otra sesión o máquina | Sin mantener desde el 2026-09-29: lo vigente está en el roadmap y el journal |
 | [decisions/](decisions/) | Una decisión por fichero (ADR), con su índice | Al decidir; lo revocado se marca, no se borra |
 | [architecture.md](architecture.md) | Cómo es el código hoy | En el mismo commit que cambia la arquitectura |
 | [measured.md](measured.md) | Las decisiones medidas que explorer conserva, con sus cifras | Solo si una medida nueva las cambia |

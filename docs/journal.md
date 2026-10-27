@@ -5504,3 +5504,40 @@ separarse de `requires-python`: lo vigila `test_doctor`). Los abiertos de antes 
 **Sin probar:** el contorno de S43 visto en una pantalla mientras se arrastra. Lo cubren dos piezas: la prueba nueva
 (los colores que recibe el panel de la ventana de un cubo) y `tests/xvfb/test_xoutline_box.py` (el servidor X pinta
 los colores que recibe). El estilo nativo del Mac, para S41 y S42. `doctor --show` por ssh -Y ya no abre ventana.
+
+### 2026-10-27 (1): dudas medidas en las dos máquinas, y una corrección
+
+Al revisar las notas del proyecto salieron contradicciones; se midieron en vez de dejarlas abiertas.
+
+**Medido** (bellatrix, carga 0.01-0.2, solo lectura sobre los cubos):
+- **python-xlib en marcha:** explorer, en un Xvfb privado, carga 37 módulos de `Xlib` con el puente y con el xcb de
+  Qt (el contorno de cambio de tamaño, `platform/xoutline.py`); ninguno sin pantalla. Corregidos el ADR 0009 y
+  `architecture.md` (`22bb8c2`).
+- **El enlace bellatrix → XQuartz** con la sonda de explorer (5 viajes, 8 MB a un pixmap que no se muestra), 5 veces:
+  31.6, 65.1, 52.7, 53.1, 56.3 MB/s; 11.9-12.1 ms de ida y vuelta.
+- **OpenGL por `ssh -Y`:** el XQuartz del usuario tiene el GL indirecto apagado (`enable_iglx = 0`); VirtualGL 3.1.2
+  está en bellatrix pero no sirve a este usuario (por GLX no abre `:0`; por EGL, «Could not load EGL functions»);
+  eagle7 tiene GPU (4 Tesla T4) pero ni VirtualGL ni servidor X. Disponibilidad, no rendimiento (`22bb8c2`).
+- **`mincore` en StorNext no informa:** en un cubo de 175 GiB nunca abierto, 256 MB a 0, 100 y 170 GiB salen
+  100 % residentes, con 36 GB de caché en la máquina. Lo que sí distingue frío de caché son los contadores Fibre
+  Channel (`/sys/class/fc_host/host*/statistics/rx_words`, ×4 B), con el cerrojo de medidas: 64 MB leídos dos veces
+  a 60, 120 y 165 GiB, la primera 150-176 ms con 71-76 MB por FC, la segunda 20 ms con 0.1-5.9 MB; fondo 0 MB/s.
+- **El tiempo de un barrido:** la media de las sintonías (explorer) menos la sintonía del medio (CRISPEX,
+  `crispex.pro:15229-15234`): −0.34 s en el 6173 Stokes (cadencia 33.2 s), ~0 en dos Hα (8.4 y 16.0 s). Las dos
+  eligen el mismo barrido más cercano.
+- **Relleno con ceros:** el Hα del 2025-07-05 (`…bypass_corrected_im.fits`) tiene un 25.1-25.4 % de ceros exactos
+  por fotograma y ningún NaN; sus hermanos de 2025 usan NaN (~27 %). Explorer trata el 0.0 como dato; **visto por
+  el usuario en bellatrix: se ve bien**, sin nada que arreglar.
+- **El Xvfb `:97`** del prototipo, en marcha desde el 2026-09-24, parado a petición del usuario.
+
+**Corregido además:** `scripts/suites.sh` (1600×1000 vale), la fila X.24, la cabecera de `handoff.md` y su fila en
+`docs/README.md` (sin mantener desde el 2026-09-29), una nota con fecha en el ADR 0006 (hay remoto desde X.8, el CI
+en pausa) y el comentario de `data/formats/lp.py` con la fila E1.4 (el orden de Stokes del `_sp.icube` lo comprobó
+E1.19, `bba6084`).
+
+**Corrección de la entrada 2026-10-10 (2):** decía que, tras la reescritura de la historia, el commit con la ruta
+`328bcc5` pasaba a ser `b93c4a3`. Es al revés: `b93c4a3` ya no existe y `328bcc5` está en `main`, como dicen la
+tabla de la entrada 2026-10-05 (1) y la fila X.11.
+
+**Sin resolver, del usuario:** la tabla «Decisiones pendientes» del roadmap dice que lo decidido pasa a un ADR y sale
+de ella; P9 (la licencia, decidida el 2026-10-26) sigue ahí sin ADR, y P5 y P7 parecen decididas.

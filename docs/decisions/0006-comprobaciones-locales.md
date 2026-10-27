@@ -1,6 +1,6 @@
 # 0006. Comprobaciones en local, mientras no haya CI remoto
 
-- **Estado:** Vigente
+- **Estado:** Vigente, con remoto desde el 2026-10-02 (nota abajo)
 - **Fecha:** 2026-09-29
 - **Decide:** el usuario (ROADMAP E0.5, "ok") sobre esta propuesta
 
@@ -41,3 +41,10 @@ de coautoría) se compruebe automáticamente, y no dependa de acordarse.
   este clon. En un clon nuevo hay que ejecutar `scripts/install_hooks.sh`.
 - **Cuando haya remoto,** su CI ejecuta `scripts/check.sh` con `fetch-depth: 0` (el historial
   entero), y este ADR se revisa.
+
+## Nota (2026-10-27)
+
+El contexto de arriba cambió: desde el 2026-10-02 el repositorio tiene remoto en GitHub, privado
+([ROADMAP](../roadmap.md) X.8), y un CI que ejecuta `scripts/check.sh`, en pausa desde el 2026-10-05 por falta de
+minutos (X.9: solo a mano). Lo que esta decisión pide sigue en pie mientras el CI esté en pausa: `scripts/check.sh`
+y los ganchos en cada commit.

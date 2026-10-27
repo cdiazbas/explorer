@@ -1,7 +1,10 @@
 # Traspaso
 
-Dónde lo dejamos, para retomar en otra sesión o en otra máquina. Se reescribe al final de
-cada sesión; no crece.
+**Sin mantener desde el 2026-09-29:** lo vigente está en [roadmap.md](roadmap.md) (cada tarea con su estado y su
+evidencia) y en [journal.md](journal.md) (lo medido, lo último al final).
+
+Dónde lo dejamos, para retomar en otra sesión o en otra máquina. Se reescribía al final de
+cada sesión; no crecía.
 
 ## 2026-09-29
 
