@@ -40,13 +40,14 @@ from ..obs import get_logger
 from . import docks, glass, icons, overlays, pens, style, titlebar
 from .actions import ActionRegistry, KeySheet, mod_key, per_pixel_sheet_html
 from .cards import MacSeams, Rounder
-from .cube import CubeSink, CubeView, card_colour, reticle_colour
+from .cube import IMAGE_TIP, CubeSink, CubeView, card_colour, reticle_colour
 from .gestures import Gestures
 from .imageview import CURSOR_PEN
 from .linked import ImageTitle, LinkedCube, PanelTabs, ViewSync
 from .loop import QtLoop
 from .mask import MaskOutlines
 from .overlays import ColourKey, gamma_text
+from .padlock import PanelLock
 from .scalekey import ScaleCard, scale_menu
 from .slit import SlitHint, SlitTool
 from .slitpanel import SlitPanel
@@ -365,6 +366,7 @@ class Shell(QtWidgets.QMainWindow):
         self.colour_key: ColourKey | None = self.main.key     # in every look (ui.scalekey), hidden in the 2x2 view
         self.scale_card: ScaleCard | None = None
         self.grid: StokesGrid | None = None             # the 2x2 view (ui.stokesgrid), made the first time it is asked
+        self.grid_locks: list[PanelLock] = []           # its panels' padlocks, one per Stokes (set_grid)
         self.pointer = 0                                # the cube whose image the mouse last moved over (CubeView)
         self.glass: glass.GlassChrome | None = None     # the glass look's chrome (ui.glass), while worn
         # (zoom state, geometry): the size glass put under a zoom it gave back on leaving (GlassChrome.remove)
@@ -481,6 +483,8 @@ class Shell(QtWidgets.QMainWindow):
         self.slit_tool.set_light(light)
         if self.grid is not None:
             self.grid.set_light(light)
+        for lock in self.grid_locks:
+            lock.set_light(light)
         for p in self.slit_panels:
             p.set_light(light)
         if self.colours is not None:
@@ -557,22 +561,24 @@ class Shell(QtWidgets.QMainWindow):
                     self.slit_tool.attach(v)
                     if self.mask_outlines is not None:
                         self.mask_outlines.attach(v)
+                self.grid_locks = [self._grid_lock(s, v) for s, v in enumerate(self.grid.views)]
             self.grid.setGeometry(self.view.widget.rect())
             self.grid.set_region(self.view.vb.viewRect())
             st = self.session.state
             self.grid.set_crosshair(*st.cursor)
             self.grid.set_locked(st.locked)
             self._grid_luts()
+            self._grid_locks_follow()
             self.grid.show()
             self.grid.raise_()
-            for w in (self.image_lock, self.slit_hint):  # the padlock and the hint stay on top
-                if w is not None:
-                    w.raise_()
+            self.image_lock.hide()                      # each panel has its own, for its Stokes (_grid_lock)
+            self.slit_hint.raise_()                     # the hint stays on top
             self.scheduler.set_grid(True)
             self.view.set_paused(True)                  # under the 2x2 view: nothing of it is seen
         elif self.grid is not None:                     # shown: on == visible returned above
             self.view.vb.setRange(self.grid.region(), padding=0)
             self.grid.hide()
+            self.image_lock.show()
             self.scheduler.set_grid(False)
             self.view.set_paused(False)
         if self.colour_key is not None:                 # no single Stokes' key over the four panels
@@ -596,6 +602,24 @@ class Shell(QtWidgets.QMainWindow):
         for s in range(len(self.grid.views)):
             cols = self.maps_for(s)
             self.grid.set_lut(s, cols.image_lut(s) if cols is not None else None)
+
+    def _grid_lock(self, s: int, v) -> PanelLock:
+        """The padlock of panel s (ImageView v), at its top right as the image's: it fixes or releases Stokes s by
+        the frame that panel shows, whichever Stokes the session's is: the padlock fixes the Stokes looked at."""
+        lock = PanelLock(v.widget, IMAGE_TIP, light=style.is_light())
+        lock.toggled.connect(lambda on: self.scheduler.fix_levels(on, s=s, img=v._full))
+
+        def refit() -> None:
+            self.scheduler.fix_levels(True, refit=True, s=s, img=v._full)
+            lock.set_closed(True)
+        lock.refit.connect(refit)
+        v.over.add(lock)                                # over the image (ui.overlays)
+        return lock
+
+    def _grid_locks_follow(self) -> None:
+        """Each panel's padlock closed while its Stokes is fixed (Session.scale)."""
+        for s, lock in enumerate(self.grid_locks):
+            lock.set_closed(self.session.scale(0, s)[0] == "fixed")
 
     def _grid_click(self, s: int, ev) -> None:
         """A click on panel s: the cursor locked there and that Stokes the session's, so lambda-t shows it; right
@@ -1749,6 +1773,8 @@ class Shell(QtWidgets.QMainWindow):
                 self._slit_shown(st.path is not None)
         if "locked" in changed and self.grid is not None:
             self.grid.set_locked(st.locked)
+        if "scale" in changed:
+            self._grid_locks_follow()
         if changed & {"t", "l", "own"}:
             self._slit_markers()
         if "gamma" in changed:                          # each cube's image and lambda-t: CubeView.follow

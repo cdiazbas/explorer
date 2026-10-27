@@ -439,18 +439,20 @@ class Scheduler:
             return (lo, hi)
         return self.levels.image(idx, s > 0, img, rule)
 
-    def fix_levels(self, on: bool, refit: bool = False) -> None:
-        """The image padlock, for its cube's Stokes now (Session.scale): on fixes the levels to the image shown, by
-        its rule (refit: to its 1-99 percentiles again, when already fixed); off gives each image its own again (the
-        default rule). The image is shown again with them."""
-        if self.img is None:
+    def fix_levels(self, on: bool, refit: bool = False, s: int | None = None, img=None) -> None:
+        """The image padlock, for its cube's Stokes now (Session.scale), or for Stokes s with img its frame shown (a
+        panel of the 2x2 view): on fixes the levels to that frame, by its rule (refit: to its 1-99 percentiles
+        again, when already fixed); off gives each image its own again (the default rule). The images are shown
+        again with them."""
+        if s is None:
+            s, img = self.state.s, self.img
+        if img is None:
             return
-        s = self.state.s
         rule = self.session.scale(self.member, s)[0]
         if not on:
             self.session.set_scale(self.member, s, "p1")
         elif refit or rule != "fixed":
-            lim = rule_levels(self.img, s > 0, "p1" if rule == "fixed" else rule)
+            lim = rule_levels(img, s > 0, "p1" if rule == "fixed" else rule)
             self.session.set_scale(self.member, s, "fixed", *lim)
         self._scale_seen = self._my_scale(self.session.store.state)     # drawn now, not again at the notice
         self._show_image()
