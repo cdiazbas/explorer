@@ -188,14 +188,19 @@ class SpectraPanel:
     """ns plots in a GraphicsLayoutWidget; widget: what goes in the dock."""
 
     def __init__(self, ns: int, nl: int, axes, light: bool = False, label: str | None = None,
-                 value: str | None = None, planes: str = "stokes"):
+                 value: str | None = None, planes: str = "stokes", coords=None, ref=None):
         """axes: the cube's physical axes (data.axes.Axes); light: dark ink on a light background; label: the x axis
         in index units of an axis not known to be lambda ("Blos index", data.names.slice_names), "λ index" without;
         value: what a cube without Stokes holds when it is not intensity along lambda ("Blos"), "I" without; planes:
-        what its rows are (data.axes.Roles.planes: Stokes, or an inversion's parameters)."""
+        what its rows are (data.axes.Roles.planes: Stokes, or an inversion's parameters); coords: (values, label)
+        of an axis not known to be lambda in its own units ("z [Mm]", data.axes.Axes.lead_coord), its x axis then;
+        ref: (x, text) of a quiet reference line across it (τ500 = 1 on Bifrost's z)."""
         self.ns, self.nl, self.ax, self.planes = ns, nl, axes, planes
         self.value = value or "I"
         self.physical, self.xl = tunings(axes, nl)
+        self.coords = not self.physical and coords is not None
+        if self.coords:
+            self.xl, label = np.asarray(coords[0], float), coords[1]
         vk = C_KMS / (axes.lam0_nm * 10.0) if self.physical and axes.lam0_nm else None     # km/s per Å
         pad = X_PAD * (float(self.xl.max() - self.xl.min()) or 1.0)
         self.x_range = (float(self.xl.min()) - pad, float(self.xl.max()) + pad)
@@ -219,7 +224,7 @@ class SpectraPanel:
             p.disableAutoRange()
             p.setXRange(*self.x_range, padding=0)
             fixed_plot(p)                   # click or drag picks lambda (gestures); no menu (the prototype had none)
-            if not self.physical:
+            if not self.physical and not self.coords:
                 p.getAxis("bottom").setTickSpacing(major=max(1, -(-nl // 7)), minor=1)
             # antialiased (a 1.5-px line drew stairs at dpr 1 and over X11: greys only, so grey tiles still), each
             # measured point a dot of the line's own ink
@@ -245,6 +250,13 @@ class SpectraPanel:
         # the classic look's curves, to come back to after the modern marks
         self._classic = [(c.opts["pen"], c.opts["symbolPen"], c.opts["symbolBrush"]) for c in self.curves]
         self._zeros: list = []
+        self.refs: list = []                            # its reference lines (ref), quiet as the zero lines
+        if ref is not None:
+            for p in self.plots:
+                ln = pg.InfiniteLine(pos=float(ref[0]), angle=90, label=ref[1],
+                                     labelOpts=dict(position=0.92, anchors=[(0, 0), (0, 0)]))
+                p.addItem(ln, ignoreBounds=True)
+                self.refs.append(ln)
         self.light = light
         self.noise_style = "lines"                      # until the look says (set_noise_style)
         self._noise: dict[int, list] = {}               # Stokes -> its +-sigma: two lines, or one band
@@ -267,6 +279,7 @@ class SpectraPanel:
         self.w.ci.setContentsMargins(9, 9, PanelLock.SIZE + PanelLock.MARGIN, 9)
         for p in self.plots[-ncol:]:
             p.setLabel("bottom", dlam_label(self.ax) if self.physical else label or "λ index")
+        self._ref_ink(light)
         if vk:
             for p in self.plots[:ncol]:
                 p.setLabel("top", "v [km s⁻¹]")      # Unicode, as every other unit: <sup> drew thinner digits
@@ -280,8 +293,8 @@ class SpectraPanel:
         bunit = getattr(self.ax, "bunit", None)
         for k, p in enumerate(self.plots):
             name = plane(k, self.planes) if self.ns > 1 else self.value
-            if k == 0 or cont is None:
-                e = f"10{str(int(np.log10(self.iscale))).translate(SUP)} " if self.iscale else ""
+            if k == 0 or cont is None:                 # 10⁰ is no power of ten: the unit alone
+                e = f"10{str(int(np.log10(self.iscale))).translate(SUP)} " if self.iscale and self.iscale != 1 else ""
                 u = unit_text(bunit) if bunit else ""
                 p.setLabel("left", f"{name} [{e}{u}]" if (e or u) else name)
             else:
@@ -298,9 +311,18 @@ class SpectraPanel:
         zero = QtGui.QColor(0, 0, 0, 70) if light else QtGui.QColor(255, 255, 255, 70)
         for ln in self._zeros:
             ln.setPen(pg.mkPen(zero, width=1, style=QtCore.Qt.PenStyle.DashLine))
+        self._ref_ink(light)
         for items in self._noise.values():
             self._style_noise(items)
         style.default_axes(self.w)
+
+    def _ref_ink(self, light: bool) -> None:
+        """The reference lines in the zero lines' quiet ink, their labels a little stronger."""
+        zero = QtGui.QColor(0, 0, 0, 70) if light else QtGui.QColor(255, 255, 255, 70)
+        text = QtGui.QColor(0, 0, 0, 150) if light else QtGui.QColor(255, 255, 255, 150)
+        for ln in self.refs:
+            ln.setPen(pg.mkPen(zero, width=1, style=QtCore.Qt.PenStyle.DashLine))
+            ln.label.setColor(text)
 
     def set_marks(self, colour, light: bool) -> None:
         """The modern look's marks: the lambda markers and rings in colour, quieter curves, and a dashed zero line on

@@ -7,7 +7,7 @@ From the prototype's app/viewer.py: the toolbar (913-960), JumpSlider (364), _sl
 """
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..data.axes import fmt_offset, lam0_text
+from ..data.axes import coord_text, fmt_offset, lam0_text
 from ..data.names import plane
 from . import icons
 
@@ -277,10 +277,14 @@ class NavBar:
                 return f"{v}/{n - 1}"
             # the time is what one reads, the index what one quotes
             dim = self.shell.palette().color(QtGui.QPalette.ColorRole.PlaceholderText).name()
-            return f'{u}&nbsp;UT&nbsp;&nbsp;<span style="color:{dim}; font-size:small">{v}/{n - 1}</span>'
+            return (f'{u}&nbsp;{self.ax.time_unit}&nbsp;&nbsp;<span style="color:{dim}; font-size:small">'
+                    f'{v}/{n - 1}</span>')
         dl = self.ax.dlam_A() if self.ax is not None else None
         if dl is not None and len(dl) == n:
             return fmt_offset(dl[v], 3) + ("  (cont.)" if v == self.ax.cont else "")
+        lc = self.shell.main.l_coords                   # its own coordinates (Bifrost's z): "1.23 Mm"
+        if lc is not None:
+            return coord_text(lc, v)
         return f"{v}/{n - 1}"
 
     def set_stokes_drop(self, on: bool) -> None:

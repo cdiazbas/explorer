@@ -203,8 +203,10 @@ class Shell(QtWidgets.QMainWindow):
         # a panel no cube has (the spectra without lambda, lambda-t without t) is absent: never shown, by a saved
         # layout, reset_panels or glass either (docks.GatedDock), and not in the Panels menu
         lt_title = self.main.slices.panel if self.main.slices is not None and self.lt_tabs is None else "λ–t"
-        self.spec_dock = docks.dock(self, "Spectrum", self.spec_tabs or self.spec_panel, "spectrum",
-                                    cls=docks.GatedDock)
+        # a profile along an axis not known to be lambda (Bifrost's z) is no spectrum
+        profile = self.main.slices is not None and not self.main.slices.spectral
+        self.spec_dock = docks.dock(self, "Profile" if profile else "Spectrum", self.spec_tabs or self.spec_panel,
+                                    "spectrum", cls=docks.GatedDock)
         self.lt_dock = docks.dock(self, lt_title, self.lt_tabs or self.lt_panel, "lambda_t", cls=docks.GatedDock)
         for d, has in ((self.spec_dock, self.spectra is not None or self.spec_tabs is not None),
                        (self.lt_dock, self.lambda_t is not None or self.lt_tabs is not None)):
@@ -1839,7 +1841,8 @@ class Shell(QtWidgets.QMainWindow):
         present = tuple(a for a in ("t", "l") if self.session.present[a])
         iscale = self.spectra.iscale if self.spectra is not None else None
         self.status.setText(pixel_text(self.dataset.axes, self.session.ns, y, x, st.t, st.l, st.s, v, ic, iscale,
-                                       st.locked, present, self.value_name(), self.main.planes, self.nav.l_name))
+                                       st.locked, present, self.value_name(), self.main.planes, self.nav.l_name,
+                                       self.main.l_coords))
         if self.glass is not None:
             self.glass.readout()
 

@@ -23,7 +23,20 @@ TIME_KEYS = ("T_OBS", "DATE-AVG", "DATE-OBS", "DATE_OBS")
 # what every file of a series must share, with the shape and the stored type; files that differ are refused
 SAME = ("WAVELNTH", "INSTRUME", "BUNIT")
 HEADER_THREADS = 16         # headers read at once
+# a simulation snapshot's time, seconds of the simulation (Bifrost: "[s] Time of snapshot"), when no file has a date
+ELAPSED = "ELAPSED"
 _TIME = re.compile(r"^(\d{4})[-.](\d{2})[-.](\d{2})[T_ ](\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)")
+
+
+def _seconds(value) -> float | None:
+    """A card's number of seconds (ELAPSED), None when it is not a finite number."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return v if np.isfinite(v) else None
 
 
 def parse_time(value) -> np.datetime64 | None:
@@ -176,7 +189,7 @@ def series_layout(paths) -> SeriesLayout:
                     scaling=(float(hdr.get("BSCALE", 1.0)), float(hdr.get("BZERO", 0.0)),
                              hdr.get("BLANK") if bitpix > 0 else None),
                     same={k: hdr.get(k) for k in SAME},
-                    times={k: hdr.get(k) for k in TIME_KEYS})
+                    times={k: hdr.get(k) for k in TIME_KEYS}, elapsed=hdr.get(ELAPSED))
 
     with ThreadPoolExecutor(min(HEADER_THREADS, len(paths))) as ex:      # on network storage, latency overlapped
         rows = list(ex.map(row, paths))
@@ -195,8 +208,18 @@ def series_layout(paths) -> SeriesLayout:
     notes = []
     key = next((k for k in TIME_KEYS if all(parse_time(r["times"][k]) is not None for r in rows)), None)
     t_sec = dateref = None
-    if key is None:
-        notes.append(f"no time in every header ({', '.join(TIME_KEYS)}): t in name order, an index")
+    got = [_seconds(r["elapsed"]) for r in rows] if key is None else []
+    sim = [v for v in got if v is not None]
+    if key is None and len(sim) == len(rows) and len(set(sim)) == len(sim):
+        # a simulation's snapshots (ELAPSED): in their order, t its own seconds, no date (data.axes: sim_time)
+        key = ELAPSED
+        order = sorted(range(len(rows)), key=lambda i: sim[i])
+        if order != sorted(range(len(rows)), key=lambda i: os.path.basename(rows[i]["path"])):
+            notes.append(f"t in {key} order, which is not the files' name order")
+        rows = [rows[i] for i in order]
+        t_sec = tuple(float(sim[i]) for i in order)
+    elif key is None:
+        notes.append(f"no time in every header ({', '.join(TIME_KEYS)}, {ELAPSED}): t in name order, an index")
         rows.sort(key=lambda r: os.path.basename(r["path"]))
     else:
         ts = [np.datetime64(parse_time(r["times"][key]), "us") for r in rows]     # every one a time: key's rule

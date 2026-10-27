@@ -19,7 +19,7 @@ from PySide6 import QtCore
 from .._name import APP_NAME
 from ..core.scheduler import Scheduler
 from ..data.axes import unit_text
-from ..data.names import plane_text, slice_names, unit, value_name
+from ..data.names import card, plane_text, slice_names, unit, value_name
 from . import glass
 from .cards import CARD, CARD_LIGHT
 from .gestures import Gestures
@@ -30,6 +30,7 @@ from .scalekey import ScaleKey
 from .slitpanel import SlitPanel
 from .spectra import AxisDrag, SpectraPanel
 
+TAU1 = "τ₅₀₀=1"             # the profile's reference line at ZTAU51, the height of tau(500 nm) = 1
 IMAGE_TIP = ("Image contrast: closed = fixed, open = automatic per image. Click to switch; right click fixes it to "
              "this image")
 SPEC_TIP = ("Spectra y range: open = automatic, closed = fixed (I from 100 random profiles, Q U V from the whole "
@@ -122,9 +123,24 @@ class CubeView:
         # a cube without lambda has no spectra; one whose axis is not known to be lambda has them named as its
         # lambda-t and slit are, and its values by what they are when it has no Stokes
         other = self.slices if self.slices is not None and not self.slices.spectral else None
+        # that axis's own coordinates when the header gives them (data.axes.header_coords: Bifrost's z in Mm): the
+        # profile's x axis, the slider and the status line in them; τ500 = 1 marked on a z in Mm (ZTAU51)
+        lead = getattr(ds.axes, "lead_coord", None)
+        self.l_coords = lead(r.l) if other is not None and r.l is not None and lead is not None else None
+        coords = ref = None
+        if self.l_coords is not None and other is not None:
+            vals, u = self.l_coords
+            coords = (vals, f"{other.axis} [{u}]" if u else other.axis)
+            try:
+                tau = float(card(ds.axes, "ZTAU51"))
+            except ValueError:
+                tau = None
+            if tau is not None and other.axis == "z" and u == "Mm":
+                ref = (tau, TAU1)
         self.spectra = SpectraPanel(max(1, r.ns if r.s is not None else 1), r.nl, ds.axes, light=light,
                                     label=other.label if other else None, planes=r.planes,
-                                    value=value_name(getattr(ds, "path", ""), ds.axes) if other else None) \
+                                    value=value_name(getattr(ds, "path", ""), ds.axes) if other else None,
+                                    coords=coords, ref=ref) \
             if r.l is not None else None
         # lambda-t needs t; with one plane along the other axis it is one cell wide, a curve against t
         self.lambda_t: LambdaTPanel | TimeCurve | None = None

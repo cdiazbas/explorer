@@ -7,7 +7,7 @@ import math
 
 import numpy as np
 
-from ..data.axes import SUP, fmt_sig, fmt_signed, unit_text
+from ..data.axes import SUP, coord_text, fmt_sig, fmt_signed, unit_text
 from ..data.names import plane, unit
 
 SEP = "   ·   "
@@ -22,7 +22,7 @@ def padding(v0: float, s: int) -> bool:
 
 def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, ic: float | None,  # noqa: E741
                iscale: float | None, locked: bool, present=("t", "l"), value: str = "I",
-               planes: str = "stokes", axis: str = "λ") -> str:
+               planes: str = "stokes", axis: str = "λ", l_coords=None) -> str:
     """The cursor's pixel, fields separated by thin dots: helioprojective x, y when the header gives the field's
     corners (else the pixel), t in UT (else its index), lambda in Å, delta-lambda and the Doppler velocity (else the
     tuning index), the value: Q U V in % of this pixel's I_c when it is known, I (and Q U V without I_c) in its
@@ -31,10 +31,16 @@ def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, i
     cube without lambda shows: "Blos")."""
     f = []
     xy = ax.arcsec(y, x, t) if ax is not None and ax.corners is not None else None
-    f.append(f"x {fmt_signed(xy[0], 1)}″  y {fmt_signed(xy[1], 1)}″" if xy else f"x {x}  y {y}")
+    cx, cy = (getattr(ax, "coord", lambda n: None)(n) for n in (1, 2))     # the axes' own (Bifrost's Mm)
+    if xy:
+        f.append(f"x {fmt_signed(xy[0], 1)}″  y {fmt_signed(xy[1], 1)}″")
+    elif cx is not None and cy is not None:
+        f.append(f"x {coord_text(cx, x, 1)}  y {coord_text(cy, y, 1)}")
+    else:
+        f.append(f"x {x}  y {y}")
     if "t" in present:
         u = ax.utc_str(t) if ax is not None and ax.t_sec is not None else None
-        f.append(f"{u}{NB}UT" if u else f"t {t}")
+        f.append(f"{u}{NB}{ax.time_unit}" if u else f"t {t}")
     if "l" in present:
         dl = ax.dlam_A() if ax is not None else None
         if dl is not None:
@@ -42,14 +48,15 @@ def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, i
             f.append(f"Δλ {fmt_signed(float(dl[l]), 3)}{NB}Å")
             f.append(f"v {fmt_signed(ax.vel_kms(l), 2)}{NB}km s⁻¹")
         else:
-            f.append(f"{axis} {l}")                     # its index, named as its slider (SliceNames.axis)
+            # its coordinate where the header gives it (l_coords: "z 1.23 Mm"), else its index; named as its slider
+            f.append(f"{axis} {coord_text(l_coords, l)}" if l_coords is not None else f"{axis} {l}")
     name = plane(s, planes) if ns > 1 else value
     bunit = unit_text(unit(ax))                         # BUNIT, else PIXLUNIT (data.names.unit)
     if padding(v0, s):
         f.append(f"{name}  no data (padding)")
     elif s > 0 and ic and planes == "stokes":
         f.append(f"{name}/Ic {fmt_signed(100 * v0 / ic, 2)}{NB}%")
-    elif iscale:
+    elif iscale and iscale != 1:                        # 10⁰ is no power of ten: the unit alone
         e = str(int(np.log10(iscale))).translate(SUP)
         f.append(f"{name} {v0 / iscale:.3f} × 10{e}{NB}{bunit}".rstrip().replace("-", "−"))
     else:

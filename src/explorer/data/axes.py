@@ -183,6 +183,25 @@ class Axes:
         self.cards: dict[str, str] = {}     # the header's cards that name a cube (naming_cards), as text
         self.distortion = None      # the header's wavelength distortion (e.g. "WCSDVARR Lookup"), not applied
         self.source: list[str] = []  # what was read, for the status and about texts
+        # an axis's own coordinates where the header gives them (header_coords), by its FITS number n: (values, unit)
+        self.coords: dict[int, tuple[np.ndarray, str]] = {}
+        self.sim_time = False       # t_sec is a simulation's own seconds (ELAPSED), not a time of day
+
+    @property
+    def time_unit(self) -> str:
+        """What the times are said in: "UT", or "s" for a simulation's seconds."""
+        return "s" if self.sim_time else "UT"
+
+    def coord(self, n: int) -> tuple[np.ndarray, str] | None:
+        """FITS axis n's coordinates and unit (coords), or None."""
+        return self.coords.get(n)
+
+    def lead_coord(self, i: int) -> tuple[np.ndarray, str] | None:
+        """The coordinates of leading axis i (numpy order) when the header gives them (coords), or None."""
+        try:
+            return self.coords.get(int(self.cards.get("NAXIS", "")) - i)
+        except ValueError:
+            return None
 
     # ---- conversions (all take indices; None when unknown)
     def dlam_A(self, l=None):  # noqa: E741
@@ -207,6 +226,8 @@ class Axes:
         return self.dateref + np.timedelta64(int(round(self.t_sec[t] * 1e3)), "ms")
 
     def utc_str(self, t, seconds=True):
+        if self.sim_time and self.t_sec is not None:        # a simulation's seconds, said in time_unit
+            return f"{float(self.t_sec[t]):g}"
         if self.time_of_day and self.t_sec is not None:     # the time of day alone: formatted on any day
             u = np.datetime64(0, "ms") + np.timedelta64(int(round(self.t_sec[t] * 1e3)), "ms")
         else:
@@ -278,15 +299,17 @@ def from_series(layout) -> Axes:
     ax = Axes()
     if layout.t_sec is not None:
         ax.t_sec = np.asarray(layout.t_sec, float)
-        ax.dateref = np.datetime64(layout.dateref)
+        ax.sim_time = layout.time_key == "ELAPSED"      # a simulation's snapshots: its own seconds, no date
+        ax.dateref = None if layout.dateref is None else np.datetime64(layout.dateref)
         ax.source.append(f"time per file ({layout.time_key})")
     try:
         from astropy.io import fits
 
         with fits.open(layout.path, memmap=False, lazy_load_hdus=True) as h:
             hd = h[layout.hdus[0]].header
-            ax.bunit, ax.btype = text(hd, "BUNIT"), text(hd, "BTYPE")
+            ax.bunit, ax.btype = unit_of(hd), text(hd, "BTYPE")
             ax.cards = naming_cards(hd)
+            ax.coords = header_coords(h, hd)
     except Exception as e:                                          # never block opening a cube
         ax.source.append(f"header not read: {type(e).__name__}: {e}")
     return ax
@@ -301,7 +324,59 @@ def text(hd, key: str) -> str | None:
 
 # the cards data.names reads to name what a cube shows and its axes: an imager's instrument and passband, what a
 # map is (CONTENT), the unit of a series without BUNIT (PIXLUNIT: AIA), and each axis's own name (CTYPEn, CNAMEn)
-NAMING = ("TELESCOP", "INSTRUME", "DETECTOR", "WAVELNTH", "WAVEUNIT", "WAVEBAND", "CONTENT", "PIXLUNIT", "NAXIS")
+NAMING = ("TELESCOP", "INSTRUME", "DETECTOR", "WAVELNTH", "WAVEUNIT", "WAVEBAND", "CONTENT", "PIXLUNIT", "NAXIS",
+          "ZTAU51")
+# an axis these name is explorer's own (lambda, t, Stokes, the solar field's): header_coords leaves it alone
+ROLE_TYPES = {"WAVE", "AWAV", "FREQ", "STOKES", "UTC", "TIME", "TAI", "HPLN", "HPLT"}
+
+
+def unit_of(hd) -> str | None:
+    """BUNIT as text (text); a logical BUNIT = T is a unit only in a Bifrost file (INSTRUME 'Bifrost'), which writes
+    tesla so (helita's writefits: SI, b in T); elsewhere it stays no unit."""
+    u = text(hd, "BUNIT")
+    if u is None and hd.get("BUNIT") is True and str(hd.get("INSTRUME", "")).strip().lower().startswith("bifrost"):
+        return "T"
+    return u
+
+
+def header_coords(h, hd) -> dict[int, tuple[np.ndarray, str]]:
+    """Each axis's own coordinates, by FITS number n, with CUNITn: a 1-D extension named '<CTYPEn>-coordinate' of
+    NAXISn values (Bifrost's z, non-uniform), else the linear WCS (CRVALn, CDELTn, CRPIXn) when CUNITn says its
+    unit. Axes whose CTYPE explorer reads itself (ROLE_TYPES: lambda, t, Stokes, the solar field) are left out, so
+    a cube of those is read as before. Never raises: what cannot be read is left out."""
+    out: dict[int, tuple[np.ndarray, str]] = {}
+    try:
+        naxis = int(hd.get("NAXIS", 0) or 0)
+    except (TypeError, ValueError):
+        return out
+    ext: dict[str, object] = {}
+    try:
+        for hdu in list(h)[1:]:
+            name = str(hdu.header.get("EXTNAME", "")).strip().lower()
+            if name.endswith("-coordinate"):
+                ext[name] = hdu
+    except Exception:                                   # a damaged extension: no coordinates from extensions
+        ext = {}
+    for n in range(1, naxis + 1):
+        ctype = str(hd.get(f"CTYPE{n}", "") or "").split("-")[0].strip()
+        if not ctype or ctype.upper() in ROLE_TYPES:
+            continue
+        unit = text(hd, f"CUNIT{n}") or ""
+        size = int(hd.get(f"NAXIS{n}", 0) or 0)
+        try:
+            hdu = ext.get(f"{ctype.lower()}-coordinate")
+            data = None if hdu is None else np.asarray(getattr(hdu, "data", None), float)
+            if data is not None and data.ndim == 1 and data.size == size and np.isfinite(data).all():
+                out[n] = (data, unit)
+                continue
+            if unit and f"CDELT{n}" in hd:
+                cdelt, crval = float(hd[f"CDELT{n}"]), float(hd.get(f"CRVAL{n}", 0.0))
+                crpix = float(hd.get(f"CRPIX{n}", 1.0))
+                if np.isfinite(cdelt) and cdelt != 0:
+                    out[n] = (crval + (np.arange(size) + 1 - crpix) * cdelt, unit)
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 def naming_cards(hd) -> dict[str, str]:
@@ -334,9 +409,10 @@ def from_hdul(h) -> Axes:
 
 def _read(h, ax: Axes) -> None:
     hd = h[0].header
-    ax.bunit = text(hd, "BUNIT")
+    ax.bunit = unit_of(hd)
     ax.btype = text(hd, "BTYPE")
     ax.cards = naming_cards(hd)
+    ax.coords = header_coords(h, hd)
     # line: WAVEBAND -> laboratory wavelength
     wb = hd.get("WAVEBAND")
     if wb is not None and _norm(wb) in LINES:
@@ -575,3 +651,10 @@ def fmt_signed(v, nd=1) -> str:
     if float(s) == 0:
         return f"{0:.{nd}f}"
     return s.replace("-", "−")
+
+
+def coord_text(c: tuple, i: int, nd: int = 2) -> str:
+    """Coordinate i of an axis's (values, unit) (Axes.coords), nd decimals, a typographic minus: '1.23 Mm'."""
+    values, unit = c
+    s = f"{float(values[i]):.{nd}f}".replace("-", "−")
+    return f"{s}\u00a0{unit}" if unit else s

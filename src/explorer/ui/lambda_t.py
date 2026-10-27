@@ -141,7 +141,7 @@ class GridAxes:
 
     @property
     def t_title(self) -> str:
-        return "t [UT]" if self.timed else "t index"
+        return f"t [{self.tax.time_unit}]" if self.timed else "t index"
 
     def lam_label(self, i: int) -> str:
         return fmt_signed(self.xl[i], 2) if self.physical else str(i)

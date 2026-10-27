@@ -171,8 +171,9 @@ def test_an_sst_map_keeps_its_name(tmp_path):
 
 
 def test_an_axis_named_by_the_header_is_called_so(tmp_path):
-    """The axis rule: BIFROST's [z, y, x], CTYPE3 = 'z': its axis other than t is z, and BTYPE names what it shows;
-    BUNIT = T (a logical) is no unit. Before: "lg(tg)–t", "lg(tg) index"."""
+    """The axis rule: BIFROST's [z, y, x], CTYPE3 = 'z': its axis other than t is z, and BTYPE names what it shows
+    (a log10 as "log₁₀(tg)"); BUNIT = T (a logical) without INSTRUME 'Bifrost' is no unit. Before: "lg(tg)–t",
+    "lg(tg) index"."""
     from explorer.data.names import slice_names
 
     base = {"CTYPE1": "x", "CTYPE2": "y", "CTYPE3": "z", "OBJECT": "en024048_hion", "ORIGIN": "ITA/Oslo"}
@@ -180,7 +181,7 @@ def test_an_axis_named_by_the_header_is_called_so(tmp_path):
                         {**base, "BTYPE": "lg(tg)", "BUNIT": "K"})
     got = slice_names(r, ax, path)
     print(r.how, got)
-    assert (got.panel, got.label, got.value, got.mapped) == ("lg(tg) (z–t)", "z index", "lg(tg) [K]", False)
+    assert (got.panel, got.label, got.value, got.mapped) == ("log₁₀(tg) (z–t)", "z index", "log₁₀(tg) [K]", False)
     r, ax, path = _cube(tmp_path / "BIFROST_en024048_hion_bz_385.fits", (6, NY8, NX10),
                         {**base, "BTYPE": "bz", "BUNIT": True})
     got = slice_names(r, ax, path)

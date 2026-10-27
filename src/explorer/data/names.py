@@ -135,12 +135,19 @@ def passband(axes) -> str | None:
     return f"{inst} {band}".strip()
 
 
+def logs(btype: str) -> str:
+    """A BTYPE as written for the eye: "lg(x)", log10 of x (helita's writefits, Bifrost), as "log₁₀(x)"; any other
+    as it is."""
+    m = re.fullmatch(r"\s*lg\s*\((.+)\)\s*", btype)
+    return f"log₁₀({m.group(1).strip()})" if m else btype
+
+
 def header_name(axes) -> str | None:
     """What the header alone says a cube shows, by quantity's rules that read it: BTYPE or CONTENT, unless generic;
     without WAVEBAND, the imager's instrument and band (passband). None when it says nothing of its own."""
     btype = str(getattr(axes, "btype", None) or "").strip()
     if btype and btype.lower() not in GENERIC:
-        return btype
+        return logs(btype)
     content = card(axes, "CONTENT")
     if content and content.lower() not in GENERIC:
         return content.lower()
@@ -149,7 +156,7 @@ def header_name(axes) -> str | None:
 
 def quantity(path, axes=None) -> str:
     """What the cube shows, for the panels of an axis not known to be lambda; the first rule that gives a name:
-    1. BTYPE, unless generic (GENERIC: "Intensity");
+    1. BTYPE, unless generic (GENERIC: "Intensity"), a log10 written as one (logs: "log₁₀(tg)");
     2. CONTENT, unless generic;
     3. an inversion (is_inversion): "<line> inversion", "Inversion" without a line;
     4. the map's word in its file name (map_word: "Blos");
@@ -159,7 +166,7 @@ def quantity(path, axes=None) -> str:
     8. FALLBACK, "Quantity": the file's name is the cube's tab and tooltip already."""
     btype = str(getattr(axes, "btype", None) or "").strip()
     if btype and btype.lower() not in GENERIC:
-        return btype
+        return logs(btype)
     content = card(axes, "CONTENT")
     if content and content.lower() not in GENERIC:
         return content.lower()
