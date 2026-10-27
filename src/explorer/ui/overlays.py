@@ -38,6 +38,17 @@ def _num(x):
     return s.replace("-", "−")
 
 
+def limits_text(lo: float, hi: float) -> tuple[str, str]:
+    """A key's two limits as _num writes them, else with as many decimals as they need to differ (up to 6): 4.19 and
+    4.22, not 4.2 and 4.2; 1016.4 and 1016.5, not 1016 twice."""
+    a, b = _num(lo), _num(hi)
+    for d in range(1, 7):
+        if a != b or lo == hi:
+            break
+        a, b = (f"{v:.{d}f}".replace("-", "−") for v in (lo, hi))
+    return a, b
+
+
 # Gamma's letter, wherever the window writes a gamma. In the interface's sans (Noto Sans, DejaVu Sans, SF) γ at 11 px
 # is a y with a short tail; an italic serif γ has the loop that makes it a gamma. STIX Two Text ships with macOS and
 # Linux distributions alike, so both draw the same letter; the others are the serifs a Linux desktop has, Times New
@@ -222,11 +233,12 @@ class ColourKey(QtWidgets.QWidget):
             draw_text(p, QtCore.QRectF(bar.left(), top, bar.width(), 16), A.AlignHCenter, self.note)
             p.end()
             return
-        p.drawText(QtCore.QRectF(bar.left(), top, 70, 16), A.AlignLeft, _num(lo / k))
+        lo_t, hi_t = limits_text(lo / k, hi / k)
+        p.drawText(QtCore.QRectF(bar.left(), top, 70, 16), A.AlignLeft, lo_t)
         if lo < 0 < hi:
             x0 = bar.left() + bar.width() * (-lo) / (hi - lo)
             p.drawText(QtCore.QRectF(x0 - 20, top, 40, 16), A.AlignHCenter, "0")
-        p.drawText(QtCore.QRectF(bar.right() - 70, top, 70, 16), A.AlignRight, ("+" if lo < 0 else "") + _num(hi / k))
+        p.drawText(QtCore.QRectF(bar.right() - 70, top, 70, 16), A.AlignRight, ("+" if lo < 0 else "") + hi_t)
         p.end()
 
 

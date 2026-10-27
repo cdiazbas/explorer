@@ -28,7 +28,7 @@ from ..data.axes import signed
 from ..data.names import plane_text
 from . import glass, style
 from .imageview import CURSOR_PEN
-from .overlays import GAMMA, ColourKey, _num, _sci, draw_text, gamma_font, gamma_number, gamma_text
+from .overlays import GAMMA, ColourKey, _sci, draw_text, gamma_font, gamma_number, gamma_text, limits_text
 
 RULE_TEXT = {"p1": "Automatic, 1–99 % per frame", "p05": "0.5–99.5 % per frame",
              "minmax": "Min–max per frame", "fixed": "Frozen to this frame"}
@@ -393,6 +393,7 @@ class ScaleKey(ColourKey):
         p.drawImage(bar, im)                            # the bar along the data axis: each value its colour
         p.setPen(QtGui.QPen(faint, 1))
         p.drawRect(bar)
+        texts = dict(zip(("lo", "hi"), limits_text(lo / kpow, hi / kpow), strict=True))
         for which, v in (("lo", lo), ("hi", hi)):
             x = self.x_of(v) / z
             on = which in (self.near, self.drag)
@@ -407,7 +408,7 @@ class ScaleKey(ColourKey):
             p.setPen(ink)
             r = QtCore.QRectF(x - 40, bar.bottom() + 9, 80, 14)
             r.moveLeft(min(max(r.left(), 4), W - 84))
-            p.drawText(r, AL.AlignHCenter | AL.AlignTop, ("+" if sym and which == "hi" else "") + _num(v / kpow))
+            p.drawText(r, AL.AlignHCenter | AL.AlignTop, ("+" if sym and which == "hi" else "") + texts[which])
         p.setPen(faint)
         draw_text(p, QtCore.QRectF(8, H - 16, W - 16, 14), AL.AlignHCenter, hint(fm, W - 16))
         p.end()
