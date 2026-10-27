@@ -99,6 +99,28 @@ def test_the_image_follows_its_rule_and_the_padlock_its_stokes(window):
     assert sess.scale(0, 1)[0] == "p1" and sess.scale(0, 0) == ("fixed", 1.0, 2.0)
 
 
+def test_every_image_s_padlock_fixes_the_stokes_it_shows_not_its_whole_cube(window):
+    """The padlock fixes the Stokes being looked at (the user, 2026-10-27), on the main image and on a linked one:
+    closed on Q, I and U stay automatic and the other cube untouched; back on I it shows I's, open; on Q again,
+    closed, with Q's levels kept."""
+    w, qapp = window
+    sess, other = w.session, w.linked[0]
+    sess.set_index("s", 1)
+    assert spin(qapp, lambda: other.scheduler.img_idx is not None and other.scheduler.img_idx[1] == 1)
+    other.image_lock.click()                                            # the linked cube's, on Q
+    qapp.processEvents()
+    q = sess.scale(1, 1)
+    assert q[0] == "fixed" and q[1:] == rule_levels(other.scheduler.img, True, "p1")
+    assert all(sess.scale(1, s)[0] == "p1" for s in (0, 2, 3)) and all(sess.scale(0, s)[0] == "p1" for s in range(4))
+    assert other.image_lock.isChecked() and not w.image_lock.isChecked()
+    for s, closed in ((0, False), (2, False), (1, True)):
+        sess.set_index("s", s)
+        assert spin(qapp, lambda s=s: other.scheduler.img_idx[1] == s)
+        assert other.image_lock.isChecked() == closed, s
+        assert drawn(qapp, other) == (q[1:] if closed else rule_levels(other.scheduler.img, s > 0, "p1")), s
+    assert sess.scale(1, 1) == q
+
+
 # ---------------------------------------------------------------------------------------------- the key
 def hot(qapp, key):
     key.set_hot(True)
