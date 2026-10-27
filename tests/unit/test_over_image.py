@@ -170,7 +170,11 @@ def test_the_hot_key_takes_the_look_s_accent_through_a_look_and_a_theme_switch(w
     assert accent_px(key, blue) > 20 and accent_px(key, red) == 0               # modern: its blue, as before
     w.set_theme("light")
     spin(qapp, passes=20)
-    assert accent_px(key, QtGui.QColor("#0063d1")) > 20
+    from explorer.ui import style
+
+    marks = style.accent()                                                      # the markers' (Shell.set_look)
+    assert marks.name() == w.spectra.lines[0].pen.color().name()
+    assert accent_px(key, marks) > 20 and accent_px(key, QtGui.QColor("#0063d1")) == 0   # one blue, not its own
     w.set_look(get_look("classic", {}))
     spin(qapp, passes=20)
     assert accent_px(key, red) > 20                                             # classic light: the same red

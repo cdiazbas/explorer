@@ -52,13 +52,13 @@ def slider_of_gamma(g: float) -> int:
 
 
 def accent(look, light: bool) -> QtGui.QColor:
-    """The hot key's handles and transfer curve in the look's accent, as the markers' (Shell.set_look): classic's the
-    cursor's red, glass's its orange, the modern look's blue, its own: darker on the light key than style.accent(),
-    and not the system's under the native macOS style."""
+    """The hot key's transfer curve in the markers' colour (Shell.set_look): classic's the cursor's red, glass's its
+    orange, the modern look's style.accent(), the system's under the native macOS style. One blue in the window: on
+    the light key #007aff reads 4.0:1 on white and 3.1:1 at worst (white at 225 over black), above 3:1 for a line."""
     if look.has("glass"):
         return glass.accent()
     if look.has("marks"):
-        return QtGui.QColor("#0063d1") if light else QtGui.QColor("#0a84ff")
+        return style.accent()
     return CURSOR_PEN.color()
 
 
