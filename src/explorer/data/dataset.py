@@ -28,7 +28,7 @@ from . import formats
 from .cache import FrameCache
 from .executors import Executors
 from .formats.layout import spatial_lead
-from .io import Closing, FrameReader, PerPixelFrames, SeriesReader
+from .io import Closing, FrameReader, PerPixelFrames, SeriesReader, VariablesReader
 from .masking import stokes_axis
 from .pixel import PixelReader, SpFits, calibrate_frames, open_pixel
 from .policy import Budgets, MemoryGuard, StorageProbe, plan_budgets
@@ -117,7 +117,7 @@ class ImagePasses:
 
 class Dataset(Closing):
     def __init__(self, path, *, sp=None, no_sp=False, probe=None, guard=None, axes=None, executors=None,
-                 series=None):
+                 series=None, variables=None):
         """Open the cube at path; sp: a per-pixel file to use instead of the companions next to it; no_sp: none;
         axes: what the leading axes are when the header does not say it right (--axes, axes.roles), e.g. "s,l".
         probe and guard: given instead of measured (tests, or a second cube on the same storage). executors: another
@@ -125,15 +125,25 @@ class Dataset(Closing):
         executors.py); they stay that cube's, and are not closed with this one. series: FITS files, one image each,
         read as the t axis of one cube (formats.series_layout); path is then ignored, and there is no per-pixel
         file. A per-pixel file given as path (formats.opening, when its image cube is not beside it): its images
-        read from it, a pass over the whole file each (io.PerPixelFrames), and it is the per-pixel file."""
+        read from it, a pass over the whole file each (io.PerPixelFrames), and it is the per-pixel file.
+        variables: a snapshot's variables, a file each (formats.variables_layout), as one cube (variable, z, y, x),
+        each frame read from its own file (io.VariablesReader); path is then ignored. ValueError when they are not
+        one snapshot's."""
         self.executors: Executors | None = None
         self._own_executors = executors is None
         self._io = ThreadPoolExecutor(IO_THREADS, thread_name_prefix="io")
-        if series is not None:
+        if variables is not None:
+            snap = formats.variables_layout(variables)
+            if snap is None:
+                raise ValueError("not one simulation snapshot's variables (formats.variables_layout)")
+            self.layout: formats.Layout = snap
+            self.path, no_sp = snap.path, True
+            self.frames: FrameReader = VariablesReader(snap, pool=self._io)
+        elif series is not None:
             files = formats.series_layout(series)
-            self.layout: formats.Layout = files
+            self.layout = files
             self.path, no_sp = files.path, True
-            self.frames: FrameReader = SeriesReader(files, pool=self._io)
+            self.frames = SeriesReader(files, pool=self._io)
         else:
             self.path = str(path)
             self.layout = formats.open_layout(path)

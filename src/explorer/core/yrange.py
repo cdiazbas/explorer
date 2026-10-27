@@ -30,12 +30,15 @@ REST_S = 0.4
 class YRange:
     def __init__(self, loop: Loop, ns: int, cont, apply: Callable[[int, tuple], None],
                  units: Callable[[float | None], None] = lambda s: None, want_quv: Callable[[], None] = lambda: None,
-                 quv_ok: bool = True):
+                 quv_ok: bool = True, intensity: bool = True):
         """apply(k, (lo, hi)): set plot k's range; units(iscale): I's power of ten is known (for the titles);
-        want_quv(): start reading Q U V's ranges from whole frames (once)."""
+        want_quv(): start reading Q U V's ranges from whole frames (once). intensity: the planes are Stokes (or one
+        plane): I's power of ten, I from 0, Q U V symmetric; else (an inversion's parameters, a snapshot's
+        variables) each plane in its own units and range."""
         self.loop, self.ns, self.cont = loop, int(ns), cont
         self._apply, self._units, self._want_quv = apply, units, want_quv
         self.iscale: float | None = None
+        self.intensity = intensity
         self.fixed = False                              # both padlocks open at start, as the prototype
         self.r: list[tuple | None] = [None] * self.ns   # the range each plot has
         self.last: list[tuple | None] = [None] * self.ns
@@ -63,7 +66,7 @@ class YRange:
     # ---------------------------------------------------------------- a spectrum on screen
     def first(self, i_profile) -> None:
         """I's power of ten from the first profile of I that has one; later ones change nothing."""
-        if self.iscale is None:
+        if self.iscale is None and self.intensity:
             self.iscale = power_of_ten(np.asarray(i_profile, dtype=np.float64))
             if self.iscale is not None:
                 self._units(self.iscale)
@@ -182,7 +185,7 @@ class YRange:
     def sample_ready(self, prof) -> None:
         """The random sample's profiles (n, ns, nl), as read."""
         had = self.iscale
-        ranges, self.iscale, _ = sample_ranges(prof, self.cont, self.iscale)
+        ranges, self.iscale, _ = sample_ranges(prof, self.cont, self.iscale, intensity_rules=self.intensity)
         if had is None and self.iscale is not None:
             self._units(self.iscale)
         if ranges is None:

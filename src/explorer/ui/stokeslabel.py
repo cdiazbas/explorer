@@ -11,6 +11,7 @@ range). Made hidden; the same words on every view.
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..data.axes import Planes
 from ..data.names import plane_text
 
 POS = (8, 6)                                            # px from the view box's top left
@@ -39,7 +40,7 @@ class StokesLabel(pg.GraphicsObject):
     def toPlainText(self) -> str:                      # the words shown, as a text item says them
         return self._text
 
-    def show_stokes(self, s: int | None, ns: int, planes: str = "stokes") -> None:
+    def show_stokes(self, s: int | None, ns: int, planes: Planes = "stokes") -> None:
         """The words "Stokes <s's letter>" on the view of a cube with ns Stokes, when ns is 4, or an inversion's
         parameter ("Quantity 2"; planes: data.axes.Roles.planes, data.names.plane_text); else, or for s None (the
         Stokes named by something else in that corner), nothing."""

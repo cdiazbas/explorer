@@ -116,7 +116,7 @@ class Scheduler:
         # a linked cube's image is a panel that can be closed; the main cube's is always there
         self._image_shown = (lambda st: True) if member == 0 else (lambda st: "image" in st.panels)
         self.yrange = YRange(self.loop, r.ns, self._cont(), sink.y_range, sink.units,
-                             self._start_quv, quv_ok=r.s is not None)
+                             self._start_quv, quv_ok=stokes(r), intensity=r.planes == "stokes")
         self._sampled = False
         self.grid = False                               # the 2x2 view: every Stokes's frame at this t and lambda
         self._grid_gen = 0

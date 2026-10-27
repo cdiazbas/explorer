@@ -58,8 +58,9 @@ class Roles(NamedTuple):
     they were decided: "header" (CTYPE), "SOLARNET order" (three unnamed axes: t, s, lambda), "default (t, lambda)"
     (two unnamed axes), "unknown" (one unnamed axis: whatever it is, it is stepped and plotted as a profile in
     indices, and must not be labelled lambda or t), "--axes" (given by the user), "inversion" (an inversion's file:
-    its parameters on s, by_parameter). planes: what the s axis holds, "stokes" or "parameter" (an inversion's), each
-    a plane of its own with its own levels, picked as a Stokes is."""
+    its parameters on s, by_parameter), "variables" (a snapshot's variables, a file each: formats.variables_layout).
+    planes: what the s axis holds, "stokes", "parameter" (an inversion's), or a snapshot's variables by name (a
+    tuple: "log₁₀(tg)", "bz", ...); each a plane of its own with its own levels, picked as a Stokes is."""
     t: int | None
     s: int | None
     l: int | None  # noqa: E741
@@ -67,7 +68,10 @@ class Roles(NamedTuple):
     ns: int
     nl: int
     how: str = "header"
-    planes: str = "stokes"
+    planes: "Planes" = "stokes"
+
+
+Planes = str | tuple[str, ...]      # Roles.planes: "stokes", "parameter", or the variables' names
 
 
 INVERSION = {"meinv", "inversion", "inv"}       # a word of an inversion's file name: its planes are parameters
@@ -186,6 +190,7 @@ class Axes:
         # an axis's own coordinates where the header gives them (header_coords), by its FITS number n: (values, unit)
         self.coords: dict[int, tuple[np.ndarray, str]] = {}
         self.sim_time = False       # t_sec is a simulation's own seconds (ELAPSED), not a time of day
+        self.plane_units: tuple[str, ...] | None = None     # each plane's unit, when they differ (a snapshot's)
 
     @property
     def time_unit(self) -> str:
@@ -269,6 +274,12 @@ def read(path, layout, axes: str | None = None) -> tuple[Roles, Axes]:
     checked against each other (check): what Dataset opens a cube with and data.link plans it with, so the plan
     never accepts a cube that its opening refuses. layout: the cube's (formats.open_layout). An inversion's file
     has its parameters on s (by_parameter), unless --axes says otherwise."""
+    if layout.kind == "variables":                     # (variable, z, y, x): the variables on s, z where lambda is
+        nv, nz = layout.shape[:2]
+        r = Roles(None, 0, 1, 1, nv, nz, "variables", tuple(logs(b) for b in layout.btypes))
+        ax = from_variables(layout)
+        check(ax, r, layout.axes)
+        return r, ax
     r = roles(layout.axes, layout.shape, axes)
     if not axes and is_inversion(path):
         r = by_parameter(r)
@@ -313,6 +324,34 @@ def from_series(layout) -> Axes:
     except Exception as e:                                          # never block opening a cube
         ax.source.append(f"header not read: {type(e).__name__}: {e}")
     return ax
+
+
+def from_variables(layout) -> Axes:
+    """The axes of a snapshot's variables (formats.VariablesLayout): the first file's (its heights, x and y, its
+    cards), numbered as one cube of four axes (NAXIS 4: the variables the fourth), and each variable's unit
+    (plane_units: its BUNIT, unit_of); no BTYPE of its own, each plane has its name (Roles.planes)."""
+    from astropy.io import fits
+
+    ax = from_fits(layout.paths[0])
+    ax.btype, ax.bunit = None, None
+    ax.cards = {**ax.cards, "NAXIS": "4"}
+    units = []
+    for p in layout.paths:
+        try:
+            units.append(unit_of(fits.getheader(p, 0)) or "")
+        except (OSError, ValueError) as e:
+            units.append("")
+            ax.source.append(f"header of {os.path.basename(p)} not read: {e}")
+    ax.plane_units = tuple(units)
+    ax.source.append(f"{len(layout.paths)} variables of one snapshot, a file each")
+    return ax
+
+
+def logs(btype) -> str:
+    """A BTYPE as written for the eye: "lg(x)", log10 of x (helita's writefits, Bifrost), as "log₁₀(x)"; any other
+    as it is."""
+    m = re.fullmatch(r"\s*lg\s*\((.+)\)\s*", str(btype))
+    return f"log₁₀({m.group(1).strip()})" if m else str(btype)
 
 
 def text(hd, key: str) -> str | None:
@@ -585,8 +624,8 @@ def plot_units(spec, cont, iscale):
 
 
 def unit_text(u) -> str:
-    """'W m^-2 Hz^-1 sr^-1' -> 'W m⁻² Hz⁻¹ sr⁻¹'."""
-    return re.sub(r"\^(-?\d+)", lambda m: m.group(1).translate(SUP), str(u or ""))
+    """'W m^-2 Hz^-1 sr^-1' -> 'W m⁻² Hz⁻¹ sr⁻¹'; helita's 'm^(-3)' -> 'm⁻³'."""
+    return re.sub(r"\^\(?(-?\d+)\)?", lambda m: m.group(1).translate(SUP), str(u or ""))
 
 
 def fmt_sig(v, n=4) -> str:

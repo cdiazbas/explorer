@@ -631,13 +631,21 @@ class SeriesReader(FrameReader):
             raise IndexError(f"frame index {idx} outside {self.shape[:-2]}")
         return idx[0]
 
+    def _at(self, t: int) -> tuple[int, int]:
+        """(file descriptor, byte offset) of frame number t: file t's image (VariablesReader: a frame inside one)."""
+        return self.fds[t], self.layout.offsets[t]
+
+    def _path(self, t: int) -> str:
+        return self.layout.paths[t]
+
     def frame_offset(self, idx) -> int:
-        return self.layout.offsets[self._t(idx)]
+        return self._at(self._t(idx))[1]
 
     def sample_at(self, k: int, y: int, x: int) -> tuple[int, int]:
         if self.layout.compressed:                      # the first file's table: a small read on its storage
             return self.fd, self.layout.offsets[0]
-        return self.fds[k], self.layout.offsets[k] + (y * self.nx + x) * self.layout.dtype.itemsize
+        fd, at = self._at(k)
+        return fd, at + (y * self.nx + x) * self.layout.dtype.itemsize
 
     def _decompressed(self, t: int, rows: slice | None = None, x: int | None = None, timed=False) -> np.ndarray:
         """File t's image as stored (BSCALE, BZERO not applied), its rows `rows` (all when None), or its pixel x
@@ -682,9 +690,8 @@ class SeriesReader(FrameReader):
         fb, k = self.frame_bytes, self.chunks if chunks is None else max(1, int(chunks))
         step = -(-fb // k)
         raw = np.empty((self.ny, self.nx), self.layout.dtype)
-        parts = [(memoryview(raw).cast("B")[a:min(fb, a + step)], self.layout.offsets[t] + a)
-                 for a in range(0, fb, step)]
-        fd = self.fds[t]
+        fd, base = self._at(t)
+        parts = [(memoryview(raw).cast("B")[a:min(fb, a + step)], base + a) for a in range(0, fb, step)]
         futs = [self.pool.submit(_preadv_exact, fd, v, at) for v, at in parts[1:]] if k > 1 else []
         for v, at in parts if k == 1 else parts[:1]:
             _preadv_exact(fd, v, at)
@@ -699,18 +706,20 @@ class SeriesReader(FrameReader):
             return self._decompressed(t, slice(y0, y1)).reshape(y1 - y0, self.nx)
         it = self.layout.dtype.itemsize
         n = (y1 - y0) * self.nx * it
-        b = os.pread(self.fds[t], n, self.layout.offsets[t] + y0 * self.nx * it)
+        fd, base = self._at(t)
+        b = os.pread(fd, n, base + y0 * self.nx * it)
         if len(b) != n:
-            raise ShortRead(f"read {len(b)} of {n} bytes of rows {y0}..{y1} in {self.layout.paths[t]}")
+            raise ShortRead(f"read {len(b)} of {n} bytes of rows {y0}..{y1} in {self._path(t)}")
         return np.frombuffer(b, self.layout.dtype).reshape(y1 - y0, self.nx)
 
     def _pixel_raw(self, t: int, y: int, x: int):
         if self.layout.compressed:
             return self._decompressed(t, slice(y, y + 1), x).reshape(-1)[0]
         it = self.layout.dtype.itemsize
-        b = os.pread(self.fds[t], it, self.layout.offsets[t] + (y * self.nx + x) * it)
+        fd, base = self._at(t)
+        b = os.pread(fd, it, base + (y * self.nx + x) * it)
         if len(b) != it:
-            raise ShortRead(f"read {len(b)} of {it} bytes of pixel ({y}, {x}) in {self.layout.paths[t]}")
+            raise ShortRead(f"read {len(b)} of {it} bytes of pixel ({y}, {x}) in {self._path(t)}")
         return np.frombuffer(b, self.layout.dtype)[0]
 
     def _map(self, fn, items) -> list:
@@ -755,3 +764,26 @@ class SeriesReader(FrameReader):
             os.close(fd)
         self.fds = []
         super().close()
+
+
+class VariablesReader(SeriesReader):
+    """A snapshot's variables (formats.VariablesLayout, (nvar, nz, y, x)): frame (v, z), number v * nz + z, is
+    frame z of file v, read with preads where it is, as a series' frames are; a value along z (a profile) one pread
+    per height, along the variables one per file. Never a file whole."""
+
+    def _t(self, idx) -> int:
+        """The frame number of idx: (v, z), or a frame number already (series_frames' own)."""
+        idx = tuple(int(i) for i in np.atleast_1d(idx))
+        nv, nz = self.shape[0], self.shape[1]
+        if len(idx) == 2 and 0 <= idx[0] < nv and 0 <= idx[1] < nz:
+            return idx[0] * nz + idx[1]
+        if len(idx) == 1 and 0 <= idx[0] < nv * nz:
+            return idx[0]
+        raise IndexError(f"frame index {idx} outside {self.shape[:-2]}")
+
+    def _at(self, t: int) -> tuple[int, int]:
+        v, z = divmod(int(t), self.shape[1])
+        return self.fds[v], self.layout.offsets[v] + z * self.frame_bytes
+
+    def _path(self, t: int) -> str:
+        return self.layout.paths[int(t) // self.shape[1]]

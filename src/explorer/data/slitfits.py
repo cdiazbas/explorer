@@ -28,7 +28,7 @@ import numpy as np
 
 from .. import __version__
 from .._name import APP_NAME
-from .axes import STOKES
+from .axes import STOKES, Planes
 from .names import stem
 from .slits import slit_samples
 from .tsample import label
@@ -45,7 +45,7 @@ COMMENTS = ("The slit's time slice: NAXIS1 along the slit, NAXIS2 over t.",     
             "X, Y, XPOS, YPOS: main image pixels from 0, centres at integers.")
 
 
-def stokes_name(s: int | None, ns: int, planes: str = "stokes") -> str | None:
+def stokes_name(s: int | None, ns: int, planes: Planes = "stokes") -> str | None:
     """'I', 'Q', 'U', 'V' with the four Stokes; 's<k>' with another number of them, or for an inversion's parameters
     (planes: data.axes.Roles.planes), however many; None without a Stokes axis."""
     if s is None:
@@ -81,7 +81,7 @@ def _utc(times, t: np.ndarray) -> tuple[np.ndarray, list[str], str]:
 
 def hdus(values, *, t, pix, pts, source, axes=None, times=None, s: int | None = None, ns: int = 1,
          l: int | None = None, nt: int | None = None, name: str = "", when: dt.datetime | None = None,  # noqa: E741
-         planes: str = "stokes"):
+         planes: Planes = "stokes"):
     """The file's HDUs (an astropy HDUList), from:
     values  (len(t), n_points): the time slice, as the panel has it;
     t       the cube's t index of each row;
@@ -186,7 +186,7 @@ def hdus(values, *, t, pix, pts, source, axes=None, times=None, s: int | None = 
 
 def write_time_slice(folder, values, *, t, pix, pts, source, axes=None, times=None, s: int | None = None, ns: int = 1,
                      l: int | None = None, nt: int | None = None, when: dt.datetime | None = None,  # noqa: E741
-                     planes: str = "stokes") -> str:
+                     planes: Planes = "stokes") -> str:
     """The time slice to a new file in folder (hdus has the arguments), named file_name's way; an existing file is
     never written over: _2, _3, ... after the name. Returns its path."""
     when = when or dt.datetime.now(dt.UTC)

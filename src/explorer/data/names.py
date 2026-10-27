@@ -20,7 +20,7 @@ import os
 import re
 from typing import NamedTuple
 
-from .axes import LINES, STOKES, is_inversion
+from .axes import LINES, STOKES, Planes, is_inversion, logs
 
 MAX_CHARS = 32              # a name longer than this is cut in the middle (…), its file in the tooltip
 MATCH_A = 6.0               # Å: a wavelength in a file name is a known line within this (the name rounds it: 6563)
@@ -135,13 +135,6 @@ def passband(axes) -> str | None:
     return f"{inst} {band}".strip()
 
 
-def logs(btype: str) -> str:
-    """A BTYPE as written for the eye: "lg(x)", log10 of x (helita's writefits, Bifrost), as "log₁₀(x)"; any other
-    as it is."""
-    m = re.fullmatch(r"\s*lg\s*\((.+)\)\s*", btype)
-    return f"log₁₀({m.group(1).strip()})" if m else btype
-
-
 def header_name(axes) -> str | None:
     """What the header alone says a cube shows, by quantity's rules that read it: BTYPE or CONTENT, unless generic;
     without WAVEBAND, the imager's instrument and band (passband). None when it says nothing of its own."""
@@ -254,19 +247,21 @@ def slice_names(roles, axes, path) -> SliceNames:
                       "λ" if spectral else word or PLANE)
 
 
-def plane(s: int, planes: str = "stokes") -> str:
+def plane(s: int, planes: Planes = "stokes") -> str:
     """Plane s along a cube's s axis as its selector names it (planes: data.axes.Roles.planes): I, Q, U, V for
     Stokes; "Quantity 1", "Quantity 2", … for an inversion's parameters (data.axes.by_parameter), which no file on
-    disk names."""
+    disk names; a snapshot's variables by their own names (a tuple)."""
+    if isinstance(planes, tuple):
+        return planes[s]
     if planes == "parameter":
         return f"{FALLBACK} {s + 1}"
     return STOKES[s] if s < len(STOKES) else f"s{s}"
 
 
-def plane_text(s: int, ns: int, planes: str = "stokes") -> str:
+def plane_text(s: int, ns: int, planes: Planes = "stokes") -> str:
     """Plane s of ns as the image, its key and its scale say it: "Stokes Q" with the four Stokes, "Quantity 2" for a
     parameter; "" otherwise (one Stokes, or not the four)."""
-    if planes == "parameter":
+    if planes != "stokes":
         return plane(s, planes)
     return f"Stokes {STOKES[s]}" if ns == len(STOKES) else ""
 

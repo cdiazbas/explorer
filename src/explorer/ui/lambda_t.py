@@ -18,7 +18,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.levels import gamma_panel
-from ..data.axes import dlam_label, fmt_signed, tunings
+from ..data.axes import Planes, dlam_label, fmt_signed, tunings
 from ..data.tsample import nearest_sample, time_samples
 from . import pens, style
 from .imageview import CURSOR_PEN
@@ -208,7 +208,7 @@ class LambdaTPanel(GridAxes):
         style.default_axes(self.w)
         self.stokes.set_light(light)
 
-    def set_stokes(self, s: int | None, ns: int, planes: str = "stokes") -> None:
+    def set_stokes(self, s: int | None, ns: int, planes: Planes = "stokes") -> None:
         """The label of Stokes s of ns ("Stokes Q") at the top left, when ns is 4, or of a parameter (ui.stokeslabel);
         s None: nothing."""
         self.stokes.show_stokes(s, ns, planes)
@@ -298,7 +298,7 @@ class TimeCurve(GridAxes):
         self.curve.setPen(pg.mkPen(self._ink(light), width=1.5))
         self.stokes.set_light(light)
 
-    def set_stokes(self, s: int | None, ns: int, planes: str = "stokes") -> None:
+    def set_stokes(self, s: int | None, ns: int, planes: Planes = "stokes") -> None:
         self.stokes.show_stokes(s, ns, planes)
 
     def show(self, lt: np.ndarray, levels=None, gamma: float | None = None) -> None:

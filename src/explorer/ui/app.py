@@ -215,6 +215,14 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     except (ValueError, OSError) as e:                  # a per-pixel file without its image cube: what is needed
         print(f"[{APP_NAME}] {e}", file=sys.stderr)
         return None
+    # the files given are one simulation snapshot's variables (a file each, data.formats.variables_layout): one
+    # cube, its variables picked as Stokes are; anything else links as it always did
+    from ..data.formats import variables_layout
+
+    variables = [path, *linked] if series is None and linked and variables_layout([path, *linked]) else None
+    if variables is not None:
+        print(f"[{APP_NAME}] {len(variables)} variables of one snapshot: one cube, a variable each", file=sys.stderr)
+        linked = []
     try:
         links = plan_links(path, linked, axes) if linked else []
     except (ValueError, OSError) as e:                  # the first cube: reported as below, when opened
@@ -243,7 +251,7 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     # linked cubes: one memory budget shared, the first cube's threads (one runs parallel numba for all)
     guard = GuardShare(MemoryGuard(), 1 + len(links)) if links else None
     try:
-        ds = Dataset.open(path, sp=sp, no_sp=no_sp, axes=axes, guard=guard, series=series)
+        ds = Dataset.open(path, sp=sp, no_sp=no_sp, axes=axes, guard=guard, series=series, variables=variables)
     except (ValueError, OSError) as e:                  # a file it cannot read as a cube: say so, no traceback
         print(f"[{APP_NAME}] cannot open {'the series' if series is not None else path}: {e}", file=sys.stderr)
         return None
@@ -280,7 +288,8 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
 
         tracer = geomtrace.install_from_env()           # EXPLORER_GEOMETRY_TRACE=1: before the window, to see it all
         series_paths: tuple[str, ...] = getattr(ds.layout, "paths", ())
-        names = (" + ".join(os.path.basename(str(p)) for p in [path, *(lk.path for lk in links)]) if series is None
+        names = (" + ".join(os.path.basename(str(p)) for p in [*(variables or [path]), *(lk.path for lk in links)])
+                 if series is None
                  else f"{os.path.basename(ds.path)} … {os.path.basename(series_paths[-1])} "
                       f"({len(series_paths)} files)")
         shell = Shell(ds, title=f"{names} — {APP_NAME}", t0=t0, look=get_look(look), linked=others, mask=masked)

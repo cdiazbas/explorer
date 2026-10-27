@@ -19,6 +19,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore
 
 from ..core.levels import symmetric_levels
+from ..data.axes import Planes
 from ..data.kernels import gamma_table, reduce_u8
 from . import pens
 from .overlays import OverImage
@@ -175,7 +176,7 @@ class ImageView:
         self.hl.setVisible(not on)
         self.vl.setVisible(not on)
 
-    def set_stokes(self, s: int | None, ns: int, planes: str = "stokes") -> None:
+    def set_stokes(self, s: int | None, ns: int, planes: Planes = "stokes") -> None:
         """The label of Stokes s of ns ("Stokes Q") at the view's top left, when ns is 4, or of a parameter
         (ui.stokeslabel); s None: nothing."""
         self.stokes.show_stokes(s, ns, planes)

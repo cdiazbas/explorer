@@ -38,7 +38,7 @@ class StokesGrid(QtWidgets.QWidget):
         self.on_hover = on_hover
         self.under: int | None = None                   # the Stokes of the panel the mouse last moved over
         self._following = False
-        cols = 1 if ns == 1 else 2
+        cols = 1 if ns == 1 else 2 if ns <= 4 else 3
         for k in range(ns):
             v = ImageView(on_hover=functools.partial(self._hovered, k), strips=strips, parts=parts, light=light)
             v._first = False                            # the region comes from the single view, not the whole image

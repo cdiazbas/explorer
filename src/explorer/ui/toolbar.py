@@ -7,7 +7,7 @@ From the prototype's app/viewer.py: the toolbar (913-960), JumpSlider (364), _sl
 """
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..data.axes import coord_text, fmt_offset, lam0_text
+from ..data.axes import Planes, coord_text, fmt_offset, lam0_text
 from ..data.names import plane
 from . import icons
 
@@ -16,7 +16,7 @@ FPS = (1, 120, 10)                                      # the rate box: minimum,
 ALL = "All"                                             # every Stokes side by side (the 2x2 view, ui.stokesgrid)
 
 
-def what(planes: str) -> str:
+def what(planes: Planes) -> str:
     """What the planes picked are called before them in the toolbar: "Stokes"; an inversion's parameters say it
     themselves ("Quantity 2", data.names.plane)."""
     return "Stokes" if planes == "stokes" else ""
@@ -27,7 +27,7 @@ class StokesSegments(QtWidgets.QWidget):
     inversion's parameters the same way (planes: data.axes.Roles.planes); keys: the tooltips name the keys, and
     All is the last segment (the main cube's; a linked cube's own planes have neither: ui.linked.PlanePicker)."""
 
-    def __init__(self, ns: int, current: int, pick, planes: str = "stokes", keys: bool = True, parent=None):
+    def __init__(self, ns: int, current: int, pick, planes: Planes = "stokes", keys: bool = True, parent=None):
         super().__init__(parent)
         self.setObjectName("stokes_segments")
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
@@ -79,7 +79,7 @@ class StokesDrop(QtWidgets.QToolButton):
     window. Shown with show(), never a menu's exec(): a nested event loop inside the X11 bridge's timer hung the
     prototype."""
 
-    def __init__(self, ns: int, current: int, pick, planes: str = "stokes"):
+    def __init__(self, ns: int, current: int, pick, planes: Planes = "stokes"):
         super().__init__()
         self.setObjectName("stokes_drop")
         self.setAutoRaise(True)

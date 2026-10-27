@@ -32,6 +32,7 @@ from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
 from ..data import slitfits
+from ..data.axes import unit_text
 from ..data.names import cube_names, plane_text, slice_names, value_name
 from ..look import ENV_OFF, LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
@@ -567,7 +568,9 @@ class Shell(QtWidgets.QMainWindow):
                     if self.mask_outlines is not None:
                         self.mask_outlines.attach(v)
                 self.grid_locks = [self._grid_lock(s, v) for s, v in enumerate(self.grid.views)]
-                self.grid_keys = [ScaleKey(self, v, 0, self.main.key.unit, stokes=s)  # they name the panels
+                units = getattr(self.dataset.axes, "plane_units", None)     # a snapshot's: each its own
+                self.grid_keys = [ScaleKey(self, v, 0, unit_text(units[s]) if units else self.main.key.unit,
+                                           stokes=s)                                # they name the panels
                                   for s, v in enumerate(self.grid.views)]
                 self._place_grid_keys()
             self.grid.setGeometry(self.view.widget.rect())
@@ -1387,7 +1390,9 @@ class Shell(QtWidgets.QMainWindow):
             rows.append((" · ".join(a[0] for a in arrows), " · ".join(a[1] for a in arrows) + ": previous, next",
                          tuple(b for a in arrows for b in a[2])))
         if s.present["s"] and s.sizes["s"] > 1:
-            n, one = s.sizes["s"], "Stokes" if self.main.planes == "stokes" else "quantity"
+            n = s.sizes["s"]
+            one = "variable" if isinstance(self.main.planes, tuple) else \
+                {"stokes": "Stokes", "parameter": "quantity"}[self.main.planes]
             rows.append((f"1–{n} · {n + 1}", f"one {one} · all side by side",
                          (*((str(k + 1), lambda k=k: self.pick_stokes(k)) for k in range(n)),
                           (str(n + 1), self.toggle_grid))))

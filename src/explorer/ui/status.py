@@ -7,7 +7,7 @@ import math
 
 import numpy as np
 
-from ..data.axes import SUP, coord_text, fmt_sig, fmt_signed, unit_text
+from ..data.axes import SUP, Planes, coord_text, fmt_sig, fmt_signed, unit_text
 from ..data.names import plane, unit
 
 SEP = "   ·   "
@@ -22,7 +22,7 @@ def padding(v0: float, s: int) -> bool:
 
 def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, ic: float | None,  # noqa: E741
                iscale: float | None, locked: bool, present=("t", "l"), value: str = "I",
-               planes: str = "stokes", axis: str = "λ", l_coords=None) -> str:
+               planes: Planes = "stokes", axis: str = "λ", l_coords=None) -> str:
     """The cursor's pixel, fields separated by thin dots: helioprojective x, y when the header gives the field's
     corners (else the pixel), t in UT (else its index), lambda in Å, delta-lambda and the Doppler velocity (else the
     tuning index), the value: Q U V in % of this pixel's I_c when it is known, I (and Q U V without I_c) in its
@@ -51,7 +51,8 @@ def pixel_text(ax, ns: int, y: int, x: int, t: int, l: int, s: int, v0: float, i
             # its coordinate where the header gives it (l_coords: "z 1.23 Mm"), else its index; named as its slider
             f.append(f"{axis} {coord_text(l_coords, l)}" if l_coords is not None else f"{axis} {l}")
     name = plane(s, planes) if ns > 1 else value
-    bunit = unit_text(unit(ax))                         # BUNIT, else PIXLUNIT (data.names.unit)
+    units = getattr(ax, "plane_units", None)           # a snapshot's variables: each its own
+    bunit = unit_text(units[s] if units else unit(ax))  # BUNIT, else PIXLUNIT (data.names.unit)
     if padding(v0, s):
         f.append(f"{name}  no data (padding)")
     elif s > 0 and ic and planes == "stokes":

@@ -16,7 +16,7 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import APP_NAME
-from ..data.axes import C_KMS, STOKES, SUP, dlam_label, fmt_signed, tunings, unit_text
+from ..data.axes import C_KMS, STOKES, SUP, Planes, dlam_label, fmt_signed, tunings, unit_text
 from ..data.names import plane
 from . import pens, style
 from .imageview import CURSOR_PEN
@@ -188,7 +188,7 @@ class SpectraPanel:
     """ns plots in a GraphicsLayoutWidget; widget: what goes in the dock."""
 
     def __init__(self, ns: int, nl: int, axes, light: bool = False, label: str | None = None,
-                 value: str | None = None, planes: str = "stokes", coords=None, ref=None):
+                 value: str | None = None, planes: Planes = "stokes", coords=None, ref=None):
         """axes: the cube's physical axes (data.axes.Axes); light: dark ink on a light background; label: the x axis
         in index units of an axis not known to be lambda ("Blos index", data.names.slice_names), "λ index" without;
         value: what a cube without Stokes holds when it is not intensity along lambda ("Blos"), "I" without; planes:
@@ -291,11 +291,13 @@ class SpectraPanel:
         """Stokes I in powers of ten of BUNIT; Q U V in % of I_c when the continuum tuning is known."""
         cont = getattr(self.ax, "cont", None)
         bunit = getattr(self.ax, "bunit", None)
+        units = getattr(self.ax, "plane_units", None)   # a snapshot's variables: each its own
         for k, p in enumerate(self.plots):
             name = plane(k, self.planes) if self.ns > 1 else self.value
             if k == 0 or cont is None:                 # 10⁰ is no power of ten: the unit alone
                 e = f"10{str(int(np.log10(self.iscale))).translate(SUP)} " if self.iscale and self.iscale != 1 else ""
-                u = unit_text(bunit) if bunit else ""
+                b = units[k] if units else bunit
+                u = unit_text(b) if b else ""
                 p.setLabel("left", f"{name} [{e}{u}]" if (e or u) else name)
             else:
                 p.setLabel("left", f"{name}/I<sub>c</sub> [%]")

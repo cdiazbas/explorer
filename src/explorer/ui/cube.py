@@ -227,7 +227,12 @@ class CubeView:
 
     def show_stokes(self, s: int) -> None:
         """The label of Stokes s ("Stokes Q") on its image and its lambda-t (ui.stokeslabel), when it has the four
-        Stokes; on the image, not while something else names it there (named)."""
+        Stokes; on the image, not while something else names it there (named). Planes of units of their own (a
+        snapshot's variables): its key in plane s's."""
+        units = getattr(self.dataset.axes, "plane_units", None)
+        if units:
+            self.key.unit = unit_text(units[min(s, len(units) - 1)])
+            self.key.update()
         self.view.set_stokes(None if self.named else s, self.ns, self.planes)
         if self.lambda_t is not None:
             self.lambda_t.set_stokes(s, self.ns, self.planes)

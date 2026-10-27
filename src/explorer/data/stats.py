@@ -110,20 +110,32 @@ def quietest_tuning(prof) -> int | None:
     return int(np.argmin(score)) if np.isfinite(score).any() else None
 
 
-def sample_ranges(prof, cont, iscale=None, k_sig=SAMPLE_K):
+def sample_ranges(prof, cont, iscale=None, k_sig=SAMPLE_K, intensity_rules=True):
     """Per Stokes (lo, hi) in the plots' units from the sample: I over iscale, Q U V in % of each profile's I_c when
     the continuum tuning is known (else over iscale); per tuning the median +- k_sig robust sigmas (1.4826 MAD)
     across the profiles, then the lowest and highest over lambda, on a 1-2-5 grid. I starts at 0 or above (an
     intensity; median - 2 sigma went below zero in Halpha); Q U V are symmetric about 0. Profiles with padding at
     their t are dropped first (the field moves with t). iscale, when None, is the power of ten of the median I.
-    Returns (ranges, iscale, profiles kept); ranges None if no profile is left."""
+    Returns (ranges, iscale, profiles kept); ranges None if no profile is left. intensity_rules False (planes that
+    are no Stokes: an inversion's parameters, a snapshot's variables): every plane as read, its own range, no
+    iscale."""
     prof = np.asarray(prof, dtype=np.float64)
     ns = prof.shape[1]
     intensity = prof[:, 0, :]
-    keep = np.all(np.isfinite(prof), axis=(1, 2)) & np.all(intensity > 0, axis=1)
+    keep = np.all(np.isfinite(prof), axis=(1, 2))
+    if intensity_rules:
+        keep &= np.all(intensity > 0, axis=1)
     prof = prof[keep]
     if not len(prof):
         return None, iscale, 0
+    if not intensity_rules:
+        ranges = []
+        for k in range(ns):
+            y = prof[:, k, :]
+            med = np.median(y, axis=0)
+            sig = 1.4826 * np.median(np.abs(y - med), axis=0)
+            ranges.append(nice_range(float(np.min(med - k_sig * sig)), float(np.max(med + k_sig * sig))))
+        return ranges, iscale, int(keep.sum())
     if iscale is None:
         iscale = float(10.0 ** np.floor(np.log10(np.median(prof[:, 0]))))
     sc = iscale or 1.0
