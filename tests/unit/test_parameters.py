@@ -234,3 +234,13 @@ def test_in_the_2x2_view_each_panel_s_key_is_named_by_its_parameter(qapp, cubes)
         qapp.setPalette(pal)
         qapp.setProperty("explorer_light", False)
 
+
+def test_a_saved_slit_of_an_inversion_is_never_named_by_a_stokes():
+    """The saved time slice's STOKES card and file name (data.slitfits.stokes_name): I Q U V only for the four
+    Stokes, 's<k>' for an inversion's parameters even when it has four. Before: a 4-parameter inversion's plane 1
+    saved as Q."""
+    from explorer.data.slitfits import stokes_name
+
+    got = [stokes_name(s, 4, "parameter") for s in range(4)], [stokes_name(s, 4) for s in range(4)]
+    print(got)
+    assert got == (["s0", "s1", "s2", "s3"], ["I", "Q", "U", "V"])

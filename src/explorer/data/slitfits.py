@@ -45,11 +45,12 @@ COMMENTS = ("The slit's time slice: NAXIS1 along the slit, NAXIS2 over t.",     
             "X, Y, XPOS, YPOS: main image pixels from 0, centres at integers.")
 
 
-def stokes_name(s: int | None, ns: int) -> str | None:
-    """'I', 'Q', 'U', 'V' with the four Stokes; 's<k>' with another number of them; None without a Stokes axis."""
+def stokes_name(s: int | None, ns: int, planes: str = "stokes") -> str | None:
+    """'I', 'Q', 'U', 'V' with the four Stokes; 's<k>' with another number of them, or for an inversion's parameters
+    (planes: data.axes.Roles.planes), however many; None without a Stokes axis."""
     if s is None:
         return None
-    return STOKES[s] if ns == len(STOKES) else f"s{int(s)}"
+    return STOKES[s] if ns == len(STOKES) and planes == "stokes" else f"s{int(s)}"
 
 
 def file_name(source, stokes: str | None, l: int | None, when: dt.datetime) -> str:  # noqa: E741
@@ -79,7 +80,8 @@ def _utc(times, t: np.ndarray) -> tuple[np.ndarray, list[str], str]:
 
 
 def hdus(values, *, t, pix, pts, source, axes=None, times=None, s: int | None = None, ns: int = 1,
-         l: int | None = None, nt: int | None = None, name: str = "", when: dt.datetime | None = None):  # noqa: E741
+         l: int | None = None, nt: int | None = None, name: str = "", when: dt.datetime | None = None,  # noqa: E741
+         planes: str = "stokes"):
     """The file's HDUs (an astropy HDUList), from:
     values  (len(t), n_points): the time slice, as the panel has it;
     t       the cube's t index of each row;
@@ -87,7 +89,8 @@ def hdus(values, *, t, pix, pts, source, axes=None, times=None, s: int | None = 
     pts     the points clicked, (x, y) in the view's coordinates, pixel centres at .5 (ViewState.path);
     source  the cube's file (its base name alone is written);
     axes    its data.axes.Axes (BUNIT, BTYPE, lambda), times: the Axes whose times label its t (default axes);
-    s, ns   its Stokes index and number of Stokes (s None: no Stokes axis); l: its lambda index (None: no lambda);
+    s, ns   its Stokes index and number of Stokes (s None: no Stokes axis), planes what they are (Roles.planes);
+            l: its lambda index (None: no lambda);
     nt      its number of t steps (TSTEPS says 'all' when every one is in the file);
     name    this file's name (FILENAME); when: the time it is written (DATE), UTC."""
     from astropy.io import fits
@@ -116,7 +119,7 @@ def hdus(values, *, t, pix, pts, source, axes=None, times=None, s: int | None = 
         v = getattr(axes, key.lower(), None)
         if v:
             h[key] = (str(v), "as the cube's header")
-    stokes = stokes_name(s, ns)
+    stokes = stokes_name(s, ns, planes)
     if stokes is not None and s is not None:
         h["STOKES"] = (stokes, "the Stokes parameter of the slice")
         h["STOKESIX"] = (int(s), "its index in the cube, from 0")
@@ -182,11 +185,12 @@ def hdus(values, *, t, pix, pts, source, axes=None, times=None, s: int | None = 
 
 
 def write_time_slice(folder, values, *, t, pix, pts, source, axes=None, times=None, s: int | None = None, ns: int = 1,
-                     l: int | None = None, nt: int | None = None, when: dt.datetime | None = None) -> str:  # noqa: E741
+                     l: int | None = None, nt: int | None = None, when: dt.datetime | None = None,  # noqa: E741
+                     planes: str = "stokes") -> str:
     """The time slice to a new file in folder (hdus has the arguments), named file_name's way; an existing file is
     never written over: _2, _3, ... after the name. Returns its path."""
     when = when or dt.datetime.now(dt.UTC)
-    base = file_name(source, stokes_name(s, ns), l, when)
+    base = file_name(source, stokes_name(s, ns, planes), l, when)
     for n in range(1, 1000):
         name = base if n == 1 else f"{base[:-len('.fits')]}_{n}.fits"
         path = os.path.join(os.fspath(folder), name)
@@ -196,7 +200,7 @@ def write_time_slice(folder, values, *, t, pix, pts, source, axes=None, times=No
             continue
         try:
             hdus(values, t=t, pix=pix, pts=pts, source=source, axes=axes, times=times, s=s, ns=ns, l=l, nt=nt,
-                 name=name, when=when).writeto(path, overwrite=True)
+                 name=name, when=when, planes=planes).writeto(path, overwrite=True)
         except BaseException:
             os.remove(path)                             # no half-written file left behind
             raise

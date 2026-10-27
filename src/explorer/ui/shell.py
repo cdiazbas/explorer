@@ -1634,7 +1634,7 @@ class Shell(QtWidgets.QMainWindow):
                 folder or os.getcwd(), rec.values, t=rec.t, pix=reads.pix, pts=reads.pts,
                 source=getattr(ds, "path", "") or c.name, axes=getattr(ds, "axes", None),
                 times=panel.tax if panel is not None else None, s=rec.s if r.s is not None else None, ns=r.ns,
-                l=rec.l if r.l is not None else None, nt=r.nt)
+                l=rec.l if r.l is not None else None, nt=r.nt, planes=r.planes)
         except OSError as e:                            # a folder that cannot be written: said, nothing else
             msg = f"slit not saved: {e}"
             self.statusBar().showMessage(msg, 10000)
