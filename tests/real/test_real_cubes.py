@@ -34,7 +34,9 @@ def _open(case):
 
 
 def _idx(r, t, s, l):  # noqa: E741
-    i = [0] * sum(a is not None for a in (r.t, r.s, r.l))    # as many as the cube has: a map has only t
+    # up to the last axis the roles name (a map has only t); an axis they leave out, before it, at 0 (an inversion's
+    # LP: (t, 1, parameter), its planes on s: data.axes.by_parameter)
+    i = [0] * (1 + max(a for a in (r.t, r.s, r.l) if a is not None))
     for a, v in ((r.t, t), (r.s, s), (r.l, l)):
         if a is not None:
             i[a] = v
