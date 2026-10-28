@@ -117,6 +117,7 @@ class ScaleKey(ColourKey):
     GRAB = 8                                            # px either side of a handle that grab it
     MIN_W = 120
     at_top = False                                      # at the top left (a panel's in glass), not at the bottom left
+    below: QtWidgets.QWidget | None = None              # at the top left, under this one when shown (a plane picker)
 
     def __init__(self, shell, view, k: int, unit: str = "", stokes: int | None = None):
         """The key of view (an ImageView), cube k's image: at cube k's Stokes now, or at Stokes stokes always, a
@@ -165,7 +166,9 @@ class ScaleKey(ColourKey):
         """At the bottom left (ColourKey), or at_top at the top left, where glass puts the image's key: a panel's of
         the 2x2 view in glass, whose bar runs along the bottom."""
         if self.at_top:
-            self.move(glass.MARGIN, glass.MARGIN)
+            above = self.below
+            y = above.geometry().bottom() + 1 + 8 if above is not None and not above.isHidden() else glass.MARGIN
+            self.move(glass.MARGIN, max(glass.MARGIN, y))
         else:
             super()._place(view)
 

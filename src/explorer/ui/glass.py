@@ -151,6 +151,12 @@ def image_keys(w, top: bool) -> None:
             view = key.parentWidget()
             if view is not None:
                 key._place(view)
+    for c in getattr(w, "linked", ()):                  # its key names its plane at the top left, as the main one's
+        picker = getattr(c, "picker", None)
+        c.key.below = picker if top else None
+        c.key._place(c.key.parentWidget())
+        c.named = top or picker is not None
+        c.show_stokes(w.session.member_state(c.k).s)
 
 class Bar(QtWidgets.QWidget):
     """The controls' bar over the image, painted as frosted glass from what the view shows under it. From

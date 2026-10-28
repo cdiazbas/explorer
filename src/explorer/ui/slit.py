@@ -69,6 +69,33 @@ class SlitHint(QtWidgets.QWidget):
         self.move(self.MARGIN, self.MARGIN)
         self.hide()
 
+    def rest_rect(self) -> QtCore.QRect:
+        """Where it is: what a padlock on its image keeps clear of (ui.padlock)."""
+        return self.geometry()
+
+    def _tell(self) -> None:
+        view = self.parentWidget()
+        if view is not None:
+            for c in view.children():
+                if c is not self and hasattr(c, "keep_clear"):
+                    c.keep_clear()
+
+    def moveEvent(self, e):
+        super().moveEvent(e)
+        self._tell()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._tell()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._tell()
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._tell()
+
     def set_text(self, text: str) -> None:
         self.text = text
         fm = self.fontMetrics()

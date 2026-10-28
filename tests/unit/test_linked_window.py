@@ -1171,6 +1171,7 @@ def test_every_key_in_one_corner_and_the_padlock_clear_of_it(window):
     for _ in range(20):
         qapp.processEvents()
     glass, before = corners(), clear()
+    named_glass = [c.named for c in w.linked]           # the key at the top left names the plane: no label under it
     w.set_grid(True)
     qapp.processEvents()
     w.set_grid(False)
@@ -1181,10 +1182,12 @@ def test_every_key_in_one_corner_and_the_padlock_clear_of_it(window):
     for _ in range(10):
         qapp.processEvents()
     classic = corners()
+    named_classic = [c.named for c in w.linked]
     print("glass", glass, "classic", classic, "| clear, over: before 2x2", before, "after", after,
           "| widths", [c.view.widget.width() for c in cubes])
     assert glass == ["top"] * 3 and classic == ["bottom"] * 3
     assert before == after == [(True, True)] * 3
+    assert named_glass == [True, True] and named_classic == [c.picker is not None for c in w.linked]
 
 
 def test_a_padlock_goes_below_a_key_it_does_not_fit_beside(qapp):

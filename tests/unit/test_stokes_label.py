@@ -201,8 +201,9 @@ def test_the_letter_is_in_the_theme_s_ink_and_gives_way_to_glass_s_key(qapp, win
                   f"(names {key.state[0] if key is not None and key.state else None}), ink px in the letter's box "
                   f"(with, without, box) {px}, hint at {w.slit_hint.pos().toTuple()}")
             want = ink.getRgb()[:3]
-            assert colours["linked image"] == colours["main lambda-t"] == colours["linked lambda-t"] == want
-            assert colours["main image"] == (None if keyed else want)
+            assert colours["main lambda-t"] == colours["linked lambda-t"] == want
+            # under glass's keys, at the top left of every image, the key names the Stokes: no letter there
+            assert colours["main image"] == colours["linked image"] == (None if keyed else want)
             assert all(shown >= hidden + 5 for shown, hidden, _box in px.values())     # drawn, in the ink
             if look == "glass":
                 assert keyed and key.state[0] == "Stokes I"                        # the key names the Stokes there
