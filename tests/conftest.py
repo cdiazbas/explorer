@@ -1,6 +1,21 @@
 """Every test runs with its own cache and config directories and without a log file, so that nothing a test logs
-or writes (a budget warning, a doctor report, a window's layout) reaches the user's ~/.cache or ~/.config."""
+or writes (a budget warning, a doctor report, a window's layout) reaches the user's ~/.cache or ~/.config.
+
+numba's compiled kernels are the exception: one cache for the whole session (NUMBA_CACHE_DIR, a directory of its own,
+removed at the end), so that a test starting explorer in a process of its own (tests/xvfb, the start paths) loads the
+kernels the tests before it compiled instead of compiling them again; still never the user's."""
+import os
+import shutil
+import tempfile
+
 import pytest
+
+_NUMBA = tempfile.mkdtemp(prefix="explorer-tests-numba-")
+os.environ["NUMBA_CACHE_DIR"] = _NUMBA                  # before numba is imported, here and in every child
+
+
+def pytest_sessionfinish(session, exitstatus):
+    shutil.rmtree(_NUMBA, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
