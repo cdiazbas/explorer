@@ -177,6 +177,17 @@ class ScaleKey(ColourKey):
         if (w, h) != (self.width(), self.height()):
             self.resize(w, h)
 
+    def rest_rect(self) -> QtCore.QRect:
+        """Where it is at rest, also while hot: a padlock keeps clear of that, not of the hot key, so that it does not
+        jump while the pointer is over the key."""
+        view = self.parentWidget()
+        if not self.hot or view is None:
+            return self.geometry()
+        z = self.zoom
+        w = max(round(self.MIN_W * z), min(round(self.W * z), view.width() - 24))
+        h = round(self.H * z)
+        return QtCore.QRect(self.x(), self.y() if self.at_top else view.height() - h - 12, w, h)
+
     def set_hot(self, on: bool) -> None:
         if on == self.hot:
             return

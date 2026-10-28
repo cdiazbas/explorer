@@ -1142,3 +1142,76 @@ def test_in_glass_a_cube_s_panel_floated_and_docked_leaves_no_skin_behind(window
     w.detach_action.setChecked(False)
     w.set_look(get_look("classic"))
     spin(qapp, lambda: False, timeout=0.4)
+
+
+def test_every_key_in_one_corner_and_the_padlock_clear_of_it(window):
+    """In glass every image's key at the top left, the linked cubes' too (they stayed at the bottom while the main
+    one went up), and in classic every one at the bottom left. In a narrow window each image's padlock is clear of
+    its key, below it where the two do not fit side by side, and over it in the stacking order; the same before the
+    2x2 view is first opened and after (it was under the key until then). Before: the linked keys at the bottom in
+    glass; the main image's padlock under its key."""
+    from explorer.look import get_look
+
+    w, qapp = window
+    cubes = [w.main, *w.linked]
+
+    def corners():
+        return [("top" if c.key.y() < c.view.widget.height() / 2 else "bottom") for c in cubes]
+
+    def clear():
+        out = []
+        for c in cubes:
+            lock, key = c.image_lock.geometry(), c.key.rest_rect()
+            kids = c.view.widget.children()
+            out.append((not lock.intersects(key), kids.index(c.image_lock) > kids.index(c.key)))
+        return out
+
+    w.set_look(get_look("glass"))
+    w.resize(560, 400)                                  # three narrow images
+    for _ in range(20):
+        qapp.processEvents()
+    glass, before = corners(), clear()
+    w.set_grid(True)
+    qapp.processEvents()
+    w.set_grid(False)
+    for _ in range(10):
+        qapp.processEvents()
+    after = clear()
+    w.set_look(get_look("classic"))
+    for _ in range(10):
+        qapp.processEvents()
+    classic = corners()
+    print("glass", glass, "classic", classic, "| clear, over: before 2x2", before, "after", after,
+          "| widths", [c.view.widget.width() for c in cubes])
+    assert glass == ["top"] * 3 and classic == ["bottom"] * 3
+    assert before == after == [(True, True)] * 3
+
+
+def test_a_padlock_goes_below_a_key_it_does_not_fit_beside(qapp):
+    """On an image too narrow for both side by side, with its key at the top left (glass), the padlock is below the
+    key, at its right edge, and goes back to the corner when the image is wide again or the key hides."""
+    from PySide6 import QtWidgets
+
+    from explorer.ui.overlays import ColourKey
+    from explorer.ui.padlock import PanelLock
+
+    view = QtWidgets.QWidget()
+    view.resize(200, 300)
+    lock = PanelLock(view, "tip")
+    key = ColourKey(view)
+    key._place = lambda v: key.move(16, 16)             # at the top left, as glass puts it (ScaleKey.at_top)
+    key._place(view)
+    view.show()
+    qapp.processEvents()
+    narrow = (lock.geometry(), key.geometry())
+    view.resize(900, 300)
+    qapp.processEvents()
+    wide = lock.geometry()
+    view.resize(200, 300)
+    key.hide()
+    qapp.processEvents()
+    hidden = lock.geometry()
+    print("narrow lock", narrow[0], "key", narrow[1], "| wide", wide, "| key hidden", hidden)
+    assert narrow[0].top() > narrow[1].bottom() and narrow[0].right() == 200 - 1 - PanelLock.MARGIN
+    assert wide.top() == hidden.top() == PanelLock.MARGIN
+    view.close()

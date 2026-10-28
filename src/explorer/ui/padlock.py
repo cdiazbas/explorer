@@ -19,6 +19,7 @@ GRID_LOCK_ZOOM = 0.75                                   # a panel of the 2x2 vie
 class PanelLock(QtWidgets.QToolButton):
     refit = QtCore.Signal()
     SIZE, MARGIN = 22, 8
+    GAP = 4                                             # px under its image's key, when it keeps clear of it
 
     def __init__(self, view: QtWidgets.QWidget, tip: str, light: bool = False, backed: bool = True,
                  zoom: float = 1.0):
@@ -55,7 +56,24 @@ class PanelLock(QtWidgets.QToolButton):
         return False
 
     def _place(self, view):
-        self.move(view.width() - self.width() - self.MARGIN, self.MARGIN)
+        """At the top right of view; below its image's key where the two do not fit side by side (a narrow image in
+        glass, whose key is at the top left), so that the key never covers it."""
+        x, y = view.width() - self.width() - self.MARGIN, self.MARGIN
+        me = QtCore.QRect(x, y, self.width(), self.height())
+        for c in view.children():
+            if c is not self and hasattr(c, "rest_rect") and not c.isHidden():
+                r = c.rest_rect()
+                if r.intersects(me):
+                    y = r.bottom() + 1 + self.GAP
+                    me.moveTop(y)
+        self.move(x, y)
+        self.raise_()
+
+    def keep_clear(self) -> None:
+        """Its image's key moved, changed size, showed or hid (ui.overlays.ColourKey): placed again."""
+        view = self.parentWidget()
+        if view is not None:
+            self._place(view)
 
     def mousePressEvent(self, e):
         if e.button() == QtCore.Qt.MouseButton.RightButton:

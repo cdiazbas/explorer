@@ -140,6 +140,18 @@ def scene_blur(view: QtWidgets.QGraphicsView, widget: QtWidgets.QWidget, rect: Q
     return small.scaled(rect.size(), any_, S)
 
 
+
+def image_keys(w, top: bool) -> None:
+    """Every image's key in one corner (ui.scalekey.ScaleKey.at_top): the main image's and each linked cube's, at the
+    top left in glass, whose bar runs along the bottom; at the bottom left otherwise. Linked cubes' keys stayed at
+    the bottom in glass while the main one went to the top."""
+    for key in [w.colour_key, *(getattr(c, "key", None) for c in getattr(w, "linked", ()))]:
+        if key is not None:
+            key.at_top = top
+            view = key.parentWidget()
+            if view is not None:
+                key._place(view)
+
 class Bar(QtWidgets.QWidget):
     """The controls' bar over the image, painted as frosted glass from what the view shows under it. From
     look_glass.py Glass (99-147) and Bar (245-246)."""
@@ -522,10 +534,7 @@ class GlassChrome:
         self.autohide = AutoHide(w, (self.bar,))
         self._hud_title()
         self._tabs(True)
-        key = w.colour_key                          # at the top left: the bar is at the bottom (look_glass.py:937-943)
-        if key is not None:
-            key._place = lambda view_: key.move(MARGIN, MARGIN)
-            key._place(view.widget)
+        image_keys(w, top=True)                     # at the top left: the bar is at the bottom (look_glass.py:937-943)
         self.readout()
 
     def titles_changed(self) -> None:
@@ -1061,10 +1070,7 @@ class GlassChrome:
             tb.hud = tb.corners.line.hud = None
             tb.corners.line.update()
             tb.update()
-        key = w.colour_key
-        if key is not None and "_place" in vars(key):   # its own corner again
-            del key._place
-            key._place(view.widget)
+        image_keys(w, top=False)                        # their own corner again
         nav.fit(w.width())                              # at the window's own width again; and once the toolbar is
         QtCore.QTimer.singleShot(0, lambda: nav.fit(w.width()))     # laid out (fit reads the sliders' own width)
         QtCore.QTimer.singleShot(0, view.show_all)

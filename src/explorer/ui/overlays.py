@@ -181,6 +181,34 @@ class ColourKey(QtWidgets.QWidget):
     def _place(self, view):
         self.move(12, view.height() - self.height() - 12)
 
+    def rest_rect(self) -> QtCore.QRect:
+        """Where it is at rest: what a padlock on its image keeps clear of (ui.padlock)."""
+        return self.geometry()
+
+    def _tell(self) -> None:
+        """Whatever keeps clear of it on its image (a padlock: keep_clear) places itself again."""
+        view = self.parentWidget()
+        if view is not None:
+            for c in view.children():
+                if c is not self and hasattr(c, "keep_clear"):
+                    c.keep_clear()
+
+    def moveEvent(self, e):
+        super().moveEvent(e)
+        self._tell()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._tell()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._tell()
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._tell()
+
     def set(self, name, lim, lut, cmap=None, gamma: float = 1.0):
         """gamma: the image's (core.levels); written on the hot key only (ui.scalekey), never at rest."""
         st = (name, round(float(lim[0]), 12), round(float(lim[1]), 12), cmap if cmap is not None else lut is None)
