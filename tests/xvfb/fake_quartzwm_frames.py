@@ -14,7 +14,7 @@ do_resize, report_frame_size, send_configure; github.com/XQuartz/quartz-wm). So,
   with the new size;
 - X's notice of the frame updates the record, resizes the window, and, for a move alone, sends a synthetic notice.
 
-A trace of a session through XQuartz (2026-10-05) had the bridge's two requests of an edge resize (a move, then a
+A trace of a session through XQuartz had the bridge's two requests of an edge resize (a move, then a
 size) answered by a synthetic notice of the old place and size, then real notices of the new size, the old one, the
 new one again; this manager answers them the same way.
 

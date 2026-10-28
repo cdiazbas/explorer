@@ -3,16 +3,16 @@ override-redirect window the size the window will take, filled with the look's c
 server's own in the accent, the size written in its middle with a server font; on a connection of its own. The
 window is never drawn by the client: no pixels go over the link.
 
-On XQuartz each X window is a macOS window, and window operations are dear (bench/x_ops.py, ssh -Y from bellatrix,
-2026-10-01): a sync 1 ms, a strip moved 10 ms, the four strips of a Qt-drawn outline 57 ms a step (p90 536), one
-shaped window 33 ms, a big window resized 406 ms. Asked every 25 ms, the four strips queued on the server and the
-outline reached the pointer seconds late. Here a thread applies the latest size asked for and waits for the server
-to have done it before the next: what the server cannot keep up with is skipped, never queued.
+On XQuartz each X window is a macOS window, and window operations are dear (bench/x_ops.py, ssh -Y from bellatrix): a
+sync 1 ms, a strip moved 10 ms, the four strips of a Qt-drawn outline 57 ms a step (p90 536), one shaped window 33 ms, a
+big window resized 406 ms. Asked every 25 ms, the four strips queued on the server and the outline reached the pointer
+seconds late. Here a thread applies the latest size asked for and waits for the server to have done it before the next:
+what the server cannot keep up with is skipped, never queued.
 
 A window shaped (X SHAPE) to a ring, as before, cost XQuartz 34-40 ms a step but showed white inside while it grew
 and left earlier rings behind as it shrank; its shape set before its size changed nothing. Four plain windows, one
 per side, were clean and cost 540-1100 ms a step, the outline far behind the pointer. One plain window: 31-34 ms
-(p90 36-44), clean (through the bridge to the user's XQuartz, 2026-10-08).
+(p90 36-44), clean (through the bridge to XQuartz).
 
     o = XOutline(0x0a84ff)     # its thread connects to DISPLAY now: ready before the first drag
     o.colours(0x0a84ff, 0x1e1e1e, 0xe4e4e4)   # border, inside, the size's ink: from the next drag

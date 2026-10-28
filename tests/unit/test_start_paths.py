@@ -1,6 +1,6 @@
 """The ways of starting (ROADMAP E5.15): each saved layout (none, one closed in classic, one closed in glass) with
 each start (the saved look, or --look classic or glass), started as ui.app.run starts it, then M round every look
-and back. On 2026-10-02 three faults came only from starting in glass with its layout saved, and no test started
+and back. Three faults came only from starting in glass with its layout saved, and no test started
 so: classic at Qt's 640x480 on leaving glass, glass's panel titles replaced by the chrome's, panels floated before
 their window. At every step: the window on its monitor, the image not crushed, the look's own panels and bars; back
 at the first look, the window and the panels as they started.

@@ -303,7 +303,7 @@ def test_the_sheet_s_foot_stands_apart_from_the_keys(qapp):
 
 
 def test_the_sheet_writes_gamma_in_an_italic_serif():
-    """In the interface's sans at the sheet's size γ reads as a y (the user, 2026-10-11): the sheet sets it apart."""
+    """In the interface's sans at the sheet's size γ reads as a y: the sheet sets it apart."""
     from explorer.ui.actions import text_html
 
     out = text_html("γ: lower, higher")

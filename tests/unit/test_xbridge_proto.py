@@ -129,7 +129,7 @@ def test_event_queue_wakes_once_per_batch_and_again_for_nested_loops():
 def test_an_event_after_a_nested_loop_started_wakes_it():
     """A click that opens a menu (Panels: QMenu::exec) is the last event in the queue when it is handled; the
     release comes later, while the menu's nested loop runs, and must wake it. It did not: the queue still counted
-    the owner as woken, nothing read X any more and the viewer hung (the user on XQuartz, 2026-10-01; gdb: the main
+    the owner as woken, nothing read X any more and the viewer hung (on XQuartz; gdb: the main
     thread in QEventLoop::exec under QToolButton::mousePressEvent, in poll). XTEST on Xvfb sends both at once,
     which hid it."""
     wakes = []

@@ -17,7 +17,7 @@ The prototype's table (app/startup.py prepare and remote_x11, app/xbridge.py wan
   terminal; --x11 native stops with a message instead of the abort. QT_QPA_PLATFORM=xcb set by whoever launched it
   is kept as above: the way to have Qt try anyway.
 - A Mac reached by ssh without X forwarding: no window server; stop with a message (the prototype found it out after
-  Qt started, from an empty screen list: grove, 2026-09-24).
+  Qt started, from an empty screen list: grove).
 The bridge is the one written anew (platform/xbridge, docs/decisions/0009); it needs nothing beyond Qt.
 """
 import os

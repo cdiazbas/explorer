@@ -1,8 +1,7 @@
-"""A Bifrost snapshot's variables, a file each, as one cube with a variable selector (the author's "A", 2026-10-27),
-offscreen: detected only when the files are one snapshot's (Bifrost, one shape, OBJECT and ISNAP, the same heights,
-each its own BTYPE); each variable a plane with its name, unit, levels and γ; z moves them all; the profile panel one
-plot per variable; side by side three columns for six. Files built as test_bifrost's (the real header), small. Each
-test prints what it measured."""
+"""A Bifrost snapshot's variables, a file each, as one cube with a variable selector, offscreen: detected only when the
+files are one snapshot's (Bifrost, one shape, OBJECT and ISNAP, the same heights, each its own BTYPE); each variable a
+plane with its name, unit, levels and γ; z moves them all; the profile panel one plot per variable; side by side three
+columns for six. Files built as test_bifrost's (the real header), small. Each test prints what it measured."""
 import time
 
 import numpy as np

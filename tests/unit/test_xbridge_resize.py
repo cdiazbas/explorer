@@ -1,7 +1,7 @@
 """A resize through the bridge (platform/xbridge/windows.py and Bridge._apply_geometry), against a fake X connection:
 one request for one geometry from Qt, and nothing asked back when Qt takes X's geometry.
 
-A trace through XQuartz (2026-10-05): an edge resize to 1748x1013 was asked as a move and then a size; quartz-wm
+A trace through XQuartz: an edge resize to 1748x1013 was asked as a move and then a size; quartz-wm
 answered the move with its record of the frame, the old place and size (3696, 168, 1452, 848); the bridge took it,
 and resizing Qt before moving it asked X for the old size again; the window went 1748, 1452, 1748 wide, sent whole
 three times in 104 ms."""

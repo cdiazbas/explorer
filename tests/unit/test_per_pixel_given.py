@@ -59,7 +59,7 @@ def test_the_header_of_the_per_pixel_file_says_what_it_is(pair):
 
 
 def test_a_per_pixel_file_opened_as_a_cube_reads_its_images_from_it(pair):
-    """Before (2026-10-08): it opened, (t, s, lambda) = (rows, cols, Stokes), its 3 times for 16 steps in t, and
+    """Before: it opened, (t, s, lambda) = (rows, cols, Stokes), its 3 times for 16 steps in t, and
     Axes.utc_str(15) raised the IndexError the toolbar raised on the real file; then (E1.23) it was refused. Now its
     images are read from it, (t, s, lambda) its own, equal to the image cube's, and it is its own per-pixel file."""
     with Dataset.open(pair["renamed"], no_sp=True) as ds, Dataset.open(pair["im"], no_sp=True) as im:

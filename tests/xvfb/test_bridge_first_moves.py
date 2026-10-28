@@ -3,7 +3,7 @@
 at each move, and the bridge follows; once on a monitor, every move is where it was asked. Qt and X agree at every
 step.
 
-Through XQuartz (2026-10-03, three monitors in one X screen of 3067x1513) a window asked for at (200, 150) was put
+Through XQuartz (three monitors in one X screen of 3067x1513) a window asked for at (200, 150) was put
 at (1147, 22), and moves to (220, 160) and (240, 172) did not stick, the third one did: a 900-px window starting
 left of x = 247 touched no monitor there. quartz-wm's validate_window_position (x-screen.m) moves such a frame onto
 a monitor. The layout here is inferred from that screen's size and its laptop monitor's (1147x719), not read from it;

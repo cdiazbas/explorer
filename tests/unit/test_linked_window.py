@@ -179,7 +179,7 @@ def test_after_glass_and_back_every_image_shows_the_same_region(window):
 
 
 def test_a_linked_image_is_a_panel_that_floats_docks_and_closes_reading_nothing(window):
-    """Its image could not be taken out of the window (the user, 2026-10-06): a panel of its own, titled with its
+    """Its image could not be taken out of the window: a panel of its own, titled with its
     name as the main image is; floated it shows the same region; closed, no image is read for it."""
     from PySide6 import QtCore
 
@@ -212,7 +212,7 @@ def test_a_linked_image_is_a_panel_that_floats_docks_and_closes_reading_nothing(
 
 
 def test_the_slit_is_on_every_image_and_can_be_drawn_on_any(window):
-    """A slit drawn on the main image showed on it alone (the user, 2026-10-06): it is on every image, as on the 2x2
+    """A slit drawn on the main image showed on it alone: it is on every image, as on the 2x2
     view's panels, and a click on a linked image in the slit mode adds a point there."""
     from PySide6 import QtCore
 
@@ -284,7 +284,7 @@ def slices_along(ds, session, k, pix):
 
 @pytest.mark.parametrize("k", [2, 1, 0])
 def test_a_slit_drawn_on_a_cube_s_image_shows_that_cube_s_slices(window, k):
-    """A slit drawn on Blos gave the main cube's slices (the user, 2026-10-10): the slit panel shows the slices of the
+    """A slit drawn on Blos gave the main cube's slices: the slit panel shows the slices of the
     cube whose image took the slit, at its own lambda and Stokes. The slit is still on every image; a map without
     times of its own has its t in the main cube's times, and no spectral slice. k: the Blos map, the other line (7
     tunings, its own lambda), the main cube. One slit tab (Shift+S off): the way it was before a tab per cube."""
@@ -338,7 +338,7 @@ def test_after_the_window_changes_size_the_images_are_one_width(window):
 
 
 def test_the_titles_are_thin_and_in_glass_on_the_image_s_colour(window):
-    """The image titles thin in every look (the user, 2026-10-06: they took a zoomed image's height), and in glass on
+    """The image titles thin in every look (they took a zoomed image's height), and in glass on
     its title bar's colour (black in the dark theme), their own again out of it."""
     from explorer.look import get_look
     from explorer.ui import glass
@@ -358,7 +358,7 @@ def test_the_titles_are_thin_and_in_glass_on_the_image_s_colour(window):
 
 
 def test_in_glass_the_strips_between_the_images_are_the_image_s_colour(window):
-    """The panels' separators between the images were the window's grey in glass (the user, 2026-10-06): there the
+    """The panels' separators between the images were the window's grey in glass: there the
     image's colour, as its titles; grey again out of it. Read from the window as drawn, every pixel of the strip."""
     from PySide6 import QtGui
 
@@ -402,7 +402,7 @@ def restore(qapp):
 
 
 def test_in_glass_the_tabs_are_flat_on_the_panel(window, restore):
-    """With linked cubes the panels' tabs stayed the style's grey buttons in glass (the user, 2026-10-06): there they
+    """With linked cubes the panels' tabs stayed the style's grey buttons in glass: there they
     are flat on the panel, as the glass bar's buttons are, in either theme; the style's again out of it. Median
     lightness of each tab as drawn (its text is a small part of it), against the panel's."""
     import numpy as np
@@ -460,7 +460,7 @@ def test_a_click_on_a_tab_leaves_the_keys_to_the_window(window):
 
 
 def test_a_smaller_image_keeps_the_same_zoom_factor(window):
-    """A linked image made smaller (the user, 2026-10-07: compressed, or floating) showed the same region in fewer
+    """A linked image made smaller (compressed, or floating) showed the same region in fewer
     pixels, at another magnification: the images keep one centre and one magnification (screen px per data pixel),
     as ds9's locked frames; the smaller one shows less. Squeezing it moves nothing else; a zoom on it is everyone's."""
     from PySide6 import QtCore, QtGui, QtWidgets
@@ -559,7 +559,7 @@ def test_a_cube_s_window_larger_than_the_main_image_keeps_the_one_magnification(
 
 
 def test_one_entry_puts_every_cube_in_a_window_of_its_own_and_back(window):
-    """Panels → "Each cube in a window of its own" (the user's mock of a cube apart, 2026-10-07): each linked cube's
+    """Panels → "Each cube in a window of its own": each linked cube's
     image floats with its spectra and lambda-t beside it, out of the main window's tabs; the window gives up the
     images' room; the zoom stays one. Unticked, back in the window as it was, the tabs as they were."""
     w, qapp = window
@@ -635,7 +635,7 @@ def test_in_glass_cubes_apart_leave_the_window_fitted_and_reset_docks_them(windo
 
 def test_an_image_title_has_close_then_float_at_the_left_as_every_panel(window):
     """The image titles' marks were at the right, every panel's title (titlebar.DockTitle, glass's) has them at the
-    left, close then float (the user, 2026-10-07)."""
+    left, close then float."""
     from explorer.ui import titlebar
 
     w, qapp = window
@@ -655,8 +655,8 @@ def test_an_image_title_has_close_then_float_at_the_left_as_every_panel(window):
 
 
 def test_a_cube_s_window_shares_its_width_between_image_and_panels_by_hand(window):
-    """In a cube's window the panels' heights could be changed but not the width between them and the image (the
-    user, 2026-10-07): its spectra and lambda-t are docks beside the image in the window's own frame, and a drag of
+    """In a cube's window the panels' heights could be changed but not the width between them and the image:
+    its spectra and lambda-t are docks beside the image in the window's own frame, and a drag of
     the separator between them shares the width out between the image and the panels, as in the main window."""
     from PySide6 import QtCore
     from PySide6.QtTest import QTest
@@ -688,7 +688,7 @@ def test_a_cube_s_window_shares_its_width_between_image_and_panels_by_hand(windo
 
 def test_in_glass_a_cube_s_window_is_on_the_image_s_colour(window, restore):
     """Detached in glass, a cube's spectra and lambda-t (clear over their panel in glass) showed the theme's grey:
-    a floating window does not take its parent's colour (the user, 2026-10-07). There, the image's colour (black in
+    a floating window does not take its parent's colour. There, the image's colour (black in
     the dark theme); out of glass, its own again."""
     import collections
 
@@ -750,7 +750,7 @@ def test_in_glass_the_panels_of_a_cube_s_window_take_glass_s_resize_outline(wind
 def test_a_window_of_its_own_is_rounded_with_a_margin_the_corners_do_not_cut(window):
     """A cube's window floats beside the rounded main window: rounded as glass's panels are (RADIUS_PANEL), with a
     margin round its content the rounding does not cut (in glass, docked, it has none, and floating it went on
-    without one; the user, 2026-10-07). Docked again, square."""
+    without one). Docked again, square."""
     from PySide6 import QtCore
 
     from explorer.look import get_look
@@ -1002,7 +1002,7 @@ def test_in_glass_a_panel_floated_out_of_a_cube_s_window_wears_the_glass_skin(wi
 
 
 def test_a_slit_tab_per_cube_each_with_its_cube_s_slices(window):
-    """A tab per cube in the slit panel (the user, 2026-10-11: "each time I draw a slit, as many tabs as cubes"), on
+    """A tab per cube in the slit panel, one for each cube each time a slit is drawn, on
     at start with linked cubes: drawn on any image, each tab shows its own cube's slices along the same slit (its t,
     lambda and Stokes; a map its time slice alone), titled Slit: <name>; the drawn-on cube's tab in front, and a tab
     behind reads nothing until it comes in front. Shift+S (or Panels) off: one tab, the drawn-on cube's slices."""

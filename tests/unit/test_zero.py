@@ -1,4 +1,4 @@
-"""Key Z (the author's decision of 2026-10-27): a signed plane between -m..m and limits of its own on each side of 0,
+"""Key Z: a signed plane between -m..m and limits of its own on each side of 0,
 0 the map's middle in both, each half stretched to its own limit; a plane that is not signed stays as it is. The
 image, the lambda-t and the slit's slices, the keys, the layout. Files built as test_bifrost's (the real header),
 small. Each test prints what it measured."""

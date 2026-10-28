@@ -1,6 +1,6 @@
 """A window manager that frames windows as quartz-wm did through XQuartz, for the bridge's tests (ROADMAP E6.4).
 
-Xvfb has no window manager, and three faults of the bridge existed only with one (2026-10-02, logged through
+Xvfb has no window manager, and three faults of the bridge existed only with one (logged through
 XQuartz): a second title on the floating panels, the panels creeping down 16 px at every round trip, and panels
 made before their window placed by the manager. This one does what quartz-wm was seen to do, and nothing else:
 
@@ -9,7 +9,7 @@ made before their window placed by the manager. This one does what quartz-wm was
 - the frame goes where the window asked to be, whatever its gravity: the window lands 16 px lower, and a synthetic
   ConfigureNotify (ICCCM 4.1.5, root coordinates) says so, at the map and after every move asked;
 - --late MS: the synthetic notice of the geometry a window had when it was mapped comes MS ms later, for framed and
-  unframed windows alike, as through ssh -Y to a Mac (2026-10-04: 230 ms after the glass look had placed a panel,
+  unframed windows alike, as through ssh -Y to a Mac (230 ms after the glass look had placed a panel,
   the notice of its first geometry came and the bridge took it);
 - --mixed (with --late): that notice has the place the window was mapped at with the size it has when the notice
   goes, a geometry never asked for as a whole (a later trace: 1.8 s after the glass look had placed a panel, its

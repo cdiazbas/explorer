@@ -36,7 +36,7 @@ class NoDisplay(SystemExit):
 @dataclass(frozen=True)
 class LinkInfo:
     """What the link to the screen carries: bytes per pixel of the image panel per image shown, and the playback
-    rate not to go above. None: a local screen, no limit. Measured 2026-09-24 (the prototype's start_link_probe):
+    rate not to go above. None: a local screen, no limit. Measured by the prototype's start_link_probe:
     Qt's own X11 ~4.8 B/px (4 B/px plus the side panels), capped at 30 fps; the bridge's in its Display. The
     link's own rate is measured by platform.linkprobe when playback sets its default (ROADMAP E4)."""
     bytes_per_px: float | None

@@ -929,7 +929,7 @@ class Shell(QtWidgets.QMainWindow):
 
     def detach_cubes(self, on: bool) -> None:
         """Every linked cube in a window of its own (on): its image panel floating with its spectra and lambda-t beside
-        the image (LinkedCube.as_window; the user's mock of a cube apart), the image at the main image's size, in a
+        the image (LinkedCube.as_window), the image at the main image's size, in a
         row beside the window; or back in it (off), one width with the main image, its panels in their tabs again. In
         classic and modern the window gives up the width the images took and the row goes in that room, the window's
         place on the screen kept (left as it was, they overlapped it and each other: 254 and 410 px on a 2560-px

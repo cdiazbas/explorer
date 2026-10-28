@@ -1,5 +1,5 @@
 """A trace of every move and resize of the window and its panels (ROADMAP E6.7), for faults seen where they cannot be
-watched again (through ssh -Y on someone's Mac). On 2026-10-02 such a trace found in minutes why lambda-t crept down
+watched again (through ssh -Y on someone's Mac). Such a trace found in minutes why lambda-t crept down
 through XQuartz: each move came from the bridge applying the manager's notices, none from explorer's own code.
 
     explorer --log cube_im.fits   ->  ~/.cache/explorer/logs/geometry-<pid>.log   (or EXPLORER_GEOMETRY_TRACE=1)

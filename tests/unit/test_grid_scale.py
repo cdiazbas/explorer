@@ -125,7 +125,7 @@ def test_the_padlock_over_each_panel_fixes_that_panel_s_stokes(grid):
 
 
 def test_a_panel_s_padlock_is_0_75_of_the_image_s_and_clicked_anywhere_on_it(grid):
-    """The panels' padlocks at 75 % of the image's (the user, 2026-10-27), 17 px for 22: the button no smaller than
+    """The panels' padlocks at 75 % of the image's, 17 px for 22: the button no smaller than
     what it draws (16.5 px), and a click on any of its pixels takes; the image's padlock as it was."""
     from PySide6 import QtCore
     from PySide6.QtTest import QTest
@@ -248,7 +248,7 @@ def test_a_panel_s_key_grows_under_the_pointer_within_its_panel(grid):
 
 def test_a_panel_s_key_is_0_73_of_the_image_s_and_the_image_s_is_as_it_was(grid):
     """Four keys at the image key's size crowded the four panels, and at half its size their text was 5.5 px: each
-    panel's is 0.73 of it (the user, 2026-10-27), text 8 px, at rest and hot, hot as wide as its panel allows; the
+    panel's is 0.73 of it, text 8 px, at rest and hot, hot as wide as its panel allows; the
     image's own key keeps its size and its 11 px text."""
     w, qapp = grid
     for s in range(4):
@@ -276,7 +276,7 @@ def test_a_panel_s_key_is_0_73_of_the_image_s_and_the_image_s_is_as_it_was(grid)
 def test_in_a_narrow_panel_the_key_s_title_leaves_its_unit_out_not_cuts_it(qapp, cube, tmp_path):
     """Two linked cubes leave each panel of the 2x2 view ~160 px wide: a title with its unit does not fit there, and
     it reads "Stokes Q   ×10⁻¹¹", its power of ten kept (the numbers under the bar carry none), rather than a unit cut
-    mid-way (the user, 2026-10-27); hot, the same before its rule. In a wide panel, and on an image's key however
+    mid-way; hot, the same before its rule. In a wide panel, and on an image's key however
     narrow, the unit stays."""
     from PySide6 import QtGui
 
@@ -308,7 +308,7 @@ def test_in_a_narrow_panel_the_key_s_title_leaves_its_unit_out_not_cuts_it(qapp,
 
 def test_in_a_narrow_panel_the_hot_key_s_rule_is_short_and_its_title_whole(qapp, cube, tmp_path):
     """Hot in a narrow panel, "Stokes Q   ×10⁻¹¹   auto |x| 99 %" did not fit and was cut ("… 9…"): the rule takes its
-    short form there, "99 %" (the user, 2026-10-27), and the title is whole. Where the full form fits (a wide panel, an
+    short form there, "99 %", and the title is whole. Where the full form fits (a wide panel, an
     image's key) it stays."""
     from PySide6 import QtGui
 
@@ -416,7 +416,7 @@ def right_click(key):
 
 
 def test_a_right_click_on_a_panel_s_key_opens_its_stokes_s_scale_menu(grid):
-    """The menu the panel's Stokes label had moves to its key (the user, 2026-10-27); where the label was, a right
+    """The menu the panel's Stokes label had moves to its key; where the label was, a right
     click releases the cursor, as anywhere on the image."""
     from PySide6 import QtCore
 

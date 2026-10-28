@@ -133,7 +133,7 @@ class BridgeDisplay(Display):
 
     def link(self) -> LinkInfo:
         """Bytes per image-panel pixel and the playback cap. Until measured here (ROADMAP E6): the prototype's bridge,
-        1.3 B/px with grey tiles and 12 fps (bellatrix to XQuartz, 2026-09-24)."""
+        1.3 B/px with grey tiles and 12 fps (bellatrix to XQuartz)."""
         return LinkInfo(bytes_per_px=1.3, fps_cap=10)       # the default's ceiling (toolbar.FPS)
 
     def stats(self) -> dict:

@@ -85,7 +85,7 @@ class StokesGrid(QtWidgets.QWidget):
     def set_image(self, s: int, img, levels, gamma: float | None = None, centred: bool | None = None) -> None:
         v = self.views[s]
         # a guard on every panel: the wheel turns the one under the pointer, and a guard on the first alone let the
-        # others go out past the whole image (11x, the user saw it). The four are the same size and show the same
+        # others go out past the whole image (11x). The four are the same size and show the same
         # region, so their guards agree
         if v.guard is None:
             v.guard = ViewGuard(v.vb, img.shape[1], img.shape[0])

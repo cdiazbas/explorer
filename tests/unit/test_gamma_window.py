@@ -153,7 +153,7 @@ def test_a_panel_of_the_2x2_view_is_its_stokes_and_the_key_at_rest_never_says_ga
     w.set_look(get_look("modern"))
     w.session.set_gamma(0, w.session.state.s, 0.5)
     qapp.processEvents()
-    assert "γ" not in w.colour_key.state[0]            # the hot key only (the user, 2026-10-11)
+    assert "γ" not in w.colour_key.state[0]            # the hot key only
     w.session.set_gamma(0, w.session.state.s, 1.0)
     qapp.processEvents()
     assert "γ" not in w.colour_key.state[0]
@@ -166,7 +166,7 @@ def test_the_keys_are_on_the_sheet(window):
 
 
 def test_after_g_the_key_says_the_gamma_for_a_second(window):
-    """The key at rest never writes gamma by its name (the user, 2026-10-11), but after G, Shift+G or Ctrl+G it says
+    """The key at rest never writes gamma by its name, but after G, Shift+G or Ctrl+G it says
     the new value for a second, in every look (glass without F12 has no status bar), main and linked."""
     from explorer.look import get_look
 

@@ -100,7 +100,7 @@ def test_the_image_follows_its_rule_and_the_padlock_its_stokes(window):
 
 
 def test_every_image_s_padlock_fixes_the_stokes_it_shows_not_its_whole_cube(window):
-    """The padlock fixes the Stokes being looked at (the user, 2026-10-27), on the main image and on a linked one:
+    """The padlock fixes the Stokes being looked at, on the main image and on a linked one:
     closed on Q, I and U stay automatic and the other cube untouched; back on I it shows I's, open; on Q again,
     closed, with Q's levels kept."""
     w, qapp = window
@@ -200,11 +200,11 @@ def test_the_wheel_steps_gamma_and_a_double_click_gives_automatic_levels_and_gam
                       QtCore.QPoint(20, 6))
     qapp.processEvents()
     assert sess.scale(0, 0) == ("p1", 0.0, 0.0) and not w.image_lock.isChecked()
-    assert sess.gamma(0, 0) == 1.0 and sess.gamma(1, 0) == 1.0        # gamma 1 too (the user, 2026-10-11)
+    assert sess.gamma(0, 0) == 1.0 and sess.gamma(1, 0) == 1.0        # gamma 1 too
 
 
 def test_a_right_click_on_the_key_opens_no_menu_for_now(window):
-    """The menu over a key is off for now (the user, 2026-10-11: KEY_MENU); the press goes to the image below."""
+    """The menu over a key is off for now (KEY_MENU); the press goes to the image below."""
     w, qapp = window
     w.session.lock(True)
     qapp.processEvents()

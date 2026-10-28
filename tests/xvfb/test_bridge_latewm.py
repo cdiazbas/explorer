@@ -66,7 +66,7 @@ def _glass_switch(cube):
 
 
 def test_glass_panels_stay_placed_when_the_manager_tells_their_first_place_late(cube, late_wm):
-    """Seen from bellatrix through ssh -Y (2026-10-04, a geometry trace): M into glass, the panels placed beside the
+    """Seen from bellatrix through ssh -Y (a geometry trace): M into glass, the panels placed beside the
     window, then 230 ms later quartz-wm's notice of the geometry a panel's X window was created with, and the bridge
     took it as new: the spectrum went back to where Qt had first floated it. A notice of a geometry the bridge asked
     for before its last request is an echo, the one it created the window with included."""
@@ -78,7 +78,7 @@ def test_glass_panels_stay_placed_when_the_manager_tells_their_first_place_late(
 
 
 def test_glass_panels_stay_placed_when_the_late_notice_has_their_first_place_and_new_size(cube, late_mixed_wm):
-    """Seen from bellatrix through ssh -Y (2026-10-04, a geometry trace): the first M into glass, the panels placed
+    """Seen from bellatrix through ssh -Y (a geometry trace): the first M into glass, the panels placed
     beside the window, then 1.8 s later XQuartz's notice of the place each was first floated at with the size asked
     after it, a geometry never asked for as a whole: the bridge took it and the panels went back (the second time
     Qt had their place already). The glass look now makes a panel's window where it goes."""

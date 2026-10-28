@@ -1,7 +1,7 @@
 """An edge resize through the bridge under a manager that answers as quartz-wm does (fake_quartzwm_frames.py): one
 resize is one size change in Qt, one request to X, one whole window sent, and the window ends where it was asked.
 
-Through XQuartz (2026-10-05, a geometry and a bridge trace) every edge resize of the main window went back and forth
+Through XQuartz (a geometry and a bridge trace) every edge resize of the main window went back and forth
 between the new size and the old one 2-4 times in 30-160 ms, sent whole at each size (5.7 MB for one resize to
 1748x1013), and the window kept its old place: the bridge asked the move and the size apart, quartz-wm answered the
 move with its record of the frame (the old place and size), the bridge took that and, resizing Qt before moving it,

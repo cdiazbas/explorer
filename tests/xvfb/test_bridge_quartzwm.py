@@ -1,6 +1,6 @@
 """The bridge under a window manager that frames as quartz-wm does (fake_quartzwm.py, ROADMAP E6.4): the floating
 panels unframed, where Qt has them, and still. Through XQuartz a panel declared a utility window got the manager's
-16-px strip over its own title and crept down 16 px at every round trip (2026-10-02); panels floated before their
+16-px strip over its own title and crept down 16 px at every round trip; panels floated before their
 window was shown came out the same way. Xvfb alone has no manager, so the other X tests could not see it.
 
     EXPLORER_TEST_XDISPLAY=:99 XAUTHORITY=<cookie> pytest tests/xvfb/test_bridge_quartzwm.py

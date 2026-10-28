@@ -98,7 +98,7 @@ def test_a_synthetic_notice_of_an_older_request_is_an_echo_and_dropped(setup):
 
 
 def test_where_x_says_is_an_echo_when_it_is_an_older_geometry_asked(setup):
-    """Seen from bellatrix through ssh -Y (2026-10-04, a geometry trace): glass placed the spectrum at (2757, 55), the
+    """Seen from bellatrix through ssh -Y (a geometry trace): glass placed the spectrum at (2757, 55), the
     manager had not yet acted on it, and X answered where the panel's window had been created, (2703, 87): taken, the
     panel went back over the main window until a later notice. An answer that is a geometry asked before the last
     one (the window's first geometry is one) is an echo, as a synthetic notice of one is."""

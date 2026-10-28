@@ -622,7 +622,7 @@ class SeriesReader(FrameReader):
             self._open: OrderedDict = OrderedDict()     # t -> its HDUList, the latest used last
             # one decompression at a time: astropy's holds the GIL, and several at once slowed each other down far
             # beyond their sum (playing 300 AIA files: a frame read took 2.6 s, 3.7 images a second shown, against
-            # 0.12 s a frame one at a time; bellatrix, 2026-10-10)
+            # 0.12 s a frame one at a time; bellatrix)
             self._decoding = threading.Lock()
 
     def _t(self, idx) -> int:
@@ -680,7 +680,7 @@ class SeriesReader(FrameReader):
     def playback_cap(self) -> float | None:
         """Compressed: one over the median of the latest frames' decompression, one at a time whatever the
         threads (astropy's Rice decompression holds the GIL: 8 AIA frames of 1986x1986 took 996 ms one after
-        another, 1207 ms on 4 threads; bellatrix, 2026-10-10). None before a frame is read, and for plain files."""
+        another, 1207 ms on 4 threads; bellatrix). None before a frame is read, and for plain files."""
         if not self._decode_s:
             return None
         return 1.0 / max(1e-6, float(np.median(self._decode_s)))

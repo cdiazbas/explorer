@@ -1,8 +1,7 @@
-"""Signed quantities and the colour key's name (the author's decisions of 2026-10-27, points 31 and 32), offscreen:
-a plane whose quantity is signed about 0 (a Bifrost field component, a Blos map) has its levels symmetric about 0
-and the diverging maps, as Q U V; one of log₁₀(tg) does not. The key of a cube of one plane says what it shows with
-its unit, never the unit alone. Files built as test_bifrost's (the real header), small. Each test prints what it
-measured."""
+"""Signed quantities and the colour key's name, offscreen: a plane whose quantity is signed about 0 (a Bifrost field
+component, a Blos map) has its levels symmetric about 0 and the diverging maps, as Q U V; one of log₁₀(tg) does not. The
+key of a cube of one plane says what it shows with its unit, never the unit alone. Files built as test_bifrost's (the
+real header), small. Each test prints what it measured."""
 import numpy as np
 import pytest
 from test_bifrost import NX, NY, NZ, bifrost, open_window, spin

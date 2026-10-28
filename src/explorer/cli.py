@@ -82,9 +82,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 def clean_library_path(environ, platform: str, root: str = ROOT) -> dict | None:
     """The environment to start again in, before Qt loads, or None to go on. On Linux another environment's
-    LD_LIBRARY_PATH (conda's, from .bashrc) loads its own Qt and PySide6 fails (Qt_6_PRIVATE_API, bellatrix
-    2026-09-28): without it, or with the tree's .qtlibs/only alone (libxcb-cursor, what scripts/run.sh sets). Once
-    only (EXPLORER_REEXEC). From the prototype's test.py:19-28."""
+    LD_LIBRARY_PATH (conda's, from .bashrc) loads its own Qt and PySide6 fails (Qt_6_PRIVATE_API, bellatrix): without
+    it, or with the tree's .qtlibs/only alone (libxcb-cursor, what scripts/run.sh sets). Once only (EXPLORER_REEXEC).
+    From the prototype's test.py:19-28."""
     if not platform.startswith("linux") or environ.get(REEXEC_ENV):
         return None
     qt = os.path.join(root, ".qtlibs", "only")

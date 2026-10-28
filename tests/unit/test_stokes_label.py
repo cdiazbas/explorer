@@ -126,7 +126,7 @@ def test_every_cube_with_stokes_names_the_one_shown_on_its_image_and_lambda_t(qa
 
 
 def test_the_2x2_view_s_panels_are_named_by_their_keys_and_lambda_t_names_the_session_s(qapp, window):
-    """No label on the 2x2 view's panels (the user, 2026-10-27): each panel's key names its Stokes; the slit's hint at
+    """No label on the 2x2 view's panels: each panel's key names its Stokes; the slit's hint at
     the top left where the label was, below the top-left panel's key in glass, which puts it there."""
     from explorer.look import get_look
 

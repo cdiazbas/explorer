@@ -141,7 +141,7 @@ def test_zoom_linked_and_each_panel_renders_what_it_shows(qapp, shell):
 
 def test_no_panel_zooms_out_past_the_whole_image(qapp, shell):
     """The single view's rule (ViewGuard: no further out than the whole image, 1x) in every panel, whichever one the
-    wheel turns: zoomed out in a panel other than I's, the view went past 1x (the user, 2026-10-01)."""
+    wheel turns: zoomed out in a panel other than I's, the view went past 1x."""
     from PySide6 import QtCore
 
     w, data = shell
