@@ -6,8 +6,8 @@ the slice the slit tab in front shows (at the 100-step cap and at "all", per-pix
 slit drawn, named after its cube, a linked cube's too. Each test prints what it measured."""
 import datetime as dt
 import os
-import sys
 import time
+import types
 import warnings
 
 import numpy as np
@@ -242,12 +242,11 @@ def test_a_click_saves_the_time_slice_the_panel_shows(qapp, shell, cube, tmp_pat
     draw(w, PTS)
     iy, ix = pixels(DRAWN)
     said_, bar = [], said(w)
-    # what the shell prints to the terminal, taken at its print: pytest put its own sys.stderr back in the middle of
-    # this test in 2 runs of 18 (offscreen, Mac), and the line went there
+    # what the shell says on the terminal (obs.say), taken where it says it: pytest put its own sys.stderr back in
+    # the middle of this test in 2 runs of 18 (offscreen, Mac), and a line written there was lost
     terminal: list[str] = []
-    monkeypatch.setattr(shell_module, "print",
-                        lambda *a, file=None: terminal.append(" ".join(map(str, a))) if file is sys.stderr else None,
-                        raising=False)
+    monkeypatch.setattr(shell_module, "say", types.SimpleNamespace(info=terminal.append, warn=terminal.append,
+                                                                   error=terminal.append))
     for cap, t in ((100, steps(NT, 100)), (None, np.arange(NT))):
         w.session.set_t_cap(cap)
         want = data[t, 3, 2][:, iy, ix]

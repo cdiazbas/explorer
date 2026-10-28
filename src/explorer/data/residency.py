@@ -46,6 +46,17 @@ def away_text(path) -> str:
             f"tens of GB")
 
 
+def on_disk_bytes(paths) -> float:
+    """The bytes of paths with blocks on the disk, together: grows while a file comes back from tape."""
+    total = 0.0
+    for p in paths:
+        try:
+            total += (on_disk(p) or 0.0) * os.stat(p).st_size
+        except OSError:
+            continue
+    return total
+
+
 def on_disk_gb(paths) -> str:
     """How much of each file is on disk now, "name 12.3 of 91.9 GB on disk", joined: whether a file coming back from
     tape is getting nearer."""

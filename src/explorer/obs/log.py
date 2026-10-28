@@ -1,5 +1,6 @@
 """Logging: one logger per layer under the application's root logger, a console at WARNING and a rotating file
-at INFO in ~/.cache/explorer/logs/ (over ssh -Y the terminal may not be in view).
+at INFO in ~/.cache/explorer/logs/ (over ssh -Y the terminal may not be in view). The console's lines look like the
+person's (obs.say: "12:08:31 WARN  data.io: message"), and the file keeps the person's lines too.
 
 Per-layer detail without flooding the rest: EXPLORER_LOG="data.io=DEBUG,core=INFO" (a bare level, e.g. "DEBUG",
 applies to everything). Never log per frame or per cursor move at INFO: the terminal costs too, over ssh; what
@@ -8,10 +9,10 @@ repeats goes to spans (obs/spans.py), not to the log.
 import logging
 import logging.handlers
 import os
-import sys
 
 from .._name import APP_NAME, ENV_PREFIX
 from .._paths import cache_dir
+from . import say
 
 _FMT = "%(asctime)s %(levelname)s %(name)s [%(threadName)s]: %(message)s"
 _configured = False
@@ -61,12 +62,15 @@ def setup(console_level=logging.WARNING, file_level=logging.INFO, spec: str | No
         if isinstance(lg, logging.Logger) and lg.name.startswith(APP_NAME + "."):
             lg.setLevel(logging.NOTSET)
     root.propagate = False
+    told = say.logger()                                 # the person's lines: their own terminal handler, and the file;
+    told.setLevel(logging.INFO)                         # INFO whatever the loop above and the console's level
+    for h in [h for h in told.handlers if not isinstance(h, say.Terminal)]:
+        told.removeHandler(h)
     levels = parse_spec(spec) if spec else {}
     if "" in levels:                                    # a bare level: the console's level for everything
         console_level = levels.pop("")
-    con = logging.StreamHandler(sys.stderr)
+    con = say.Terminal(named=True)
     con.addFilter(_LayerFilter(console_level, levels))
-    con.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     root.addHandler(con)
     lowest = console_level
     if to_file:
@@ -78,6 +82,7 @@ def setup(console_level=logging.WARNING, file_level=logging.INFO, spec: str | No
             fh.addFilter(_LayerFilter(min(file_level, console_level), levels))
             fh.setFormatter(logging.Formatter(_FMT))
             root.addHandler(fh)
+            told.addHandler(fh)
             lowest = min(lowest, file_level)
         except OSError as e:                        # a read-only home must not stop the application
             root.warning("no log file (%s): logging to the console only", e)

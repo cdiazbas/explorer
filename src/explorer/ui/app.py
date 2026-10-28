@@ -6,7 +6,7 @@ import time
 
 from .. import __version__
 from .._name import APP_NAME
-from ..obs import get_logger
+from ..obs import get_logger, say
 from ..obs.waiting import Waiting
 
 log = get_logger("ui")
@@ -91,7 +91,7 @@ class Started:
     def close(self) -> None:
         if self.tracer is not None:
             self.tracer.stop()
-            print(f"[geometry] the trace of this session: {self.tracer.path}", file=sys.stderr)
+            say.info(f"geometry: the trace of this session: {self.tracer.path}")
         for d in [*self.linked, self.ds]:               # the long reads in flight stop first: no close waits for one
             d.abort()
         for d in self.linked:                           # first: they run on the main cube's threads
@@ -115,10 +115,10 @@ def plan_links(path, others, axes=None) -> list:
     for p in others:
         link = plan(main, p)
         if link.ok:
-            print(f"[{APP_NAME}] linked {os.path.basename(str(p))}: {link.how}", file=sys.stderr)
+            say.info(f"linked {os.path.basename(str(p))}: {link.how}")
             links.append(link)
         else:
-            print(f"[{APP_NAME}] not linked: {link.why}", file=sys.stderr)
+            say.warn(f"not linked: {link.why}")
     return links
 
 
@@ -131,9 +131,9 @@ def open_mask(path, main):
     try:
         mask = Mask.open(path, main)
     except MaskRefused as e:
-        print(f"[{APP_NAME}] not opened: the mask {e}. Without --mask the cube opens without it", file=sys.stderr)
+        say.error(f"not opened: the mask {e}. Without --mask the cube opens without it")
         return None
-    print(f"[{APP_NAME}] {mask.describe()}", file=sys.stderr)
+    say.info(str(mask.describe()))
     return mask
 
 
@@ -149,7 +149,7 @@ def given_cubes(path, sp, no_sp, linked) -> tuple[str, str | None, list[str], di
 
     first = opening(path, sp, no_sp)
     if first.note:
-        print(f"[{APP_NAME}] {first.note}", file=sys.stderr)
+        say.info(str(first.note))
     path, sp = first.path, first.sp
     others: list[str] = []
     sps: dict[str, str] = {}
@@ -157,23 +157,23 @@ def given_cubes(path, sp, no_sp, linked) -> tuple[str, str | None, list[str], di
         try:
             o = opening(p, None, no_sp)
         except (ValueError, OSError) as e:
-            print(f"[{APP_NAME}] not linked: {e}", file=sys.stderr)
+            say.warn(f"not linked: {e}")
             continue
         if o.sp is not None and o.path == o.sp:        # a per-pixel file alone: an image is a pass over it
-            print(f"[{APP_NAME}] not linked: {os.path.basename(str(p))} is a per-pixel file without its image cube "
-                  f"beside it", file=sys.stderr)
+            say.warn(f"not linked: {os.path.basename(str(p))} is a per-pixel file without its image cube "
+                     f"beside it")
             continue
         if o.sp is not None and os.path.realpath(o.path) == os.path.realpath(path):
             if sp is None:
                 sp = o.sp
-                print(f"[{APP_NAME}] {os.path.basename(str(p))} is the per-pixel file of {os.path.basename(path)}: "
-                      f"opened with it, not linked to it", file=sys.stderr)
+                say.info(f"{os.path.basename(str(p))} is the per-pixel file of {os.path.basename(path)}: "
+                         f"opened with it, not linked to it")
             else:
-                print(f"[{APP_NAME}] not linked: {os.path.basename(str(p))} is a per-pixel file of "
-                      f"{os.path.basename(path)}, which --sp gives one already", file=sys.stderr)
+                say.warn(f"not linked: {os.path.basename(str(p))} is a per-pixel file of "
+                         f"{os.path.basename(path)}, which --sp gives one already")
             continue
         if o.note:
-            print(f"[{APP_NAME}] {o.note}", file=sys.stderr)
+            say.info(str(o.note))
         others.append(o.path)
         if o.sp is not None:
             sps[o.path] = o.sp
@@ -198,9 +198,9 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     it still waits for (obs.waiting), until the first image is on screen."""
     # at once, before anything that may wait: the version, what it opens, and which of its files are away (on tape)
     name = os.path.basename(str(series[0] if series else path))
-    print(f"[{APP_NAME}] {APP_NAME} {__version__}: opening {name}{' …' if series or linked else ''}",
-          file=sys.stderr, flush=True)
-    waiting = Waiting(APP_NAME, time.perf_counter())
+    say.info(f"{APP_NAME} {__version__}: opening {name}{' …' if series or linked else ''}")
+    stacks_on_signal()
+    waiting = Waiting(time.perf_counter())
     waiting.doing(f"opening {name}")
     try:
         started = _start(path, sp=sp, no_sp=no_sp, axes=axes, x11=x11, theme=theme, look=look,
@@ -214,19 +214,35 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     return started
 
 
+def stacks_on_signal() -> None:
+    """kill -USR1 <pid>: every thread's Python stack on stderr (faulthandler), to see where a start waits; once per
+    process, where the system has SIGUSR1 and stderr is a file."""
+    import faulthandler
+    import signal
+
+    out = sys.__stderr__
+    if out is None:
+        return
+    try:
+        faulthandler.register(signal.SIGUSR1, file=out, all_threads=True, chain=False)
+    except (AttributeError, ValueError, OSError, RuntimeError):  # no SIGUSR1 (Windows), or stderr without a file
+        pass
+
+
 def say_away(paths, waiting: Waiting, seen: dict) -> None:
     """A line for each file of paths not seen yet that is away (data.residency: on tape); seen: each file looked at,
     whether away. With any away, the waiting lines say each time how much of them is on disk."""
-    from ..data.residency import away, away_text, on_disk_gb
+    from ..data.residency import away, away_text, on_disk_bytes, on_disk_gb
 
     new = [str(p) for p in dict.fromkeys(paths) if p and str(p) not in seen]
     far = set(away(new))
     for p in new:
         seen[p] = p in far
         if p in far:
-            print(f"[{APP_NAME}] {away_text(p)}", file=sys.stderr, flush=True)
+            say.warn(away_text(p))
     if any(seen.values()):
-        waiting.extra = lambda: on_disk_gb([p for p, a in seen.items() if a])
+        tape = [p for p, a in seen.items() if a]
+        waiting.extra = lambda: (on_disk_gb(tape), on_disk_bytes(tape))
 
 
 def _start(path, *, sp, no_sp, axes, x11, theme, look, reset_layout, traces, saved_layout, linked, mask, series,
@@ -243,7 +259,7 @@ def _start(path, *, sp, no_sp, axes, x11, theme, look, reset_layout, traces, sav
 
     plan = choose_display(os.environ, sys.platform, x11)
     for note in plan.notes:
-        print(f"[{APP_NAME}] {note}", file=sys.stderr)
+        say.info(str(note))
     disp = for_plan(plan)
     from .layout import LayoutStore
     from .style import THEMES
@@ -255,7 +271,7 @@ def _start(path, *, sp, no_sp, axes, x11, theme, look, reset_layout, traces, sav
         path, sp, linked, linked_sp = (given_cubes(path, sp, no_sp, linked) if series is None
                                        else (path, None, [], {}))
     except (ValueError, OSError) as e:                  # a per-pixel file without its image cube: what is needed
-        print(f"[{APP_NAME}] {e}", file=sys.stderr)
+        say.error(str(e))
         return None
     # the files given are one simulation snapshot's variables (a file each, data.formats.variables_layout): one
     # cube, its variables picked as Stokes are; anything else links as it always did
@@ -263,12 +279,12 @@ def _start(path, *, sp, no_sp, axes, x11, theme, look, reset_layout, traces, sav
 
     variables = [path, *linked] if series is None and linked and variables_layout([path, *linked]) else None
     if variables is not None:
-        print(f"[{APP_NAME}] {len(variables)} variables of one snapshot: one cube, a variable each", file=sys.stderr)
+        say.info(f"{len(variables)} variables of one snapshot: one cube, a variable each")
         linked = []
     try:
         links = plan_links(path, linked, axes) if linked else []
     except (ValueError, OSError) as e:                  # the first cube: reported as below, when opened
-        print(f"[{APP_NAME}] cannot open {path}: {e}", file=sys.stderr)
+        say.error(f"cannot open {path}: {e}")
         return None
     if series is None:                                  # the per-pixel files beside them, found by name alone
         from ..data.formats.companions import companions
@@ -289,7 +305,7 @@ def _start(path, *, sp, no_sp, axes, x11, theme, look, reset_layout, traces, sav
         app_ready = time.perf_counter()
         phases["Qt"] = app_ready - q
     except NoDisplay as e:
-        print(e, file=sys.stderr)
+        say.error(str(e))
         return None
     from ..data.dataset import Dataset
     from ..data.policy import GuardShare, MemoryGuard
@@ -301,18 +317,18 @@ def _start(path, *, sp, no_sp, axes, x11, theme, look, reset_layout, traces, sav
     try:
         ds = Dataset.open(path, sp=sp, no_sp=no_sp, axes=axes, guard=guard, series=series, variables=variables)
     except (ValueError, OSError) as e:                  # a file it cannot read as a cube: say so, no traceback
-        print(f"[{APP_NAME}] cannot open {'the series' if series is not None else path}: {e}", file=sys.stderr)
+        say.error(f"cannot open {'the series' if series is not None else path}: {e}")
         return None
     if series is not None:
         for note in getattr(ds.layout, "notes", ()):
-            print(f"[{APP_NAME}] {note}", file=sys.stderr)
+            say.info(str(note))
     others: list = []
     try:
         for link in links:
             others.append(Dataset.open(link.path, sp=linked_sp.get(link.path), no_sp=no_sp, axes=link.axes,
                                        guard=guard, executors=ds.executors))
     except (ValueError, OSError) as e:
-        print(f"[{APP_NAME}] cannot open {link.path}: {e}", file=sys.stderr)
+        say.error(f"cannot open {link.path}: {e}")
         for d in others:
             d.close()
         ds.close()
@@ -364,8 +380,7 @@ def _start(path, *, sp, no_sp, axes, x11, theme, look, reset_layout, traces, sav
 
         shell.terminal_keys = termkeys.attach(shell)     # over ssh -Y the keyboard stays in the terminal until a click
         if shell.terminal_keys is not None:
-            print(f"[{APP_NAME}] keys typed in this terminal also reach the window ({termkeys.ENV}=0: off)",
-                  file=sys.stderr, flush=True)
+            say.info(f"keys typed in this terminal also reach the window ({termkeys.ENV}=0: off)")
         link = disp.link()
         if plan.remote and link.bytes_per_px is not None:
             shell.start_link_probe(link)                # the default playback rate from what the link carries

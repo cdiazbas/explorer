@@ -15,7 +15,6 @@ import atexit
 import json
 import os
 import struct
-import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -23,7 +22,7 @@ from typing import Any
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ...obs import get_logger
+from ...obs import get_logger, say
 from . import clipboard as clip_mod
 from . import keys
 from . import trace as trace_mod
@@ -710,7 +709,7 @@ class Bridge(QtCore.QObject):
         if self.dead:
             return
         self.dead = True
-        print(f"[xbridge] the X display went away ({type(e).__name__}: {e}); closing", file=sys.stderr, flush=True)
+        say.error(f"xbridge: the X display went away ({type(e).__name__}: {e}); closing")
         app = self.app
         app.setQuitOnLastWindowClosed(False)            # else closing the last window quits with 0 before exit(1)
         QtCore.QTimer.singleShot(0, lambda: (app.closeAllWindows(), app.exit(1)))

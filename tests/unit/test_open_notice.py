@@ -2,8 +2,8 @@
 (data.residency: its size with almost no blocks on disk, as StorNext leaves a file it moved to tape); and every few
 seconds what it still waits for, until the first image (obs.waiting). A sparse file stands for the file on tape: the
 same metadata, full size and no blocks. Offscreen; each test prints what it measured."""
-import io
 import os
+import re
 import time
 
 import pytest
@@ -37,22 +37,25 @@ def test_a_file_with_its_size_and_no_blocks_is_away(tmp_path, monkeypatch):
     assert residency.on_disk_gb([far]) == "on_tape.fits 0.0 of 0.1 GB on disk"
 
 
-def test_the_waiting_lines_say_what_and_how_long_until_stopped():
-    """obs.waiting: every `every` s a line, what it waits for, the seconds and the extra; none after stop."""
+def test_the_waiting_lines_say_what_and_how_long_until_stopped(capsys):
+    """obs.waiting: every `every` s an INFO line, what it waits for, the seconds and the extra; when nothing moves
+    for `still` s (no CPU, nothing read, the extra's number the same), one WARN that says so and how to see the
+    stacks; none after stop."""
     from explorer.obs.waiting import Waiting
 
-    out = io.StringIO()
-    w = Waiting("explorer", time.perf_counter(), every=0.05, out=out, extra=lambda: "0.0 of 91.9 GB on disk")
+    w = Waiting(time.perf_counter(), every=0.05, still=0.15, extra=lambda: ("0.0 of 91.9 GB on disk", 0.0))
     w.doing("opening cube.fits")
-    time.sleep(0.3)
+    time.sleep(0.4)
     w.stop()
     time.sleep(0.1)
-    n = out.getvalue().count("\n")
+    lines = capsys.readouterr().err.splitlines()
     time.sleep(0.2)
-    lines = out.getvalue().splitlines()
-    print(n, lines[:2])
-    assert n >= 2 and len(lines) == n and w.stopped
-    assert lines[-1].startswith("[explorer] still opening cube.fits: 0 s (0.0 of 91.9 GB on disk)")
+    after = capsys.readouterr().err
+    print(len(lines), lines[:1], [x for x in lines if " WARN " in x])
+    info = [x for x in lines if " INFO  still opening cube.fits: 0 s" in x]
+    warn = [x for x in lines if " WARN  nothing has moved for " in x]
+    assert len(info) >= 3 and all("0.0 of 91.9 GB on disk)" in x for x in info) and w.stopped and after == ""
+    assert len(warn) == 1 and "while opening cube.fits" in warn[0] and f"kill -USR1 {os.getpid()}" in warn[0]
 
 
 @pytest.fixture
@@ -62,8 +65,8 @@ def offscreen(monkeypatch):
 
 
 def test_start_says_its_version_and_what_it_opens_first(qapp, offscreen, capsys):
-    """The first line, before anything is read: "[explorer] explorer <version>: opening <file>"; the waiting lines
-    stop at the first image. Before: the first line was the first image's."""
+    """The first line, before anything is read: "HH:MM:SS INFO  explorer <version>: opening <file>"; the waiting
+    lines stop at the first image. Before: the first line was the first image's."""
     from explorer import __version__
     from explorer.ui.app import start
 
@@ -73,7 +76,9 @@ def test_start_says_its_version_and_what_it_opens_first(qapp, offscreen, capsys)
         assert spin(qapp, lambda: s.shell.first_image_s is not None)
         err = capsys.readouterr().err.splitlines()
         print(err[:3])
-        assert err[0] == f"[explorer] explorer {__version__}: opening synth_small_im.fits"
+        ours = [e for e in err if re.match(r"\d\d:\d\d:\d\d (INFO |WARN |ERROR) ", e)]    # Qt's own notes aside
+        assert re.fullmatch(rf"\d\d:\d\d:\d\d INFO  explorer {re.escape(__version__)}: opening synth_small_im.fits",
+                            ours[0]), ours[0]
         assert s.shell.waiting is not None and s.shell.waiting.stopped
         assert not any("on disk" in line for line in err)                  # written whole: nothing away
     finally:
@@ -104,9 +109,10 @@ def test_start_says_which_files_are_away_and_how_much_is_back(qapp, offscreen, c
         err = capsys.readouterr().err.splitlines()
         away = [line for line in err if "of it on disk" in line]
         print(away)
-        assert [line.split(":")[0] for line in away] == ["[explorer] synth_small_im.fits",
-                                                         "[explorer] synth_small_sp.fits"]
-        assert made and made[0].extra is not None and "synth_small_sp.fits 0.0 of" in made[0].extra()
+        assert [line.split(" ", 1)[1].split(":")[0] for line in away] == ["WARN  synth_small_im.fits",
+                                                                          "WARN  synth_small_sp.fits"]
+        text, back = made[0].extra()
+        assert "synth_small_sp.fits 0.0 of" in text and back == 0.0
     finally:
         s.shell.close()
         s.close()

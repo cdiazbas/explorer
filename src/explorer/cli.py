@@ -9,6 +9,7 @@ import sys
 
 from . import __version__
 from ._name import APP_NAME, ENV_PREFIX
+from .obs import say
 
 # name -> (module, one-line help). Each module has main(argv) -> exit code.
 SUBCOMMANDS = {
@@ -128,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         a.cubes = [f for c in a.cubes for f in (sorted(glob.glob(c)) if glob.has_magic(c) else [c])] or a.cubes
     for c in a.cubes + ([a.mask] if a.mask else []):
         if not os.path.exists(c):
-            print(f"{APP_NAME}: no such file: {c}", file=sys.stderr)
+            say.error(f"no such file: {c}")
             return 2
     from .ui.app import run
 

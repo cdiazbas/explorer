@@ -10,16 +10,15 @@ _spectrum_click to _pick_flush 1270-1317, _image_click 1419), now one code for e
 """
 import math
 import os
-import sys
 
 import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore
 
-from .._name import APP_NAME
 from ..core.scheduler import Scheduler
 from ..data.axes import unit_text
 from ..data.names import card, plane_text, slice_names, unit, value_name
+from ..obs import say
 from . import glass
 from .cards import CARD, CARD_LIGHT
 from .gestures import Gestures
@@ -89,7 +88,7 @@ class CubeSink:
 
     def continuum(self, k, text):
         """A linked cube's continuum chosen from its sample: said on the terminal, with its name."""
-        print(f"[{APP_NAME}] {self.cube.name}: {text}", file=sys.stderr)
+        say.info(f"{self.cube.name}: {text}")
 
     def grid_image(self, s, idx, img, levels):          # the 2x2 view is the main cube's
         pass

@@ -114,8 +114,8 @@ def test_a_start_asked_for_it_writes_the_trace(cube, tmp_path, how):
     logs = list((tmp_path / "cache").rglob("geometry-*.log"))
     assert p.returncode == 0 and len(logs) == 1, dict(exit=p.returncode, logs=logs, stderr=p.stderr[-3000:])
     text = logs[0].read_text()
-    assert "[geometry] tracing" in p.stderr, p.stderr[-2000:]
-    assert f"[geometry] the trace of this session: {logs[0]}" in p.stderr, p.stderr[-2000:]     # named at the close
+    assert "INFO  geometry: tracing" in p.stderr, p.stderr[-2000:]
+    assert f"INFO  geometry: the trace of this session: {logs[0]}" in p.stderr, p.stderr[-2000:]   # named at the close
     assert "LOOK glass" in text and "EVT  main" in text and "SCREENS " in text, text[-3000:]
     assert not (tmp_path / "geometry").exists() and not list(tmp_path.glob("*.json")), "a spans trace was written"
 

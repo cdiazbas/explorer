@@ -29,7 +29,6 @@ trace is asked for.
     tracer = Tracer(path); ...; tracer.stop()
 """
 import os
-import sys
 import time
 import traceback
 from pathlib import Path
@@ -38,6 +37,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import ENV_PREFIX
 from .._paths import trace_log
+from ..obs import say
 from .shell import Shell
 
 ENV = f"{ENV_PREFIX}GEOMETRY_TRACE"            # not EXPLORER_TRACE: that is the spans' Perfetto file
@@ -56,7 +56,7 @@ def install_from_env(env=None) -> "Tracer | None":
     if not wanted(env):
         return None
     t = Tracer(trace_log("geometry"))
-    print(f"[geometry] tracing moves and resizes to {t.path}", file=sys.stderr)
+    say.info(f"geometry: tracing moves and resizes to {t.path}")
     return t
 
 

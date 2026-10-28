@@ -14,11 +14,10 @@ bridge (EXPLORER_X11=bridge); it replaced the prototype's bridge brought over as
     trace.py      what goes to X and comes back, per window, read back from the server (EXPLORER_BRIDGE_TRACE=1)
 """
 import os
-import sys
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING
 
-from ...obs import get_logger
+from ...obs import get_logger, say
 from ..display import Display, LinkInfo, NoDisplay, WindowOps
 from ..plan import DisplayPlan
 
@@ -125,7 +124,7 @@ class BridgeDisplay(Display):
         b = self.bridge
         assert b is not None, "make_app() first"
         b.attach(window)
-        app.aboutToQuit.connect(lambda: print(b.describe(), file=sys.stderr, flush=True))
+        app.aboutToQuit.connect(lambda: say.info(f"xbridge: {b.describe()}"))
         return ops
 
     def screen(self) -> BridgeScreen | None:

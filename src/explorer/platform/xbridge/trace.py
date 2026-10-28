@@ -40,13 +40,13 @@ the close: per window what was sent, copied, exposed and refused. Nothing is tra
 """
 import collections
 import os
-import sys
 import threading
 import time
 from pathlib import Path
 
 from ..._name import ENV_PREFIX
 from ..._paths import trace_log
+from ...obs import say
 
 ENV = f"{ENV_PREFIX}BRIDGE_TRACE"
 PROBE_ENV = f"{ENV_PREFIX}BRIDGE_PROBE"
@@ -77,7 +77,7 @@ def from_env(env=None) -> "Trace | None":
     if not wanted(env):
         return None
     t = Trace(trace_log("bridge"), probe_times(env))
-    print(f"[xbridge] tracing what the bridge sends to {t.path}", file=sys.stderr)
+    say.info(f"xbridge: tracing what the bridge sends to {t.path}")
     return t
 
 
@@ -136,7 +136,7 @@ class Trace:
             self.write("SUMMARY", None, f"{who}: " + ", ".join(f"{k} {v}" for k, v in sorted(c.items())))
         with self._lock:
             self._out.close()
-        print(f"[xbridge] the bridge's trace of this session: {self.path}", file=sys.stderr)
+        say.info(f"xbridge: the bridge's trace of this session: {self.path}")
 
     # ---- the probe: what the server holds, against what was sent and what Qt has
     def probed(self, k: int, xid: int, at, size, part, x_px, sent, qt, hidden) -> None:

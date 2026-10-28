@@ -36,7 +36,7 @@ from ..data.axes import signed, unit_text
 from ..data.names import cube_names, plane_text, slice_names, value_name
 from ..look import ENV_OFF, LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
-from ..obs import get_logger
+from ..obs import get_logger, say
 from ..obs.waiting import Waiting
 from . import docks, glass, icons, overlays, pens, style, titlebar
 from .actions import ActionRegistry, KeySheet, mod_key, per_pixel_sheet_html
@@ -138,7 +138,7 @@ class _Sink(CubeSink):
         """The continuum chosen from the sample: said once on the terminal and the status line; the lambda slider's
         label marks it from now on, and the status line's I_c comes with the next pixel."""
         sh = self.shell
-        print(f"[{APP_NAME}] {text}", file=sys.stderr)
+        say.info(str(text))
         sh.nav.sync(sh.session.state, frozenset({"l"}))
         sh.update_status()
         sh.statusBar().showMessage(text, CONTINUUM_NOTE_MS)
@@ -1272,7 +1272,7 @@ class Shell(QtWidgets.QMainWindow):
             what = getattr(self.dataset.frames, "cap_reason", "frames read in")
             msg = f"{what} ~{1000 / cap:.0f} ms each, one at a time: playback at {fps} fps"
             self.statusBar().showMessage(msg, 10000)
-            print(f"[{APP_NAME}] {msg}", file=sys.stderr)
+            say.info(str(msg))
 
     def start_link_probe(self, link) -> None:
         """Over a remote X display: the link measured in the background 1.5 s after start (so it does not compete
@@ -1298,7 +1298,7 @@ class Shell(QtWidgets.QMainWindow):
                 QtCore.QTimer.singleShot(100, apply)
                 return
             if "MBps" not in res:
-                print(f"[{APP_NAME}] link probe skipped: {res.get('error')}", file=sys.stderr)
+                say.warn(f"link probe skipped: {res.get('error')}")
                 return
             cw = self.centralWidget()
             if cw is None:
@@ -1309,7 +1309,7 @@ class Shell(QtWidgets.QMainWindow):
             if self.session.pace.link(res["MBps"]):     # a slow link: the panels at the pace it shows them
                 msg += "; panels at the link's pace"
             self.statusBar().showMessage(msg, 10000)
-            print(f"[{APP_NAME}] {msg}", file=sys.stderr)
+            say.info(str(msg))
 
         def start():
             th.start()
@@ -1672,14 +1672,14 @@ class Shell(QtWidgets.QMainWindow):
         except OSError as e:                            # a folder that cannot be written: said, nothing else
             msg = f"slit not saved: {e}"
             self.statusBar().showMessage(msg, 10000)
-            print(f"[{APP_NAME}] {msg}", file=sys.stderr)
+            say.info(str(msg))
             return None
         # with a per-pixel file, the points whose blocks have not come are NaN in it (the cube's padding is NaN too)
         gaps = (len(reads.blocks.missing(zip(reads.pix[0].tolist(), reads.pix[1].tolist(), strict=True)))
                 if reads.per_pixel else 0)
         msg = f"slit saved: {path}" + (f" ({gaps} pixels along it not read yet: NaN)" if gaps else "")
         self.statusBar().showMessage(msg, 10000)
-        print(f"[{APP_NAME}] {msg}", file=sys.stderr)
+        say.info(str(msg))
         self._save_toast(f"saved {os.path.basename(path)}", tab)
         return path
 
@@ -1916,7 +1916,7 @@ class Shell(QtWidgets.QMainWindow):
             line += f" ({', '.join(parts)}; {where})"
             if remote:
                 line += "; over X11 the pixels may still be on their way to the screen"
-        print(line, file=sys.stderr, flush=True)
+        say.info(line)
         for seconds, fn in self._after_first:
             QtCore.QTimer.singleShot(int(seconds * 1000), fn)
         QtCore.QTimer.singleShot(1000, self.cap_fps_by_frames)     # the frames read ahead by then counted too

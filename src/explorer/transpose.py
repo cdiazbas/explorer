@@ -6,6 +6,7 @@ import os
 import sys
 
 from ._name import APP_NAME
+from .obs import say
 
 
 def main(argv=None) -> int:
@@ -23,7 +24,7 @@ def main(argv=None) -> int:
     from .data.transpose import image_name, output_path, transpose
 
     if not os.path.exists(a.sp):
-        print(f"{APP_NAME} transpose: no such file: {a.sp}", file=sys.stderr)
+        say.error(f"transpose: no such file: {a.sp}")
         return 2
     out = output_path(a.sp, a.out)
     last = [-1]
@@ -40,17 +41,17 @@ def main(argv=None) -> int:
     try:
         r = transpose(a.sp, out, block=a.block_mb << 20, progress=progress)
     except (ValueError, OSError) as e:
-        print(f"{APP_NAME} transpose: {e}", file=sys.stderr)
+        say.error(f"transpose: {e}")
         return 1
     print(f"[{APP_NAME} transpose] {out}: {r['bytes'] / 1e9:.2f} GB in {r['seconds']:.1f} s (reading "
           f"{r['reading']:.1f} s, writing {r['writing']:.1f} s)", file=sys.stderr)
     sp_name = os.path.basename(a.sp)
     beside = os.path.join(os.path.dirname(os.path.abspath(out)), sp_name)
     if a.no_link or os.path.basename(out) != image_name(a.sp):
-        print(f"[{APP_NAME} transpose] open it with: {APP_NAME} {out} --sp {a.sp}", file=sys.stderr)
+        say.info(f"transpose: open it with: {APP_NAME} {out} --sp {a.sp}")
     else:
         if not os.path.lexists(beside):
             os.symlink(os.path.abspath(a.sp), beside)
-            print(f"[{APP_NAME} transpose] linked {beside} -> {os.path.abspath(a.sp)}", file=sys.stderr)
-        print(f"[{APP_NAME} transpose] open it with: {APP_NAME} {out}", file=sys.stderr)
+            say.info(f"transpose: linked {beside} -> {os.path.abspath(a.sp)}")
+        say.info(f"transpose: open it with: {APP_NAME} {out}")
     return 0
