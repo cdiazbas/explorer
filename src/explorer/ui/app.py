@@ -4,8 +4,10 @@ import os
 import sys
 import time
 
+from .. import __version__
 from .._name import APP_NAME
 from ..obs import get_logger
+from ..obs.waiting import Waiting
 
 log = get_logger("ui")
 
@@ -191,7 +193,45 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     per-pixel file unless no_sp; sp and axes are the first cube's. mask: a mask file outlined on every image
     (ROADMAP E8.2, data.mask), left out with the reason when it does not fit the first cube. series: FITS files,
     one image each, opened as one cube along t (data.formats.series_layout) instead of path. None (and why, on
-    stderr) when there is no display or the first cube cannot be read."""
+    stderr) when there is no display or the first cube cannot be read. On stderr at once, before anything is read:
+    its version and what it opens; then each file that is away (data.residency: on tape), and every few seconds what
+    it still waits for (obs.waiting), until the first image is on screen."""
+    # at once, before anything that may wait: the version, what it opens, and which of its files are away (on tape)
+    name = os.path.basename(str(series[0] if series else path))
+    print(f"[{APP_NAME}] {APP_NAME} {__version__}: opening {name}{' …' if series or linked else ''}",
+          file=sys.stderr, flush=True)
+    waiting = Waiting(APP_NAME, time.perf_counter())
+    waiting.doing(f"opening {name}")
+    try:
+        started = _start(path, sp=sp, no_sp=no_sp, axes=axes, x11=x11, theme=theme, look=look,
+                         reset_layout=reset_layout, traces=traces, saved_layout=saved_layout, linked=linked,
+                         mask=mask, series=series, waiting=waiting)
+    except BaseException:
+        waiting.stop()
+        raise
+    if started is None:
+        waiting.stop()
+    return started
+
+
+def say_away(paths, waiting: Waiting, seen: dict) -> None:
+    """A line for each file of paths not seen yet that is away (data.residency: on tape); seen: each file looked at,
+    whether away. With any away, the waiting lines say each time how much of them is on disk."""
+    from ..data.residency import away, away_text, on_disk_gb
+
+    new = [str(p) for p in dict.fromkeys(paths) if p and str(p) not in seen]
+    far = set(away(new))
+    for p in new:
+        seen[p] = p in far
+        if p in far:
+            print(f"[{APP_NAME}] {away_text(p)}", file=sys.stderr, flush=True)
+    if any(seen.values()):
+        waiting.extra = lambda: on_disk_gb([p for p, a in seen.items() if a])
+
+
+def _start(path, *, sp, no_sp, axes, x11, theme, look, reset_layout, traces, saved_layout, linked, mask, series,
+           waiting: Waiting) -> Started | None:
+    """start's work, waiting saying what it waits for."""
     t0 = time.perf_counter()
     if traces:                                          # before the bridge and the window, which read them once
         for name in TRACES:
@@ -208,6 +248,8 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     from .layout import LayoutStore
     from .style import THEMES
 
+    seen: dict = {}
+    say_away([*(series or [path]), sp, *linked], waiting, seen)    # before anything reads them
     q = time.perf_counter()
     try:
         path, sp, linked, linked_sp = (given_cubes(path, sp, no_sp, linked) if series is None
@@ -228,6 +270,12 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
     except (ValueError, OSError) as e:                  # the first cube: reported as below, when opened
         print(f"[{APP_NAME}] cannot open {path}: {e}", file=sys.stderr)
         return None
+    if series is None:                                  # the per-pixel files beside them, found by name alone
+        from ..data.formats.companions import companions
+
+        def beside(p, given):
+            return given or (None if no_sp else next(iter(companions(p)), None))
+        say_away([beside(path, sp), *(beside(p, linked_sp.get(p)) for p in linked)], waiting, seen)
     if links:
         phases["links"] = time.perf_counter() - q
     store = LayoutStore(plan.kind, linked=bool(links)) if saved_layout else None
@@ -292,7 +340,9 @@ def start(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look
                  if series is None
                  else f"{os.path.basename(ds.path)} … {os.path.basename(series_paths[-1])} "
                       f"({len(series_paths)} files)")
+        waiting.doing("reading the first image")
         shell = Shell(ds, title=f"{names} — {APP_NAME}", t0=t0, look=get_look(look), linked=others, mask=masked)
+        shell.waiting = waiting                         # stopped at the first image (Shell.first_image)
         phases["window"] = time.perf_counter() - q
         shown = "X11 bridge" if plan.bridge else plan.platform
         shell.breakdown = (before, phases, shown, plan.remote, screen_over_ssh(os.environ, sys.platform))

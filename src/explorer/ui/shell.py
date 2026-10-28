@@ -37,6 +37,7 @@ from ..data.names import cube_names, plane_text, slice_names, value_name
 from ..look import ENV_OFF, LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
 from ..obs import get_logger
+from ..obs.waiting import Waiting
 from . import docks, glass, icons, overlays, pens, style, titlebar
 from .actions import ActionRegistry, KeySheet, mod_key, per_pixel_sheet_html
 from .cards import MacSeams, Rounder
@@ -176,6 +177,7 @@ class Shell(QtWidgets.QMainWindow):
         self.images = 1 + len(linked)                   # side by side (ui.docks: the first window's width)
         self.t0 = time.perf_counter() if t0 is None else t0
         self.first_image_s: float | None = None
+        self.waiting: Waiting | None = None             # ui.app's lines while the start waits
         self.breakdown: tuple | None = None
         self._after_first: list = []
         self.loop = QtLoop(self)
@@ -1896,6 +1898,8 @@ class Shell(QtWidgets.QMainWindow):
     def first_image(self) -> None:
         if self.first_image_s is not None:
             return
+        if self.waiting is not None:                    # no more "still reading the first image" lines
+            self.waiting.stop()
         QtWidgets.QApplication.processEvents()          # on screen, not only handed to Qt
         self.first_image_s = time.perf_counter() - self.t0
         line = f"first image handed to the screen {self.first_image_s:.2f} s after opening started"
@@ -1933,6 +1937,8 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- closing
     def closeEvent(self, ev) -> None:
+        if self.waiting is not None:                    # closed before its first image: no more waiting lines
+            self.waiting.stop()
         if self.layout_store is not None and not self._closing:   # before the docks say hidden
             ops = self.window_ops
             store = self.layout_store.for_look(self.look.name)  # the glass look's own layout
