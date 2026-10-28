@@ -21,3 +21,18 @@ def test_a_key_at_rest_signs_its_upper_limit_only_across_0():
     got = [rest_numbers(-3.3, -1.3), rest_numbers(-0.31, 0.31), rest_numbers(1.0, 2.0), rest_numbers(-1.0, 0.0)]
     print(got)
     assert got == [("−3.3", "−1.3"), ("−0.31", "+0.31"), ("1", "2"), ("−1", "0")]
+
+
+def test_the_zero_mark_is_written_only_where_it_fits_between_the_limits():
+    """The "0" of a key at rest, between the two limits' numbers with a gap: in the middle of a symmetric bar it
+    fits; near a limit (limits of its own on each side, key Z) or on a bar too narrow, it is left out, as it ran into
+    the lower number. Before: always written."""
+    from explorer.ui.overlays import ZERO_GAP, zero_fits
+
+    lo_w, zero_w, hi_w = 22, 6, 24
+    mid = zero_fits(60, 0, 120, lo_w, zero_w, hi_w)
+    near = zero_fits(lo_w + 2, 0, 120, lo_w, zero_w, hi_w)
+    narrow = zero_fits(30, 0, 60, lo_w, zero_w, hi_w)
+    edge = zero_fits(lo_w + ZERO_GAP + zero_w / 2, 0, 120, lo_w, zero_w, hi_w)
+    print("mid", mid, "near", near, "narrow", narrow, "just fits", edge)
+    assert mid and not near and not narrow and edge

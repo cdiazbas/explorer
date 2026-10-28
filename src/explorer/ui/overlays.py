@@ -49,6 +49,16 @@ def limits_text(lo: float, hi: float) -> tuple[str, str]:
     return a, b
 
 
+ZERO_GAP = 4                # px between the "0" and a limit's number, at least: closer, the "0" is left out
+
+
+def zero_fits(x0: float, left: float, right: float, lo_w: float, zero_w: float, hi_w: float) -> bool:
+    """Whether the "0" fits at x0 on a bar from left to right, between the lower limit's number (lo_w wide, from
+    left) and the upper one's (hi_w wide, to right), ZERO_GAP from each: in a narrow key, or with Z when 0 lies near
+    a limit, it ran into the lower number. Its tick stays on the bar either way."""
+    return x0 - zero_w / 2 >= left + lo_w + ZERO_GAP and x0 + zero_w / 2 <= right - hi_w - ZERO_GAP
+
+
 def rest_numbers(lo: float, hi: float) -> tuple[str, str]:
     """The numbers under a key at rest: limits_text's, the upper one with "+" where the bar spans 0 (the lower one
     has its "−"); two limits of one sign as they are: "−3.3" and "−1.3", never "+−1.3"."""
@@ -248,7 +258,10 @@ class ColourKey(QtWidgets.QWidget):
         p.drawText(QtCore.QRectF(bar.left(), top, 70, 16), A.AlignLeft, lo_t)
         if lo < 0 < hi:
             x0 = bar.left() + bar.width() * (-lo) / (hi - lo)
-            p.drawText(QtCore.QRectF(x0 - 20, top, 40, 16), A.AlignHCenter, "0")
+            fm = QtGui.QFontMetrics(f)
+            if zero_fits(x0, bar.left(), bar.right(), fm.horizontalAdvance(lo_t), fm.horizontalAdvance("0"),
+                         fm.horizontalAdvance(hi_t)):
+                p.drawText(QtCore.QRectF(x0 - 20, top, 40, 16), A.AlignHCenter, "0")
         p.drawText(QtCore.QRectF(bar.right() - 70, top, 70, 16), A.AlignRight, hi_t)
         p.end()
 
