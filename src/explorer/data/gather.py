@@ -33,3 +33,16 @@ def gather_limited(fd, offsets, itemsize, out_bytes, max_threads=None):
     if max_threads:
         nb.set_num_threads(max(1, min(int(max_threads), int(offsets.shape[0]), nb.config.NUMBA_NUM_THREADS)))  # type: ignore[attr-defined, unused-ignore]
     return gather(fd, offsets, itemsize, out_bytes)
+
+
+def warm_up() -> None:
+    """Load (or compile) gather for the types the readers give it (data.io): one byte of this module's own file."""
+    import os
+
+    import numpy as np
+
+    fd = os.open(__file__, os.O_RDONLY)
+    try:
+        gather(fd, np.zeros(1, np.int64), 1, np.zeros(1, np.uint8))
+    finally:
+        os.close(fd)

@@ -139,3 +139,40 @@ def test_pixel_order_for_other_servers():
     assert struct.unpack_from("<I", buf, 24)[0] == 0xFF332211
     k.encode(a, rects, 0, 0, _ids(), 1024, False, True, buf)            # MSB-first image byte order
     assert bytes(buf[24:28]) == b"\xff\x11\x22\x33"
+
+
+def test_warm_up_compiles_the_types_the_sender_gives_the_kernels():
+    """After warm_up, the sender's arrays compile nothing more: grabbed pixels as a read-only view, contiguous or
+    strided (rows padded, or a piece cut to its window), against the window's last pixels, whole or the piece's part
+    (transport.Transport._update, bridge._pixels). In a process of its own with an empty cache, so that what the test
+    counts is what warm_up compiled. Before: the strided ('A') variants were compiled later, during the session."""
+    import subprocess
+    import sys
+    import tempfile
+
+    code = """
+import numpy as np
+from explorer.platform.xbridge import kernels as k
+from PySide6 import QtGui
+k.warm_up()
+before = {n: len(getattr(k, n).signatures) for n in ("tile_flags", "encode", "tile_runs", "encode_size")}
+img = QtGui.QImage(37, 21, QtGui.QImage.Format.Format_RGB32)
+img.fill(0x123456)
+h, w, bpl = img.height(), img.width(), img.bytesPerLine()
+wide = np.frombuffer(img.constBits(), np.uint32, count=bpl // 4 * h).reshape(h, bpl // 4)
+last = np.zeros((40, 60), np.uint32)
+for a in (wide[:, :w], wide[:, :w - 5], np.frombuffer(bytes(4 * 9 * 9), np.uint32).reshape(9, 9)):
+    hh, ww = a.shape
+    for back in (last[:hh, :ww], np.zeros((hh, ww), np.uint32)):
+        rects = k.changed_pieces(a, back, True, True)
+        size, _ = k.encode_size(rects, 1024)
+        k.encode(a, rects, 0, 0, np.zeros(9, np.int64), 1024, False, False, np.empty(size, np.uint8))
+after = {n: len(getattr(k, n).signatures) for n in before}
+print(before, after)
+assert after == before, (before, after)
+"""
+    with tempfile.TemporaryDirectory() as d:
+        env = dict(__import__("os").environ, NUMBA_CACHE_DIR=d, QT_QPA_PLATFORM="offscreen")
+        p = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+    print(p.stdout, p.stderr[-2000:])
+    assert p.returncode == 0

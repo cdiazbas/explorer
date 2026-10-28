@@ -166,6 +166,24 @@ def c_numba(rep):
     return f"numba {numba.__version__}: compiled in {ms:.0f} ms; threading layer {layer}, {threads} threads"
 
 
+def c_kernels(rep):
+    """explorer's own kernels (the image's, the scattered reads', the X11 bridge's) loaded or compiled into this
+    user's cache (data/_numba.py), so that the first start finds them compiled: cold, the bridge's first image waited
+    3.4 s for them (docs/journal.md). What it took, and where the cache is."""
+    from .data import gather, kernels
+    from .data._numba import numba
+    from .platform.xbridge import kernels as xk
+
+    t = time.perf_counter()
+    kernels.warm_up()
+    gather.warm_up()
+    xk.warm_up()
+    s = time.perf_counter() - t
+    where = numba.config.CACHE_DIR  # type: ignore[attr-defined, unused-ignore]
+    rep.data["kernels"] = dict(seconds=round(s, 2), cache=where)
+    return f"explorer's kernels ready in {s:.1f} s (cache {where})"
+
+
 _QT_CHILD = r"""
 import json, sys, time
 from PySide6 import QtWidgets, QtCore
@@ -274,6 +292,7 @@ def main(argv=None) -> int:
     rep.check("environment", lambda: c_environment(rep))
     rep.check("files", lambda: c_files(rep))
     rep.check("numba", lambda: c_numba(rep))
+    rep.check("kernels", lambda: c_kernels(rep))
     rep.check("Qt", lambda: c_qt(rep, a.show))
     if a.cube:
         rep.check("cube", lambda: c_cube(rep, a.cube))

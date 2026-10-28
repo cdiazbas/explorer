@@ -159,3 +159,12 @@ def absmax_into(A, buf, dtype, scale, pool: ThreadPoolExecutor | None = None, pa
         return k(A, x, scale, 0, n)
     for fu in [pool.submit(k, A, x, scale, a, b) for a, b in _edges(n, parts)]:
         fu.result()
+
+
+def warm_up() -> None:
+    """Load (or compile) the image kernels for the frames a session gives them (ui.imageview, measured on FITS and LP
+    cubes): a float32 frame to uint8 bytes, straight and through a read-only gamma table."""
+    img = np.zeros((4, 4), np.float32)
+    out = np.zeros((2, 2), np.uint8)
+    reduce_u8_serial(img, 0, 0, 2, 0.0, 1.0, out)
+    reduce_u8_table_serial(img, 0, 0, 2, 0.0, 1.0, gamma_table(0.5, False), out)

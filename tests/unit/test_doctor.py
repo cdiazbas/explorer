@@ -156,3 +156,33 @@ def test_qt_is_checked_on_the_platform_explorer_would_use(monkeypatch, env, plat
     status, msg = doctor.c_qt(rep, False)
     print(env, platform, cursor, seen, status, msg)
     assert (seen["qpa"], status) == want, msg
+
+
+def test_doctor_leaves_explorer_s_kernels_compiled_for_the_first_start(tmp_path):
+    """doctor's "kernels" check compiles explorer's own kernels into the cache a start then reads: in a fresh cache,
+    a process after it finds every kernel the image, the reads and the bridge's warm-up need already compiled (none
+    compiled again: their signatures are loaded, numba counts no compile). In processes of their own, as a person
+    runs doctor and then explorer. Before: no such check; the first start compiled them."""
+    import subprocess
+    import sys
+
+    env = dict(os.environ, NUMBA_CACHE_DIR=str(tmp_path / "numba"), QT_QPA_PLATFORM="offscreen")
+    env.pop("DISPLAY", None)
+    first = subprocess.run([sys.executable, "-c", "from explorer import doctor; doctor.c_kernels(doctor.Report())"],
+                           env=env, capture_output=True, text=True)
+    assert first.returncode == 0, first.stderr[-2000:]
+    code = """
+import time
+from numba.core import event
+n = []
+event.register("numba:compile", event.Listener() if False else type("L", (event.Listener,), {
+    "on_start": lambda self, e: n.append(e.data["dispatcher"].py_func.__name__), "on_end": lambda self, e: None})())
+from explorer.data import gather, kernels
+from explorer.platform.xbridge import kernels as xk
+t = time.perf_counter()
+kernels.warm_up(); gather.warm_up(); xk.warm_up()
+print("SECONDS", round(time.perf_counter() - t, 3), "COMPILED", sorted(set(n)))
+"""
+    second = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+    print(second.stdout.strip(), second.stderr[-1500:])
+    assert second.returncode == 0 and "COMPILED []" in second.stdout

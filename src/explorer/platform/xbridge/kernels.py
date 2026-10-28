@@ -201,14 +201,21 @@ def changed_pieces(a, last, force: bool, grey: bool, T: int = TILE) -> np.ndarra
 
 
 def warm_up() -> None:
-    """Load (or compile) the kernels now, off the path of the first image. The grabbed pixels arrive as a read-only
-    view, which numba compiles as a type of its own."""
-    z = np.zeros((33, 33), np.uint32)
-    zr = z.copy()
-    zr.flags.writeable = False
-    changed_pieces(zr, z, False, True)
-    changed_pieces(z, z, True, True)
+    """Load (or compile) the kernels now, off the path of the first image, for the types the sender gives them
+    (transport.Transport._update): numba compiles one variant per array layout and per read-only flag. The grabbed
+    pixels are a read-only view of the image, contiguous ('C') or, where its rows are padded or the piece is cut to
+    the window, strided ('A'); the window's last pixels are writable, whole ('C') or the piece's part of them ('A')."""
+    big = np.zeros((33, 40), np.uint32)
+
+    def view(contiguous: bool, readonly: bool):
+        a = big[:, :33].copy() if contiguous else big[:, :33]
+        a.flags.writeable = not readonly
+        return a
+
+    for a_c in (True, False):
+        for last_c in (True, False):
+            changed_pieces(view(a_c, True), view(last_c, False), True, True)    # force: tile_runs runs too
     r = np.array([[0, 0, 0, 1, 1], [1, 0, 0, 1, 1]], np.int64)
     size, _ = encode_size(r, 1024)
-    for arr in (z, zr):
-        encode(arr, r, 0, 0, np.zeros(9, np.int64), 1024, False, False, np.zeros(size, np.uint8))
+    for a_c in (True, False):
+        encode(view(a_c, True), r, 0, 0, np.zeros(9, np.int64), 1024, False, False, np.zeros(size, np.uint8))
