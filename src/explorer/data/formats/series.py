@@ -12,6 +12,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 
@@ -222,7 +223,7 @@ def series_layout(paths) -> SeriesLayout:
         notes.append(f"no time in every header ({', '.join(TIME_KEYS)}, {ELAPSED}): t in name order, an index")
         rows.sort(key=lambda r: os.path.basename(r["path"]))
     else:
-        ts = [np.datetime64(parse_time(r["times"][key]), "us") for r in rows]     # every one a time: key's rule
+        ts = [cast(np.datetime64, parse_time(r["times"][key])) for r in rows]     # every one a time: key's rule
         order = sorted(range(len(rows)), key=lambda i: ts[i])
         for a, b in zip(order, order[1:], strict=False):
             if ts[a] == ts[b]:
