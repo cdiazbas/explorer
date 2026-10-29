@@ -74,7 +74,8 @@ def window_options(ap) -> None:
                     help="start with the first window's size and panels (the saved layout of this display is dropped)")
     ap.add_argument("--log", action="store_true",
                     help="keep traces of this session, to send with a problem: every move and resize of the window "
-                         "and its panels and, through the X11 bridge, what goes to the X server and its errors "
+                         "and its panels, the keys pressed and where they went, and, through the X11 bridge, what goes "
+                         "to the X server and its errors "
                          "(~/.cache/explorer/logs, named at the close; the newest 30 of each kind kept)")
 
 

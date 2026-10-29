@@ -25,6 +25,26 @@ placing its panels, from the monitor and the window frame it starts from. XIN: a
 the X11 bridge takes, with the X server's time in ms and the root position. Nothing is wrapped or watched unless the
 trace is asked for.
 
+The keys, for keys that do nothing on someone's screen: what the X server sent and what Qt did with it.
+
+     465.8 XIN  focus   in  mode Normal detail Nonlinear  main 0x400002
+     726.5 ACTIVE main
+    8033.9 FOCUS QSpinBox < QToolBar[nav] < main  reason Mouse
+    8596.2 XIN  key     x_time 2099915765 keycode 22 state 0x0 keysym 0xff08 -> Key_Backspace  main 0x400002
+    8597.1 KEY  Key_Backspace text '\x08' mods none  to main  focus QSpinBox < QToolBar[nav] < main  active main
+    9003.6 XIN  key     x_time 2099916173 keycode 54 state 0x0 keysym 0x63 -> 'C'  main 0x400002
+    9004.1 KEY  Key_C text 'c' mods none  to main  focus QSpinBox < QToolBar[nav] < main  active main
+
+(the frames-per-second box took the focus at a click, and kept Backspace and C: no shortcut fired; with the focus on
+the image, each KEY is followed by "KEY  shortcut Backspace  on main").
+
+XIN key: a key press as the bridge reads it (its keysym through the server's keyboard map, the Qt key it becomes, or
+why it goes no further); XIN focus: the X focus coming to or leaving a window of ours, and the window manager's
+WM_TAKE_FOCUS. KEY: a key press reaching a window of Qt's (the widget with the keyboard focus, the active window), and
+each shortcut it fires; a KEY with no shortcut after it fired none: a widget with the focus may keep the key (a spin
+box keeps Backspace and letters). FOCUS: the widget that gets the keyboard focus, and why; ACTIVE and INACTIVE: a
+window becoming Qt's active window or ceasing to be. Only key presses, not releases; the keys typed are in the file.
+
     tracer = install_from_env()      # None unless EXPLORER_GEOMETRY_TRACE is set (and not 0)
     tracer = Tracer(path); ...; tracer.stop()
 """
@@ -45,6 +65,9 @@ WATCHED = ("setGeometry", "move", "resize")
 HERE = os.path.abspath(__file__)
 _SKIP = (os.sep + "site-packages" + os.sep, os.sep + "lib" + os.sep + "python")   # Qt's, pyqtgraph's, the stdlib's
 E = QtCore.QEvent.Type
+KEYS = (E.KeyPress, E.Shortcut, E.FocusIn, E.WindowActivate, E.WindowDeactivate)    # Tracer._keys
+X_MODES = ("Normal", "Grab", "Ungrab", "WhileGrabbed")
+X_DETAILS = ("Ancestor", "Virtual", "Inferior", "Nonlinear", "NonlinearVirtual", "Pointer", "PointerRoot", "None")
 
 
 def wanted(env=None) -> bool:
@@ -64,6 +87,48 @@ def _who(w) -> str:
     if isinstance(w, QtWidgets.QMainWindow):
         return "main"
     return w.objectName() or w.windowTitle() or type(w).__name__
+
+
+def _chain(w, depth: int = 3) -> str:
+    """A widget and its parents, innermost first, each by class and object name: QSpinBox < QToolBar[nav]."""
+    out: list[str] = []
+    while w is not None and len(out) < depth:
+        if isinstance(w, QtWidgets.QMainWindow):
+            out.append("main")
+            break
+        out.append(type(w).__name__ + (f"[{w.objectName()}]" if w.objectName() else ""))
+        w = w.parentWidget()
+    return " < ".join(out) or "none"
+
+
+def _window(win) -> str:
+    """A QWindow by the widget it holds: main, a panel's name."""
+    for w in QtWidgets.QApplication.topLevelWidgets():
+        if w.windowHandle() is win:
+            return _who(w)
+    return win.objectName() or win.title() or type(win).__name__
+
+
+def _active() -> str:
+    w = QtWidgets.QApplication.activeWindow()
+    return _who(w) if w is not None else "none"
+
+
+MODS = (("Shift", QtCore.Qt.KeyboardModifier.ShiftModifier), ("Ctrl", QtCore.Qt.KeyboardModifier.ControlModifier),
+        ("Alt", QtCore.Qt.KeyboardModifier.AltModifier), ("Meta", QtCore.Qt.KeyboardModifier.MetaModifier),
+        ("Keypad", QtCore.Qt.KeyboardModifier.KeypadModifier),
+        ("Group", QtCore.Qt.KeyboardModifier.GroupSwitchModifier))
+
+
+def _mods(m) -> str:
+    return "+".join(n for n, f in MODS if m & f) or "none"
+
+
+def _key_name(key: int) -> str:
+    try:
+        return QtCore.Qt.Key(key).name
+    except ValueError:
+        return f"{key:#x}"
 
 
 def _rect(r: QtCore.QRect) -> str:
@@ -154,7 +219,8 @@ class Tracer(QtCore.QObject):
 
     def _wrap_pointer_events(self) -> None:
         """Each pointer event the X11 bridge takes, with the X server's time: bursts of events stamped close together
-        were delayed on the way (the link, explorer); events stamped far apart came late from the server."""
+        were delayed on the way (the link, explorer); events stamped far apart came late from the server. Each key
+        press and each change of the X focus too (_x_key, _x_focus)."""
         from ..platform.xbridge import xproto
         from ..platform.xbridge.bridge import Bridge
 
@@ -163,12 +229,48 @@ class Tracer(QtCore.QObject):
         kinds = {xproto.MotionNotify: "motion", xproto.ButtonPress: "press", xproto.ButtonRelease: "release"}
 
         def event(bridge, raw, _o=orig, _t=self):
-            kind = kinds.get(raw[0] & 0x7F)
+            code = raw[0] & 0x7F
+            kind = kinds.get(code)
             if kind is not None:
                 e = xproto.decode_event(raw)
                 _t.write(f"XIN  {kind:7s} x_time {e.time} at ({e.root_x}, {e.root_y})")
+            elif code == xproto.KeyPress:
+                _t._x_key(bridge, xproto.decode_event(raw))
+            elif code in (xproto.FocusIn, xproto.FocusOut, xproto.ClientMessage):
+                _t._x_focus(bridge, xproto.decode_event(raw))
             return _o(bridge, raw)
         Bridge._event = event                            # type: ignore[method-assign]
+
+    def _x_key(self, bridge, e) -> None:
+        from ..platform.xbridge import keys
+
+        km = bridge.keymap
+        head = f"XIN  key     x_time {e.time} keycode {e.detail} state {e.state:#x}"
+        if km is None:
+            self.write(f"{head} -> no keyboard map from the X server: dropped  {self._x_window(bridge, e.window)}")
+            return
+        sym = km.keysym(e.detail, e.state)
+        got = keys.translate(sym, bool(e.state & keys.MOD_CONTROL))
+        to = "no Qt key: dropped" if got is None else got[0] if isinstance(got[0], str) else repr(chr(got[0]))
+        self.write(f"{head} keysym {sym:#x} -> {to}  {self._x_window(bridge, e.window)}")
+
+    def _x_focus(self, bridge, e) -> None:
+        from ..platform.xbridge import xproto
+
+        if e.code == xproto.ClientMessage:
+            atoms = bridge.windows.atoms
+            if e.format == 32 and e.type == atoms.get("WM_PROTOCOLS") and e.data[0] == atoms.get("WM_TAKE_FOCUS"):
+                self.write(f"XIN  focus   WM_TAKE_FOCUS x_time {e.data[1]}  {self._x_window(bridge, e.window)}")
+            return
+        mode = X_MODES[e.mode] if e.mode < len(X_MODES) else str(e.mode)
+        detail = X_DETAILS[e.detail] if e.detail < len(X_DETAILS) else str(e.detail)
+        self.write(f"XIN  focus   {'in ' if e.code == xproto.FocusIn else 'out'} mode {mode} detail {detail}  "
+                   f"{self._x_window(bridge, e.window)}")
+
+    @staticmethod
+    def _x_window(bridge, xid: int) -> str:
+        rec = bridge.windows.by_xid.get(xid)
+        return f"{_who(rec.w) if rec is not None else 'not ours'} {xid:#x}"
 
     def _wrap_said(self, cls, name, say) -> None:
         """cls.name writes say(obj) to the trace before it runs."""
@@ -186,6 +288,8 @@ class Tracer(QtCore.QObject):
 
     def eventFilter(self, obj, e):
         t = e.type()
+        if t in KEYS:
+            self._keys(obj, e, t)
         if t in (E.Move, E.Resize, E.Show, E.Hide) and isinstance(obj, (QtWidgets.QMainWindow, QtWidgets.QDockWidget)):
             if t in (E.Move, E.Resize):
                 p = QtGui.QCursor.pos()
@@ -194,6 +298,22 @@ class Tracer(QtCore.QObject):
             else:
                 self.write(f"{'SHOW' if t == E.Show else 'HIDE'} {_who(obj)}")
         return False
+
+    def _keys(self, obj, e, t) -> None:
+        """A key press where it reaches a window (the first stop on its way to the focus widget: one line a press),
+        the shortcuts it fires, the keyboard focus and the active window as they change."""
+        if t == E.KeyPress and isinstance(obj, QtGui.QWindow):
+            fw = QtWidgets.QApplication.focusWidget()
+            self.write(f"KEY  {_key_name(e.key())} text {e.text()!r} mods {_mods(e.modifiers())}"
+                       f"{' repeat' if e.isAutoRepeat() else ''}  to {_window(obj)}  focus {_chain(fw)}  "
+                       f"active {_active()}")
+        elif t == E.Shortcut and isinstance(obj, QtGui.QShortcut):
+            p = obj.parent()
+            self.write(f"KEY  shortcut {e.key().toString()}  on {_who(p) if isinstance(p, QtWidgets.QWidget) else p}")
+        elif t == E.FocusIn and isinstance(obj, QtWidgets.QWidget):
+            self.write(f"FOCUS {_chain(obj)}  reason {e.reason().name.removesuffix('FocusReason')}")
+        elif t in (E.WindowActivate, E.WindowDeactivate) and isinstance(obj, QtWidgets.QWidget) and obj.isWindow():
+            self.write(f"{'ACTIVE' if t == E.WindowActivate else 'INACTIVE'} {_who(obj)}")
 
     def stop(self) -> None:
         """Everything back as it was (the tests); the file closed."""
