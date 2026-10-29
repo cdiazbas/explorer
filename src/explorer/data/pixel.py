@@ -5,7 +5,7 @@ Two layouts, both written by SSTRED next to the image cube:
   _sp.icube/.fcube   LP cube [nl, nt, npix * ns], pixel-major, Stokes fastest; integer counts are converted to
                      physical units with a scale and zero fitted against the image cube (calibrate)
 A read takes the aligned strip of `strip` pixels around the one asked for, and keeps them in a small LRU: on
-StorNext a strip of up to 64 pixels costs about the same as one pixel (docs/measured.md), so the pixels around
+StorNext a strip of up to 64 pixels costs about the same as one pixel, so the pixels around
 the cursor come with it.
 A block of 4 Stokes leaves with the negative-I rule applied (masking.py): every Stokes NaN where I is negative.
 """

@@ -3,7 +3,7 @@
 Never parallel numba here: with the 'workqueue' threading layer (the only one on macOS) two parallel regions at
 once abort the process, and these kernels run while the numba thread reads. Strips of a serial nogil kernel do
 not touch the threading layer. Reduction of a 2044x2030 frame to the display: bellatrix 9.0 -> 1.45 ms with 8
-strips, Mac 3.6 -> 0.81 ms, identical output; numba omp with 32 threads was 25 ms (docs/measured.md).
+strips, Mac 3.6 -> 0.81 ms, identical output; numba omp with 32 threads was 25 ms.
 From the prototype's app/viewer.py (_reduce_u8_serial, _reduce_u8_strips, _absmax_*).
 """
 import functools

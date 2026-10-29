@@ -16,7 +16,7 @@ Latest wins, in two parts (prototype Viewer._series_job and _lt_ready):
   (Generations.stale);
 - a result is shown unless a NEWER one is already on screen (ShownGate.accept). Showing only the latest
   request's result froze the panels while the mouse moved: each read outlasts the gap between two moves, so
-  every result arrived stale (1-11 spectra shown during 1.5 s of motion, against 108-131, docs/measured.md).
+  every result arrived stale (1-11 spectra shown during 1.5 s of motion, against 108-131).
 """
 import os
 import threading

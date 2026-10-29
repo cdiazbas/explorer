@@ -1,6 +1,6 @@
 """What explorer.core adds on top of the reads (ROADMAP E2.7): a cursor move and a step in t through the core
 (testing.Driver: state, notice, scheduler, levels, y ranges, the sink) against the same reads made directly on the
-Dataset. Run it pinned to one NUMA node on a machine with several (taskset; docs/measured.md).
+Dataset. Run it pinned to one NUMA node on a machine with several (taskset).
 
     python bench/core_overhead.py <cube_im.fits> [--nosp] [--rounds 8] [--per-round 10] [--out F]
 
@@ -12,7 +12,7 @@ Cases, alternating which goes first in each round (ABBA):
   Dataset (the image, then the spectrum at the cursor); the core reads frames ahead, so both images come from the
   frame cache: the difference is the layers' cost, not the reads'.
 The difference of the medians is the cost of the layers; the prototype's cursor (6-15 ms) and step in t (15-17 ms)
-on bellatrix are the budget it is judged against (docs/journal.md, E0.8).
+on bellatrix are the budget it is judged against (E0.8).
 """
 import argparse
 import json

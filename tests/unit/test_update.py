@@ -124,7 +124,7 @@ PIPX_METADATA = """{{"main_package": {{"package": "explorer", "package_or_url": 
 @pytest.fixture
 def installed(tmp_path, monkeypatch):
     """A package installed without a clone (no source tree beside it), in an environment at a sys.prefix of its own;
-    its distribution named 'solar-explorer' (a rename, docs/decisions/0003)."""
+    its distribution named 'solar-explorer' (a rename)."""
     from importlib import metadata
 
     prefix, package = tmp_path / "venv", tmp_path / "venv" / "lib" / "python3.12"

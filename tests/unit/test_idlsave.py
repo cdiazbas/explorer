@@ -1,6 +1,6 @@
 """The IDL SAVE reader on files written by synth.write_idlsave: every kind of variable SSTRED's files hold, records
 skipped, what it does not decode, and files it refuses. That it reads SSTRED's real files as scipy.io.readsav
-does was measured on all of them (docs/journal.md)."""
+does was measured on all of them."""
 import numpy as np
 import pytest
 

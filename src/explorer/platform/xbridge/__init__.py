@@ -1,4 +1,4 @@
-"""The X11 bridge, written anew (ROADMAP E6, decision P4 "rewrite"; docs/decisions/0009): Qt renders offscreen and
+"""The X11 bridge, written anew (ROADMAP E6, decision P4 "rewrite"): Qt renders offscreen and
 its windows reach an X display through X windows of their own. The display plan takes it over ssh, or with --x11
 bridge (EXPLORER_X11=bridge); it replaced the prototype's bridge brought over as it was (in the history).
 

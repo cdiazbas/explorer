@@ -1,4 +1,4 @@
-"""What the window wears (ROADMAP E5.5, PLAN §3.6): a Look is data the views take, never methods patched over them.
+"""What the window wears (ROADMAP E5.5): a Look is data the views take, never methods patched over them.
 
 - classic: the prototype's everyday window (its app/run.sh): red cursor and markers, the sliders in their colour,
   6-px rounded corners on the panels, the plots on black;

@@ -15,7 +15,7 @@
   what the user feels, not one function.
 - No spans inside numba kernels: time around them.
 - set_enabled(False) makes span() return one shared no-op object (cost: a function call and a flag test).
-The cost per span is measured in bench/obs_overhead.py; see docs/journal.md.
+The cost per span is measured in bench/obs_overhead.py.
 """
 import functools
 import threading

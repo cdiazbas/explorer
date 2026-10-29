@@ -65,7 +65,7 @@ def test_commit_subjects(tmp_path, subject, ok):
     ("\nBehaviour: changes the window\nTests: test_x\n", []),
 ])
 def test_the_closing_lines_and_the_blank_line(tmp_path, body, found):
-    """ADR 0005: [ADD] [DEV] [FIX] [PERF] end with Behaviour: and Tests:; the body starts after a blank line (git
+    """[ADD] [DEV] [FIX] [PERF] end with Behaviour: and Tests:; the body starts after a blank line (git
     reads a body run into the subject as one long subject)."""
     p = tmp_path / "msg"
     p.write_text("[FIX] a fix\n" + body)

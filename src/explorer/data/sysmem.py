@@ -49,8 +49,8 @@ def _mac_snapshot_cmd():
 
 
 # The same numbers without subprocesses: four sysctl/vm_stat processes cost 14-34 ms, called once a second on the
-# interface thread they were the only frames over 17 ms during playback; through ctypes 0.011 ms, same values
-# (docs/measured.md). The command version stays as the fallback.
+# interface thread they were the only frames over 17 ms during playback; through ctypes 0.011 ms, same values.
+# The command version stays as the fallback.
 
 
 class _XswUsage(ctypes.Structure):                     # <sys/sysctl.h> struct xsw_usage

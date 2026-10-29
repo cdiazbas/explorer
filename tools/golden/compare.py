@@ -1,5 +1,5 @@
 """Compare two reference files (tools/golden/export_prototype.py) or a reference and explorer's results: per key,
-identical or not, and by how much, to tell a bug from a wanted fix or a tolerance set wrong (docs/plan.md §7.1).
+identical or not, and by how much, to tell a bug from a wanted fix or a tolerance set wrong.
 
     python tools/golden/compare.py REF.npz OTHER.npz [--rtol 0] [--atol 0] [--meta]
 

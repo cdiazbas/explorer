@@ -14,7 +14,7 @@ against the prototype:
 - _sp.icube: LP (La Palma) cube, 512-byte ASCII header as in the real nb_6563 _sp.icube ("stokes=[I], ns=1 :
   datatype=2 (integer), dims=3, nx=nl, ny=nt, nt=npix*ns, endian=l"), little-endian int16, pixel-major with Stokes
   fastest (prototype app/sources.py SpLP). Values = round(1e11 * value), the scaling of the real nb_6563
-  _sp.icube (docs/journal.md, synthetic cube v2). SSTRED's red__fitscube_integer.pro scales differently (global
+  _sp.icube (synthetic cube v2). SSTRED's red__fitscube_integer.pro scales differently (global
   [DATAMIN, DATAMAX] -> +-32000 with BSCALE/BZERO), so readers must not assume a scale: the prototype fits scale
   and zero against the FITS cube and ignores zero counts (app/sources.py SpLP.calibrate); NaN is written as 0.
 Physics is only plausible: granulation, a spot and a pore, an absorption line whose Doppler shift drifts in t,
@@ -261,7 +261,7 @@ def write_idlsave(path, variables: dict, structures=()) -> str:
     record per entry, then the end marker. Values: str, numpy scalars and arrays of int16, int32, float32, float64
     or str. structures: names written as structure variables, whose bytes a reader cannot decode (they hold zeros).
     It follows the reader's view of the format: that view was checked against scipy.io.readsav on SSTRED's real
-    files (docs/journal.md)."""
+    files."""
     import struct
 
     def pad(b):

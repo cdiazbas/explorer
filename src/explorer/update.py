@@ -29,7 +29,7 @@ SHOWN = 15                                              # commits listed at most
 
 
 def dist_name() -> str:
-    """The distribution this package was installed as, from its metadata (docs/decisions/0003: the name may change);
+    """The distribution this package was installed as, from its metadata (the name may change);
     APP_NAME when no installed distribution lists these files (a source tree, an editable install)."""
     from importlib import metadata
 

@@ -1,4 +1,4 @@
-"""When things run, given to the core by whoever drives it (docs/decisions/0007).
+"""When things run, given to the core by whoever drives it.
 
 A Loop has three operations:
 - call_soon(fn): run fn on the next pass of the loop, on the main thread. The Store uses it to send one notice

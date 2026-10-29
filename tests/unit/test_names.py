@@ -82,7 +82,7 @@ def test_the_axis_other_than_t_is_lambda_only_when_known():
 
 
 # ---------------------------------------------------------------- names from the header (ROADMAP E8.8)
-# Each header below is built like a real one a survey of real headers read (docs/journal.md): the same
+# Each header below is built like a real one a survey of real headers read: the same
 # cards, values and types (WAVELNTH a number, BIFROST's BUNIT = T a logical), on images of 8 x 10.
 
 NY8, NX10 = 8, 10

@@ -10,7 +10,7 @@ Which thread does what (explorer.data.executors):
 - series without a per-pixel file: the numba thread (one parallel numba region at a time), a whole row at a time on
   network storage (rowbands.py), so the pixels along the cursor's row come from memory;
 - per-pixel blocks: the I/O pool; slabs along a slit: a pool of the probe's gather threads, kept open (starting
-  64 threads per slit cost 10-16 % of a warm slab, docs/measured.md).
+  64 threads per slit cost 10-16 % of a warm slab).
 Latest-wins (Executors.submit_latest) is for the caller to use: the Dataset serves every request it gets, except
 the images of a per-pixel file alone (ImagePasses), a pass over the whole file each: there a request superseded
 before its pass starts is dropped, and the requests waiting are read together by the next pass.

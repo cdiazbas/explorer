@@ -3,7 +3,7 @@
 StorageProbe  ~0.1-0.5 s at start-up: the filesystem type and a few timed small reads decide the strip width,
               how many images to read ahead and how many threads the scattered reads use. Behaviour depends on
               the storage (local SSD ~0.1 ms per small read; StorNext 7-15 ms on Linux and macOS alike), not on
-              the OS (docs/measured.md).
+              the OS.
 MemoryGuard   the caches' budget from the memory actually available, re-checked about once a second. macOS swaps
               other applications before "available" reacts, so there the budget is small and halves as soon as
               swap grows; on Linux the cgroup limit and MemAvailable are honoured, with a hard cap.

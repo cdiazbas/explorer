@@ -1,7 +1,7 @@
 """Reading samples with explicit preads: the only module that holds file descriptors and computes offsets.
 
 FrameReader reads a whole image (or a band of rows) of an image cube and returns native float32. Explicit
-preadv, never numpy.memmap: on a cold cache memmap was 5x slower for a 2k frame (docs/measured.md). A frame is
+preadv, never numpy.memmap: on a cold cache memmap was 5x slower for a 2k frame. A frame is
 read in `chunks` parts at once, the calling thread taking the first and a pool the others, so a pool thread
 never waits on the pool; more than 4 parts does not help on StorNext.
 In a cube of 4 Stokes every value read leaves with the negative-I rule applied (masking.py): NaN at every Stokes

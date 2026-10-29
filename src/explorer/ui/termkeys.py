@@ -1,8 +1,8 @@
 """Keys typed in the terminal that started explorer act as if typed in its window (ROADMAP E6.2).
 
 Over ssh -Y the keyboard reaches the terminal, not the window, until the window is clicked: on macOS keys go to the
-application in front, and nothing on the remote side can bring XQuartz there (Apple-WM refuses clients behind ssh;
-docs/journal.md). The terminal forwards its keys over ssh to explorer's standard input, so they are read there
+application in front, and nothing on the remote side can bring XQuartz there (Apple-WM refuses clients behind ssh).
+The terminal forwards its keys over ssh to explorer's standard input, so they are read there
 too. When standard input is a terminal and explorer runs in its foreground, the terminal goes to cbreak mode (key by
 key, no echo; Ctrl+C and output as usual; restored at exit) and each key runs the action the window binds to it
 (Shell.action_registry). Once the window has the keyboard the terminal gets nothing, so no key acts twice.

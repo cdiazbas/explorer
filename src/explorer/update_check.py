@@ -201,8 +201,8 @@ def check(root=ROOT, env=None, path: Path | None = None, now: float | None = Non
     path: the state file (state_path()); now: time.time()."""
     if forced(env) is False or not is_clone(root):
         # a package installed with uv, pipx or pip has no clone and is not asked: `explorer update` says how to
-        # update it (update.upgrade_advice). Once explorer is on PyPI (not while its name is provisional,
-        # docs/decisions/0003), a check of PyPI's newest version against __version__ would go here
+        # update it (update.upgrade_advice). Once explorer is on PyPI (not while its name is provisional),
+        # a check of PyPI's newest version against __version__ would go here
         return None
     path = state_path() if path is None else path
     state = _load(path)

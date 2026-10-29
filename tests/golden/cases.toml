@@ -1,4 +1,4 @@
-# The comparison cases (docs/plan.md §7.1, level 1): the same inputs go through the prototype (the oracle,
+# The comparison cases (level 1): the same inputs go through the prototype (the oracle,
 # tools/golden/export_prototype.py) and through explorer, and the results must match.
 #
 # Coordinates: frames are (t, s, lambda) indices; pixels (y, x); slits are clicked points in view coordinates
@@ -8,7 +8,7 @@
 [[case]]
 name = "synth_small"
 # versioned inputs in tests/golden/data/synth_small/: the synthetic float cubes differ between Mac arm64 and
-# Linux x86_64 in their last bits, so every machine must read the same files (docs/journal.md)
+# Linux x86_64 in their last bits, so every machine must read the same files
 source = "synthetic"
 shape = [3, 4, 5, 48, 40]
 seed = 11

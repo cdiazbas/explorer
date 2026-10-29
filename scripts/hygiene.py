@@ -43,7 +43,7 @@ _OBSERVATIONS = [
     ("observation file name", re.compile(r"(?<![A-Za-z])(nb|wb|B(los|hor|azi|inc|str)|Vlos|meinv|doppl|corew)[._]"
                                          r"\d{4}_\d{4}-\d{2}-\d{2}")),
 ]
-TAGS = ("ADD", "DEV", "FIX", "PERF", "TEST", "BUILD", "DOC", "STYLE")      # docs/decisions/0005-commits.md
+TAGS = ("ADD", "DEV", "FIX", "PERF", "TEST", "BUILD", "DOC", "STYLE")      # the subject's [TAG]
 _SUBJECT = re.compile(r"^\[(" + "|".join(TAGS) + r")\] [a-z0-9`].{0,70}[^.]$")
 CLOSING = ("ADD", "DEV", "FIX", "PERF")                                     # end with Behaviour: and Tests:
 _BEHAVIOUR = re.compile(r"^Behaviour: (unchanged\b|changes \S)")
@@ -195,7 +195,7 @@ def check_staged():
 
 def check_message(path):
     """The commit-msg hook: no assistant or co-author mention; a subject like "[TAG] one sentence", a blank line
-    under it, and Behaviour: and Tests: closing [ADD] [DEV] [FIX] [PERF] (ADR 0005)."""
+    under it, and Behaviour: and Tests: closing [ADD] [DEV] [FIX] [PERF]."""
     text = Path(path).read_text(encoding="utf-8", errors="replace")
     lines = [ln for ln in text.splitlines() if not ln.startswith("#")]
     out = []
@@ -203,16 +203,17 @@ def check_message(path):
     subject, rest = (lines[at], lines[at + 1:]) if lines else ("", [])
     m = _SUBJECT.match(subject)
     if not m and not subject.startswith(("Merge ", "Revert ")):
-        out.append(("subject", "not '[TAG] one sentence' (ADR 0005)",
+        out.append(("subject", "not '[TAG] one sentence'",
                     f"{subject[:60]!r}; tags: {', '.join(TAGS)}; lowercase start, <= 72 chars, no final period"))
     if rest and rest[0].strip():                     # git takes a body run into the subject as one long subject
-        out.append(("message line 2", "no blank line after the subject (ADR 0005)", rest[0].strip()[:60]))
+        out.append(("message line 2", "no blank line after the subject", rest[0].strip()[:60]))
     if m and m.group(1) in CLOSING:
         if not any(_BEHAVIOUR.match(ln) for ln in rest):
-            out.append(("body", f"no 'Behaviour:' line ([{m.group(1)}], ADR 0005 rule 3)",
+            out.append(("body", f"no 'Behaviour:' line ([{m.group(1)}] ends with Behaviour: and Tests:)",
                         "Behaviour: unchanged | changes <what>"))
         if not any(ln.startswith("Tests:") for ln in rest):
-            out.append(("body", f"no 'Tests:' line ([{m.group(1)}], ADR 0005 rule 3)", "Tests: <what proves it>"))
+            out.append(("body", f"no 'Tests:' line ([{m.group(1)}] ends with Behaviour: and Tests:)",
+                        "Tests: <what proves it>"))
     for n, ln in enumerate(lines, 1):
         if _ASSISTANT.search(ln) or _COAUTHOR.search(ln):
             out.append((f"message line {n}", "assistant or co-author mention", ln.strip()[:60]))

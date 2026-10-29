@@ -11,7 +11,7 @@ of the loop in 0.53 s). Over a real ssh -Y the server is elsewhere and Qt never 
 --stats is rewritten (atomically) when the counters change:
 {"up": bytes client to server, "down": ..., "connections": n}. The delay applies to each chunk as it arrives; the
 bandwidth paces the upward direction (what images need). Measured through ssh -Y to the user's XQuartz: 14-16 ms
-round trips and 17-29 MB/s (docs/measured.md, the prototype's F2).
+round trips and 17-29 MB/s (the prototype's F2).
 """
 import argparse
 import collections

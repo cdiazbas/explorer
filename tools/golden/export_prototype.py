@@ -1,4 +1,4 @@
-"""Export the prototype's results for the comparison cases (docs/plan.md §7.1, level 1): the oracle explorer must
+"""Export the prototype's results for the comparison cases (level 1): the oracle explorer must
 match. Runs with the PROTOTYPE's Python and imports its modules as they are (read-only):
 
     <prototype>/.venv/bin/python tools/golden/export_prototype.py [--case NAME] [--make-inputs] [--prototype DIR]

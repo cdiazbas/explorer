@@ -5,7 +5,7 @@ On StorNext a read costs per request, not per byte, for small reads: the lambda-
 (one per frame), and with the whole row (8 kB) per request instead of 4 bytes its first read cost the same (1.009,
 explorer faster in 4/8, bellatrix); the pixel next to it then takes 0.10 ms from memory, against 17.6 ms from the
 system's cache or 0.3-1.4 s from the storage. Blocks of 8 rows (64 kB) cost the first read 34 % more when the
-storage was fast (1.339, 1/8) and nothing when it was slow (0.96x), docs/journal.md: one row, which serves every
+storage was fast (1.339, 1/8) and nothing when it was slow (0.96x): one row, which serves every
 horizontal move, is the default. Blocks are aligned (rows [k*rows, (k+1)*rows)). On local disks bytes are not free:
 Dataset uses this on network storage only.
 A series of Q, U or V in a cube of 4 Stokes needs I's for the negative-I rule (masking.py): I's block of rows is

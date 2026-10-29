@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27", "hatch-vcs>=0.5"]
 build-backend = "hatchling.build"
 
 [project]
-name = "explorer"                       # provisional (docs/decisions/0003): not for PyPI yet
+name = "explorer"                       # provisional: not for PyPI yet
 dynamic = ["version"]
 description = "Viewer for solar spectropolarimetric cubes [t, Stokes, lambda, y, x], successor of CRISPEX"
 readme = "README.md"
@@ -11,7 +11,7 @@ license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 # measured on 3.12.13; the suites pass on 3.13 (and on 3.14, but Intel Macs' numba 0.62.1 has no 3.14 wheels)
 requires-python = ">=3.12,<3.14"
-# Pins are the versions the prototype was measured with (docs/measured.md). Intel Macs get the last numba
+# Pins are the versions the prototype was measured with. Intel Macs get the last numba
 # with x86_64 macOS wheels (0.62.1) and the numpy/llvmlite that go with it; its kernels were checked
 # identical (hash) against 0.67.0 on arm64 by the prototype's bench/test_numba_compat.py.
 dependencies = [
@@ -22,7 +22,7 @@ dependencies = [
     "llvmlite==0.49.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "llvmlite==0.45.1; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "astropy==8.0.1",
-    # exact: the X11 bridge calls private symbols of this Qt build (docs/plan.md §3.5); needs macOS >= 13, glibc >= 2.34
+    # exact: the X11 bridge calls private symbols of this Qt build; needs macOS >= 13, glibc >= 2.34
     "PySide6==6.11.2",
     "pyqtgraph==0.14.0",
     # the resize outline the X server draws (platform/xoutline.py) uses it on any X display, so it is not an extra
@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gpu = [                                  # local-only image surfaces; over ssh -Y only pgr shows (docs/measured.md)
+gpu = [                                  # local-only image surfaces; over ssh -Y only pgr shows
     "vispy==0.17.0",
     "pygfx==0.15.3",
     "wgpu==0.29.0",
@@ -90,7 +90,7 @@ warn_unused_ignores = true                # numba's ignores also say unused-igno
                                           # and lacks config/prange, the Intel Mac's 0.62.1 is untyped (Any)
 ignore_missing_imports = true           # numba, Xlib and parts of astropy ship no type information
 
-# Layer contracts (docs/plan.md §3.1), checked by `lint-imports` in scripts/check.sh. Contracts for data, core, ui
+# Layer contracts, checked by `lint-imports` in scripts/check.sh. Contracts for data, core, ui
 # and platform are added with those packages. Imports inside functions count too: lazy imports are checked at run
 # time by tests/unit/test_cli.py instead.
 [tool.importlinter]
@@ -119,7 +119,7 @@ forbidden_modules = ["explorer.cli", "explorer.doctor", "explorer.demo", "explor
                      "PySide6", "pyqtgraph", "Xlib"]
 
 [[tool.importlinter.contracts]]
-name = "core never imports Qt, the display nor the command (docs/decisions/0007)"
+name = "core never imports Qt, the display nor the command"
 type = "forbidden"
 source_modules = ["explorer.core"]
 forbidden_modules = ["explorer.cli", "explorer.doctor", "explorer.demo", "explorer.testing",

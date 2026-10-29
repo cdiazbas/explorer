@@ -1,6 +1,6 @@
 """Frames kept in memory, and frames read ahead in the background (from the prototype's Cube.image, _store,
 prefetch). The operating system's page cache is not relied on for repeats: on StorNext a third access stalled
-for ~10 ms (docs/measured.md)."""
+for ~10 ms."""
 import functools
 import threading
 from collections import OrderedDict

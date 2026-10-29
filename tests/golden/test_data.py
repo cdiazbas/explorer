@@ -1,4 +1,4 @@
-"""Level 1 of the comparison with the prototype (docs/plan.md §7.1): explorer.data against the references that
+"""Level 1 of the comparison with the prototype: explorer.data against the references that
 tools/golden/export_prototype.py wrote with the prototype's own functions. The synthetic case always runs; the
 real one only where its reference exists (bellatrix), with -m golden_real or by default when present."""
 import json
@@ -82,7 +82,7 @@ def test_per_pixel_files_identical_to_the_prototype(golden):
             icube = str(im).replace("_im.fits", "_sp.icube")
             lp = SpLP(lp_pixel_layout(icube, fr.ny, fr.nx))
             cal, want = lp.calibrate(fr), meta["icube_calibration"]
-            # np.polyfit differs between machines in the last digits (docs/journal.md): 1e-12 relative
+            # np.polyfit differs between machines in the last digits: 1e-12 relative
             for k in ("scale", "zero", "max_resid"):
                 assert cal[k] == pytest.approx(want[k], rel=1e-12, abs=1e-24), k
             for j, (y, x) in enumerate(case["pixels"]):
@@ -235,7 +235,7 @@ def test_sampled_y_ranges_identical_to_the_prototype(golden):
 
 
 def test_slits_identical_to_the_prototype(golden):
-    """Path (1e-12 relative: its float64 differs in the last digit between machines, docs/journal.md), pixels,
+    """Path (1e-12 relative: its float64 differs in the last digit between machines), pixels,
     the slab from the per-pixel file and the bands from the frames."""
     from explorer.data.io import FrameReader
     from explorer.data.pixel import open_pixel

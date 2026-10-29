@@ -2,7 +2,7 @@
 
 libc pread is linked by symbol name (a numba ExternalFunction), not through a ctypes pointer: a ctypes pointer
 is a "dynamic global", which numba refuses to cache, so the kernel would be compiled at every start.
-Python threads issuing the same preads cost 10 ms instead of 2 ms for 1386 samples, warm (docs/measured.md).
+Python threads issuing the same preads cost 10 ms instead of 2 ms for 1386 samples, warm.
 Every parallel numba call must run on one thread only: with the 'workqueue' layer two concurrent parallel
 regions abort the process.
 """

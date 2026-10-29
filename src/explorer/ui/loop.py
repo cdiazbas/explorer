@@ -1,4 +1,4 @@
-"""The core's Loop on Qt's event loop (docs/decisions/0007): what the core asks to run soon, later, or from another
+"""The core's Loop on Qt's event loop: what the core asks to run soon, later, or from another
 thread, runs on the thread that owns the windows.
 
 - call_soon(fn): a 0-ms QTimer, as the prototype grouped mouse moves into one cursor update per pass of the event

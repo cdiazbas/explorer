@@ -1,10 +1,10 @@
-"""The image panel on pyqtgraph ("pgr", docs/decisions/0008): never hand pyqtgraph more pixels than the view shows.
+"""The image panel on pyqtgraph ("pgr"): never hand pyqtgraph more pixels than the view shows.
 
 From the prototype's viewer/backend_pgr.py and backend_pg.py, with the reduction app/viewer.py patched in, and its
 ViewGuard. On every new image and every zoom or pan, the visible region is cropped, bin-averaged down to the view's
 physical pixels and scaled to uint8 in one pass (explorer.data.kernels.reduce_u8, in row strips): pyqtgraph then
 paints a screen-sized uint8 image, with no levels or colour work on the whole frame (a step in t 23.9 -> 15.5 ms on
-the Mac; over ssh -Y the drawing 42 -> 4.4-4.9 ms, docs/measured.md). Level 0 is "no data" (NaN padding), the data
+the Mac; over ssh -Y the drawing 42 -> 4.4-4.9 ms). Level 0 is "no data" (NaN padding), the data
 go on 1..255, so the colour table decides how padding looks. Zooming in renders the visible region again with more
 detail, down to full resolution; range changes in a burst render once (a 0-ms timer).
 The mouse over the image gives (y, x) in data pixels to on_hover, at every move the view receives (_Moves); the

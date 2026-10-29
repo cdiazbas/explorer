@@ -1,6 +1,6 @@
 """The display a plan chose, on Qt: the environment before Qt starts, the application, and what a window needs from
-the platform. The views see WindowOps only; nothing else in the UI branches on the operating system (docs/plan.md
-§3.5). From the prototype's app/startup.py (prepare, make_app, show, _mac_zoom_not_fullscreen, start_link_probe).
+the platform. The views see WindowOps only; nothing else in the UI branches on the operating system.
+From the prototype's app/startup.py (prepare, make_app, show, _mac_zoom_not_fullscreen, start_link_probe).
 The X11 bridge is another Display (xbridge.BridgeDisplay); for_plan() picks the one a plan asks for.
 """
 import os

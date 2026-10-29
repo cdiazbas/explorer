@@ -1,4 +1,4 @@
-"""Driver: explorer's core driven from tests without a display, through a public API (docs/plan.md §2, rule 11:
+"""Driver: explorer's core driven from tests without a display, through a public API (a rule:
 tests never reach into attributes).
 
     with Driver.open("cube_im.fits", no_sp=True) as d:

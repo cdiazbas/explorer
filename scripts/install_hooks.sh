@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the git hooks of this repository (git does not version .git/hooks); safe to re-run.
 #   pre-commit  hygiene of the staged changes (audit files, personal paths, assistant mentions) and ruff
-#   commit-msg  the subject's form "[TAG] one sentence" (docs/decisions/0005-commits.md), no forbidden mentions
+#   commit-msg  the subject's form "[TAG] one sentence", no forbidden mentions
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(dirname "$here")"
 hooks="$(git -C "$root" rev-parse --git-path hooks)"

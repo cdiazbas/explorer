@@ -169,7 +169,7 @@ def c_numba(rep):
 def c_kernels(rep):
     """explorer's own kernels (the image's, the scattered reads', the X11 bridge's) loaded or compiled into this
     user's cache (data/_numba.py), so that the first start finds them compiled: cold, the bridge's first image waited
-    3.4 s for them (docs/journal.md). What it took, and where the cache is."""
+    3.4 s for them. What it took, and where the cache is."""
     from .data import gather, kernels
     from .data._numba import numba
     from .platform.xbridge import kernels as xk

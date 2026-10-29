@@ -1,5 +1,5 @@
 """The Dataset facade against the prototype's objects as its window uses them, same process, ABBA rounds
-(ROADMAP E1.10). Run it pinned to one NUMA node on a machine with several (taskset; docs/measured.md).
+(ROADMAP E1.10). Run it pinned to one NUMA node on a machine with several (taskset).
 
     python bench/dataset_vs_prototype.py <cube_im.fits> [--prototype DIR] [--rounds 8] [--per-round 6] [--out F]
 
