@@ -14,24 +14,26 @@ dist/
 .mypy_cache/
 .coverage
 htmlcov/
-# datos y resultados en bruto (las referencias pequeñas de tests/golden/data sí se versionan)
+# raw data and results (the small references of tests/golden/data are tracked)
 /data/
 bench/results/
 *.fits
 *.icube
 *.fcube
 !tests/golden/data/**
-# registros y trazas
+# logs and traces
 logs/
 *.log
 trace*.json
-# sistema
+# system
 .DS_Store
-# auditorías y notas locales: nunca en el repositorio
+# audits and local notes: never in the repository
 AUDIT*.md
 src/explorer/_version.py
 scripts/sync.local.json
 tests/golden/real/
 .import_linter_cache/
-# detalle privado de los datos (rutas y nombres de StorNext): nunca en el repositorio
+# private detail of the data (StorNext paths and names): never in the repository
 *.local.md
+# the project's notes (roadmap, journal, decisions, plan): kept locally, not in the repository
+docs/

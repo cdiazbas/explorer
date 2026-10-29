@@ -1,8 +1,6 @@
 # explorer
 
-Viewer for solar spectropolarimetric cubes [t, Stokes, λ, y, x], successor of CRISPEX.
-Under construction: what is there and what is missing, in [docs/roadmap.md](docs/roadmap.md);
-all the documentation, in [docs/](docs/README.md) (in Spanish).
+Viewer for solar spectropolarimetric cubes [t, Stokes, λ, y, x], successor of CRISPEX. Under construction.
 
 ## Install
 
