@@ -45,7 +45,8 @@ one if the machine has none). The repository is private for now, so this needs t
 Update it with `uv tool upgrade explorer`.
 
 **Reporting a problem:** run it again with `--log` (`explorer --log cube_im.fits`, or `explorer demo --log`). The
-session then keeps traces of the window (every move and resize) and, over ssh, of what goes to the X server. When the
+session then keeps traces of the window (every move and resize), of the keys pressed (where each one went, and the
+shortcut it fired; the keys typed are in the file) and, over ssh, of what goes to the X server. When the
 window closes, the terminal names the files (in `~/.cache/explorer/logs/`): send them with what you saw. Without
 `--log` explorer still writes its general log there (`explorer.log`), which records any key that failed.
 
