@@ -5730,3 +5730,46 @@ RdBu_r), con o sin Z.
 
 **Por decidir:** un mapa divergente de color por defecto para B (hoy gris, como Q U V); el cero de la leyenda en reposo
 con Z: va donde cae, y en una barra estrecha puede montarse sobre un límite.
+
+### 2026-10-29 (1): numba al arrancar, el «0» de las leyendas, las leyendas y el candado en glass (ROADMAP E6.20, E8.14, E5.33)
+
+**Decidido** (el usuario, sobre la página de pendientes):
+- 8: no abrir un `_sp` LP solo (E1.28 ⚪);
+- 10: las dos, «pero mide bien»;
+- 11: cerrar los seis hallazgos del prototipo;
+- 12 y 30: dejarlos así;
+- 21: el candado, debajo de la leyenda y sin solaparse, y cada leyenda en la misma esquina (glass arriba, el resto abajo);
+- 33: A, el «0» solo si cabe.
+
+**Hecho:**
+- `ad41684`: una leyenda en reposo escribe el «0» solo con sitio a los dos lados.
+- `4c2279f`: `explorer doctor` compila los núcleos de explorer en la caché del usuario (comprobación «kernels»).
+  El calentamiento del puente compilaba variantes que el emisor no usa y no las que sí: las vistas de solo lectura
+  de la captura, contiguas o no (filas con relleno, un trozo recortado a su ventana), contra una parte de los píxeles
+  de la ventana. Con nada cambiado no llegaba a `tile_runs`.
+- `0734fd5`: las pruebas, una caché de numba por sesión, nunca la del usuario.
+- `bb13ae5`, `5120ef6`: en glass, todas las leyendas arriba a la izquierda; las de los cubos enlazados se quedaban
+  abajo. La de un enlazado nombra su plano, y su etiqueta deja de quedar debajo. El candado se aparta de su leyenda,
+  debajo si no caben lado a lado, y de la ayuda de la rendija.
+
+**Medido:**
+- Mac, caché vacía, ABBA 4+4 (carga 2.0-2.4):
+  - `main`: `warm_up` 1.71-1.78 s, y 0.87-0.91 s más compilados a mitad de sesión;
+  - rama: 2.05-2.17 s y nada después.
+- bellatrix, primera imagen en X por el puente (Xvfb privado, nodo 0, carga 0.5-0.9, 4 rondas en orden rotado):
+
+  | | primera imagen en X | espera tras la de Qt |
+  |---|---|---|
+  | `main`, caché fría | 6.53-6.59 s | 2.98-3.15 s |
+  | rama, caché fría | 7.23-7.36 s | 3.53-3.67 s |
+  | rama, tras `doctor` | 2.41-2.47 s | 0.08 s |
+  | rama, caché caliente | 2.40-2.60 s | 0.09 s |
+
+  `doctor` tarda 7.55 s, 5.7 de ellos en los núcleos.
+- **Negativo:** fría y sin `doctor`, la rama tarda 0.77 s más que `main`. Compila al principio cuatro variantes de
+  `tile_flags`; en esta sesión corta `main` usó tres. A cambio, la rama no compila nada después.
+- `tests/xvfb`, ABBA (carga 0.6-2.9): `main` 292.9 y 286.6 s; rama, 230.9 y 233.4 s (−20 %).
+- Suites completas de la rama en bellatrix: 1219 (unit y golden), 43 (xvfb) y 40 (`tests/real`).
+- Capturas frente a `main`: 2/104 PNG distintas, las dos de glass con cubos enlazados; 0/16 JSON.
+
+**Sin probar:** qué variantes aparecen en una sesión larga, para dejar en el calentamiento solo las que se usan.
