@@ -224,3 +224,74 @@ def test_a_derived_lp_cube_refuses_an_observation_s_file_of_other_sizes(tmp_path
     print("source:", ax.source)
     assert ax.t_sec is None and ax.lam_nm is None                        # neither: the sizes say another cube
     assert any("does not match" in s for s in ax.source)
+
+
+
+def test_one_odd_card_leaves_the_rest_of_the_header_read(cube, tmp_path):
+    """The header was read in one try: a DATEREF with its time zone (np.datetime64 refuses "+00:00"), or a PRPARA
+    that is a JSON list (AttributeError on .get), and the wavelengths, times and corners were lost with it: the axes
+    in indices, a log line only. Each card is read on its own; the odd one is said in the sources."""
+    def edit(h):
+        h["DATEREF"] = "2016-09-19T00:00:00+00:00"
+        h["PRPARA1"] = "[1, 2]"
+    ax = axes.from_fits(_rewrite(cube, tmp_path / "odd.fits", edit))
+    assert ax.lam_nm is not None and ax.t_sec is not None and ax.corners is not None, ax.source
+    assert ax.dateref == np.datetime64("2016-09-19T00:00:00")
+    ax = axes.from_fits(_rewrite(cube, tmp_path / "bad.fits", lambda h: h.__setitem__("DATEREF", "yesterday")))
+    assert ax.dateref is None and ax.lam_nm is not None and any("DATEREF" in t for t in ax.source), ax.source
+
+
+def test_a_continuum_tuning_past_the_cube_is_left_out(cube, tmp_path):
+    """TUNING_SELECTION was taken as it was: from a header kept from a larger cube (cut in lambda), every spectrum
+    raised IndexError (plot_units's spec[0, cont]) and Q U V had no ranges. One past the cube's tunings is left out,
+    the isolated end tuning taken instead when there is one."""
+    import json
+
+    from explorer.data import formats
+
+    nl = SHAPE[2]
+    p = _rewrite(cube, tmp_path / "c.fits",
+                 lambda h: h.__setitem__("PRPARA1", json.dumps({"TUNING_SELECTION": [nl + 2]})))
+    _roles, ax = axes.read(p, formats.open_layout(p))
+    assert ax.cont is None or 0 <= ax.cont < nl, ax.cont
+    assert any("past" in t for t in ax.source), ax.source
+
+
+def test_a_wide_band_table_without_wavelengths_gives_times_and_corners(tmp_path):
+    """The wide band's WCS-TAB is HPLN+HPLT+TIME, (nt, 2, 2, 3): only the narrow band's 5-D one was read, so a
+    wide-band cube had no times nor arcsec, and linking it to a narrow-band cube of another cadence was refused."""
+    nt, ny, nx = 3, 16, 12
+    tab = synth.wcs_table((nt, 1, 4, ny, nx))[:, 0][..., [0, 1, 3]]          # one tuning: (nt, 2, 2, 3)
+    h = fits.Header()
+    for i in (1, 2, 3):
+        h[f"PS{i}_0"] = "WCS-TAB"
+        h[f"PS{i}_1"] = "HPLN+HPLT+TIME"
+    h["DATEREF"] = "2016-09-19T00:00:00"
+    cols = fits.ColDefs([fits.Column(name="HPLN+HPLT+TIME", format=f"{tab.size}D", dim=f"(3,2,2,{nt})",
+                                     array=tab[None])])
+    p = tmp_path / "wb_im.fits"
+    fits.HDUList([fits.PrimaryHDU(np.zeros((nt, ny, nx), np.float32), h),
+                  fits.BinTableHDU.from_columns(cols, name="WCS-TAB")]).writeto(p)
+    ax = axes.from_fits(p)
+    assert ax.t_sec is not None and ax.t_sec.shape == (nt,), ax.source
+    np.testing.assert_allclose(ax.t_sec, tab[:, 0, 0, 2])
+    assert ax.corners is not None and ax.corners.shape == (nt, 2, 2, 2)
+    assert ax.lam_nm is None
+
+
+def test_a_time_not_given_has_no_label_and_a_tuning_without_one_does_not_spread(tmp_path):
+    """int(round(NaN)) raised in the time labels (the status line, the t slider, lambda-t, the slit's file); and the
+    mean over tunings made one tuning's NaN the whole scan's. A time not given has no label; the scan's time is the
+    mean of those given."""
+    from explorer.data.slitfits import _utc
+
+    ax = axes.Axes()
+    ax.t_sec = np.array([0.0, np.nan])
+    ax.dateref = np.datetime64("2024-05-21T07:28:41")
+    assert ax.utc_str(1) is None and ax.utc(1) is None and ax.utc_str(0) is not None
+    sec, text, _ = _utc(ax, np.arange(2))
+    assert text[1] == "" and text[0] != ""
+    tab = synth.wcs_table((2, 1, 4, 8, 6))
+    tab[0, 1, :, :, 3] = np.nan                         # one tuning of the first scan without its time
+    t = axes._scan_times(tab[..., 3])
+    assert np.isfinite(t).all()

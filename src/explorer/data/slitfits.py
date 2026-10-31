@@ -75,7 +75,8 @@ def _utc(times, t: np.ndarray) -> tuple[np.ndarray, list[str], str]:
     dateref = getattr(times, "dateref", None)
     of_day = bool(getattr(times, "time_of_day", False)) or dateref is None
     base = np.datetime64(0, "ms") if of_day else np.datetime64(dateref, "ms")
-    text = [str(base + np.timedelta64(int(round(v * 1e3)), "ms"))[11 if of_day else 0:UTC_CHARS] for v in sec]
+    text = [str(base + np.timedelta64(int(round(v * 1e3)), "ms"))[11 if of_day else 0:UTC_CHARS]
+            if np.isfinite(v) else "" for v in sec]                 # a time not given: blank
     return sec, text, "midnight UT" if of_day else "DATEREF"
 
 

@@ -22,6 +22,7 @@ import json
 import math
 import os
 import re
+import warnings
 from typing import NamedTuple
 
 import numpy as np
@@ -241,11 +242,13 @@ class Axes:
         return v if l is None else float(v[l])
 
     def utc(self, t):
-        if self.t_sec is None or self.dateref is None:
+        if self.t_sec is None or self.dateref is None or not np.isfinite(self.t_sec[t]):
             return None
         return self.dateref + np.timedelta64(int(round(self.t_sec[t] * 1e3)), "ms")
 
     def utc_str(self, t, seconds=True):
+        if self.t_sec is not None and not np.isfinite(self.t_sec[t]):     # a time not given: no label
+            return None
         if self.sim_time and self.t_sec is not None:        # a simulation's seconds, said in time_unit
             return f"{float(self.t_sec[t]):g}"
         if self.time_of_day and self.t_sec is not None:     # the time of day alone: formatted on any day
@@ -282,6 +285,10 @@ def check(ax: Axes, r: Roles, names=()) -> None:
             raise ValueError(f"its header gives {len(values)} {what} for {n} steps along its "
                              f"{'t' if what == 'times' else 'lambda'}{axis(i)}: the header and the data do not "
                              f"describe the same cube")
+    if ax.cont is not None and not 0 <= ax.cont < max(1, r.nl):    # a header kept from a larger cube: not this one's
+        ax.source.append(f"continuum tuning {ax.cont} past the cube's {r.nl}: left out")
+        ax.cont = None
+        _isolated_continuum(ax)
 
 
 def read(path, layout, axes: str | None = None) -> tuple[Roles, Axes]:
@@ -486,10 +493,13 @@ def _read(h, ax: Axes) -> None:
             if sel:
                 ax.cont = int(sel[0])
                 ax.source.append(f"continuum tuning {ax.cont} (PRPARA{n} TUNING_SELECTION)")
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError, AttributeError, IndexError):     # not the object SSTRED writes: no tuning
+            ax.source.append(f"PRPARA{n} not read")
+    # each card read on its own: one that cannot be read (a time zone after DATEREF) leaves the others read
     if "DATEREF" in hd:
-        ax.dateref = np.datetime64(str(hd["DATEREF"])[:23])
+        ax.dateref = dateref(hd["DATEREF"])
+        if ax.dateref is None:
+            ax.source.append(f"DATEREF {str(hd['DATEREF']).strip()!r} not read: no dates, times of the day only")
     dis = [f"{k} = {str(hd[k]).strip()}" for k in hd if re.fullmatch(r"CWDIS\d", k)]
     if dis:
         ax.distortion = "WCSDVARR " + ", ".join(dis)
@@ -501,12 +511,14 @@ def _read(h, ax: Axes) -> None:
         if col in tab.names:
             a = np.asarray(tab[col][0])
             parts = [p.strip().upper() for p in col.split("+")]
+            if a.ndim == 4 and a.shape[-1] == len(parts):          # (nt, 2, 2, ncomp): a wide band's, no tunings
+                a = a[:, None]
             if a.ndim == 5 and a.shape[-1] == len(parts):          # (nt, nl, 2, 2, ncomp)
                 if "WAVE" in parts:
                     ax.lam_nm = a[0, :, 0, 0, parts.index("WAVE")].astype(float)
                     ax.source.append("lambda per tuning (WCS-TAB WAVE)")
                 if "TIME" in parts:
-                    ax.t_sec = a[..., parts.index("TIME")].reshape(a.shape[0], -1).mean(axis=1)
+                    ax.t_sec = _scan_times(a[..., parts.index("TIME")])
                     ax.source.append("time per scan (WCS-TAB TIME, mean over tunings)")
                 if "HPLN" in parts and "HPLT" in parts:
                     m = a.mean(axis=1)                               # the field is the same at every tuning
@@ -523,6 +535,27 @@ def _read(h, ax: Axes) -> None:
                     ax.corner_px = (idx("HPLN-INDEX", (0, nx - 1)), idx("HPLT-INDEX", (0, ny - 1)))
                     ax.source.append("field corners (WCS-TAB HPLN/HPLT)")
     _isolated_continuum(ax)
+
+
+def dateref(v) -> np.datetime64 | None:
+    """DATEREF as a numpy datetime (UTC), None when it cannot be read; a time zone after it (+00:00, Z), which numpy
+    refuses, is left out: SOLARNET's DATEREF is UTC."""
+    m = re.match(r"\s*(\d{4}-\d\d-\d\d(?:T\d\d:\d\d(?::\d\d(?:\.\d+)?)?)?)", str(v))
+    if m is None:
+        return None
+    try:
+        return np.datetime64(m.group(1)[:23])
+    except ValueError:
+        return None
+
+
+def _scan_times(t: np.ndarray) -> np.ndarray:
+    """(nt, ...) times per tuning (and corner) to one per scan: the mean of those given, so a tuning without its time
+    does not take its scan's with it (NaN only where none is given)."""
+    t = np.asarray(t, float).reshape(t.shape[0], -1)
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # a scan with no time at all: NaN, said by its label
+        return np.nanmean(t, axis=1)
 
 
 def _isolated_continuum(ax: Axes) -> None:
@@ -587,7 +620,7 @@ def from_lp(path, r: Roles) -> Axes:
         mismatch(f"lambda {getattr(lam, 'shape', '')}")
     t = _seconds(v)
     if t is not None and r.t is not None and t.shape[0] == r.nt:
-        ax.t_sec, ax.time_of_day = t.reshape(r.nt, -1).mean(axis=1).astype(float), True
+        ax.t_sec, ax.time_of_day = _scan_times(t), True
         ax.source.append("time per scan (IDL save, seconds of the day UT, mean over tunings)")
     elif t is not None:
         mismatch(f"time {t.shape}")
