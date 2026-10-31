@@ -492,23 +492,29 @@ def test_panels_floating_before_their_window_are_normal_and_transient_for_it(x, 
         a.close()
 
 
-def test_the_wheel_gives_the_stokes_and_fps_boxes_the_focus(x, app):
-    """Qt gives the focus to a widget with Qt::WheelFocus (QComboBox, QSpinBox) that a wheel turns, but only for a
-    spontaneous wheel event; the bridge sends its wheel events itself (non-spontaneous), so through the bridge the
-    boxes changed without taking the focus, where xcb gives it (conformance steps combo_wheel and spin_wheel,
-    ROADMAP E6.10)."""
+def test_the_wheel_gives_the_focus_as_the_widget_s_policy_says(x, app):
+    """Qt gives the focus to a widget with Qt::WheelFocus (the Stokes QComboBox) that a wheel turns, but only for a
+    spontaneous wheel event; the bridge sends its wheel events itself (non-spontaneous), so through the bridge the box
+    changed without taking the focus, where xcb gives it (conformance step combo_wheel, ROADMAP E6.10). The rate box
+    is ClickFocus: a text field with the focus keeps Backspace and the letters from the window's shortcuts, so the
+    wheel turns it without the focus, through xcb and the bridge alike."""
     app("activate")                                     # the window of the module's own app, not the last test's
     assert wait(lambda: app("state")["active"] == "bridge test λ")
-    for name, kind in (("stokes", "QComboBox"), ("fps", "QSpinBox")):
+    for name, kind, takes in (("stokes", "QComboBox", True), ("fps", "QSpinBox", False)):
         cx, cy = app(f"where {name}")["centre"]
         assert kind not in app("state")["focus"]          # the focus widget and its parent (a box's line edit)
+        wheels = app("state")["summary"]["input"]["wheel"]
         fake(x, None, xy=(cx, cy))
         fake(x, 4, 5)                                   # a wheel step down, then back up: the value as it was
         fake(x, 5, 5)
         fake(x, 4, 4)
         fake(x, 5, 4)
-        assert wait(lambda k=kind: k in app("state")["focus"]), looked(x, app, f"the wheel over {name}: no focus")
-        assert app("state")["summary"]["input"]["wheel"] >= 2
+        assert wait(lambda n=wheels: app("state")["summary"]["input"]["wheel"] >= n + 2)
+        app("idle")
+        if takes:
+            assert wait(lambda k=kind: k in app("state")["focus"]), looked(x, app, f"the wheel over {name}: no focus")
+        else:
+            assert kind not in app("state")["focus"], looked(x, app, f"the wheel over {name}: it took the focus")
         fake(x, None, xy=(main_window(app)["geometry"][0] + 200, main_window(app)["geometry"][1] + 300))
         app("idle")
 
