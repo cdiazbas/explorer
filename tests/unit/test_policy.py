@@ -141,3 +141,43 @@ def test_a_failed_read_ahead_is_forgotten(reader, monkeypatch):
         c.reader.pool.submit(lambda: None).result()
     np.testing.assert_array_equal(c.get((1, 0, 0)), real_read((1, 0, 0)))
     assert len(calls) == 2                                 # read again, not a cached failure
+
+
+
+@pytest.mark.parametrize("tree", ["v2 leaf", "v2 ancestor", "v1", "none"])
+def test_the_tightest_cgroup_memory_limit_is_honoured_wherever_it_is_set(tmp_path, monkeypatch, tree):
+    """Only the process's own cgroup v2 node was read: a limit on an ancestor (systemd's user-UID.slice on a shared
+    login node: the leaf says "max") or under cgroup v1 (RHEL 7/8, many compute nodes: no 0:: line) was not seen, the
+    budget came from the machine's memory and the caches could grow past the job's limit to an OOM kill. The tightest
+    limit from the leaf up, v1's memory controller too, is the one that counts, with its own usage."""
+    from explorer.data import sysmem
+
+    root = tmp_path / "cgroup"
+    G = 1 << 30
+    if tree.startswith("v2"):
+        leaf = root / "user.slice" / "user-1.slice" / "session-1.scope"
+        leaf.mkdir(parents=True)
+        (leaf / "memory.max").write_text("max\n" if tree == "v2 ancestor" else f"{8 * G}\n")
+        (leaf / "memory.current").write_text(f"{1 * G}\n")
+        (leaf.parent / "memory.max").write_text(f"{4 * G}\n" if tree == "v2 ancestor" else "max\n")
+        (leaf.parent / "memory.current").write_text(f"{3 * G}\n")
+        (leaf.parent.parent / "memory.max").write_text("max\n")
+        proc = "0::/user.slice/user-1.slice/session-1.scope\n"
+        want = (4 * G, 3 * G) if tree == "v2 ancestor" else (8 * G, 1 * G)
+    elif tree == "v1":
+        mem = root / "memory" / "slurm" / "job_7"
+        mem.mkdir(parents=True)
+        (mem / "memory.limit_in_bytes").write_text(f"{2 * G}\n")
+        (mem / "memory.usage_in_bytes").write_text(f"{G // 2}\n")
+        proc = "12:pids:/slurm/job_7\n4:memory:/slurm/job_7\n1:name=systemd:/slurm/job_7\n"
+        want = (2 * G, G // 2)
+    else:
+        (root / "user.slice").mkdir(parents=True)
+        (root / "user.slice" / "memory.max").write_text("max\n")
+        proc = "0::/user.slice\n"
+        want = (None, None)
+    (tmp_path / "self_cgroup").write_text(proc)
+    monkeypatch.setattr(sysmem, "CGROUP_ROOT", str(root), raising=False)
+    monkeypatch.setattr(sysmem, "PROC_CGROUP", str(tmp_path / "self_cgroup"), raising=False)
+    limit, used = sysmem._cgroup_memory()[:2]
+    assert (limit, used) == want

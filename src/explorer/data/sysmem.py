@@ -5,9 +5,10 @@ snapshot() returns bytes:
   available   what can be allocated without swapping (Linux: MemAvailable, which counts reclaimable page cache;
               macOS: free + inactive + purgeable pages)
   swap_used   swap in use (a rising value while a cache fills means the cache is too greedy)
-  limit       cgroup memory.max of this process (Linux) or None: a scope or container limit is tighter than the
+  limit       the tightest cgroup memory limit on this process (Linux: v2's memory.max of its node or an
+              ancestor, v1's memory.limit_in_bytes) or None: a scope, job or container limit is tighter than the
               machine's memory and must win
-  cg_used     cgroup memory.current (Linux) or None
+  cg_used     that cgroup's memory in use (Linux) or None
   pressure    macOS kern.memorystatus_level (% of memory the kernel counts as free); Linux PSI "some avg10" of the
               cgroup or machine (% of time stalled on memory); None if absent
 budget(frac, cap) = what a cache may take: frac of the room left, never more than cap.
@@ -112,14 +113,43 @@ def _mac_snapshot():
     return dict(total=total, available=avail, swap_used=int(sw.used), limit=None, cg_used=None, pressure=lvl)
 
 
-def _cgroup_dir():
+CGROUP_ROOT = "/sys/fs/cgroup"
+PROC_CGROUP = "/proc/self/cgroup"
+V1_UNLIMITED = 1 << 60      # cgroup v1 writes "no limit" as a number near 2**63
+
+
+def _cgroup_memory():
+    """(limit, used, leaf) of the tightest memory limit on this process: cgroup v2's memory.max and memory.current
+    from its own node up (a limit on an ancestor, systemd's user-UID.slice, binds it as well), and v1's memory
+    controller (memory.limit_in_bytes, usage_in_bytes); the tightest is the one with the least room left. leaf: v2's
+    own node, for its pressure. (None, None, leaf) without a limit."""
     try:
-        for line in open("/proc/self/cgroup"):
-            if line.startswith("0::"):
-                return "/sys/fs/cgroup" + line.strip()[3:]
+        lines = open(PROC_CGROUP).read().splitlines()
     except OSError:
-        pass
-    return None
+        return None, None, None
+    root = CGROUP_ROOT.rstrip("/")
+    best, leaf = None, None
+    for line in lines:
+        hid, _, rest = line.partition(":")
+        ctrls, _, path = rest.partition(":")
+        if hid == "0" and ctrls == "":                  # v2: the node and each ancestor up to the root
+            leaf = (root + path).rstrip("/") or root
+            d = leaf
+            while True:
+                m, c = _read(d + "/memory.max"), _read(d + "/memory.current")
+                if m and m != "max" and c and c.isdigit():
+                    best = min(best or (1 << 62, 0, 0), (int(m) - int(c), int(m), int(c)))
+                if d == root or not d.startswith(root):
+                    break
+                d = d.rsplit("/", 1)[0] or root
+        elif "memory" in ctrls.split(","):             # v1: the memory controller's own hierarchy
+            d = f"{root}/memory{path}".rstrip("/")
+            m, c = _read(d + "/memory.limit_in_bytes"), _read(d + "/memory.usage_in_bytes")
+            if m and c and m.isdigit() and c.isdigit() and int(m) < V1_UNLIMITED:
+                best = min(best or (1 << 62, 0, 0), (int(m) - int(c), int(m), int(c)))
+    if best is None:
+        return None, None, leaf
+    return best[1], best[2], leaf
 
 
 def _read(path):
@@ -141,15 +171,9 @@ def _linux_snapshot():
     for line in open("/proc/meminfo"):
         k, v = line.split(":")
         mi[k] = int(v.split()[0]) * 1024
-    cg = _cgroup_dir()
-    limit = cg_used = None
+    limit, cg_used, cg = _cgroup_memory()
     pressure = _psi("/proc/pressure/memory")
     if cg:
-        m = _read(cg + "/memory.max")
-        if m and m != "max":
-            limit = int(m)
-        c = _read(cg + "/memory.current")
-        cg_used = int(c) if c else None
         p = _psi(cg + "/memory.pressure")
         if p is not None:
             pressure = p
