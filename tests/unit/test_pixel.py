@@ -104,3 +104,28 @@ def test_an_lp_pair_with_its_idlsave_is_in_physical_units_with_nan_padding(datas
             assert (np.isnan(b) == np.isnan(want)).all()
             assert np.nanmax(np.abs(b - want), initial=0) <= 2.0 / synth.ICUBE_SCALE
         r.close()
+
+
+
+def test_four_planes_that_are_not_stokes_are_not_masked_by_i():
+    """The rule of a negative I (NaN at every Stokes) was taken for any per-pixel file of four planes: an inversion's
+    parameters opened through their per-pixel file alone came out NaN where the first parameter is negative. The
+    frames ask the cube's roles (masking.stokes_axis); the per-pixel reader is told the same."""
+    import numpy as np
+
+    from explorer.data.pixel import PixelReader
+
+    a = np.ones((1, 4, 2, 3), np.float32)
+    a[0, 0, 0, 1] = -2.0                                # its first plane negative there
+    r = PixelReader.__new__(PixelReader)
+    r.ns, r.stokes = 4, True
+    assert np.isnan(r._masked(a.copy())[0, :, 0, 1]).all()          # I Q U V: masked
+    r.stokes = False
+    assert not np.isnan(r._masked(a.copy())).any()                  # parameters: as they are
+
+
+def test_a_dataset_tells_its_per_pixel_reader_whether_its_planes_are_stokes(dataset):
+    from explorer.data.dataset import Dataset
+
+    with Dataset.open(dataset["im"]) as ds:
+        assert ds.pixel is not None and ds.pixel.stokes is True

@@ -210,6 +210,7 @@ class Dataset(Closing):
             self.pixel = None
             return
         if self.pixel is not None:
+            self.pixel.stokes = self.roles.planes == "stokes"     # an inversion's four parameters are not masked
             self.calibration = getattr(self.pixel, "calibration", None)
             log.info("per-pixel file %s (%s)", self.pixel.layout.path, self.pixel.kind)
         lay = self.layout

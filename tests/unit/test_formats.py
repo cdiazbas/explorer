@@ -243,3 +243,34 @@ def test_an_integer_lp_cube_without_its_idlsave_says_its_values_are_counts(tmp_p
     with caplog.at_level("WARNING"):
         formats.open_layout(im)
     assert any("counts" in r.getMessage() and "times+wvl.idlsave" in r.getMessage() for r in caplog.records)
+
+
+
+def test_a_per_pixel_file_of_the_other_lp_kind_keeps_its_own_scale_and_padding(tmp_path):
+    """The IDL save file's fac and nan_rplcmnt describe the image cube's values, and were copied onto the per-pixel
+    file whatever its kind: beside a float _im.fcube, an integer _sp.icube took the float's padding value
+    (-1.77e-8, 0 as int16), so every count of 0 was NaN, holes in Q U V; beside an integer image a float per-pixel
+    file took 1/fac. The per-pixel file keeps its own when the kinds differ (an integer one is calibrated against
+    the image, as always)."""
+    from explorer.data.io import FrameReader
+    from explorer.data.pixel import open_pixel
+
+    nt, ns, nl, ny, nx = 2, 1, 3, 4, 5
+    counts = (np.arange(nt * ns * nl * ny * nx, dtype=np.int16).reshape(nt, ns, nl, ny, nx) % 7)     # zeros in it
+    pad = np.float32(-1.7691475e-08)
+    frames = (counts.astype(np.float32) * np.float32(1e-9)).reshape(nt * ns * nl, ny, nx)
+    frames[frames == 0] = np.float32(2e-12)             # the image itself has no exact 0 to look like padding
+    im = synth.write_lp(tmp_path / "c_im.fcube", frames, head=f"stokes=[I], ns={ns} :  ")
+    head = f"stokes=[I], ns={ns} :  datatype=2 (integer), dims=3, nx={{}}, ny={{}}, nt={{}}, endian=l"
+    per_pixel = counts.transpose(3, 4, 1, 0, 2)         # (y, x, s, t, lambda)
+    (tmp_path / "c_sp.icube").write_bytes(head.format(nl, nt, ny * nx * ns).encode().ljust(512, b"\0")
+                                          + per_pixel.astype("<i2").tobytes())
+    synth.write_idlsave(tmp_path / "c_im_times+wvl.idlsave", {"fac": np.float32(1.0), "nan_rplcmnt": pad})
+    lay = formats.open_layout(im)
+    assert lay.blank is not None                        # the image's padding, a float
+    with FrameReader(lay) as fr:
+        r = open_pixel(str(im), fr)
+        assert r is not None and r.layout.dtype.kind in "iu"
+        b = r.block(1, 2)                               # (s, t, lambda): counts of 0 among them
+        zero = counts[:, :, :, 1, 2].transpose(1, 0, 2) == 0
+        assert zero.any() and not np.isnan(b[zero]).any(), b

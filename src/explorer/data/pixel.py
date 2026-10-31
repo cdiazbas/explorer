@@ -38,6 +38,7 @@ class PixelReader(Closing):
         self.fd = os.open(layout.path, os.O_RDONLY)
         self.scale, self.zero = np.float32(1.0), np.float32(0.0)
         self.calibration: dict | None = None            # SpLP.calibrate's result, once calibrated
+        self.stokes = True                              # its planes I Q U V (Dataset says, from the cube's roles)
 
     # ---- reads
     def _read(self, y: int, x0: int, k: int) -> np.ndarray:
@@ -56,7 +57,9 @@ class PixelReader(Closing):
         raise NotImplementedError
 
     def _masked(self, out: np.ndarray) -> np.ndarray:
-        return masking.mask_along(out, 1) if self.ns == masking.STOKES else out
+        """With I Q U V, NaN at every Stokes where I is negative; not with four planes of another kind (an
+        inversion's parameters, whose first may be negative), as the frames (masking.stokes_axis)."""
+        return masking.mask_along(out, 1) if self.stokes and self.ns == masking.STOKES else out
 
     def peek(self, y: int, x: int):
         """The block at (y, x) if it is cached (marked as just used), else None; never reads."""
@@ -252,7 +255,10 @@ def open_pixel(im_path, frames: FrameReader, strip: int = 16, max_bytes: int = 6
         if detect(p) == "fits":
             return SpFits(p, stl, strip=strip, max_bytes=max_bytes)
         lay = lp_pixel_layout(p, frames.ny, frames.nx)
-        if frames.layout.kind == "lp":                  # one IDL save file says what both files' values mean
+        # one IDL save file says what the image cube's values mean: the per-pixel file's too when it is of the same
+        # kind; of the other (an integer _sp.icube beside a float _im.fcube), the float's padding as int16 is 0 and
+        # every count of 0 was NaN, and a float one beside an integer image took its 1/fac
+        if frames.layout.kind == "lp" and lay.dtype.kind == frames.layout.dtype.kind:
             lay = replace(lay, scale=frames.layout.scale, blank=frames.layout.blank)
         r = SpLP(lay, stl, strip=strip, max_bytes=max_bytes)
         if r.layout.dtype.kind in "iu":
