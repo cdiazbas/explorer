@@ -19,8 +19,14 @@ def gather(fd, offsets, itemsize, out_bytes):
     n = offsets.shape[0]
     bad = 0
     for k in nb.prange(n):  # type: ignore[attr-defined, unused-ignore]
-        r = _pread(fd, out_bytes[k * itemsize:].ctypes.data, itemsize, offsets[k])
-        if r != itemsize:
+        done = 0                                        # a partial read continued; -1 (an error) ends it short
+        while done < itemsize:
+            r: int = _pread(fd, out_bytes[k * itemsize + done:].ctypes.data,  # type: ignore[assignment]
+                            itemsize - done, offsets[k] + done)          # numba's: an int once compiled
+            if r <= 0:
+                break
+            done += r
+        if done != itemsize:
             bad += 1
     return bad
 

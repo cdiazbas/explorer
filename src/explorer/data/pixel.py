@@ -19,7 +19,7 @@ import numpy as np
 from ..obs import span
 from . import masking
 from .formats import Layout, fits_layout
-from .io import Closing, FrameReader, ShortRead
+from .io import Closing, FrameReader, ShortRead, pread_all
 
 
 class PixelReader(Closing):
@@ -46,7 +46,7 @@ class PixelReader(Closing):
         if not (0 <= y < self.ny and 0 <= x0 and k >= 1 and x0 + k <= self.nx):
             raise IndexError(f"strip ({y}, {x0}..{x0 + k}) outside {self.ny}x{self.nx}")
         n = k * self.pix
-        raw = os.pread(self.fd, n, self.layout.offset + (y * self.nx + x0) * self.pix)
+        raw = pread_all(self.fd, n, self.layout.offset + (y * self.nx + x0) * self.pix)
         if len(raw) != n:
             raise ShortRead(f"read {len(raw)} of {n} bytes for strip ({y}, {x0}) in {self.layout.path}")
         return np.frombuffer(raw, self.layout.dtype).reshape(k, self.ns, self.nt, self.nl)
@@ -133,7 +133,7 @@ class SpFits(PixelReader):
         if not (0 <= y < self.ny and 0 <= x0 and k >= 1 and x0 + k <= self.nx):
             raise IndexError(f"strip ({y}, {x0}..{x0 + k}) outside {self.ny}x{self.nx}")
         n = k * self.pix
-        raw = os.pread(self.fd, n, self._offset + (y * self.nx + x0) * self.pix)
+        raw = pread_all(self.fd, n, self._offset + (y * self.nx + x0) * self.pix)
         if len(raw) != n:
             raise ShortRead(f"read {len(raw)} of {n} bytes for strip ({y}, {x0}) in {self.layout.path}")
         a = np.frombuffer(raw, self._dtype)

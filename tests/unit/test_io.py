@@ -148,3 +148,36 @@ def test_numba_pool_holds_the_threads_scattered_reads_may_use():
     env["NUMBA_NUM_THREADS"] = "3"
     assert subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
                           check=True).stdout.strip() == "3"
+
+
+
+def test_a_partial_read_is_continued_not_taken_for_a_truncated_file(dataset, monkeypatch):
+    """pread and preadv may return fewer bytes than asked (a signal, an NFS or StorNext stall); each such read was a
+    ShortRead, "truncated file", for a file that is whole. A partial read is continued from where it stopped; fewer
+    bytes are an error only at the file's end (test_a_short_read_is_an_error_not_garbage)."""
+    import os as _os
+
+    from explorer.data import io as io_mod
+
+    real_pread, real_preadv = _os.pread, _os.preadv
+    halves = {"pread": 0, "preadv": 0}
+
+    def pread(fd, n, off):
+        if n > 1:                                       # half of what is asked, as a partial read gives it
+            halves["pread"] += 1
+            return real_pread(fd, n // 2, off)
+        return real_pread(fd, n, off)
+
+    def preadv(fd, bufs, off):
+        (b,) = bufs
+        if len(b) > 1:
+            halves["preadv"] += 1
+            return real_preadv(fd, [memoryview(b)[:len(b) // 2]], off)
+        return real_preadv(fd, bufs, off)
+    monkeypatch.setattr(io_mod.os, "pread", pread)
+    monkeypatch.setattr(io_mod.os, "preadv", preadv)
+    data = fits.getdata(dataset["im"])
+    with FrameReader(formats.open_layout(dataset["im"])) as r:
+        np.testing.assert_array_equal(r.read((1, 2, 2)), data[1, 2, 2])
+        np.testing.assert_array_equal(r.read_rows((0, 1, 2), 2, 6), data[0, 1, 2, 2:6])
+    assert halves["preadv"] and halves["pread"]

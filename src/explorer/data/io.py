@@ -43,10 +43,31 @@ class ReadAborted(Exception):
     """A read stopped between two of its steps: its reader was aborted (FrameReader.abort), the cube is closing."""
 
 
+def pread_all(fd: int, n: int, offset: int) -> bytes:
+    """n bytes at offset: a read that returns fewer (a signal, an NFS or StorNext stall) is continued from where it
+    stopped; fewer than n only at the file's end, which the caller says is a short read."""
+    b = os.pread(fd, n, offset)
+    if len(b) == n or not b:
+        return b
+    parts, got = [b], len(b)
+    while got < n:
+        more = os.pread(fd, n - got, offset + got)
+        if not more:
+            break
+        parts.append(more)
+        got += len(more)
+    return b"".join(parts)
+
+
 def _preadv_exact(fd, view, offset):
-    n = os.preadv(fd, [view], offset)
-    if n != len(view):
-        raise ShortRead(f"read {n} of {len(view)} bytes at offset {offset}")
+    """view filled from offset, a partial read continued (pread_all); ShortRead at the file's end."""
+    view = memoryview(view).cast("B")
+    done = 0
+    while done < len(view):
+        n = os.preadv(fd, [view[done:]], offset + done)
+        if n <= 0:
+            raise ShortRead(f"read {done} of {len(view)} bytes at offset {offset}")
+        done += n
 
 
 class FrameReader(Closing):
@@ -193,7 +214,7 @@ class FrameReader(Closing):
         new numpy array, and a slit reads one band per frame (bellatrix, 3.9 MB bands, pinned to one NUMA node)."""
         self._rows(y0, y1)
         n = (y1 - y0) * self.nx * self.layout.dtype.itemsize
-        b = os.pread(self.fd, n, self.frame_offset(idx) + y0 * self.nx * self.layout.dtype.itemsize)
+        b = pread_all(self.fd, n, self.frame_offset(idx) + y0 * self.nx * self.layout.dtype.itemsize)
         if len(b) != n:
             raise ShortRead(f"read {len(b)} of {n} bytes of rows {y0}..{y1} in {self.layout.path}")
         return np.frombuffer(b, self.layout.dtype).reshape(y1 - y0, self.nx)
@@ -222,7 +243,7 @@ class FrameReader(Closing):
 
         def one(j):
             self._step()
-            b = os.pread(fd, n, self.frame_offset(j) + skip)
+            b = pread_all(fd, n, self.frame_offset(j) + skip)
             if len(b) != n:
                 raise ShortRead(f"read {len(b)} of {n} bytes of frame {j} in {self.layout.path}")
             return self._masked(j, self.to_float32(np.frombuffer(b, dt)[at]), y0, y1, at)
@@ -431,7 +452,7 @@ class PerPixelFrames(FrameReader):
     def rows_raw(self, y0: int, y1: int) -> np.ndarray:
         """Raw records of rows y0..y1-1, (rows, nx, ns * nt * nl) as stored, one read."""
         n = (y1 - y0) * self.nx * self.record
-        b = os.pread(self.fd, n, self.sp.offset + y0 * self.nx * self.record)
+        b = pread_all(self.fd, n, self.sp.offset + y0 * self.nx * self.record)
         if len(b) != n:
             raise ShortRead(f"read {len(b)} of {n} bytes of rows {y0}..{y1} in {self.sp.path}")
         return np.frombuffer(b, self.sp.dtype).reshape(y1 - y0, self.nx, -1)
@@ -523,7 +544,7 @@ class PerPixelFrames(FrameReader):
         return self.frames_rows(fn, y0, y1).reshape(*sizes, y1 - y0, self.nx)
 
     def _pixel_record(self, y: int, x: int) -> np.ndarray:
-        b = os.pread(self.fd, self.record, self.sp.offset + (int(y) * self.nx + int(x)) * self.record)
+        b = pread_all(self.fd, self.record, self.sp.offset + (int(y) * self.nx + int(x)) * self.record)
         if len(b) != self.record:
             raise ShortRead(f"read {len(b)} of {self.record} bytes of pixel ({y}, {x}) in {self.sp.path}")
         return np.frombuffer(b, self.sp.dtype)
@@ -707,7 +728,7 @@ class SeriesReader(FrameReader):
         it = self.layout.dtype.itemsize
         n = (y1 - y0) * self.nx * it
         fd, base = self._at(t)
-        b = os.pread(fd, n, base + y0 * self.nx * it)
+        b = pread_all(fd, n, base + y0 * self.nx * it)
         if len(b) != n:
             raise ShortRead(f"read {len(b)} of {n} bytes of rows {y0}..{y1} in {self._path(t)}")
         return np.frombuffer(b, self.layout.dtype).reshape(y1 - y0, self.nx)
@@ -717,7 +738,7 @@ class SeriesReader(FrameReader):
             return self._decompressed(t, slice(y, y + 1), x).reshape(-1)[0]
         it = self.layout.dtype.itemsize
         fd, base = self._at(t)
-        b = os.pread(fd, it, base + (y * self.nx + x) * it)
+        b = pread_all(fd, it, base + (y * self.nx + x) * it)
         if len(b) != it:
             raise ShortRead(f"read {len(b)} of {it} bytes of pixel ({y}, {x}) in {self._path(t)}")
         return np.frombuffer(b, self.layout.dtype)[0]
