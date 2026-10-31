@@ -272,6 +272,26 @@ def test_a_click_saves_the_time_slice_the_panel_shows(qapp, shell, cube, tmp_pat
     print(*said_, sep="\n")
 
 
+def test_a_save_says_the_points_not_read_in_the_slice_it_writes(qapp, shell, tmp_path, monkeypatch):
+    """The points not read were counted at the save, from the blocks then, while the slice written was made before:
+    "0 pixels not read" over a file with NaN columns, after their blocks came. The slice keeps its own count."""
+    import dataclasses
+
+    from explorer.ui import shell as shell_module
+
+    w = shell
+    draw(w, PTS)
+    reads = w.scheduler.slit
+    assert spin(qapp, lambda: reads.time_slice is not None and reads.time_slice.path_id == reads.path_id
+                and reads.time_slice.not_read == 0)            # shown as its blocks come, whole at last
+    reads.time_slice = dataclasses.replace(reads.time_slice, not_read=2)    # as made with two blocks still to come
+    terminal: list[str] = []
+    monkeypatch.setattr(shell_module, "say", types.SimpleNamespace(info=terminal.append, warn=terminal.append,
+                                                                   error=terminal.append))
+    click_save(qapp, w, tmp_path, monkeypatch)
+    assert any("2 pixels along it not read yet" in t for t in terminal), terminal
+
+
 def test_a_click_without_a_finished_slit_writes_nothing_and_says_why(qapp, shell, tmp_path, monkeypatch):
     from PySide6 import QtCore
     from PySide6.QtTest import QTest

@@ -1721,9 +1721,9 @@ class Shell(QtWidgets.QMainWindow):
             self.statusBar().showMessage(msg, 10000)
             say.info(str(msg))
             return None
-        # with a per-pixel file, the points whose blocks have not come are NaN in it (the cube's padding is NaN too)
-        gaps = (len(reads.blocks.missing(zip(reads.pix[0].tolist(), reads.pix[1].tolist(), strict=True)))
-                if reads.per_pixel else 0)
+        # with a per-pixel file, the points whose blocks had not come when the slice was made are NaN in it (the
+        # cube's padding is NaN too): those of the slice written, not of the blocks now
+        gaps = rec.not_read
         msg = f"slit saved: {path}" + (f" ({gaps} pixels along it not read yet: NaN)" if gaps else "")
         self.statusBar().showMessage(msg, 10000)
         say.info(str(msg))

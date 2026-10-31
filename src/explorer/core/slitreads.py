@@ -80,6 +80,7 @@ class TimeSlice:
     l: int  # noqa: E741
     cube: int                   # the member whose values they are
     path_id: int                # the slit they were made for (SlitReads.path_id)
+    not_read: int = 0           # its pixels whose blocks had not come when it was made: NaN columns in it
 
 
 class SlitReads:
@@ -279,6 +280,7 @@ class SlitReads:
         r, n = ds.roles, len(pix[0])
         every = len(steps) >= r.nt
         sym = self.session.symmetric(self.cube, s)      # -m..m, or each side its own (Session.set_zero)
+        missing = sum(1 for b in got if b is None)       # NaN columns in what is made now (a save says so)
         out = {}
         for kind, rows, u in (("ts", len(steps), l), ("sl", max(1, r.nl), t)):
             key = (pid, ver, s, u, sym) if kind == "sl" or every else (pid, ver, s, u, sym, len(steps))
@@ -292,7 +294,7 @@ class SlitReads:
                     a[:, i] = (b[s, :, l] if every else b[s, steps, l]) if kind == "ts" else b[s, t, :]
             out[kind] = (a, panel_levels(a, symmetric=sym))
             self._made[kind] = (key, *out[kind])
-        self.loop.post(lambda: self._show(g, pid, s, out["ts"], out["sl"], at=(l, steps)))
+        self.loop.post(lambda: self._show(g, pid, s, out["ts"], out["sl"], at=(l, steps, missing)))
 
     # ---------------------------------------------------------------- no per-pixel file: rows per frame
     def _from_bands(self, g, pid, pix, t, s, l, playing, ds, blocks, steps) -> None:  # noqa: E741
@@ -348,7 +350,8 @@ class SlitReads:
             counter("core.slit.dropped_older")
             return
         if ts is not None:                              # a late stage of the slit being drawn is not the slit shown
-            self.time_slice = (TimeSlice(ts[0], np.asarray(at[1]), s, at[0], self.cube, pid)
+            self.time_slice = (TimeSlice(ts[0], np.asarray(at[1]), s, at[0], self.cube, pid,
+                                         not_read=at[2] if len(at) > 2 else 0)
                                if at is not None and pid == self.path_id else None)
         self.sink.slit(None if ts is None else ts[0], None if sl is None else sl[0], s,
                        None if ts is None else ts[1], None if sl is None else sl[1])
