@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..data.tsample import CAP
-from ..obs import get_logger
+from ..obs import failed, get_logger
 from .loop import Loop
 
 log = get_logger("core")
@@ -92,5 +92,6 @@ class Store:
         for fn in list(self._listeners):
             try:
                 fn(new, changed)
-            except Exception:                           # one broken listener never silences the others
+            except Exception as e:                      # one broken listener never silences the others
                 log.exception("state listener %r failed", fn)
+                failed.report(f"state listener {getattr(fn, '__qualname__', fn)}", e)

@@ -300,3 +300,26 @@ def test_the_link_probe_waits_for_the_first_image(qapp, cube, monkeypatch):
     finally:
         w.close()
         ds.close()
+
+
+def test_a_failure_in_the_loop_is_said_on_the_status_line_once(qapp, cube, monkeypatch):
+    from explorer.data.dataset import Dataset
+    from explorer.obs import failed, say
+    from explorer.ui.shell import Shell
+
+    said: list[str] = []
+    monkeypatch.setattr(say, "warn", said.append)
+    ds = Dataset.open(cube)
+    w = Shell(ds)
+    try:
+        w.resize(640, 480)
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        for _ in range(3):
+            failed.report("callback x", IndexError("list index out of range"))
+        assert "IndexError" in w.statusBar().currentMessage()
+        assert len([t for t in said if "IndexError" in t]) == 1
+    finally:
+        w.close()
+        ds.close()
+    failed.report("callback y", IndexError("after the close"))            # a closed window is told nothing

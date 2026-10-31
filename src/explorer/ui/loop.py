@@ -6,14 +6,15 @@ thread, runs on the thread that owns the windows.
 - call_later(seconds, fn): a QTimer with a delay (the spectra's refit at rest, the y-range sample). Main thread only.
 - post(fn): from any thread; a queued signal takes fn to the main thread, where it runs. Reads finish on worker
   threads; touching a widget from one of them corrupts or hangs Qt.
-A callback that raises is logged; the loop and the other callbacks go on. The timers have the loop as their context:
+A callback that raises is logged and told (obs.failed: the window's status line); the loop and the other callbacks
+go on. The timers have the loop as their context:
 what is due on a loop whose window was deleted is dropped, not run on panels that no longer exist.
 """
 from collections.abc import Callable
 
 from PySide6 import QtCore
 
-from ..obs import get_logger
+from ..obs import failed, get_logger
 
 log = get_logger("ui")
 
@@ -22,8 +23,9 @@ def _safe(fn: Callable[[], None]) -> Callable[[], None]:
     def run():
         try:
             fn()
-        except Exception:
+        except Exception as e:
             log.exception("callback %r failed", fn)
+            failed.report(f"callback {getattr(fn, '__qualname__', fn)}", e)
     return run
 
 

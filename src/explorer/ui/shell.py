@@ -36,7 +36,7 @@ from ..data.axes import signed, unit_text
 from ..data.names import cube_names, plane_text, slice_names, value_name
 from ..look import ENV_OFF, LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
-from ..obs import get_logger, say
+from ..obs import failed, get_logger, say
 from ..obs.waiting import Waiting
 from . import docks, glass, icons, overlays, pens, style, titlebar
 from .actions import ActionRegistry, KeySheet, mod_key, per_pixel_sheet_html
@@ -182,6 +182,8 @@ class Shell(QtWidgets.QMainWindow):
         self.first_image_line: str | None = None       # where the time to it went (explorer.log)
         self.waiting: Waiting | None = None             # ui.app's lines while the start waits
         self._not_read: set[tuple] = set()              # (cube, frame) said on the terminal (frame_not_read)
+        self._failures: set[tuple] = set()              # failures in the loop said on the terminal (_failed)
+        self._off_failed = failed.listen(self._failed)
         self.breakdown: tuple | None = None
         self._after_first: list = []
         self._first_seen = False                        # first_image entered (first_image_s is set after it draws)
@@ -1940,6 +1942,16 @@ class Shell(QtWidgets.QMainWindow):
         if self.diagnostics:
             self.sys_status.setText(diagnostics_text(self.dataset))
 
+    def _failed(self, what: str, error: BaseException) -> None:
+        """Something that failed in the event loop (obs.failed: a result, a timer, a state listener), the window
+        perhaps left half updated: said on the status line, and on the terminal once per failure; the log has its
+        traceback. A key that fails says so itself (ui.actions)."""
+        text = f"something failed: {type(error).__name__}: {error} (the log has the details)"
+        self.statusBar().showMessage(text, 10000)
+        if (type(error).__name__, str(error)) not in self._failures:
+            self._failures.add((type(error).__name__, str(error)))
+            say.warn(text)
+
     def frame_not_read(self, k: int, idx: tuple, error: BaseException) -> None:
         """A frame of cube k that could not be read: said on the status line, and on the terminal once per frame (a
         playback through a broken file would say it at every pass); the image stays the one before. The first
@@ -1997,6 +2009,7 @@ class Shell(QtWidgets.QMainWindow):
 
     # ---------------------------------------------------------------- closing
     def closeEvent(self, ev) -> None:
+        self._off_failed()
         if self.waiting is not None:                    # closed before its first image: no more waiting lines
             self.waiting.stop()
         if self.layout_store is not None and not self._closing:   # before the docks say hidden

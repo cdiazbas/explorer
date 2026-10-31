@@ -97,3 +97,30 @@ def test_nothing_runs_after_the_loop_is_gone(qapp):
         qapp.processEvents()
         time.sleep(0.005)
     assert ran == []
+
+
+
+def test_a_failing_callback_or_listener_is_told_not_only_logged(qapp):
+    """A posted result or a state listener that raised was logged and nothing else: the window stayed half updated
+    (a linked cube's colour maps out of range froze the status line) with no word on screen. Whoever listens
+    (the window's status line) is told, the loop and the other listeners go on."""
+    from explorer.core.state import Store
+    from explorer.obs import failed
+
+    heard: list = []
+    off = failed.listen(lambda what, e: heard.append((what, type(e).__name__)))
+    try:
+        loop = QtLoop()
+        ran: list = []
+        loop.post(lambda: (_ for _ in ()).throw(ValueError("boom")))
+        loop.post(lambda: ran.append(1))
+        assert spin(qapp, lambda: ran == [1])
+        assert ("callback", "ValueError") in [(w.split()[0], t) for w, t in heard], heard
+        store = Store(loop)
+        store.subscribe(lambda st, ch: (_ for _ in ()).throw(KeyError("k")))
+        store.subscribe(lambda st, ch: ran.append(2))
+        store.set(t=1)
+        assert spin(qapp, lambda: 2 in ran)
+        assert any(t == "KeyError" for _, t in heard), heard
+    finally:
+        off()
