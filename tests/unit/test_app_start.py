@@ -130,3 +130,26 @@ def test_the_slit_tab_choice_is_the_next_starts(qapp, headless, monkeypatch):
         qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
         qapp.setPalette(pal)
         qapp.setProperty("explorer_light", False)
+
+
+
+def test_a_session_whose_read_is_stuck_leaves_without_waiting_for_it(monkeypatch):
+    """A read blocked on its storage holds its thread, and the interpreter's exit joins every thread: explorer would
+    stay, its terminal with it, until the storage answered. With a cube closed stuck, it says so, gives the terminal
+    back and leaves at once."""
+    import types
+
+    from explorer.obs import say
+    from explorer.ui import app as app_mod
+
+    said, closed, left = [], [], []
+    monkeypatch.setattr(say, "warn", said.append)
+    monkeypatch.setattr(app_mod.os, "_exit", left.append)
+    monkeypatch.setattr("logging.shutdown", lambda: None)              # the test run's own handlers stay
+    tk = types.SimpleNamespace(close=lambda: closed.append(1))
+    s = types.SimpleNamespace(shell=types.SimpleNamespace(terminal_keys=tk))
+    app_mod.leave(s, 0)
+    assert left == [0] and closed == [1] and any("storage" in t for t in said)
+    stuck = app_mod.Started.__new__(app_mod.Started)
+    stuck.linked, stuck.ds = [types.SimpleNamespace(stuck=False)], types.SimpleNamespace(stuck=True)
+    assert stuck.stuck

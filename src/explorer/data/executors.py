@@ -20,9 +20,43 @@ Latest wins, in two parts (prototype Viewer._series_job and _lt_ready):
 """
 import os
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 
 from ._numba import numba
+
+CLOSE_WAIT_S = 5.0          # closing waits this long at most for what runs (a read blocked on a file on tape)
+
+
+def stop(pools, wait_s: float | None = None) -> bool:
+    """Shut pools down (what is queued is dropped) and wait for what runs, wait_s at most in all (CLOSE_WAIT_S);
+    False when something still runs then: a read blocked on its storage (a file on tape, a stalled mount), which
+    nothing interrupts, whose files must stay open (closed, its descriptor could be another file's when it comes
+    back). The workers are joined through the pool's _threads, CPython's: the one way to wait with a limit."""
+    pools = [p for p in pools if p is not None]
+    for p in pools:
+        p.shutdown(wait=False, cancel_futures=True)
+    end = time.monotonic() + (CLOSE_WAIT_S if wait_s is None else wait_s)
+    done = True
+    for p in pools:
+        for th in list(getattr(p, "_threads", ())):
+            th.join(max(0.0, end - time.monotonic()))
+            done = done and not th.is_alive()
+    return done
+
+
+def drain(pools) -> bool:
+    """What was queued on pools (another cube's) run to its end, CLOSE_WAIT_S at most each: False when one does not
+    come to its turn in that time (a read blocked on its storage before it)."""
+    done = True
+    for p in pools:
+        try:
+            p.submit(lambda: None).result(CLOSE_WAIT_S)
+        except RuntimeError:                            # already shut down: nothing left to run
+            pass
+        except TimeoutError:
+            done = False
+    return done
 
 
 class Generations:
@@ -90,9 +124,9 @@ class Executors:
 
         return gen, (pool or self.numba).submit(run)
 
-    def close(self) -> None:
-        for p in (self.slit, self.background, self.strips, self.io, self.numba):
-            p.shutdown(wait=True, cancel_futures=True)
+    def close(self) -> bool:
+        """Its pools stopped (stop): False when a read still runs on one."""
+        return stop([self.slit, self.background, self.strips, self.io, self.numba])
 
 
 def _set_threads(n: int) -> int:

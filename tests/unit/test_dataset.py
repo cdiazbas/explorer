@@ -175,3 +175,42 @@ def test_positions_outside_the_band_are_refused_with_or_without_a_per_pixel_file
             for at in ([-1], [0, 21]):
                 with pytest.raises(IndexError, match="positions outside a band of 3 rows of 7"):
                     r.band_values([(0, 1, 2)], 2, 5, at)
+
+
+
+def test_closing_does_not_wait_for_ever_for_a_read_blocked_on_its_storage(tmp_path, monkeypatch):
+    """A pread blocked on a file on tape (StorNext HSM) or a stalled mount cannot be interrupted, and close() waited
+    for it: the window went and the process and its terminal stayed until the recall came back, minutes. close()
+    waits a few seconds at most; a read still blocked then keeps its files open (closed, the descriptor could be
+    another file's when the read comes back) and the dataset says it is stuck, for the application to leave."""
+    import os
+    import time
+
+    from explorer.data import dataset as ds_mod
+    from explorer.data import executors as ex_mod
+
+    monkeypatch.setattr(ex_mod, "CLOSE_WAIT_S", 0.3, raising=False)
+    p = synth.write_dataset(tmp_path, "c", shape=(2, 4, 3, 16, 12), icube=False)["im"]
+    d = ds_mod.Dataset.open(p, no_sp=True)
+    real = os.pread, os.preadv
+    blocked = {"n": 0}
+
+    def slow(fn):
+        def call(*a):
+            blocked["n"] += 1
+            time.sleep(2.0)
+            return fn(*a)
+        return call
+    monkeypatch.setattr(os, "pread", slow(real[0]))
+    monkeypatch.setattr(os, "preadv", slow(real[1]))
+    d.image((1, 2, 2))
+    time.sleep(0.2)
+    assert blocked["n"]
+    t0 = time.perf_counter()
+    d.close()
+    took = time.perf_counter() - t0
+    assert took < 1.5, f"close() took {took:.1f} s"
+    assert d.stuck
+    monkeypatch.setattr(os, "pread", real[0])
+    monkeypatch.setattr(os, "preadv", real[1])
+    time.sleep(2.2)                                     # the blocked read comes back on a descriptor still its own

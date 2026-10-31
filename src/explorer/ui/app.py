@@ -102,6 +102,11 @@ class Started:
         self.ds.close()
         self.disp.close()
 
+    @property
+    def stuck(self) -> bool:
+        """A cube closed with a read still blocked on its storage (Dataset.close): its thread would hold the exit."""
+        return any(getattr(d, "stuck", False) for d in [*self.linked, self.ds])
+
 
 TRACES = ("EXPLORER_GEOMETRY_TRACE", "EXPLORER_BRIDGE_TRACE")      # what --log turns on (ui.geomtrace, xbridge.trace)
 
@@ -406,9 +411,32 @@ def run(path, *, sp=None, no_sp=False, axes=None, x11="auto", theme=None, look=N
               traces=traces, linked=linked, mask=mask, series=series)
     if s is None:
         return 1
+    code = 1
     try:
         if quit_after is not None:
             s.shell.after_first_image(quit_after, s.app.quit)
-        return s.app.exec()                             # 1 when the X display went away under the bridge
+        code = s.app.exec()                             # 1 when the X display went away under the bridge
+        return code
     finally:
         s.close()
+        if s.stuck:
+            leave(s, code)
+
+
+def leave(s: Started, code: int) -> None:
+    """Out now, without the reads still blocked on their storage (a file on tape, a stalled mount): nothing
+    interrupts them and their threads would hold the exit until the storage answers, minutes, the terminal with
+    them. Said; the terminal given back and the log flushed first, as at a normal exit."""
+    import logging
+
+    say.warn("a read is still waiting for its storage (a file on tape?): leaving without it")
+    tk = getattr(s.shell, "terminal_keys", None)
+    if tk is not None:
+        tk.close()
+    logging.shutdown()
+    for f in (sys.stdout, sys.stderr):
+        try:
+            f.flush()
+        except (OSError, ValueError, AttributeError):
+            pass
+    os._exit(code)

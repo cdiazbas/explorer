@@ -26,7 +26,7 @@ from ..obs import get_logger, span
 from . import axes as _axes
 from . import formats
 from .cache import FrameCache
-from .executors import Executors
+from .executors import Executors, drain, stop
 from .formats.layout import spatial_lead
 from .io import Closing, FrameReader, PerPixelFrames, SeriesReader, VariablesReader
 from .masking import stokes_axis
@@ -137,6 +137,7 @@ class Dataset(Closing):
         one snapshot's."""
         self.executors: Executors | None = None
         self._own_executors = executors is None
+        self.stuck = False                              # closed with a read still blocked on its storage (close)
         self._io = ThreadPoolExecutor(IO_THREADS, thread_name_prefix="io")
         if variables is not None:
             snap = formats.variables_layout(variables)
@@ -382,24 +383,25 @@ class Dataset(Closing):
             self.frames.abort()
 
     def close(self) -> None:
-        """Abort the reads in flight and stop the pools (queued reads are dropped), then close the files."""
+        """Abort the reads in flight and stop the pools (queued reads are dropped), then close the files. A read
+        that still runs after executors.CLOSE_WAIT_S (blocked on a file on tape, a stalled mount) is left to run: its
+        files stay open and stuck says so, for the application to leave without waiting for it."""
         self.abort()
+        pools = [getattr(self, name, None) for name in ("_images", "_slab_pool", "_io")]
+        ok = stop(pools)
         for name in ("_images", "_slab_pool", "_io"):
-            p = getattr(self, name, None)
-            if p is not None:
-                p.shutdown(wait=True, cancel_futures=True)
-                setattr(self, name, None)
+            setattr(self, name, None)
         if self.executors is not None:
             if self._own_executors:
-                self.executors.close()
+                ok = self.executors.close() and ok
             else:                                       # another cube's: what this one queued there runs first,
                 ex = self.executors                     # while its files are open (closed under it: ShortRead)
-                for p in (ex.numba, ex.background, ex.slit):
-                    try:
-                        p.submit(lambda: None).result()
-                    except RuntimeError:                # already shut down: nothing left to run
-                        pass
+                ok = drain([ex.numba, ex.background, ex.slit]) and ok
             self.executors = None
+        if not ok:
+            self.stuck = True
+            log.warning("%s: a read still waits for its storage (a file on tape?): its files left open", self.path)
+            return
         if getattr(self, "slit_cache", None) is not None:
             self.slit_cache.clear()
         sp = getattr(self, "pixel", None)
