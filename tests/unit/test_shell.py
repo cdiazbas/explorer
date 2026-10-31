@@ -225,3 +225,78 @@ def test_a_frame_not_read_is_said_and_the_wait_for_a_first_image_that_failed_sto
     finally:
         w.close()
         ds.close()
+
+
+def test_the_first_image_s_work_runs_once_when_a_second_image_comes_meanwhile(qapp, cube, monkeypatch):
+    """first_image() ran processEvents() before marking itself done: a second image handed over in that pass called
+    it again, and the work after the first image (the update check, the per-pixel sheet, quit_after) ran twice, the
+    line twice, and the time to the first image took in the nested work."""
+    from PySide6 import QtWidgets
+
+    from explorer.data.dataset import Dataset
+    from explorer.ui import shell as shell_mod
+    from explorer.ui.shell import Shell
+
+    ds = Dataset.open(cube)
+    w = Shell(ds)
+    ran: list[int] = []
+    w.after_first_image(0, lambda: ran.append(1))
+    orig = QtWidgets.QApplication.processEvents
+    nested = {"done": False}
+
+    def process(*a):
+        if not nested["done"]:
+            nested["done"] = True
+            w.first_image()                             # a second image's sink, in the same pass
+        return orig(*a)
+    monkeypatch.setattr(shell_mod.QtWidgets.QApplication, "processEvents", staticmethod(process))
+    try:
+        w.resize(640, 480)
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        monkeypatch.setattr(shell_mod.QtWidgets.QApplication, "processEvents", staticmethod(orig))
+        spin(qapp, lambda: False, 0.3)
+        assert ran == [1]
+    finally:
+        w.close()
+        ds.close()
+
+
+def test_the_link_probe_waits_for_the_first_image(qapp, cube, monkeypatch):
+    """The probe started 1.5 s after the window, the first image and panels often still on their way over a slow
+    link: its 4 MB shared the channel, the rate came out low, and it was taken for the whole session (the playback
+    rate capped, the panels held). It starts after the first image."""
+    from concurrent.futures import Future
+
+    from explorer.data.dataset import Dataset
+    from explorer.platform import linkprobe
+    from explorer.platform.display import LinkInfo
+    from explorer.ui.shell import Shell
+
+    calls: list[float] = []
+    monkeypatch.setattr(linkprobe, "measure", lambda: calls.append(time.perf_counter()) or {"MBps": 50.0,
+                                                                                           "rtt_ms": 5.0})
+    ds = Dataset.open(cube)
+    orig = ds.image
+    held: list = []
+
+    def image(idx, request=None):
+        f = Future()
+        held.append((f, orig(idx, request)))
+        return f
+    ds.image = image
+    w = Shell(ds)
+    try:
+        w.resize(640, 480)
+        w.show()
+        w.start_link_probe(LinkInfo(bytes_per_px=4.0, fps_cap=None))
+        spin(qapp, lambda: False, 2.2)                  # past the 1.5 s it waited, no image yet
+        assert not calls, "measured before the first image"
+        ds.image = orig
+        for f, real in held:
+            f.set_result(real.result(10))
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        assert spin(qapp, lambda: bool(calls), 5.0)
+    finally:
+        w.close()
+        ds.close()

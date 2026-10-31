@@ -74,6 +74,7 @@ CASCADE = 28               # px each detached image is moved down and left when 
 WIDTHS_MS = 150            # the images share the window's width this long after its size last changed
 SLIT_FLOAT_H = 320          # px: the slit panel floating below lambda-t in glass (the prototype's look_glass.py:615)
 SP_SHEET_WIDTH = 560        # px: the sheet over a per-pixel file alone, its paragraphs wrapped to this
+LINK_PROBE_S = 1.5          # s: the link probe, after the first image (start_link_probe)
 TOAST_MS, FADE_MS = 2000, 500  # a save's note over the slit panel: shown, of which fading
 GAMMA_NOTE_MS = 1000        # gamma on the image's colour key after G, Shift+G, Ctrl+G
 CONTINUUM_NOTE_MS = 10000   # the continuum chosen from the sample, on the status line (core.scheduler _choose_cont)
@@ -82,6 +83,7 @@ UPDATE_NOTE_MS, UPDATE_FADE_MS = 6000, 1000     # the note that a newer version 
 UPDATE_NOTE = f"A newer {APP_NAME} is available: run <b>{APP_NAME} update</b> in a terminal"
 UPDATE_NOTE_AGED = (f"Your {APP_NAME} is from {{since}}; a newer one is available: run <b>{APP_NAME} update</b> in a "
                     "terminal")         # since: HEAD's commit date, update_check.day_text
+
 
 
 class _Follow(QtCore.QObject):
@@ -182,6 +184,7 @@ class Shell(QtWidgets.QMainWindow):
         self._not_read: set[tuple] = set()              # (cube, frame) said on the terminal (frame_not_read)
         self.breakdown: tuple | None = None
         self._after_first: list = []
+        self._first_seen = False                        # first_image entered (first_image_s is set after it draws)
         self.loop = QtLoop(self)
         self.session = Session(self.loop, dataset)
         members = [self.session.add(ds) for ds in linked]
@@ -1316,9 +1319,10 @@ class Shell(QtWidgets.QMainWindow):
             say.info(str(msg))
 
     def start_link_probe(self, link) -> None:
-        """Over a remote X display: the link measured in the background 1.5 s after start (so it does not compete
-        with the start-up's traffic), and the default rate set to 60 % of it over one image, unless the rate was
-        already changed; the prototype's start_link_probe. link: the Display's LinkInfo (bytes per image pixel,
+        """Over a remote X display: the link measured in the background LINK_PROBE_S after the first image (so it
+        does not compete with the start-up's traffic: the first image and its panels), and the default rate set to
+        60 % of it over one image, unless the rate was already changed; the prototype's start_link_probe. link: the
+        Display's LinkInfo (bytes per image pixel,
         the rate not to go above)."""
         import threading
 
@@ -1356,7 +1360,7 @@ class Shell(QtWidgets.QMainWindow):
             th.start()
             QtCore.QTimer.singleShot(100, apply)
 
-        QtCore.QTimer.singleShot(1500, start)
+        self.after_first_image(LINK_PROBE_S, start)
 
     def start_update_check(self, about=None) -> None:
         """The version for the ? sheet and whether origin has a newer one (update_check.about: git takes ~70 ms, the
@@ -1950,8 +1954,9 @@ class Shell(QtWidgets.QMainWindow):
             say.warn(text)
 
     def first_image(self) -> None:
-        if self.first_image_s is not None:
+        if self.first_image_s is not None or self._first_seen:
             return
+        self._first_seen = True                         # before processEvents: a second image there comes in again
         if self.waiting is not None:                    # no more "still reading the first image" lines
             self.waiting.stop()
         QtWidgets.QApplication.processEvents()          # on screen, not only handed to Qt
