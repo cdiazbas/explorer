@@ -78,6 +78,8 @@ class Sink(Protocol):
 
     def image(self, idx: tuple, img: np.ndarray, levels: tuple[float, float]) -> None: ...
 
+    def image_failed(self, idx: tuple, error: BaseException) -> None: ...             # the frame at idx not read
+
     def spectra(self, spec: np.ndarray, pixel: tuple[int, int], t: int) -> None: ...     # (ns, nl)
 
     def lambda_t(self, lt: np.ndarray, pixel: tuple[int, int], s: int, levels: tuple[float, float]) -> None: ...
@@ -352,11 +354,13 @@ class Scheduler:
     def _image_ready(self, g: int, idx: tuple, fut: Future) -> None:
         if self._closed or fut.cancelled():            # closing: nothing more to show nor to read ahead
             return
-        if fut.exception() is not None:
-            log.warning("image %s not read: %r", idx, fut.exception())
+        err = fut.exception()
+        if err is not None:
+            log.warning("image %s not read: %r", idx, err)
             counter("core.image.failed")
-            return
-        if self.shown.accept("image", g):
+            if not self.gens.stale("image", g):        # the frame asked for now: said; its panels go on below
+                self.sink.image_failed(idx, err)
+        elif self.shown.accept("image", g):
             self.img, self.img_idx = fut.result(), idx
             self._show_image()
             due = self._fix_due

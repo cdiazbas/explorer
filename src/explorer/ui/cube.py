@@ -58,6 +58,9 @@ class CubeSink:
         c.view.set_image(img, levels, gamma=c.gamma_now(), centred=c.session.centred(c.k, s))
         self.cube.paint_colour()
 
+    def image_failed(self, idx, error):
+        self.cube.shell.frame_not_read(self.cube.k, idx, error)
+
     def spectra(self, spec, pixel, t):
         if self.cube.spectra is not None:
             self.cube.spectra.show(spec)

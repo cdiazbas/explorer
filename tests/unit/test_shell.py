@@ -1,5 +1,6 @@
 """The window, offscreen: the first image, the keys, the mouse and the crosshair, Stokes keys without t, and
 `explorer cube.fits --quit-after` end to end."""
+import threading
 import time
 
 import numpy as np
@@ -170,3 +171,57 @@ def test_the_last_of_two_quick_moves_moves_the_cursor(shell):
 def test_one_cube_has_no_entry_to_detach_cubes(shell):
     w, _ = shell
     assert w.detach_action is None and not w.linked
+
+
+class _Waiting:
+    def __init__(self):
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+
+def test_a_frame_not_read_is_said_and_the_wait_for_a_first_image_that_failed_stops(qapp, cube, monkeypatch):
+    """A frame that could not be read showed nothing: the old image stayed under the new t with no word; and when it
+    was the first image, the terminal's "still reading the first image" lines and their stall warning went on for
+    ever. The status line says it, the terminal once per frame, and the waiting lines stop."""
+    from concurrent.futures import Future
+
+    from explorer.data.dataset import Dataset
+    from explorer.obs import say
+    from explorer.ui.shell import Shell
+
+    said: list[str] = []
+    monkeypatch.setattr(say, "warn", said.append)
+    ds = Dataset.open(cube)
+    orig = ds.image
+    broken = {"all": True}
+
+    def image(idx, request=None):
+        if idx[0] == 1 or broken["all"]:                # failing a moment later, as a read from the disk does
+            f = Future()
+            threading.Timer(0.05, f.set_exception, (OSError(5, "Input/output error"),)).start()
+            return f
+        return orig(idx, request)
+    ds.image = image
+    w = Shell(ds)
+    w.waiting = waiting = _Waiting()
+    try:
+        w.resize(640, 480)
+        w.show()
+        assert spin(qapp, lambda: waiting.stopped)                     # the first image failed: no more waiting
+        assert "not read" in w.statusBar().currentMessage() and w.first_image_s is None
+        broken["all"] = False
+        w.session.set_index("t", 2)
+        assert spin(qapp, lambda: w.first_image_s is not None)
+        w.session.set_index("t", 1)
+        assert spin(qapp, lambda: "not read" in w.statusBar().currentMessage())
+        n = len(said)
+        w.session.set_index("t", 2)
+        qapp.processEvents()
+        w.session.set_index("t", 1)
+        assert spin(qapp, lambda: "not read" in w.statusBar().currentMessage())
+        assert len(said) == n                           # on the terminal once per frame
+    finally:
+        w.close()
+        ds.close()

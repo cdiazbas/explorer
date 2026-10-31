@@ -145,6 +145,9 @@ class Recorder:
     def cleared(self, pixel):
         pass
 
+    def image_failed(self, idx, error):
+        pass
+
     def grid_image(self, s, idx, img, levels):
         pass
 

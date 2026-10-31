@@ -46,6 +46,9 @@ class Recorder:
     def units(self, iscale):
         pass
 
+    def image_failed(self, idx, error):
+        self.calls.append(("image_failed", idx, error))
+
     def kinds(self):
         return [c[0] for c in self.calls]
 
@@ -455,3 +458,34 @@ def test_a_linked_cubes_hidden_spectra_cost_nothing_until_shown(cube, tmp_path, 
         finally:
             for s in scheds:
                 s.close()
+
+
+def test_a_frame_not_read_is_said_and_the_panels_of_its_t_still_come(cube):
+    """A read that failed (a series' truncated file, EIO on StorNext, a tape recall that failed) was logged and
+    nothing else: the slider and the status line said the new t over the old image, and the spectra and lambda-t of
+    that t, which wait for its image, were never asked for. The sink is told, and the panels go on."""
+    d, data = cube
+    ds = Dataset.open(d["im"], no_sp=True)
+    sess = Session(ManualLoop(), ds)
+    rec = Recorder()
+    sched = Scheduler(sess, rec)
+    try:
+        settle(sched)
+        orig = ds.image
+
+        def image(idx, request=None):
+            if idx[0] == 1:
+                f = cf.Future()
+                f.set_exception(OSError(5, "Input/output error"))
+                return f
+            return orig(idx, request)
+        ds.image = image
+        rec.calls.clear()
+        sess.set_index("t", 1)
+        settle(sched)
+        failed = [c for c in rec.calls if c[0] == "image_failed"]
+        assert len(failed) == 1 and failed[0][1][0] == 1 and isinstance(failed[0][2], OSError), rec.calls
+        assert any(c[0] == "spectra" and c[2] == 1 for c in rec.calls), rec.kinds()
+    finally:
+        sched.close()
+        ds.close()

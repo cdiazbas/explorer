@@ -29,6 +29,7 @@ class Shown:
     image: np.ndarray | None = None
     image_idx: tuple | None = None
     image_levels: tuple | None = None
+    image_failed: tuple | None = None                   # (idx, error) of the last frame not read
     spectra: np.ndarray | None = None                   # in the plots' units
     spectra_at: tuple | None = None                     # (pixel, t)
     lambda_t: np.ndarray | None = None
@@ -155,6 +156,10 @@ class _Recorder:
     def image(self, idx, img, levels):
         self.s.image, self.s.image_idx, self.s.image_levels = img, tuple(idx), levels
         self._count("image")
+
+    def image_failed(self, idx, error):
+        self.s.image_failed = (tuple(idx), error)
+        self._count("image_failed")
 
     def grid_image(self, s, idx, img, levels):
         self._count("grid_image")                      # the 2x2 view: only counted here

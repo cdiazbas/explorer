@@ -179,6 +179,7 @@ class Shell(QtWidgets.QMainWindow):
         self.first_image_s: float | None = None
         self.first_image_line: str | None = None       # where the time to it went (explorer.log)
         self.waiting: Waiting | None = None             # ui.app's lines while the start waits
+        self._not_read: set[tuple] = set()              # (cube, frame) said on the terminal (frame_not_read)
         self.breakdown: tuple | None = None
         self._after_first: list = []
         self.loop = QtLoop(self)
@@ -1934,6 +1935,19 @@ class Shell(QtWidgets.QMainWindow):
             self.statusBar().setVisible(self.diagnostics)
         if self.diagnostics:
             self.sys_status.setText(diagnostics_text(self.dataset))
+
+    def frame_not_read(self, k: int, idx: tuple, error: BaseException) -> None:
+        """A frame of cube k that could not be read: said on the status line, and on the terminal once per frame (a
+        playback through a broken file would say it at every pass); the image stays the one before. The first
+        image's waiting lines stop: what they wait for will not come."""
+        if self.waiting is not None and self.first_image_s is None:
+            self.waiting.stop()
+        text = (f"{self.cubes[k].name}: frame {tuple(idx)} not read ({type(error).__name__}: {error}); the image "
+                f"shows the one before")
+        self.statusBar().showMessage(text, 10000)
+        if (k, tuple(idx)) not in self._not_read:
+            self._not_read.add((k, tuple(idx)))
+            say.warn(text)
 
     def first_image(self) -> None:
         if self.first_image_s is not None:
