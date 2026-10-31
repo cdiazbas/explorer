@@ -335,6 +335,36 @@ def test_the_release_point_sets_the_size(qapp, win):
     assert w.width() == g0.width() + 300
 
 
+def test_a_drag_whose_release_was_lost_ends_at_the_next_move(qapp, win):
+    """A drag ended only at a release: one that went elsewhere (Cmd+Tab, Mission Control or a Space switch while
+    XQuartz, which cannot move a window for us, had the drag) left the window glued to the pointer over the bar,
+    and the resize eating every move over the window, the next click resizing it. A move with no button held ends
+    the drag, as the image's gestures do: a move of the bar is dropped, a resize taken where it was last."""
+    from PySide6 import QtCore
+
+    w, bar, _ops = win
+    E = QtCore.QEvent.Type
+    B = QtCore.Qt.MouseButton
+    p0, at = w.pos(), QtCore.QPoint(bar.width() // 2, 10)
+    mouse(qapp, bar, E.MouseButtonPress, at, B.LeftButton, B.LeftButton)
+    mouse(qapp, bar, E.MouseMove, at + QtCore.QPoint(40, 25), None, B.LeftButton)
+    moved = w.pos()
+    mouse(qapp, bar, E.MouseMove, at + QtCore.QPoint(90, 60), None, B.NoButton)      # its release never came
+    assert w.pos() == moved and w.pos() == p0 + QtCore.QPoint(40, 25)
+    rz = bar.resizer
+    g0 = w.geometry()
+    p = QtCore.QPoint(w.width() - 2, w.height() // 2)
+    gp = w.mapToGlobal(p)
+    assert rz.mouse(E.MouseButtonPress, p, gp, B.LeftButton)
+    rz.mouse(E.MouseMove, p, gp + QtCore.QPoint(60, 0), B.LeftButton)
+    rz._timer.timeout.emit()                            # the outline drawn: what was pending taken by it
+    eaten = rz.mouse(E.MouseMove, p, gp + QtCore.QPoint(200, 0), B.NoButton)        # its release never came
+    qapp.processEvents()
+    assert not eaten and rz._drag is None
+    assert w.width() == g0.width() + 60                 # where it was last held
+    assert rz.outline is None or not any(b.isVisible() for b in rz.outline.bars)
+
+
 def test_a_button_in_the_band_keeps_its_clicks(win):
     from PySide6 import QtCore
 

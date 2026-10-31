@@ -193,6 +193,8 @@ class TitleBar(QtWidgets.QWidget):
 
     def mouseMoveEvent(self, e):
         self._set_hover(self._over_lights(e.position()))
+        if self._drag and not e.buttons() & Qt.MouseButton.LeftButton:
+            self._drag = None                           # its release went elsewhere (another application, a Space)
         if self._drag:
             g0, p0 = self._drag
             gp = e.globalPosition().toPoint()
@@ -411,6 +413,7 @@ class EdgeResizer(QtCore.QObject):
         self._drag: tuple | None = None
         self._cursor = None
         self._pending = None
+        self._held: QtCore.QRect | None = None         # the last size a drag held (a lost release ends there)
         self._timer = QtCore.QTimer(self, singleShot=True, interval=25)
         self._timer.timeout.connect(self._apply)
         self.live = os.environ.get(RESIZE_ENV) == "live"
@@ -455,8 +458,14 @@ class EdgeResizer(QtCore.QObject):
     def mouse(self, kind, pos, gpos, buttons):
         """True when the event is the resize's, so nothing below gets it."""
         if kind == E.MouseMove:
+            if self._drag and not buttons & Qt.MouseButton.LeftButton:
+                self._drag = None                       # its release went elsewhere: ended where it was last held
+                self._timer.stop()
+                self._pending = self._held
+                self._apply(final=True)
+                return False
             if self._drag:
-                self._pending = self._rect(gpos)
+                self._pending = self._held = self._rect(gpos)
                 if not self._timer.isActive():
                     self._timer.start()
                 return True
@@ -469,6 +478,7 @@ class EdgeResizer(QtCore.QObject):
                 return False
             if not self.m.begin_resize(edges):
                 self._drag = (edges, QtCore.QPoint(gpos), self.w.geometry())
+                self._held = None
                 paint = getattr(self.outline, "colours", None)
                 if paint is not None:                       # the X server's: the look as it is now
                     paint(*outline_colours(self.w))
