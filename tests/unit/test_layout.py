@@ -102,6 +102,23 @@ def test_another_schema_is_discarded(qapp, store):
     b.close()
 
 
+@pytest.mark.parametrize("value", ["garbage", ["1", "2"], "7"])
+def test_a_layout_value_of_another_type_is_as_none(qapp, store, value):
+    """QSettings gives back what the file says: a hand-edited "geometry=garbage", or another tool's INI under
+    EXPLORER_LAYOUT, read as a str or a list, and restoreGeometry and restoreState raised TypeError at every start
+    until --reset-layout. Anything but bytes is as no layout: the first window's geometry."""
+    st = QtCore.QSettings(store.path, QtCore.QSettings.Format.IniFormat)
+    st.setValue(store.geometry_key, value)
+    st.setValue(store.state_key, value)
+    st.sync()
+    b = window(qapp)
+    try:
+        assert not store.restore(b, qapp)
+        assert b.width() > 0 and b.height() > 0
+    finally:
+        b.close()
+
+
 def test_forget_starts_fresh(qapp, store):
     from explorer.ui import docks
 
@@ -246,3 +263,14 @@ def test_the_slit_tab_choice_is_kept_per_way_of_displaying(qapp, store):
     lk.save(w, slit_tabs=True)
     assert lk.slit_tabs() is True
     w.close()
+
+
+
+def test_the_values_read_back_take_only_what_they_can_be():
+    """The linked cubes' windows read their state and widths from the same file: a str state raised in
+    restoreState, a width that is no number in int()."""
+    from explorer.ui.layout import as_bytes, as_int
+
+    assert as_bytes(QtCore.QByteArray(b"x")) == QtCore.QByteArray(b"x") and as_bytes(b"x") == b"x"
+    assert as_bytes("garbage") is None and as_bytes(["1"]) is None and as_bytes(None) is None
+    assert as_int("320") == 320 and as_int(None) == 0 and as_int("abc") == 0 and as_int("", 5) == 5

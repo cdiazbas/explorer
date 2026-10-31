@@ -38,7 +38,7 @@ from ..look import ENV_OFF, LOOKS, get_look
 from ..look.colormaps import ColormapRegistry
 from ..obs import failed, get_logger, say
 from ..obs.waiting import Waiting
-from . import docks, glass, icons, overlays, pens, style, titlebar
+from . import docks, glass, icons, layout, overlays, pens, style, titlebar
 from .actions import ActionRegistry, KeySheet, mod_key, per_pixel_sheet_html
 from .cards import MacSeams, Rounder
 from .cube import IMAGE_TIP, CubeSink, CubeView, card_colour, reticle_colour
@@ -1159,15 +1159,15 @@ class Shell(QtWidgets.QMainWindow):
             if not (flag(kept.get(f"{c.k}/windowed")) and c.dock.isFloating()):
                 continue
             c.as_window(True)
-            state = kept.get(f"{c.k}/state")
+            state = layout.as_bytes(kept.get(f"{c.k}/state"))
             if state:
                 c.frame.restoreState(state)
             for p in c.panes.values():
                 if p.isHidden():
                     p.show()
         if any(c.windowed for c in self.linked):
-            self._detached_width = int(kept.get("room") or 0)
-            self._detached_spec_w = int(kept.get("spec_w") or 0)
+            self._detached_width = layout.as_int(kept.get("room"))
+            self._detached_spec_w = layout.as_int(kept.get("spec_w"))
         self._detached_changed()
 
     def _cube_moved(self, floating: bool) -> None:

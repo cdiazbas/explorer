@@ -34,6 +34,21 @@ def layout_path() -> str:
     return os.environ.get(ENV) or str(config_dir() / "layout.ini")
 
 
+
+def as_bytes(v):
+    """A saved geometry or state as QSettings gives it back, or None: what the file says is read as it is, and a
+    hand edit or another tool's INI gives a str or a list, which restoreGeometry and restoreState refuse with
+    TypeError (a QByteArray of the wrong bytes only returns False)."""
+    return v if isinstance(v, (QtCore.QByteArray, bytes, bytearray)) else None
+
+
+def as_int(v, default: int = 0) -> int:
+    """A saved whole number (an INI file gives it back as text), or default for anything else."""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
 class LayoutStore:
     def __init__(self, kind: str, path: str | None = None, linked: bool = False):
         self.base, self.linked = kind, linked
@@ -110,7 +125,7 @@ class LayoutStore:
         from . import docks
 
         st = self._settings()
-        g, s = st.value(self.geometry_key), st.value(self.state_key)
+        g, s = as_bytes(st.value(self.geometry_key)), as_bytes(st.value(self.state_key))
         ok = bool(g) and window.restoreGeometry(g)
         if ok:                                          # e.g. saved when two monitors were taken as one screen
             f = window.frameGeometry()
