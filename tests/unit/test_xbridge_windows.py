@@ -197,3 +197,43 @@ def test_a_manager_that_starts_after_the_viewer_is_used():
     me = SimpleNamespace(windows=ws, c=c)
     Bridge._property(me, None, SimpleNamespace(window=c.screen.root, atom=50, time=0, state=0))
     assert ws.wm_supports("_NET_ACTIVE_WINDOW")
+
+
+
+def test_a_submenu_closing_gives_the_pointer_back_to_its_menu(qapp):
+    """Each popup grabs the pointer on its own window; X ends a grab when its window goes, and the menu under a
+    closed submenu was left without it (a click outside no longer closed it, its hover stopped). The pointer is
+    grabbed again for the popup that is left."""
+    from PySide6 import QtWidgets
+
+    from explorer.platform.xbridge.windows import Windows, XWin
+
+    calls: list = []
+
+    class C(FakeX):
+        def grab_pointer(self, xid, mask, owner_events=False):
+            calls.append(("grab", xid))
+
+        def ungrab_pointer(self, t):
+            calls.append(("ungrab",))
+
+        def destroy_window(self, xid):
+            calls.append(("destroy", xid))
+
+        def flush(self):
+            pass
+
+    ws = Windows(C())
+    menu, sub = QtWidgets.QWidget(), QtWidgets.QWidget()
+    for w, xid in ((menu, 20), (sub, 21)):
+        rec = XWin(w, xid, popup=True, owner=None)
+        rec.grab = True
+        ws.by_widget[w] = rec
+        ws.by_xid[xid] = rec
+    ws.destroy(sub)
+    assert calls == [("destroy", 21), ("grab", 20)], calls
+    calls.clear()
+    ws.destroy(menu)
+    assert calls == [("ungrab",), ("destroy", 20)], calls
+    menu.deleteLater()
+    sub.deleteLater()

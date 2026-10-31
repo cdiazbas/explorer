@@ -334,9 +334,12 @@ class Windows:
         if self.trace is not None:
             self.trace.write("DESTROY", rec.xid, "")
         self.by_xid.pop(rec.xid, None)
-        if rec.grab and not any(r.grab for r in self.by_widget.values()):
+        left = [r for r in self.by_widget.values() if r.grab]
+        if rec.grab and not left:
             self.c.ungrab_pointer(self.xtime)
         self.c.destroy_window(rec.xid)
+        if rec.grab and left:                           # X ends a grab with its window: the popup left (a submenu's
+            self.c.grab_pointer(left[-1].xid, POPUP_GRAB, owner_events=True)    # menu) takes the pointer again
         self.c.flush()
         if self.on_destroyed is not None:
             self.on_destroyed(rec)
