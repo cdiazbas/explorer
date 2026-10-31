@@ -202,3 +202,22 @@ def test_a_shell_it_cannot_write_for_is_told_the_line(tmp_path):
     p = _run(tmp_path, _stand_in(tmp_path), "--link", shell=str(fake))
     assert p.returncode != 0 and "fish_add_path" in p.stderr, p.stderr
     assert _files(home) == {}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a bash script")
+def test_run_from_a_folder_deleted_under_the_terminal_says_so(tmp_path):
+    """Python does not start in a folder that no longer exists (getpath: "failed to make path absolute"), which
+    run.sh read as no environment and told to run setup_env.sh. The real interpreter, from a normal folder, then from
+    one removed while the shell was in it."""
+    run_sh = os.path.join(ROOT, "scripts", "run.sh")
+    env = {**os.environ, "EXPLORER_VENV": sys.prefix}
+    env.pop("DISPLAY", None)
+    ok = subprocess.run(["/bin/bash", run_sh, "--version"], cwd=tmp_path, env=env, capture_output=True, text=True,
+                        timeout=120, stdin=subprocess.DEVNULL)
+    assert ok.returncode == 0 and ok.stdout.startswith("explorer "), ok.stderr
+    gone = tmp_path / "gone"
+    gone.mkdir()
+    r = subprocess.run(["/bin/bash", "-c", f'cd "{gone}" && rmdir "{gone}" && exec /bin/bash "{run_sh}" --version'],
+                       env=env, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
+    assert r.returncode == 1 and "the current folder no longer exists" in r.stderr, r.stderr
+    assert "no environment" not in r.stderr

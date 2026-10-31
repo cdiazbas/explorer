@@ -9,6 +9,10 @@
 # - more reader threads than cores: scattered reads wait on the disk, not on the CPU.
 # Relative paths in the arguments are relative to where you call it from. It may be called through a link (the
 # `explorer` command that setup_env.sh --link puts on the PATH): the link is followed to find the code.
+if ! pwd -P >/dev/null 2>&1; then                   # Python cannot start there, and would look like no environment
+  echo "the current folder no longer exists (deleted?): cd to another one and run again" >&2
+  exit 1
+fi
 src="$0"
 while [ -L "$src" ]; do                             # readlink -f is not on every macOS
   dir="$(cd "$(dirname "$src")" && pwd)"
