@@ -25,6 +25,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.levels import RULE_DEFAULT, gamma_step
 from ..data.names import plane_text
+from ..data.stats import above
 from . import glass, style
 from .imageview import CURSOR_PEN
 from .overlays import GAMMA, ColourKey, _sci, draw_text, gamma_font, gamma_number, gamma_text, limits_text
@@ -106,7 +107,7 @@ def axis_range(a: np.ndarray, lo: float, hi: float, sym: bool) -> tuple[float, f
         return -m, m
     p0, p1 = (float(x) for x in np.percentile(a, (0.05, 99.95))) if a.size else (lo, hi)
     a0, a1 = min(p0, lo), max(p1, hi)
-    pad = 0.05 * (a1 - a0) or 1.0
+    pad = 0.05 * (a1 - a0) or above(a1) - a1
     return a0 - pad, a1 + pad
 
 

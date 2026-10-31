@@ -19,18 +19,26 @@ SAMPLE_K = 2.0              # median +- 2 robust sigma per tuning (CRISPEX: mean
 SAMPLE_STEP = 4             # pixels drawn on a 4-px grid: 16x fewer candidates, the same spread
 
 
+def above(a: float) -> float:
+    """An upper level for a range of one value a: a + 1, or a step of its own size where 1 is below the float's
+    resolution (|a| >= 2**53: a + 1 == a, and lo == hi divided by zero in the image kernel)."""
+    a = float(a)
+    return a + max(1.0, abs(a) * 1e-6)
+
+
 def limits(img, symmetric=False, lo=1.0, hi=99.0):
     """Contrast limits from the [::8, ::8] subsample (55 -> 1 ms on a 2k frame): the lo-hi percentiles of the
-    finite, non-zero values; Q U V (symmetric) centred on zero at the hi percentile of |value|."""
+    finite, non-zero values; Q U V (symmetric) centred on zero at the hi percentile of |value|, and -1..1 with no
+    such value (0 the map's middle)."""
     s = img[::8, ::8]
     s = s[np.isfinite(s) & (s != 0)]
     if not s.size:
-        return (0.0, 1.0)
+        return (-1.0, 1.0) if symmetric else (0.0, 1.0)
     if symmetric:
         m = float(np.percentile(np.abs(s), hi))
         return (-m, m) if m > 0 else (-1.0, 1.0)
     a, b = np.percentile(s, (lo, hi))
-    return (float(a), float(b)) if b > a else (float(a), float(a) + 1.0)
+    return (float(a), float(b)) if b > a else (float(a), above(a))
 
 
 def nice_range(lo, hi):

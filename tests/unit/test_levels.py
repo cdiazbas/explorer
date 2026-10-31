@@ -25,7 +25,7 @@ def test_panel_levels_as_the_prototype_lambda_t_and_its_modern_look():
     assert panel_levels(np.full((3, 3), np.nan), False) == (0.0, 1.0)
     assert panel_levels(np.array([[1.0, 3.0]]), False) == (1.0, 3.0)                 # few values: min-max
     assert panel_levels(np.array([[2.0, 2.0]]), False) == (2.0, 3.0)                 # flat
-    assert panel_levels(np.zeros((4, 4)), True) == (0.0, 1.0)                        # |v| all 0: not symmetric
+    assert panel_levels(np.zeros((4, 4)), True) == (-1.0, 1.0)                       # |v| all 0: 0 the middle
 
 
 def test_cache_per_index_and_per_rule():

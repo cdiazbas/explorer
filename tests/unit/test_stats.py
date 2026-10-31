@@ -85,7 +85,8 @@ def test_absmax_equals_numpy_serial_and_in_strips(dtype):
 def test_limits_and_nice_range():
     assert limits(np.full((16, 16), np.nan, np.float32)) == (0.0, 1.0)
     assert limits(np.full((16, 16), 3.0, np.float32)) == (3.0, 4.0)
-    assert limits(np.zeros((16, 16), np.float32), symmetric=True) == (0.0, 1.0)
+    # a signed plane all 0 (V where nothing is polarised): 0 at the map's middle, not at its negative end
+    assert limits(np.zeros((16, 16), np.float32), symmetric=True) == (-1.0, 1.0)
     assert nice_range(0.13, 0.87) == (0.0, 1.0)
     assert nice_range(-3.2, 3.2) == (-4.0, 4.0)
     assert nice_range(5.0, 5.0) == (4.0, 6.0)                         # span |hi| = 5: step 2
@@ -153,3 +154,23 @@ def test_quv_threads_within_the_batch_memory():
     assert quv_threads(4096 * 4096 * 4, 64) == 4                     # 64 MB frames: 256 MB
     assert quv_threads(2048 * 2048 * 4, 64) == 16
     assert quv_threads(2048 * 2048 * 4, 8) == 8
+
+
+@pytest.mark.parametrize("v", [1e17, -3e20, 2.5e16])
+def test_a_constant_frame_of_huge_values_still_gets_two_levels(v):
+    """For |v| >= 2**53, v + 1 == v: a constant frame (a snapshot's number density, a fill value) got lo == hi, and
+    the image kernel divided by zero at every draw; the key's axis had no width either."""
+    from explorer.core.levels import panel_levels
+    from explorer.data.kernels import reduce_u8_serial, reduce_u8_table_serial
+    from explorer.ui.scalekey import axis_range
+
+    a = np.full((16, 16), v, np.float32)
+    lo, hi = limits(a)
+    assert hi > lo
+    plo, phi = panel_levels(a, False)
+    assert phi > plo
+    a0, a1 = axis_range(a[::8, ::8].ravel(), lo, hi, False)
+    assert a1 > a0
+    out = np.empty((16, 16), np.uint8)
+    reduce_u8_serial(a, 0, 0, 1, lo, lo, out)               # lo == hi reaching the kernel: drawn, not raised
+    reduce_u8_table_serial(a, 0, 0, 1, lo, lo, np.zeros(256, np.uint8), out)

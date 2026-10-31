@@ -21,7 +21,7 @@ def reduce_u8_serial(img, y0, x0, f, lo, hi, out):
     # mean of each f x f block of img from (y0, x0), mapped to 1..255 between lo and hi; level 0 is "no data" (NaN
     # padding, or a block that touches it), so a colour table decides how padding looks rather than its first
     # entry (the saturated end of a diverging map). Grey loses one level of 256
-    k = 254.0 / (hi - lo)
+    k = 254.0 / (hi - lo) if hi > lo else 0.0         # one level (a constant frame's): its own, not a fault
     inv = 1.0 / (f * f)
     for i in range(out.shape[0]):
         for j in range(out.shape[1]):
@@ -42,7 +42,7 @@ def reduce_u8_table_serial(img, y0, x0, f, lo, hi, table, out):
     # a power in here cost +145 ms a 2k frame, the table nothing (bellatrix, scratchpad scaling analysis). Level 0
     # is still "no data"; below lo the table's first entry, above hi its last
     n = table.shape[0] - 1
-    k = n / (hi - lo)
+    k = n / (hi - lo) if hi > lo else 0.0
     inv = 1.0 / (f * f)
     for i in range(out.shape[0]):
         for j in range(out.shape[1]):

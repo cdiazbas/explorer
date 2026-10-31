@@ -27,7 +27,7 @@ from concurrent.futures import Future
 
 import numpy as np
 
-from ..data.stats import limits
+from ..data.stats import above, limits
 from ..obs import counter
 
 CACHE = 4096
@@ -103,13 +103,12 @@ def panel_levels(a, symmetric: bool) -> tuple[float, float]:
     """Levels of a lambda-t or a slice along a slit."""
     f = np.asarray(a)[np.isfinite(a)]
     if not f.size:
-        return (0.0, 1.0)
+        return (-1.0, 1.0) if symmetric else (0.0, 1.0)
     if symmetric:
         m = float(np.percentile(np.abs(f), 99))
-        if m > 0:
-            return (-m, m)
+        return (-m, m) if m > 0 else (-1.0, 1.0)        # all 0: 0 the map's middle
     lo, hi = np.percentile(f, (1, 99)) if f.size > 10 else (f.min(), f.max())
-    return (float(lo), float(hi) if hi > lo else float(lo) + 1)
+    return (float(lo), float(hi) if hi > lo else above(lo))
 
 
 class Levels:
