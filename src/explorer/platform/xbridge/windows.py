@@ -428,7 +428,7 @@ class Windows:
                     return
                 if tr is not None:
                     tr.write("WHERE", rec.xid, f"({x}, {y}): applied")
-                apply(rec, x, y, w, h, True)
+                apply(rec, x, y, w, h, True, asked)
             self.c.translate_coordinates(rec.xid, self.scr.root).then(where)
 
     def _check_later(self, rec: XWin, apply) -> None:
@@ -456,7 +456,7 @@ class Windows:
             if self.trace is not None:
                 self.trace.write("CHECK", rec.xid, f"no notice taken {CHECK_MS} ms after the last request: X has "
                                                    f"{rect(x, y, *size)}, applied")
-            apply(rec, x, y, size[0], size[1], True)
+            apply(rec, x, y, size[0], size[1], True, seq)
         self.c.get_geometry(rec.xid).then(got_size)
         self.c.translate_coordinates(rec.xid, self.scr.root).then(got_place)
         self.c.flush()

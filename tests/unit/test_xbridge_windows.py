@@ -63,7 +63,7 @@ def test_where_x_says_is_taken_when_nothing_newer_was_asked(setup):
     ws.configure(rec, x=644, y=25)
     ws.configured(rec, notice(c.seq), lambda *a: applied.append(a))
     c.replies[-1].done(reply_at(644, 25), None)
-    assert applied == [(rec, 644, 25, 560, 341, True)]
+    assert applied == [(rec, 644, 25, 560, 341, True, c.seq)]       # with the request it answers
 
 
 def test_an_answer_older_than_qts_last_request_is_dropped(setup):
@@ -131,3 +131,33 @@ def test_a_notice_past_half_the_16_bit_sequence_is_taken_not_an_echo(setup):
     applied.clear()
     ws.configured(rec, notice((rec.cfg_seq - 1) & 0xFFFF, 1, 2, 3, 4), lambda *a: applied.append(a))
     assert not applied                                  # one generated before our last request: an echo still
+
+
+
+def test_where_x_says_is_dropped_when_qt_asked_again_before_it_is_applied(setup):
+    """The answer of where a framed window is was checked on the reader thread and applied later on Qt's: Qt's
+    queued moves could ask X for a new geometry in between, and the old place was applied, the panel jumping back a
+    step while dragged over a slow link. It is checked again when applied."""
+    from explorer.platform.xbridge.bridge import Bridge
+
+    ws, c, rec, applied = setup
+    queue: list = []
+    stub = SimpleNamespace(windows=SimpleNamespace(get=lambda w: rec, qt_geometry=lambda r: None),
+                           stats={"applied": 0}, post=lambda fn, *a: queue.append((fn, a)))
+    stub._apply_geometry = lambda *a, **k: Bridge._apply_geometry(stub, *a, **k)
+
+    import inspect
+
+    takes = "asked" in inspect.signature(Bridge._apply_geometry).parameters
+
+    def apply(r, x, y, w, h, from_reader=False, asked=None):
+        kw = {"asked": asked} if takes else {}
+        Bridge._apply_geometry(stub, r, x, y, w, h, from_reader, **kw)
+    rec.cfg_seq = c.configure_window(rec.xid)
+    ws.configured(rec, notice(c.seq), apply)            # framed: X is asked where it is
+    c.replies[-1].done(reply_at(40, 50), None)          # the answer, on the reader thread: posted
+    assert len(queue) == 1
+    rec.cfg_seq = c.configure_window(rec.xid)           # Qt asks again before the posted apply runs
+    fn, a = queue.pop()
+    fn(*a)
+    assert stub.stats["applied"] == 0, "the old place applied over the newer request"

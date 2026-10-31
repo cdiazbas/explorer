@@ -621,11 +621,15 @@ class Bridge(QtCore.QObject):
                         hidden[i.y():i.y() + i.height(), i.x():i.x() + i.width()] = True
             self.transport.probe(k, rec.xid, _pixels(img).copy(), hidden)
 
-    def _apply_geometry(self, rec: XWin, x: int, y: int, w: int, h: int, from_reader: bool = False) -> None:
+    def _apply_geometry(self, rec: XWin, x: int, y: int, w: int, h: int, from_reader: bool = False,
+                        asked: int | None = None) -> None:
+        """X's geometry of rec taken by Qt. from_reader: an answer from the reader thread, posted to Qt's; asked: the
+        request it answers, checked again when it is applied (Qt's queued moves may have asked anew in between, and
+        the old place set the window back a step)."""
         if from_reader:
-            self.post(self._apply_geometry, rec, x, y, w, h)
+            self.post(self._apply_geometry, rec, x, y, w, h, False, asked)
             return
-        if self.windows.get(rec.w) is not rec:
+        if self.windows.get(rec.w) is not rec or (asked is not None and rec.cfg_seq != asked):
             return
         self.stats["applied"] += 1
         # what X has now: Qt taking it must not become a request of ours (late notices of a burst of requests set
