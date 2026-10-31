@@ -105,3 +105,18 @@ def test_a_mapping_notice_asks_both_maps_without_waiting_on_qt_s_thread():
     for fn, a in posted:                                # then on Qt's
         fn(*a)
     assert stub.keymap is not None
+
+
+
+def test_alt_and_meta_on_one_modifier_are_alt_and_super_is_meta():
+    """Xorg's usual modifier map puts Meta_L on mod1 with Alt_L and Alt_R, Super on mod4: Alt then gave AltModifier
+    and MetaModifier at once, so a shortcut of Alt and a check for Alt alone failed (none in the window today). As
+    Qt's xcb: a modifier that is Alt is Alt, and Meta is the Super key's."""
+    km = keymap()
+    km.syms[108 - 8] = (0xFFEA, 0, 0, 0)                            # Alt_R
+    km.syms[205 - 8] = (0xFFE7, 0, 0, 0)                            # Meta_L
+    codes = [[50, 0, 0], [0, 0, 0], [37, 0, 0], [64, 108, 205], [77, 0, 0], [0, 0, 0], [133, 0, 0], [92, 0, 0]]
+    rep = bytearray(bytes(32) + bytes(c for row in codes for c in row))
+    rep[1] = 3
+    km.set_modifiers(bytes(rep))
+    assert (km.alt, km.meta) == (MOD1, MOD4)

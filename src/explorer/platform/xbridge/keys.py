@@ -111,6 +111,9 @@ class Keymap:
                     found["mode_switch"] |= 1 << i
                 if LEVEL3 in syms:
                     found["level3"] |= 1 << i
+        # a modifier that is Alt is Alt, even with Meta_L on it (Xorg's usual map: mod1 Alt_L Alt_R Meta_L), and Meta
+        # the others' (Super's): Alt gave Alt and Meta at once (Qt's xcb resolves it the same)
+        found["meta"] &= ~found["alt"]
         for k, v in found.items():                      # the map says it: a modifier it does not have is none
             setattr(self, k, v & ~(MOD_SHIFT | MOD_LOCK | MOD_CONTROL))
 
