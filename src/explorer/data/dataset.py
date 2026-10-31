@@ -107,12 +107,18 @@ class ImagePasses:
                 f.set_exception(e)
             return
         for i, f in self._running:
-            img = got.get(i)
-            if img is None:                                     # cached when asked for: from the cache (read again
-                img = self.cache.get(i)                         # if it was pushed out meanwhile)
-            else:
-                self.cache.put(i, img)
-            f.set_result(img)
+            try:                                                # each its own: one that fails leaves the others
+                img = got.get(i)
+                if img is None:                                 # cached when asked for: from the cache (read again
+                    img = self.cache.get(i)                     # if it was pushed out meanwhile)
+                else:
+                    self.cache.put(i, img)
+            except BaseException as e:                          # ReadAborted when closing, ShortRead
+                if not f.done():
+                    f.set_exception(e)
+                continue
+            if not f.done():
+                f.set_result(img)
 
 
 class Dataset(Closing):

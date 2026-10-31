@@ -368,3 +368,40 @@ def test_closing_stops_a_pass_in_flight(pair, monkeypatch):
     from explorer.data.io import ReadAborted
 
     assert isinstance(fut.exception(timeout=1), ReadAborted)
+
+
+
+def test_a_pass_whose_cache_fails_for_one_image_resolves_every_request():
+    """After a pass, an image that was cached when asked for comes from the cache, read again if it was pushed out
+    meanwhile: that read raising (ReadAborted at close, ShortRead) left the loop, and every later request of the pass
+    stayed RUNNING for ever, its caller waiting. Each request is resolved on its own."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from explorer.data.dataset import ImagePasses
+
+    class Cache:
+        def peek(self, i):
+            return "cached" if i == (0,) else None
+
+        def get(self, i):
+            raise OSError("pushed out, read again: failed")
+
+        def put(self, i, img):
+            pass
+
+    class Frames:
+        def read_many(self, want, join=None):
+            return {(1,): "frame 1"}                    # (0,) was cached when asked for: not read in this pass
+
+    pool = ThreadPoolExecutor(1)
+    try:
+        p = ImagePasses(Cache(), Frames(), pool)
+        a, b = p.image((0,)), p.image((1,))
+        done = threading.Event()
+        pool.submit(done.set)
+        assert done.wait(5)
+        assert a.done() and b.done(), (a, b)
+        assert isinstance(a.exception(), OSError) and b.result() == "frame 1"
+    finally:
+        pool.shutdown(wait=True)
