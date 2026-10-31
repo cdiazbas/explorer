@@ -110,6 +110,7 @@ class Scheduler:
         self.gens, self.shown = Generations(), ShownGate()
         self.img: np.ndarray | None = None              # the image on screen
         self.img_idx: tuple | None = None
+        self._fix_due: tuple[int, bool] | None = None   # (Stokes, refit): the padlock's, until that Stokes' frame
         self.levels = Levels()
         r = self.ds.roles
         self.sizes = {"t": r.nt, "s": r.ns, "l": r.nl}
@@ -358,6 +359,11 @@ class Scheduler:
         if self.shown.accept("image", g):
             self.img, self.img_idx = fut.result(), idx
             self._show_image()
+            due = self._fix_due
+            if due is not None and due[0] != self.state.s:  # its Stokes left before its frame came
+                self._fix_due = None
+            elif due is not None and self._shown_s() == due[0]:
+                self.fix_levels(True, due[1])
             self._start_sample_once()                   # the y-range sample, after the first image and cursor
         if not self.gens.stale("image", g) and self._pending:
             kinds, self._pending = self._pending, set()
@@ -445,9 +451,15 @@ class Scheduler:
         """The image padlock, for its cube's Stokes now (Session.scale), or for Stokes s with img its frame shown (a
         panel of the 2x2 view): on fixes the levels to that frame, by its rule (refit: to its 1-99 percentiles
         again, when already fixed); off gives each image its own again (the default rule). The images are shown
-        again with them."""
+        again with them. Closed while the frame on screen is not of that Stokes yet (a Stokes key, then the padlock
+        before its frame came), or before any frame, the levels are fixed when its frame comes; not if that Stokes is
+        left first."""
         if s is None:
             s, img = self.state.s, self.img
+            self._fix_due = None
+            if on and (img is None or self._shown_s() != s):      # that Stokes' frame not shown yet: fixed by it
+                self._fix_due = (s, refit)
+                return
         if img is None:
             return
         rule = self.session.scale(self.member, s)[0]
@@ -460,6 +472,13 @@ class Scheduler:
         self._show_image()
         if self.grid:
             self._request_grid(self.state)
+
+    def _shown_s(self) -> int | None:
+        """The Stokes of the frame on screen (None before the first)."""
+        if self.img_idx is None:
+            return None
+        a = self.ds.roles.s
+        return int(self.img_idx[a]) if a is not None else 0
 
     def _steps(self, st: ViewState) -> np.ndarray | None:
         """The t steps lambda-t reads and shows (data.tsample), or None: every t."""

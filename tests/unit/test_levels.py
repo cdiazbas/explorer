@@ -105,3 +105,91 @@ def test_the_scheduler_hands_levels_and_fixes_them(tmp_path):
         lts = [g for g in got if g[0] == "lambda_t"]
         assert lts[-1][1] == 3 and lts[-1][2][0] == -lts[-1][2][1]                      # V's lambda-t symmetric
         sched.close()
+
+
+
+def held_reads(ds):
+    """The dataset's image reads held: each read is done at once, its Future handed back only by release(i)."""
+    from concurrent.futures import Future
+
+    orig, pending = ds.image, []
+
+    def image(idx, request=None):
+        f = Future()
+        pending.append((idx, f, orig(idx, request)))
+        return f
+
+    def release(i):
+        _idx, f, real = pending[i]
+        if not f.done():
+            f.set_result(real.result(10))
+    ds.image = image
+    return pending, release
+
+
+def test_the_padlock_fixes_the_stokes_it_is_closed_for_from_that_stokes_frame(tmp_path):
+    """Closed while the frame on screen was another Stokes' (a Stokes key, then the padlock before the new frame came:
+    ~100 ms cold on StorNext, seconds with a per-pixel file alone), V was fixed at I's levels, 40 times too wide. The
+    levels are fixed when V's frame comes; a padlock closed for a Stokes left before its frame came fixes nothing."""
+    from explorer.testing import synth
+    from explorer.testing.driver import Driver
+
+    d = Driver.open(synth.write_dataset(tmp_path, "c", shape=(3, 4, 5, 64, 48), icube=False)["im"], no_sp=True)
+    try:
+        sch, s = d.scheduler, d.session
+        i_frame = sch.img
+        pending, release = held_reads(d.dataset)
+        d.set_stokes(3)
+        d.pump()
+        assert sch.state.s == 3 and sch.img_idx[1] == 0             # V asked, I still on screen
+        d.fix_levels(True)
+        assert s.scale(0, 3)[0] != "fixed"                         # nothing fixed from I's frame
+        for i in range(len(pending)):
+            release(i)
+        d.wait_idle()
+        v = sch.img
+        assert sch.img_idx[1] == 3
+        assert s.scale(0, 3) == ("fixed", *rule_levels(v, s.symmetric(0, 3)))
+        assert s.scale(0, 3)[2] < rule_levels(i_frame, True)[1] / 10              # not I's
+        # closed for U, then back to V before U's frame came: nothing fixed for either
+        s.set_scale(0, 3, "p1")
+        d.set_stokes(2)
+        d.pump()
+        d.fix_levels(True)
+        d.set_stokes(3)
+        d.pump()
+        for i in range(len(pending)):
+            release(i)
+        d.wait_idle()
+        assert s.scale(0, 2)[0] != "fixed" and s.scale(0, 3)[0] != "fixed"
+    finally:
+        d.close()
+
+
+def test_a_padlock_closed_before_the_first_image_fixes_it_when_it_comes(tmp_path):
+    """Closed before any frame was shown (a per-pixel file alone takes seconds for its first image), the padlock showed
+    closed and nothing was fixed: the next click did nothing visible."""
+    from explorer.core.loop import ManualLoop
+    from explorer.core.scheduler import Scheduler
+    from explorer.core.session import Session
+    from explorer.data.dataset import Dataset
+    from explorer.testing import synth
+    from explorer.testing.driver import Shown, _Recorder
+
+    ds = Dataset.open(synth.write_dataset(tmp_path, "c", shape=(3, 4, 5, 64, 48), icube=False)["im"], no_sp=True)
+    pending, release = held_reads(ds)
+    sess = Session(ManualLoop(), ds)
+    sched = Scheduler(sess, _Recorder(Shown()))
+    try:
+        sess.store.loop.pump()
+        assert sched.img is None and pending
+        sched.fix_levels(True)
+        for _ in range(20):
+            for i in range(len(pending)):
+                release(i)
+            sess.store.loop.pump()
+        assert sched.img is not None
+        assert sess.scale(0, 0) == ("fixed", *rule_levels(sched.img, False))
+    finally:
+        sched.close()
+        ds.close()
