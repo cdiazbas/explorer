@@ -14,7 +14,43 @@ from .._name import APP_NAME, ENV_PREFIX
 from .._paths import cache_dir
 from . import say
 
-_FMT = "%(asctime)s %(levelname)s %(name)s [%(threadName)s]: %(message)s"
+_FMT = "%(asctime)s %(process)d %(levelname)s %(name)s [%(threadName)s]: %(message)s"   # the process: sessions at once
+LOG_BYTES, LOG_KEPT = 2 << 20, 5                        # the log is rotated past this size, at a start, these kept
+
+
+def _rotated(path) -> None:
+    """explorer.log moved to .1 (and on, LOG_KEPT kept) when past LOG_BYTES, before a session opens it: sessions at
+    once share the file in append mode, and one never rotates it while another writes (a rotation by size renamed it
+    under them, which went on writing into .1, clobbered at the next)."""
+    try:
+        if os.path.getsize(path) < LOG_BYTES:
+            return
+        for k in range(LOG_KEPT - 1, 0, -1):
+            src = f"{path}.{k}"
+            if os.path.exists(src):
+                os.replace(src, f"{path}.{k + 1}")
+        os.replace(path, f"{path}.1")
+    except OSError:                                     # not there yet, or another session rotating it now
+        pass
+
+
+class _LogFile(logging.FileHandler):
+    """The log file, in append mode. A write that fails (a full disk, a home over its quota) is said once on the
+    terminal and the file left alone from then on: logging's own handleError printed a traceback at every record,
+    burying the user's lines under them."""
+
+    def handleError(self, record) -> None:
+        if self.level > logging.CRITICAL:
+            return
+        self.setLevel(logging.CRITICAL + 1)
+        import sys
+
+        try:
+            err = sys.exc_info()[1]
+            sys.stderr.write(f"{APP_NAME}: the log file {self.baseFilename} cannot be written ({err}): "
+                             "logging to the terminal only\n")
+        except (OSError, ValueError, AttributeError):
+            pass
 _configured = False
 
 
@@ -77,8 +113,8 @@ def setup(console_level=logging.WARNING, file_level=logging.INFO, spec: str | No
         try:
             d = cache_dir() / "logs"
             d.mkdir(parents=True, exist_ok=True)
-            fh = logging.handlers.RotatingFileHandler(d / f"{APP_NAME}.log", maxBytes=2 << 20, backupCount=5,
-                                                      encoding="utf-8")
+            _rotated(d / f"{APP_NAME}.log")
+            fh = _LogFile(d / f"{APP_NAME}.log", mode="a", encoding="utf-8")
             fh.addFilter(_LayerFilter(min(file_level, console_level), levels))
             fh.setFormatter(logging.Formatter(_FMT))
             root.addHandler(fh)

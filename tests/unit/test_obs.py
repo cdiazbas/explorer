@@ -112,3 +112,83 @@ def test_console_keeps_warning_for_unnamed_layers(tmp_path, monkeypatch, capsys)
     err = capsys.readouterr().err
     assert "io debug" in err and "core info" not in err
     obs.setup(to_file=False)
+
+
+
+def _file_handler():
+    import logging
+
+    from explorer._name import APP_NAME
+
+    return next(h for h in logging.getLogger(APP_NAME).handlers if isinstance(h, logging.FileHandler))
+
+
+def test_a_log_file_that_cannot_be_written_says_so_once_not_at_every_line(tmp_path, monkeypatch, capsys):
+    """The file was checked only when its handler was made: a full disk or home quota afterwards had logging print
+    "--- Logging error ---" and a traceback at every record, the user's own lines buried under them."""
+    import logging
+
+    from explorer.obs import log as log_mod
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    log_mod.setup()
+    try:
+        fh = _file_handler()
+
+        class Full:
+            def write(self, _s):
+                raise OSError(28, "No space left on device")
+
+            def flush(self):
+                pass
+        fh.stream = Full()
+        lg = logging.getLogger("explorer.data")
+        for _ in range(3):
+            lg.warning("a line")
+        err = capsys.readouterr().err
+        assert "Logging error" not in err, err[-2000:]
+        assert err.count("cannot be written") == 1, err[-2000:]
+    finally:
+        log_mod.setup(to_file=False)
+
+
+def test_sessions_at_once_share_the_log_without_rotating_it_under_each_other(tmp_path, monkeypatch):
+    """One explorer.log for every session, rotated by size while written: a rotation in one session renamed the file
+    under the others, which went on writing into .1, and the next rotation clobbered it. It is rotated when a
+    session starts, never while one writes; each line says its process."""
+    import logging
+    import os
+
+    from explorer.obs import log as log_mod
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    log_mod.setup()
+    try:
+        fh = _file_handler()
+        assert not isinstance(fh, logging.handlers.RotatingFileHandler)
+        logging.getLogger("explorer.data").warning("from this session")
+        fh.flush()
+        text = open(fh.baseFilename).read()
+        assert str(os.getpid()) in text
+    finally:
+        log_mod.setup(to_file=False)
+
+
+def test_a_trace_pruned_by_another_session_meanwhile_is_passed_over(tmp_path, monkeypatch):
+    """Two sessions with --log pruning at once: a file the other removed between the glob and its stat raised
+    FileNotFoundError in the sort key."""
+    from explorer import _paths
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    d = tmp_path / "explorer" / "logs"
+    d.mkdir(parents=True)
+    for k in range(_paths.KEEP_LOGS + 3):
+        (d / f"bridge-{k}.log").write_text("x")
+    real = type(d).stat
+
+    def stat(self, *a, **kw):
+        if self.name == "bridge-1.log":
+            raise FileNotFoundError(str(self))
+        return real(self, *a, **kw)
+    monkeypatch.setattr(type(d), "stat", stat)
+    assert _paths.trace_log("bridge").name.startswith("bridge-")

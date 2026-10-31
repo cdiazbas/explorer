@@ -22,12 +22,20 @@ def config_dir() -> Path:
 KEEP_LOGS = 30                                          # sessions of each trace kept: the newest
 
 
+def _mtime(p: Path) -> float | None:
+    """p's modification time, None when another session has just removed it (both pruning at once)."""
+    try:
+        return p.stat().st_mtime
+    except OSError:
+        return None
+
+
 def trace_log(kind: str) -> Path:
     """logs/<kind>-<pid>.log in the cache, its folder made; the oldest of that kind beyond KEEP_LOGS removed (with a
     folder of the same name, as the bridge's probes keep their images in), so traces on by default stay bounded."""
     d = cache_dir() / "logs"
     d.mkdir(parents=True, exist_ok=True)
-    old = sorted(d.glob(f"{kind}-*.log"), key=lambda p: p.stat().st_mtime)
+    old = sorted((p for p in d.glob(f"{kind}-*.log") if _mtime(p) is not None), key=lambda p: _mtime(p) or 0.0)
     for p in old[:max(0, len(old) - (KEEP_LOGS - 1))]:
         try:
             p.unlink()
