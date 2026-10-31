@@ -27,6 +27,7 @@ from concurrent.futures import Future
 
 import numpy as np
 
+from ..data.kernels import finite_extremes
 from ..data.stats import above, limits
 from ..obs import counter
 
@@ -104,9 +105,18 @@ def image_levels(img, symmetric: bool) -> tuple[float, float]:
 
 def rule_levels(img, symmetric: bool, rule: str = RULE_DEFAULT) -> tuple[float, float]:
     """The levels of img by a per-frame rule (RULES): the [::8, ::8] subsample's percentiles, Q U V symmetric at the
-    upper one of |value|; the default rule is image_levels itself."""
+    upper one of |value|; min-max the whole frame's (the subsample's clipped a flare kernel, hot pixels, a small
+    umbra in the 63 of 64 pixels it never looks at: the very thing the rule is chosen to avoid); the default rule is
+    image_levels itself."""
     if rule == RULE_DEFAULT:
         return image_levels(img, symmetric)
+    if rule == "minmax":
+        lo, hi, m, n = finite_extremes(np.asarray(img))
+        if not n:
+            return (-1.0, 1.0) if symmetric else (0.0, 1.0)
+        if symmetric:
+            return (-m, m)
+        return (lo, hi) if hi > lo else (lo, above(lo))
     pct = RULES[rule]
     lo, hi = pct if pct is not None else (1.0, 99.0)
     return limits(img, symmetric=symmetric, lo=lo, hi=hi)

@@ -222,3 +222,22 @@ def test_a_late_frame_of_a_stokes_left_is_not_drawn_under_the_stokes_now(tmp_pat
         assert sch.shown_s() == 2
     finally:
         d.close()
+
+
+
+@pytest.mark.parametrize("symmetric", [False, True])
+def test_the_min_max_rule_is_the_whole_frame_s(symmetric):
+    """The key says "Min-max per frame" and "Max |value| per frame", and the levels were the [::8, ::8] subsample's:
+    a flare kernel, hot pixels or a small umbra in the 63 of 64 pixels never looked at were clipped, the very thing
+    the rule is chosen to avoid. It is the frame's own, its padding (NaN, 0) left out as for the other rules."""
+    rng = np.random.default_rng(3)
+    a = rng.normal(1.0, 0.05, (512, 512)).astype(np.float32)
+    a[101:104, 203:206] = 20.0                          # a 3x3 kernel off the subsample's grid
+    a[300, 10] = -15.0
+    a[:, :4] = np.nan                                   # padding
+    a[500:, 500:] = 0.0
+    lo, hi = rule_levels(a, symmetric, "minmax")
+    if symmetric:
+        assert (lo, hi) == (-20.0, 20.0)
+    else:
+        assert (lo, hi) == (-15.0, 20.0)

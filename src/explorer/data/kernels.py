@@ -161,6 +161,26 @@ def absmax_into(A, buf, dtype, scale, pool: ThreadPoolExecutor | None = None, pa
         fu.result()
 
 
+@numba.njit(cache=True, nogil=True)
+def finite_extremes(img):
+    """(min, max, max |value|, how many) of img's finite values off 0: its padding (NaN, 0) left out, as the levels'
+    percentiles leave it out (data.stats.limits). One pass, any 2-D layout."""
+    lo, hi, m, n = np.inf, -np.inf, 0.0, 0
+    for i in range(img.shape[0]):
+        for j in range(img.shape[1]):
+            v = img[i, j]
+            if v != v or v == 0 or v == np.inf or v == -np.inf:
+                continue
+            n += 1
+            if v < lo:
+                lo = v
+            if v > hi:
+                hi = v
+            if abs(v) > m:
+                m = abs(v)
+    return float(lo), float(hi), float(m), n
+
+
 def warm_up() -> None:
     """Load (or compile) the image kernels for the frames a session gives them (ui.imageview, measured on FITS and LP
     cubes): a float32 frame to uint8 bytes, straight and through a read-only gamma table."""
@@ -168,3 +188,4 @@ def warm_up() -> None:
     out = np.zeros((2, 2), np.uint8)
     reduce_u8_serial(img, 0, 0, 2, 0.0, 1.0, out)
     reduce_u8_table_serial(img, 0, 0, 2, 0.0, 1.0, gamma_table(0.5, False), out)
+    finite_extremes(img)
