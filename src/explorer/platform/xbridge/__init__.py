@@ -17,7 +17,7 @@ import os
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING
 
-from ...obs import get_logger, say
+from ...obs import get_logger
 from ..display import Display, LinkInfo, NoDisplay, WindowOps
 from ..plan import DisplayPlan
 
@@ -124,7 +124,7 @@ class BridgeDisplay(Display):
         b = self.bridge
         assert b is not None, "make_app() first"
         b.attach(window)
-        app.aboutToQuit.connect(lambda: say.info(f"xbridge: {b.describe()}"))
+        app.aboutToQuit.connect(lambda: log.info(b.describe()))       # explorer.log only: the bridge's own counts
         return ops
 
     def screen(self) -> BridgeScreen | None:

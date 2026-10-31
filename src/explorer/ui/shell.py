@@ -177,6 +177,7 @@ class Shell(QtWidgets.QMainWindow):
         self.images = 1 + len(linked)                   # side by side (ui.docks: the first window's width)
         self.t0 = time.perf_counter() if t0 is None else t0
         self.first_image_s: float | None = None
+        self.first_image_line: str | None = None       # where the time to it went (explorer.log)
         self.waiting: Waiting | None = None             # ui.app's lines while the start waits
         self.breakdown: tuple | None = None
         self._after_first: list = []
@@ -1305,7 +1306,7 @@ class Shell(QtWidgets.QMainWindow):
                 return
             fps = linkprobe.suggest_fps(res["MBps"], link.bytes_per_px * cw.width() * cw.height(), hi=link.fps_cap)
             fps = self.auto_fps("link", fps) or fps
-            msg = f"X11 link ~{res['MBps']:.0f} MB/s, round trip {res['rtt_ms']:.1f} ms: playback at {fps} fps"
+            msg = f"X11 link {res['MBps']:.0f} MB/s, {res['rtt_ms']:.0f} ms round trip: playback at {fps} fps"
             if self.session.pace.link(res["MBps"]):     # a slow link: the panels at the pace it shows them
                 msg += "; panels at the link's pace"
             self.statusBar().showMessage(msg, 10000)
@@ -1916,7 +1917,8 @@ class Shell(QtWidgets.QMainWindow):
             line += f" ({', '.join(parts)}; {where})"
             if remote:
                 line += "; over X11 the pixels may still be on their way to the screen"
-        say.info(line)
+        self.first_image_line = line                    # explorer.log only: where the time went is for developers
+        log.info(line)
         for seconds, fn in self._after_first:
             QtCore.QTimer.singleShot(int(seconds * 1000), fn)
         QtCore.QTimer.singleShot(1000, self.cap_fps_by_frames)     # the frames read ahead by then counted too

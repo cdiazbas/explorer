@@ -41,7 +41,7 @@ def shell(qapp, cube):
 
 
 @pytest.mark.parametrize("ssh, said", [(False, False), (True, True)])
-def test_the_first_image_line_says_over_ssh_only_over_ssh(qapp, cube, capsys, ssh, said):
+def test_the_first_image_line_says_over_ssh_only_over_ssh(qapp, cube, ssh, said):
     """The bridge on a local display (no libxcb-cursor) has a remote plan; the line says 'over ssh' only when the
     screen is at the other end of one."""
     from explorer.data.dataset import Dataset
@@ -53,8 +53,8 @@ def test_the_first_image_line_says_over_ssh_only_over_ssh(qapp, cube, capsys, ss
         w.resize(640, 480)
         w.show()
         assert spin(qapp, lambda: w.first_image_s is not None)
-        line = next(x for x in capsys.readouterr().err.splitlines() if "first image handed" in x)
-        assert "X11 bridge" in line and ("over ssh" in line) is said, line
+        line = w.first_image_line
+        assert line is not None and "X11 bridge" in line and ("over ssh" in line) is said, line
         w.close()
 
 
@@ -131,11 +131,16 @@ def test_stokes_keys_without_t(qapp, tmp_path):
         w.close()
 
 
-def test_explorer_opens_a_cube_and_reports_the_first_image(qapp, cube, capsys):
+def test_explorer_opens_a_cube_and_logs_the_first_image(qapp, cube, capsys):
+    """Where the time to the first image went is in explorer.log, not on the terminal."""
     from explorer import cli
+    from explorer._paths import cache_dir
+    from explorer.obs import log
 
+    log.setup()                                         # the file too, as the command has it
     assert cli.main([str(cube), "--quit-after", "0.05"]) == 0
-    assert "first image handed to the screen" in capsys.readouterr().err
+    assert "first image handed" not in capsys.readouterr().err
+    assert "first image handed to the screen" in (cache_dir() / "logs" / "explorer.log").read_text()
 
 
 def test_the_last_of_two_quick_moves_moves_the_cursor(shell):

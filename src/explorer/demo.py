@@ -22,6 +22,7 @@ import sys
 from . import __version__
 from ._name import APP_NAME
 from ._paths import cache_dir
+from .obs import say
 
 
 def synthetic_cube() -> str:
@@ -125,9 +126,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     cube = a.cube or synthetic_cube()
     kind = "synthetic" if a.cube is None else "given"
-    print(f"{APP_NAME} {__version__} demo on the {kind} cube {cube}", flush=True)
-    print("  implemented so far: doctor (environment, numba, Qt, the cube's header), the data layer and the core "
-          "(cursor walk with --no-window), and the viewer's image window", flush=True)
+    say.info(f"{APP_NAME} {__version__} demo on the {kind} cube {cube}")
     from . import doctor
 
     if not a.no_window:                                 # the viewer first, as the prototype's demo: doctor's checks

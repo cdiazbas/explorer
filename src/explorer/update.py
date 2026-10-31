@@ -122,8 +122,8 @@ def update(root=ROOT, check: bool = False, say=_say, prefix=None) -> int:
     root = Path(root)
     if git(root, "rev-parse", "--is-inside-work-tree").returncode or not (root / ".git").exists():
         if (root / "pyproject.toml").exists() and (root / "src" / APP_NAME).is_dir():
-            say(f"{root} is a copy without git (copied or synced from another): it is brought up to date by whoever "
-                "keeps it. To update yourself, install from a clone instead (README, Install)")
+            say(f"{root} has no git (it was copied or synced from a clone): update that clone (git pull) and copy it "
+                f"again; a clone updates itself with `{APP_NAME} update` (README, Install)")
         else:
             say(upgrade_advice(prefix))
         return 1

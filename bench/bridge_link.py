@@ -587,7 +587,7 @@ def run_one(a):
     with open(os.path.join(drv.io, "updates.json")) as f:
         logged = json.load(f)
     with open(os.path.join(drv.io, "app.log"), errors="replace") as f:   # the link probe's line, if it ran
-        probe = next((ln.strip() for ln in f if "X11 link ~" in ln), None)
+        probe = next((ln.strip() for ln in f if "X11 link " in ln), None)
     out = dict(host=socket.gethostname(), date=time.strftime("%Y-%m-%d %H:%M:%S"), label=a.label, src=a.src,
                cube=a.cube, link=a.link, detach=a.detach, native=a.native, look=a.look, delay_ms=a.delay_ms,
                mbps=a.mbps,

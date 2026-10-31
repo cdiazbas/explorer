@@ -381,7 +381,7 @@ def _start(path, *, sp, no_sp, axes, x11, theme, look, reset_layout, traces, sav
 
         shell.terminal_keys = termkeys.attach(shell)     # over ssh -Y the keyboard stays in the terminal until a click
         if shell.terminal_keys is not None:
-            say.info(f"keys typed in this terminal also reach the window ({termkeys.ENV}=0: off)")
+            say.info(f"keys typed in this terminal also reach the window; {termkeys.ENV}=0 turns this off")
         link = disp.link()
         if plan.remote and link.bytes_per_px is not None:
             shell.start_link_probe(link)                # the default playback rate from what the link carries

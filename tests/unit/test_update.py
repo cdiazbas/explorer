@@ -100,7 +100,7 @@ def test_no_git_or_no_remote(repos, tmp_path):
     (synced / "src" / "explorer").mkdir(parents=True)
     (synced / "pyproject.toml").write_text("")
     rc, said = run(synced)
-    assert rc == 1 and "a copy without git" in said and "whoever keeps it" in said
+    assert rc == 1 and "has no git" in said and "update that clone (git pull)" in said
     package = tmp_path / "lib"                                   # pip install git+...: no source tree
     package.mkdir()
     rc, said = run(package)
@@ -173,7 +173,7 @@ def test_a_copy_without_git_is_kept_by_whoever_keeps_it_whatever_the_environment
     (synced / "src" / "explorer").mkdir(parents=True)
     (synced / "pyproject.toml").write_text("")
     rc, said = run(synced)
-    assert rc == 1 and "a copy without git" in said and "uv tool" not in said
+    assert rc == 1 and "has no git" in said and "uv tool" not in said
 
 
 def test_an_update_ends_saying_a_running_explorer_needs_a_restart(repos):
