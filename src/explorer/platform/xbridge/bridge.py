@@ -478,11 +478,17 @@ class Bridge(QtCore.QObject):
         if t:
             self.windows.xtime = t
         if code == X.MappingNotify:
-            if e.request in (0, 1):                     # modifiers or keyboard
-                def got(r, err):
-                    if err is None:
-                        self.post(self._keymap, r)
-                self.c.keyboard_mapping().then(got)
+            if e.request in (0, 1):                     # modifiers or keyboard: both maps asked, nothing waited for
+                came: dict = {}
+
+                def got(name):
+                    def fn(r, err):                     # on the reader thread, in the order of the server's answers
+                        came[name] = None if err is not None else r
+                        if len(came) == 2 and came["keys"] is not None:
+                            self.post(self._keymap, came["keys"], came["mods"])
+                    return fn
+                self.c.keyboard_mapping().then(got("keys"))
+                self.c.modifier_mapping().then(got("mods"))
             return
         if self.clip is not None and self.clip.handles(e):
             return
@@ -545,12 +551,9 @@ class Bridge(QtCore.QObject):
             self._repeat = None
         self.input.key(w, e, rep)
 
-    def _keymap(self, reply: bytes) -> None:
-        mods = None
-        try:
-            mods = self.c.modifier_mapping().result(5.0)
-        except (X.XError, TimeoutError):
-            pass
+    def _keymap(self, reply: bytes, mods: bytes | None = None) -> None:
+        """The keyboard map again, from both maps' replies (a MappingNotify): on Qt's thread, nothing waited for there
+        (a burst of notices, a layout switched, froze the window a round trip each)."""
         self.keymap = keys.Keymap.from_replies(self.c.setup.min_keycode, reply, mods)
 
     def _property(self, rec, e) -> None:

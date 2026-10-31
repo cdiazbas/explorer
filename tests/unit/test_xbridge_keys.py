@@ -62,3 +62,46 @@ def test_from_server_replies():
     kbd = struct.pack("<BBHI24x", 1, per, 0, len(syms)) + struct.pack(f"<{len(syms)}I", *syms)
     km = K.Keymap.from_replies(lo, kbd, None)
     assert len(km.syms) == n and km.keysym(9, SHIFT) == ord("B") and km.keysym(10, 0) == 0xFF52
+
+
+
+def test_a_mapping_notice_asks_both_maps_without_waiting_on_qt_s_thread():
+    """At each MappingNotify the keyboard map was asked without waiting, but the modifier map was then waited for on
+    Qt's thread, up to 5 s: a layout switched on XQuartz sends a burst of notices, and the window froze a round trip
+    each, five seconds each on a stalled link. Both maps are asked together; the keymap is made when both came."""
+    import struct
+    from types import SimpleNamespace
+
+    from explorer.platform.xbridge import bridge as B
+    from explorer.platform.xbridge import xproto as X
+
+    class Ck:
+        def __init__(self):
+            self.fn = None
+
+        def then(self, fn):
+            self.fn = fn
+
+        def result(self, timeout=None):
+            raise AssertionError("a reply waited for on Qt's thread")
+
+    kb, mods = Ck(), Ck()
+    posted: list = []
+    c = SimpleNamespace(keyboard_mapping=lambda *a: kb, modifier_mapping=lambda: mods,
+                        setup=SimpleNamespace(min_keycode=8))
+    stub = SimpleNamespace(c=c, keymap=None, windows=SimpleNamespace(xtime=0), clip=None, stats={"x_events": 0},
+                           post=lambda fn, *a: posted.append((fn, a)))
+    stub._keymap = lambda *a: B.Bridge._keymap(stub, *a)
+    raw = bytearray(32)
+    raw[0] = X.MappingNotify
+    raw[4], raw[5], raw[6] = 1, 8, 10                   # request 1: the keyboard
+    B.Bridge._event(stub, bytes(raw))
+    reply = bytearray(32 + 4 * 2 * 3)
+    reply[1] = 2                                        # 2 keysyms per keycode
+    struct.pack_into("<I", reply, 4, 6)                 # its length: 6 words
+    kb.fn(bytes(reply), None)                           # the replies, on the reader thread
+    if mods.fn is not None:
+        mods.fn(bytes(32), None)
+    for fn, a in posted:                                # then on Qt's
+        fn(*a)
+    assert stub.keymap is not None
