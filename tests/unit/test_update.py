@@ -217,3 +217,26 @@ def test_no_notice_and_notice_are_stored_said_and_reported_by_check(repos, monke
     assert git(user, "rev-list", "--count", "HEAD") == "2"      # neither flag updates anything
     with pytest.raises(SystemExit):
         main(["--check", "--no-notice"], root=user)              # one thing at a time
+
+
+
+def test_git_for_the_version_takes_no_lock_and_has_a_time_limit(monkeypatch, tmp_path):
+    """The version line ran `git status` at every start, which refreshes the index and takes .git/index.lock: a
+    commit in the clone while a viewer started failed with "index.lock: File exists". On network storage it could
+    also hang the start's thread without end. Read-only (GIT_OPTIONAL_LOCKS=0), and a few seconds at most."""
+    import subprocess
+
+    from explorer import _gitversion
+
+    seen: list[dict] = []
+
+    def run(cmd, **kw):
+        seen.append(kw)
+        if "status" in cmd:
+            raise subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+        return subprocess.CompletedProcess(cmd, 0, "abc1234\n", "")
+    monkeypatch.setattr(_gitversion.subprocess, "run", run)
+    assert _gitversion.git(tmp_path, "rev-parse", "HEAD").stdout == "abc1234\n"
+    slow = _gitversion.git(tmp_path, "status", "--porcelain")
+    assert slow.returncode != 0 and slow.stdout == ""
+    assert all(kw.get("env", {}).get("GIT_OPTIONAL_LOCKS") == "0" and kw.get("timeout") for kw in seen), seen

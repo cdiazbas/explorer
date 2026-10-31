@@ -1,9 +1,12 @@
 """This tree's version from git, as the build's vcs versioning gives it, and the _version.py that says it: written by
 scripts/sync.py (the remote copy has no git) and by `explorer update` (an editable install writes _version.py only
 when it is reinstalled). Standard library only: sync.py imports it with the system's Python."""
+import os
 import subprocess
 import time
 from pathlib import Path
+
+GIT_S = 10.0                # a git command this long at most (a clone on stalled network storage)
 
 VERSION_FILE = "src/explorer/_version.py"
 VERSION_TEMPLATE = """# file generated from git by scripts/sync.py or `explorer update` (as the build's vcs-versioning)
@@ -18,7 +21,14 @@ __commit_id__ = commit_id = {commit!r}
 
 
 def git(root, *args) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+    """git in root, read-only: GIT_OPTIONAL_LOCKS=0 keeps `git status` from refreshing the index, which takes
+    .git/index.lock (a commit made in the clone while a viewer starts then failed: "index.lock: File exists"); at most
+    GIT_S, then as a git that failed (no output)."""
+    try:
+        return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=GIT_S,
+                              env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(["git", *args], 124, "", f"git took more than {GIT_S:g} s")
 
 
 def git_version(root) -> tuple[str, str]:
