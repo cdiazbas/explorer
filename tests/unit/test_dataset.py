@@ -214,3 +214,31 @@ def test_closing_does_not_wait_for_ever_for_a_read_blocked_on_its_storage(tmp_pa
     monkeypatch.setattr(os, "pread", real[0])
     monkeypatch.setattr(os, "preadv", real[1])
     time.sleep(2.2)                                     # the blocked read comes back on a descriptor still its own
+
+
+
+def test_a_file_shorter_than_its_header_says_is_said_and_a_short_per_pixel_file_left_out(tmp_path, monkeypatch):
+    """Layouts come from headers alone: a cube still being copied, or cut, opened as whole, its late frames and its
+    lower rows failing one by one with ShortRead; a truncated per-pixel file was used, though a broken one is to be
+    left out. Opening compares each file with what its header says."""
+    import os
+
+    from explorer.obs import say
+
+    said: list[str] = []
+    monkeypatch.setattr(say, "warn", said.append)
+    d = synth.write_dataset(tmp_path, "c", shape=(2, 4, 3, 16, 12), icube=False)
+    sp = d["sp"]
+    os.truncate(sp, os.path.getsize(sp) // 2)
+    with Dataset.open(d["im"]) as ds:
+        assert ds.pixel is None                         # left out: the cube alone
+    assert any("per-pixel" in t and "short" in t for t in said), said
+    said.clear()
+    from explorer.data import formats
+
+    im = d["im"]
+    lay = formats.open_layout(im)
+    os.truncate(im, lay.offset + lay.nbytes // 2)      # into the data (a WCS-TAB extension follows them)
+    with Dataset.open(im, no_sp=True) as ds:
+        assert ds.frames is not None                    # it opens: what is there can be looked at
+    assert any("short" in t for t in said), said

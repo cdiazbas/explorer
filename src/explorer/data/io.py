@@ -43,6 +43,18 @@ class ReadAborted(Exception):
     """A read stopped between two of its steps: its reader was aborted (FrameReader.abort), the cube is closing."""
 
 
+def missing_bytes(layout) -> int:
+    """How many bytes a file lacks of what its header describes (still being copied, or cut): 0 when it has them
+    all, or for a layout of several files or one this cannot tell (a file it cannot stat)."""
+    if getattr(layout, "paths", None) or getattr(layout, "kind", None) not in ("fits", "lp"):
+        return 0
+    try:
+        size = os.path.getsize(layout.path)
+    except OSError:
+        return 0
+    return max(0, int(layout.offset) + int(layout.nbytes) - size)
+
+
 def pread_all(fd: int, n: int, offset: int) -> bytes:
     """n bytes at offset: a read that returns fewer (a signal, an NFS or StorNext stall) is continued from where it
     stopped; fewer than n only at the file's end, which the caller says is a short read."""

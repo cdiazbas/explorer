@@ -22,13 +22,13 @@ from dataclasses import replace
 
 import numpy as np
 
-from ..obs import get_logger, span
+from ..obs import get_logger, say, span
 from . import axes as _axes
 from . import formats
 from .cache import FrameCache
 from .executors import Executors, drain, stop
 from .formats.layout import spatial_lead
-from .io import Closing, FrameReader, PerPixelFrames, SeriesReader, VariablesReader
+from .io import Closing, FrameReader, PerPixelFrames, SeriesReader, VariablesReader, missing_bytes
 from .masking import stokes_axis
 from .pixel import PixelReader, SpFits, calibrate_frames, open_pixel
 from .policy import Budgets, MemoryGuard, StorageProbe, plan_budgets
@@ -179,6 +179,10 @@ class Dataset(Closing):
             self._passes: ImagePasses | None = None
             self._slab_pool: ThreadPoolExecutor | None = None
             self.budgets: Budgets = self._plan()
+            short = missing_bytes(self.layout)
+            if short:                                   # opened: what is there can be looked at; said, as frames fail
+                say.warn(f"{self.path} is {short} bytes short of what its header says (still being copied, or "
+                         f"cut): its frames past them cannot be read")
             self.cache = FrameCache(self.frames, self.budgets.images)
             if isinstance(self.frames, PerPixelFrames):  # images_from_sp
                 self._passes = ImagePasses(self.cache, self.frames, self._images)
@@ -214,6 +218,13 @@ class Dataset(Closing):
                                     sp_path=sp)
         except Exception as e:                          # a per-pixel file that cannot be used: the cube alone
             log.warning("per-pixel file ignored for %s: %s: %s", self.path, type(e).__name__, e)
+            self.pixel = None
+            return
+        short = missing_bytes(self.pixel.layout) if self.pixel is not None else 0
+        if short and self.pixel is not None:            # a broken per-pixel file: the cube alone, as promised above
+            say.warn(f"per-pixel file {self.pixel.layout.path} is {short} bytes short of what its header says "
+                     f"(still being copied, or cut): left out")
+            self.pixel.close()
             self.pixel = None
             return
         if self.pixel is not None:
