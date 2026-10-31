@@ -67,3 +67,15 @@ def test_the_mouse_gives_data_pixels_and_the_crosshair_follows(view):
     assert got and abs(got[-1][0] - 40.5) < 0.6 and abs(got[-1][1] - 120.5) < 0.6
     v.set_crosshair(40, 120)
     assert (v.hl.value(), v.vl.value()) == (40.5, 120.5)
+
+
+@pytest.mark.parametrize("shape", [(60, 1), (1, 80), (1, 1)])
+def test_an_image_one_pixel_wide_or_high_is_drawn(view, shape):
+    """The region in view needed 2 data pixels each way to be drawn: a cube of one column or one row (a slit
+    spectrograph's, a single pixel's) was never painted."""
+    v, _got, qapp = view
+    a = np.arange(np.prod(shape), dtype=np.float32).reshape(shape) + 1
+    v.set_image(a, (0.0, float(a.max()) + 1))
+    qapp.processEvents()
+    assert v.last_render is not None and v.last_render["shape"][0] >= 1 and v.last_render["shape"][1] >= 1, \
+        getattr(v, "last_render", None)

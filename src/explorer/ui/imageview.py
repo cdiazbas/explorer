@@ -218,7 +218,7 @@ class ImageView:
         (vx0, vx1), (vy0, vy1) = self.vb.viewRange()
         x0, x1 = max(0, int(np.floor(vx0))), min(nx, int(np.ceil(vx1)))
         y0, y1 = max(0, int(np.floor(vy0))), min(ny, int(np.ceil(vy1)))
-        if x1 - x0 < 2 or y1 - y0 < 2:
+        if x1 - x0 < 1 or y1 - y0 < 1:                # nothing of it in view (an image of one column is drawn)
             return
         vp = self.widget.viewport()
         dpr = vp.devicePixelRatioF()
@@ -227,6 +227,7 @@ class ImageView:
         # 400x360 image in an 80x215 panel was rendered whole (factor 1), 4.5 times the pixels shown. The
         # prototype's backend_pgr.py:52-53 used the clipped region too.
         f = max(1, int(min((vx1 - vx0) / max(1.0, vp.width() * dpr), (vy1 - vy0) / max(1.0, vp.height() * dpr))))
+        f = min(f, x1 - x0, y1 - y0)                    # one data pixel at least each way (a column, a row)
         h, w = (y1 - y0) // f, (x1 - x0) // f
         out = np.empty((h, w), np.uint8)
         lo, hi = self._lim
