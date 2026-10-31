@@ -17,6 +17,7 @@ import pytest
 from explorer.core.levels import rule_levels
 from explorer.data.axes import STOKES
 from explorer.testing import synth
+from explorer.ui.overlays import at_rest
 
 SHAPE = (3, 4, 5, 96, 80)
 
@@ -190,14 +191,14 @@ def test_each_panel_has_a_key_for_its_stokes_with_its_levels_and_map(grid):
         assert key is not None, s
         assert key.target() == (0, s)
         cols = w.maps_for(s)                            # its map; without one (classic) the panel's grey
-        assert key.state == (f"Stokes {STOKES[s]}", round(v._lim[0], 12), round(v._lim[1], 12),
+        assert key.state == (f"Stokes {STOKES[s]}", at_rest(v._lim[0]), at_rest(v._lim[1]),
                              cols.maps[s] if cols is not None else v.base_lut is None), (s, key.state)
         assert key.lut is (cols.lut(s) if cols is not None else v.base_lut)
         assert key.frame() is v._full and key.levels() == v._lim
         assert not v.stokes.isVisible()                 # no label: the key names it
         assert placed(w, s), (w.look.name, s, key.geometry(), v.widget.size())
     w.session.step("t", 1)                              # a step in t: each key with its panel's new levels
-    assert spin(qapp, lambda: all(key_of(w, s).state[1:3] == tuple(round(x, 12) for x in v._lim)
+    assert spin(qapp, lambda: all(key_of(w, s).state[1:3] == tuple(at_rest(x) for x in v._lim)
                                   and v._full is not None for s, v in enumerate(w.grid.views)))
 
 

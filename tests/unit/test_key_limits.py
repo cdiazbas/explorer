@@ -36,3 +36,18 @@ def test_the_zero_mark_is_written_only_where_it_fits_between_the_limits():
     edge = zero_fits(lo_w + ZERO_GAP + zero_w / 2, 0, 120, lo_w, zero_w, hi_w)
     print("mid", mid, "near", near, "narrow", narrow, "just fits", edge)
     assert mid and not near and not narrow and edge
+
+
+def test_a_key_at_rest_keeps_limits_of_small_magnitudes(qapp):
+    """The key at rest rounded its limits to 12 decimals: a density in cgs (1e-15 g/cm3, a Bifrost snapshot's) read
+    0 .. 0, with no power of ten, and a change of limits at that scale was not seen, so not drawn."""
+    from PySide6 import QtWidgets
+
+    from explorer.ui.overlays import ColourKey
+
+    parent = QtWidgets.QWidget()
+    k = ColourKey(parent)
+    k.set("rho", (2e-15, 5e-14), None)
+    assert k.state[1:3] == (2e-15, 5e-14)
+    k.set("rho", (2e-15, 6e-14), None)
+    assert k.state[2] == 6e-14                          # a change at that scale is a change

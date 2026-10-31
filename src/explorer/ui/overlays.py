@@ -38,6 +38,11 @@ def _num(x):
     return s.replace("-", "−")
 
 
+def at_rest(v: float) -> float:
+    """A limit as the key at rest keeps it: 12 significant digits (12 decimals read a cgs density's 1e-15 as 0)."""
+    return float(f"{float(v):.12g}")
+
+
 def limits_text(lo: float, hi: float) -> tuple[str, str]:
     """A key's two limits as _num writes them, else with as many decimals as they need to differ (up to 6): 4.19 and
     4.22, not 4.2 and 4.2; 1016.4 and 1016.5, not 1016 twice."""
@@ -211,7 +216,7 @@ class ColourKey(QtWidgets.QWidget):
 
     def set(self, name, lim, lut, cmap=None, gamma: float = 1.0):
         """gamma: the image's (core.levels); written on the hot key only (ui.scalekey), never at rest."""
-        st = (name, round(float(lim[0]), 12), round(float(lim[1]), 12), cmap if cmap is not None else lut is None)
+        st = (name, at_rest(lim[0]), at_rest(lim[1]), cmap if cmap is not None else lut is None)
         if st == self.state:
             return
         self.state, self.lut = st, lut

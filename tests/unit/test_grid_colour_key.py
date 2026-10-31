@@ -105,8 +105,9 @@ def key_right(w):
         return False
     lut = w.colours.lut(s)
     same_lut = (k.lut is None and lut is None) or (k.lut is not None and lut is not None and np.array_equal(k.lut, lut))
-    return same_lut and k.state == (f"Stokes {STOKES[s]}", round(float(levels[0]), 12), round(float(levels[1]), 12),
-                                    w.colours.maps[s])
+    from explorer.ui.overlays import at_rest
+
+    return same_lut and k.state == (f"Stokes {STOKES[s]}", at_rest(levels[0]), at_rest(levels[1]), w.colours.maps[s])
 
 
 def settle(qapp, w):
