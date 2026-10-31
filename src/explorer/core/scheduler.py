@@ -360,6 +360,8 @@ class Scheduler:
             counter("core.image.failed")
             if not self.gens.stale("image", g):        # the frame asked for now: said; its panels go on below
                 self.sink.image_failed(idx, err)
+        elif self._s_of(idx) != self.state.s:           # a Stokes left since: not drawn under the one now
+            pass
         elif self.shown.accept("image", g):
             self.img, self.img_idx = fut.result(), idx
             self._show_image()
@@ -479,10 +481,11 @@ class Scheduler:
 
     def shown_s(self) -> int | None:
         """The Stokes of the frame on screen (None before the first)."""
-        if self.img_idx is None:
-            return None
+        return None if self.img_idx is None else self._s_of(self.img_idx)
+
+    def _s_of(self, idx: tuple) -> int:
         a = self.ds.roles.s
-        return int(self.img_idx[a]) if a is not None else 0
+        return int(idx[a]) if a is not None else 0
 
     def _steps(self, st: ViewState) -> np.ndarray | None:
         """The t steps lambda-t reads and shows (data.tsample), or None: every t."""

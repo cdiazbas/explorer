@@ -193,3 +193,32 @@ def test_a_padlock_closed_before_the_first_image_fixes_it_when_it_comes(tmp_path
     finally:
         sched.close()
         ds.close()
+
+
+
+def test_a_late_frame_of_a_stokes_left_is_not_drawn_under_the_stokes_now(tmp_path):
+    """Q then U, Q's frame coming first: it was taken (nothing newer shown yet) and drawn under U's rule, gamma and
+    map, the key saying U over Q's levels; and with U's read failing it stayed. A frame of a Stokes the image has
+    left is not drawn; frames of an older t or lambda still are, while the newer comes (scrubbing shows its way)."""
+    from explorer.testing import synth
+    from explorer.testing.driver import Driver
+
+    d = Driver.open(synth.write_dataset(tmp_path, "c", shape=(3, 4, 5, 64, 48), icube=False)["im"], no_sp=True)
+    try:
+        sch = d.scheduler
+        pending, release = held_reads(d.dataset)
+        d.set_stokes(1)
+        d.pump()
+        d.set_stokes(2)
+        d.pump()
+        q = next(i for i, p in enumerate(pending) if p[0][1] == 1)
+        release(q)
+        d.pump()
+        d.pump()
+        assert sch.shown_s() != 1, f"Q's frame drawn under Stokes {sch.state.s}"
+        for i in range(len(pending)):
+            release(i)
+        d.wait_idle()
+        assert sch.shown_s() == 2
+    finally:
+        d.close()
