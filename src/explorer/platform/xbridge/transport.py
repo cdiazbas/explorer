@@ -125,10 +125,13 @@ class Grey:
 
 
 class _Back:
-    """What the server holds for one X window: its back pixmap (and gc, picture) and a copy of those pixels here."""
+    """What the server holds for one X window: its back pixmap (and gc, picture) and a copy of those pixels here. The
+    pixmap's gc also copies it into the window (the same root and depth): a gc made on the window, by this connection
+    while the control connection makes the window, could come before it (X orders the requests of one connection,
+    not of two) and every copy into the window then failed, for the window's whole life."""
 
-    def __init__(self, xid: int, wgc: int):
-        self.xid, self.wgc = xid, wgc                   # the window, and a gc for copies into it
+    def __init__(self, xid: int):
+        self.xid = xid
         self.size = (0, 0)
         self.pixmap = self.gc = self.picture = 0
         self.last = np.zeros((0, 0), np.uint32)
@@ -278,8 +281,7 @@ class Transport:
         c = self.c
         assert c is not None
         if b is None:
-            b = _Back(xid, c.new_id())
-            c.create_gc(b.wgc, xid)
+            b = _Back(xid)
             self._backs[xid] = b
         else:
             self._free(b)
@@ -291,7 +293,6 @@ class Transport:
         b.last = np.zeros((H, W), np.uint32)
         if self.trace is not None:
             who = self.trace.who(xid)
-            self.trace.name(b.wgc, f"{who} window's gc")
             self.trace.name(b.pixmap, f"{who} back pixmap")
             self.trace.name(b.gc, f"{who} back pixmap's gc")
         return b, True
@@ -390,7 +391,7 @@ class Transport:
                 c.send_raw(*job)
             else:
                 b, x0, y0, x1, y1 = job
-                c.copy_area(b.pixmap, b.xid, b.wgc, x0, y0, x0, y0, x1 - x0, y1 - y0)
+                c.copy_area(b.pixmap, b.xid, b.gc, x0, y0, x0, y0, x1 - x0, y1 - y0)
                 ncopies += 1
         self.stats["shown"] += ncopies
         marker = c.get_input_focus()                    # flushes; its answer says the server has the update
@@ -452,7 +453,7 @@ class Transport:
                 self.trace.write("COPY", xid, "nothing: no pixels sent there yet" if b is None else "nothing")
             self._copy_done()
             return
-        self.c.copy_area(b.pixmap, xid, b.wgc, x, y, x, y, x1 - x, y1 - y)
+        self.c.copy_area(b.pixmap, xid, b.gc, x, y, x, y, x1 - x, y1 - y)
         self.stats["copies"] += 1
         if self.trace is not None:
             self.trace.write("COPY", xid, f"({x}, {y}, {x1 - x}, {y1 - y})")
@@ -498,7 +499,6 @@ class Transport:
         b = self._backs.pop(xid, None)
         if b is not None and self.c is not None:
             self._free(b)
-            self.c.free_gc(b.wgc)
             self.c.flush()
 
     def summary(self) -> dict:

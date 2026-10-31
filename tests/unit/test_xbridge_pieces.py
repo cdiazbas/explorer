@@ -48,3 +48,34 @@ def test_the_sender_waits_for_a_slow_x_server_and_fails_with_a_broken_one(monkey
         pass
     else:
         raise AssertionError("a broken connection did not end the wait")
+
+
+
+def test_copies_into_a_window_use_a_gc_made_on_the_image_connection_s_own_pixmap():
+    """The gc for copies into a window was made on the window, by the image connection, while the window is made by
+    the control connection: X orders the requests of one connection, not of two, so a burst over ssh could have the
+    gc made before the window (BadDrawable), every copy failing (BadGC) and the window showing only its background
+    for its whole life. The copies use the back pixmap's gc, made on a pixmap of the image connection's own."""
+    from types import SimpleNamespace
+
+    from explorer.platform.xbridge.transport import Transport
+
+    ids = iter(range(100, 200))
+    made: dict = {}
+    copies: list = []
+    c = SimpleNamespace(new_id=lambda: next(ids), screen=SimpleNamespace(root=1),
+                        create_gc=lambda gid, drawable, *a: made.__setitem__(gid, drawable),
+                        create_pixmap=lambda pid, root, w, h, d: made.__setitem__(pid, "pixmap"),
+                        copy_area=lambda src, dst, gc, *a: copies.append(gc), free_gc=lambda g: None,
+                        free_pixmap=lambda p: None,
+                        get_input_focus=lambda: SimpleNamespace(then=lambda fn: None))
+    t = Transport.__new__(Transport)
+    t.c, t.grey, t.trace, t.depth, t._backs = c, None, None, 24, {}
+    t.stats = {"copies": 0}
+    t._copy_done = lambda: None
+    window = 7
+    t._back(window, 32, 16)
+    t._copy(window, 0, 0, 32, 16)
+    assert copies, "no copy made"
+    for gc in copies:
+        assert made.get(gc) != window and made.get(made.get(gc)) == "pixmap", (gc, made)
