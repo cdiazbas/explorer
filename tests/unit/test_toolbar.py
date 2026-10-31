@@ -125,3 +125,62 @@ def test_the_sliders_give_way_in_a_narrow_window(qapp, shell):
     assert spin(qapp, lambda: nav.sliders["t"].width() < SLIDER_W[1])
     assert all(SLIDER_W[0] < sl.width() < SLIDER_W[1] for sl in nav.sliders.values())
     assert nav.tb.sizeHint().width() <= width + 8
+
+
+def press(qapp, w, key, text=""):
+    """A key press and release through the window's QWindow, as the X11 bridge sends them."""
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    none = QtCore.Qt.KeyboardModifier.NoModifier
+    for typ in (QtCore.QEvent.Type.KeyPress, QtCore.QEvent.Type.KeyRelease):
+        QtWidgets.QApplication.sendEvent(w.windowHandle(), QtGui.QKeyEvent(typ, key, none, text))
+    qapp.processEvents()
+
+
+@pytest.mark.parametrize("how", ["typed", "arrow"])
+def test_the_rate_box_gives_the_keys_back(qapp, shell, how):
+    """The frames-per-second box is a text field: while it has the keyboard focus it keeps Backspace, Delete and the
+    letters, and the window's shortcuts do not fire (through ssh, Backspace stopped removing the slit and C changing
+    the map). A rate typed and Enter, or a step of its arrows, gives the focus back to the image."""
+    from PySide6 import QtCore, QtTest, QtWidgets
+
+    K = QtCore.Qt.Key
+    fps = shell.nav.fps
+    shell.activateWindow()
+    assert spin(qapp, lambda: QtWidgets.QApplication.activeWindow() is shell)
+    fps.setFocus(QtCore.Qt.FocusReason.MouseFocusReason)            # a click on it
+    assert spin(qapp, lambda: fps.hasFocus())
+    if how == "typed":
+        fps.lineEdit().selectAll()
+        QtTest.QTest.keyClicks(fps, "7")
+        assert fps.value() != 7                         # the rate at Enter, not at each digit
+        QtTest.QTest.keyClick(fps, K.Key_Return)
+        assert fps.value() == 7
+    else:
+        before = fps.value()
+        fps.stepUp()
+        assert fps.value() == before + 1
+    assert spin(qapp, lambda: not isinstance(QtWidgets.QApplication.focusWidget(), QtWidgets.QAbstractSpinBox))
+    shell.session.set_path(((10.5, 10.5), (30.5, 40.5)), 0)
+    qapp.processEvents()
+    press(qapp, shell, K.Key_Backspace, "\x08")
+    assert shell.session.state.path is None, f"the focus is on {QtWidgets.QApplication.focusWidget()}"
+
+
+def test_the_wheel_over_the_rate_box_changes_it_without_taking_the_keys(qapp, shell):
+    """Qt gives the focus to a widget of WheelFocus (a spin box's own) at a wheel event the system sends; one sent
+    here is not spontaneous and takes no focus, so the policy itself is what is checked."""
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    fps = shell.nav.fps
+    assert fps.focusPolicy() == QtCore.Qt.FocusPolicy.ClickFocus
+    shell.view.widget.setFocus(QtCore.Qt.FocusReason.MouseFocusReason)
+    before = fps.value()
+    p = QtCore.QPointF(fps.rect().center())
+    ev = QtGui.QWheelEvent(p, QtCore.QPointF(fps.mapToGlobal(p.toPoint())), QtCore.QPoint(0, 0), QtCore.QPoint(0, 120),
+                           QtCore.Qt.MouseButton.NoButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                           QtCore.Qt.ScrollPhase.NoScrollPhase, False)
+    QtWidgets.QApplication.sendEvent(fps, ev)
+    qapp.processEvents()
+    assert fps.value() == before + 1
+    assert not fps.hasFocus()

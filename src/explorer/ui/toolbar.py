@@ -222,6 +222,13 @@ class NavBar:
         self.fps.setRange(FPS[0], FPS[1])
         self.fps.setValue(FPS[2])
         self.fps.setSuffix(" fps")
+        # a text field: while it has the keyboard focus it keeps Backspace, Delete and the letters, and the window's
+        # shortcuts do not fire. The wheel over it changes the rate without the focus; a rate typed (at Enter) or a
+        # step of its arrows hands the focus back to the image
+        self.fps.setFocusPolicy(QtCore.Qt.FocusPolicy.ClickFocus)
+        self.fps.setKeyboardTracking(False)
+        self.fps.editingFinished.connect(lambda: self._keys_back(shell))
+        self.fps.valueChanged.connect(lambda _v: self._keys_back(shell))
         tb.addWidget(self.fps)
         tb.addSeparator()
         # the slit (S, ui.slit), with the controls; the prototype's slit_btn (app/viewer.py:1114-1126)
@@ -266,6 +273,12 @@ class NavBar:
         tb.addWidget(self.help)
         if drop:
             self.set_stokes_drop(True)
+
+    def _keys_back(self, shell) -> None:
+        """The keyboard focus from the rate box to the image, when the box has it (a rate set by explorer itself, as
+        auto_fps, leaves the focus where it is)."""
+        if self.fps.hasFocus():
+            shell.view.widget.setFocus(QtCore.Qt.FocusReason.OtherFocusReason)
 
     def text(self, axis: str, v: int) -> str:
         """A slider's label: t in UT with the frame index quieter beside it; lambda as the line centre and its offset
