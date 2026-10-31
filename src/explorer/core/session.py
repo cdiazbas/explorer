@@ -227,6 +227,8 @@ class Session:
             raise ValueError(f"no cube {member}: the session has {len(self.members)}")
         r = self.members[member].dataset.roles
         s = int(np.clip(int(s), 0, (r.ns if r.s is not None else 1) - 1))
+        if np.isnan(float(g)):                          # clip keeps NaN, and a NaN gamma draws the image as padding
+            raise ValueError("gamma must be a number, not NaN")
         g = float(np.clip(float(g), GAMMA_MIN, GAMMA_MAX))
         rest = tuple(e for e in self.store.state.gamma if (e[0], e[1]) != (int(member), s))
         self.store.set(gamma=tuple(sorted(rest + (((int(member), s, g),) if g != 1 else ()))))

@@ -353,6 +353,35 @@ def test_a_key_dragged_before_its_stokes_frame_came_fixes_nothing(window):
     assert sess.scale(0, 1)[0] != "fixed"
 
 
+def test_a_limit_past_the_floats_is_refused_by_the_card(window):
+    """"1e400" passes the validator and float() reads it as inf: set_scale refused it with a ValueError inside the
+    field's slot. The card leaves the levels as they are, as for any text that is not a number."""
+    w, qapp = window
+    card = w.open_scale_card(1, 0)
+    qapp.processEvents()
+    before = w.session.scale(1, 0)
+    card.hi.setText("1e400")
+    card._typed(card.hi)                                # raised ValueError
+    assert w.session.scale(1, 0) == before
+
+
+def test_a_scale_entry_of_the_layout_is_applied_whole_or_not_at_all(window):
+    """A kept entry that fails (a file edited by hand) was applied in part: Z set before the fixed levels were
+    refused, and the gamma never restored; a NaN gamma was kept, drawing the image as padding, and G then raised."""
+    import math
+
+    w, qapp = window
+    sess = w.session
+    name = w.cubes[0].scale_name()
+    w.restore_scale({(name, 1): ("fixed", 0.5, 0.2, 2.0, True),       # lo > hi: refused
+                     (name, 2): ("p1", 0.0, 0.0, float("nan"), False)})
+    assert not sess.zero(0, 1) and sess.scale(0, 1)[0] != "fixed" and sess.gamma(0, 1) == 1.0
+    assert math.isfinite(sess.gamma(0, 2)) and sess.gamma(0, 2) == 1.0
+    with pytest.raises(ValueError):
+        sess.set_gamma(0, 0, float("nan"))
+    assert sess.gamma(0, 0) == 1.0
+
+
 @pytest.mark.parametrize("locale", ["nb_NO", "de_DE", "en_US"])
 def test_the_card_takes_a_typed_limit_whatever_the_decimal_mark(window, locale):
     """The fields are written with a point ({:.6g}) and read with float(): a validator that followed the system's

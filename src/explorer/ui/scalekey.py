@@ -592,6 +592,8 @@ class ScaleCard(QtWidgets.QFrame):
         if self.shell.session.symmetric(self.k, self.s):   # -m..m (Q U V, bz): the typed field gives m
             m = abs(float(e.text()))
             lo, hi = -m, m
+        if not (np.isfinite(lo) and np.isfinite(hi)):    # "1e400": past the floats, as text that is no number
+            return
         if hi > lo and (lo, hi) != tuple(self.shell.scale_levels(self.k, self.s)):
             self.shell.session.set_scale(self.k, self.s, "fixed", lo, hi)
 

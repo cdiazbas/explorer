@@ -27,7 +27,7 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .._name import APP_NAME
-from ..core.levels import gamma_step
+from ..core.levels import RULES, gamma_step
 from ..core.scheduler import Scheduler
 from ..core.session import Session
 from ..core.state import ViewState
@@ -845,6 +845,10 @@ class Shell(QtWidgets.QMainWindow):
                 if v is None:
                     continue
                 rule, lo, hi, g, zero = v
+                fixed_ok = rule != "fixed" or (math.isfinite(lo) and math.isfinite(hi) and hi > lo)
+                if rule not in RULES or not fixed_ok or math.isnan(g):       # whole or not at all
+                    log.warning("scale of %s Stokes %d not restored: %r", c.name, s, v)
+                    continue
                 try:
                     self.session.set_zero(c.k, s, zero)     # first: fixed levels of its own sides stay as kept
                     self.session.set_scale(c.k, s, rule, lo, hi)
