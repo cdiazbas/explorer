@@ -71,6 +71,7 @@ AXIS = {"dark": (QtGui.QColor(255, 255, 255, 60), QtGui.QColor(160, 160, 160)),
         "light": (QtGui.QColor(0, 0, 0, 60), QtGui.QColor(90, 90, 90))}
 GRAIN = 0.03
 ZOOMED = QtCore.Qt.WindowState.WindowMaximized | QtCore.Qt.WindowState.WindowFullScreen
+SIZED_MS = 2000                                    # out of glass: the window manager's size awaited this long at most
 
 
 def _app() -> QtWidgets.QApplication:
@@ -157,6 +158,30 @@ def image_keys(w, top: bool) -> None:
         c.key._place(c.key.parentWidget())
         c.named = top or picker is not None
         c.show_stokes(w.session.member_state(c.k).s)
+
+
+def _when_sized(w: QtWidgets.QWidget, size: QtCore.QSize, fn) -> None:
+    """fn once w has size: Qt's own X11 gives a window its size at the window manager's ConfigureNotify, round trips
+    away through ssh -Y, after any pass of the event loop; offscreen at once (then fn at the next pass). At most
+    SIZED_MS later in any case: a manager that gives another size answers nothing more."""
+    done: list[int] = []
+
+    class Sized(QtCore.QObject):
+        def eventFilter(self, obj, e):
+            if e.type() == QtCore.QEvent.Type.Resize and w.size() == size:
+                fire()
+            return False
+    watch = Sized(w)
+
+    def fire():
+        if done:
+            return
+        done.append(1)
+        w.removeEventFilter(watch)
+        watch.deleteLater()
+        fn()
+    w.installEventFilter(watch)
+    QtCore.QTimer.singleShot(0 if w.size() == size else SIZED_MS, watch, fire)
 
 class Bar(QtWidgets.QWidget):
     """The controls' bar over the image, painted as frosted glass from what the view shows under it. From
@@ -987,7 +1012,7 @@ class GlassChrome:
 
     def _restore_panels(self) -> None:
         w = self.w
-        if self.on:                                 # in glass again
+        if self.on or getattr(w, "glass", None) is not None:   # in glass again: this chrome's, or a new one's
             return
         lay = QtWidgets.QMainWindow.layout(w)
         if lay is not None:
@@ -1058,7 +1083,7 @@ class GlassChrome:
         w.under_zoom = (zoom, under) if zoom else None
         if not self._fresh:
             self._restore_panels()
-            QtCore.QTimer.singleShot(0, self._restore_panels)
+            _when_sized(w, under.size(), self._restore_panels)
         w.centralWidget().layout().setContentsMargins(self._was["margins"])
         w.centralWidget().layout().setSpacing(self._was["spacing"])
         if self._was["ci"] is not None:

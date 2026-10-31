@@ -562,3 +562,54 @@ def test_the_light_theme_has_the_same_on_white(qapp, cube, monkeypatch):
         ds.close()
         qapp.setStyle(QtWidgets.QStyleFactory.create(name or "Fusion"))
         qapp.setPalette(pal)
+
+
+
+def test_glass_out_and_in_again_in_one_pass_keeps_its_panels_floating(qapp, shell):
+    """Leaving glass restores the panels now and once more later; that later one asked the old GlassChrome whether
+    glass was on again, and a new one is made each time: glass, classic, modern and glass in one pass of the event
+    loop (M held, keys in a burst over ssh) had the old layout restored inside the new glass, its panels docked."""
+    from explorer.look import get_look
+
+    w = shell
+    wear(qapp, w, "glass")
+    assert spin(qapp, lambda: all(d.isFloating() for d in panels(w)))
+    restored_in_glass: list = []
+    orig = w.restoreState
+
+    def restore(state, *a):                             # the layout of before glass, restored while glass is on
+        if w.glass is not None and w.glass.on:
+            restored_in_glass.append(1)
+        return orig(state, *a)
+    w.restoreState = restore
+    try:
+        for name in ("classic", "modern", "glass"):     # no pass of the event loop in between
+            w.set_look(get_look(name))
+        for _ in range(10):
+            qapp.processEvents()
+    finally:
+        w.restoreState = orig
+    assert w.glass is not None
+    assert not restored_in_glass, "the old glass's later restore ran inside the new glass"
+    assert all(d.isFloating() for d in panels(w)), [d.isFloating() for d in panels(w)]
+
+
+def test_out_of_glass_the_panels_wait_for_the_window_manager_s_size(qapp, shell, monkeypatch):
+    """Out of glass the panels were restored now and after a 0-ms pass, "when the window manager has applied the
+    size": through ssh -Y that comes round trips later, and the panels kept the shares of glass's narrow window. The
+    second restore waits for the size asked for (a resize to it), or a while at most."""
+    from PySide6 import QtCore
+
+    w = shell
+    before = [d.geometry() for d in panels(w)]
+    wear(qapp, w, "glass")
+    assert spin(qapp, lambda: all(d.isFloating() for d in panels(w)))
+    orig = w.setGeometry
+
+    def late(*a):                                       # the window manager applies it 300 ms later
+        QtCore.QTimer.singleShot(300, lambda: orig(*a))
+    monkeypatch.setattr(w, "setGeometry", late)
+    wear(qapp, w, "classic")
+    monkeypatch.setattr(w, "setGeometry", orig)
+    assert spin(qapp, lambda: [d.geometry() for d in panels(w)] == before, 3.0), \
+        ([d.geometry() for d in panels(w)], before)
