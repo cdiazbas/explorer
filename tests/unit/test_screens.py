@@ -96,3 +96,71 @@ def test_a_wide_screen_is_split_only_over_x11(monkeypatch):
     want = {"cocoa": QtCore.QRect(0, 0, 5120, 1440), "offscreen": QtCore.QRect(2560, 0, 2560, 1440),
             "xcb": QtCore.QRect(2560, 0, 2560, 1440)}
     assert seen == want, dict(seen=seen, want=want)
+
+
+def test_through_the_bridge_the_monitors_are_those_x_has_now(monkeypatch):
+    """Through the bridge Qt's screens are X's monitors when the viewer started (offscreen's configuration file):
+    with a monitor plugged in or taken out afterwards, a first window and a zoom were sized in the monitors that
+    were. The bridge follows the X screen and gives the monitors as they are now."""
+    class Scr:
+        def availableGeometry(self):
+            return QtCore.QRect(0, 0, 1920, 1080)       # the one monitor at the start
+
+        def devicePixelRatio(self):
+            return 1.0
+
+    class App(_App):
+        def screenAt(self, p):
+            return None
+
+        def primaryScreen(self):
+            return Scr()
+
+        def screens(self):
+            return [Scr()]
+
+    monkeypatch.delenv(screens.INSETS_ENV, raising=False)
+    monkeypatch.setattr(screens, "_x_facts", lambda: {"heads": [], "xquartz": False})
+    now = [QtCore.QRect(0, 0, 1920, 1080), QtCore.QRect(1920, 0, 1280, 1024)]
+    unfollow = screens.follow(lambda: now)
+    try:
+        assert screens.monitor_rect(App("offscreen"), QtCore.QPoint(2000, 100)) == now[1]
+        assert screens.monitor_rect(App("offscreen"), QtCore.QPoint(100, 100)) == now[0]
+        now[:] = [QtCore.QRect(0, 0, 3840, 1080)]       # one wide screen again: the side-by-side guess on it
+        assert screens.monitor_rect(App("offscreen"), QtCore.QPoint(2500, 100)) == QtCore.QRect(1920, 0, 1920, 1080)
+        assert screens.monitor_rect(App("xcb"), QtCore.QPoint(100, 100)) == QtCore.QRect(0, 0, 1920, 1080)
+    finally:
+        unfollow()
+    assert screens.monitor_rect(App("offscreen"), QtCore.QPoint(2000, 100)) == QtCore.QRect(0, 0, 1920, 1080)
+
+
+def test_x_s_monitors_are_asked_again_when_qt_s_screens_change(monkeypatch):
+    """xcb follows the X screen (RandR) but Xinerama's heads were asked once per DISPLAY: one X screen over two
+    monitors (XQuartz) kept the heads of the start after a monitor came or went. They are asked again when Qt's
+    screens change."""
+    from explorer.platform.xbridge import xproto
+
+    made: list = []
+
+    class Conn:
+        def __init__(self, display, name=""):
+            made.append(display)
+
+        def xinerama_screens(self):
+            return [(0, 0, 100 * len(made), 100)]
+
+        def ext(self, name):
+            return None
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(xproto, "Connection", Conn)
+    monkeypatch.setenv("DISPLAY", ":test-r45")
+    monkeypatch.setattr(screens, "_X", {})
+    shape = [((0, 0, 1920, 1080),)]
+    monkeypatch.setattr(screens, "_qt_screens", lambda: shape[0])
+    first = screens._x_facts()["heads"]
+    assert screens._x_facts()["heads"] == first and len(made) == 1     # asked once while nothing changed
+    shape[0] = ((0, 0, 3200, 1080),)
+    assert screens._x_facts()["heads"] == [QtCore.QRect(0, 0, 200, 100)] and len(made) == 2

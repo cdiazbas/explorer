@@ -141,6 +141,11 @@ class Windows:
             self.atoms[n] = struct.unpack_from("<I", ck.result(), 8)[0]
         self._supported_ck = self.c.get_property(self.scr.root, self.atoms["_NET_SUPPORTED"], X.ATOM_ATOM)
 
+    def wm_changed(self) -> None:
+        """The root window's _NET_SUPPORTED changed (a manager started after the viewer, or another took over): read
+        again, without waiting, for the next wm_supports."""
+        self._supported_ck = self.c.get_property(self.scr.root, self.atoms["_NET_SUPPORTED"], X.ATOM_ATOM)
+
     def wm_supports(self, name: str) -> bool:
         if self._supported_ck is not None:
             try:

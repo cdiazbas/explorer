@@ -161,3 +161,39 @@ def test_where_x_says_is_dropped_when_qt_asked_again_before_it_is_applied(setup)
     fn, a = queue.pop()
     fn(*a)
     assert stub.stats["applied"] == 0, "the old place applied over the newer request"
+
+
+
+def test_a_manager_that_starts_after_the_viewer_is_used():
+    """What the manager supports (_NET_SUPPORTED) was read once, at the start: a manager started after the viewer
+    (or restarted) was never used (no _NET_ACTIVE_WINDOW, no moves and resizes by the manager, no maximise). The
+    root window's _NET_SUPPORTED changing is read again."""
+    from explorer.platform.xbridge import xproto as X
+    from explorer.platform.xbridge.bridge import Bridge
+    from explorer.platform.xbridge.windows import Windows
+
+    class Cookie:
+        def __init__(self, atoms):
+            self.atoms = atoms
+
+        def result(self, timeout=None):
+            return self.atoms
+
+    class C(FakeX):
+        supported: list = []
+
+        def get_property(self, wid, prop, type_=0):
+            return Cookie(list(self.supported))
+
+        def property_value(self, atoms):
+            return X.ATOM_ATOM, 32, struct.pack(f"<{len(atoms)}I", *atoms), 0
+
+    c = C()
+    ws = Windows(c)
+    ws.atoms.update(_NET_SUPPORTED=50, _NET_ACTIVE_WINDOW=51, XBRIDGE_TIME=52)
+    ws._supported_ck = c.get_property(1, 50)
+    assert not ws.wm_supports("_NET_ACTIVE_WINDOW")    # no manager yet
+    c.supported = [51]                                  # one starts and says what it supports, on the root window
+    me = SimpleNamespace(windows=ws, c=c)
+    Bridge._property(me, None, SimpleNamespace(window=c.screen.root, atom=50, time=0, state=0))
+    assert ws.wm_supports("_NET_ACTIVE_WINDOW")

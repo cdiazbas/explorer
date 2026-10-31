@@ -713,14 +713,17 @@ class Connection:
             raise RuntimeError(f"the X server has no {ext}")
         return self.request(info[0], minor, body, reply)
 
+    def xinerama_ask(self) -> Cookie | None:
+        """Xinerama's QueryScreens (its reply read by xinerama_heads); None without Xinerama."""
+        if self.ext("XINERAMA") is None:
+            return None
+        return self.ext_request("XINERAMA", 5, reply=True)
+
     def xinerama_screens(self) -> list[tuple[int, int, int, int]]:
         """The monitors as (x, y, w, h); [] without Xinerama (XQuartz reports two monitors as one RandR screen, and
         Xinerama as two)."""
-        if self.ext("XINERAMA") is None:
-            return []
-        r = self.ext_request("XINERAMA", 5, reply=True).result()  # type: ignore[union-attr]
-        n = struct.unpack_from("<I", r, 8)[0]
-        return [struct.unpack_from("<hhHH", r, 32 + 8 * i) for i in range(n)]
+        ck = self.xinerama_ask()
+        return [] if ck is None else xinerama_heads(ck.result())
 
     def shape_rectangles(self, wid, rects, kind=0) -> None:
         body = struct.pack("<BBBxIhh", 0, kind, 0, wid, 0, 0)
@@ -729,6 +732,12 @@ class Connection:
 
     def shape_reset(self, wid, kind=0) -> None:
         self.ext_request("SHAPE", 2, struct.pack("<BBxxIhhI", 0, kind, wid, 0, 0, NONE))
+
+
+def xinerama_heads(r: bytes) -> list[tuple[int, int, int, int]]:
+    """The monitors as (x, y, w, h), from a QueryScreens reply."""
+    n = struct.unpack_from("<I", r, 8)[0]
+    return [struct.unpack_from("<hhHH", r, 32 + 8 * i) for i in range(n)]
 
 
 def _encode(opcode: int, data: int, body: bytes) -> bytes:

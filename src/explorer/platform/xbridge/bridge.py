@@ -23,6 +23,7 @@ from typing import Any
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ...obs import get_logger, say
+from .. import screens
 from . import clipboard as clip_mod
 from . import keys
 from . import trace as trace_mod
@@ -137,6 +138,15 @@ class Bridge(QtCore.QObject):
         except (X.XError, TimeoutError) as e:
             log.warning("no keyboard map from the X server (%s): keys will not reach the viewer", e)
         self.input = QtInput(lambda: self.keymap, self._inside_qt_window)
+        # the root window: resized when a monitor comes or goes (RandR), its _NET_SUPPORTED set by a manager that
+        # starts after the viewer; Qt's screens stay those of the start, the monitors now are followed here
+        self._unfollow = screens.follow(lambda: [QtCore.QRect(*h) for h in self.link.heads])
+        try:
+            self.c.change_attributes(self.c.screen.root, {X.CW_EVENT_MASK: X.StructureNotifyMask
+                                                          | X.PropertyChangeMask})
+            self.c.flush()
+        except ConnectionError:
+            pass
         self.clip: clip_mod.Clipboard | None = None
         try:
             self.clip = clip_mod.Clipboard(self.c, {n: link.atom_cookies[n] for n in clip_mod.NAMES},
@@ -492,6 +502,9 @@ class Bridge(QtCore.QObject):
             return
         if self.clip is not None and self.clip.handles(e):
             return
+        if code == X.ConfigureNotify and e.window == self.c.screen.root:
+            self._root_resized(e.width, e.height)
+            return
         rec = self.windows.by_xid.get(getattr(e, "window", 0))
         if code == X.PropertyNotify:
             self._property(rec, e)
@@ -556,8 +569,25 @@ class Bridge(QtCore.QObject):
         (a burst of notices, a layout switched, froze the window a round trip each)."""
         self.keymap = keys.Keymap.from_replies(self.c.setup.min_keycode, reply, mods)
 
+    def _root_resized(self, w: int, h: int) -> None:
+        """A monitor plugged in or taken out (RandR resizes the root window): X's monitors asked again, nothing
+        waited for; a first window and a zoom are sized in them (screens.follow)."""
+        ck = self.c.xinerama_ask()
+        if ck is None:
+            self.link.heads = [(0, 0, w, h)]
+            return
+
+        def got(r, err):                                # on the reader thread
+            if err is None:
+                self.post(setattr, self.link, "heads", X.xinerama_heads(r) or [(0, 0, w, h)])
+        ck.then(got)
+
     def _property(self, rec, e) -> None:
         A = self.windows.atoms
+        if e.window == self.c.screen.root:
+            if e.atom == A["_NET_SUPPORTED"]:
+                self.windows.wm_changed()
+            return
         if e.atom == A["XBRIDGE_TIME"]:
             for r in self.windows:                      # the launch time, for the manager's focus rules
                 if not r.popup:
@@ -731,6 +761,7 @@ class Bridge(QtCore.QObject):
         if getattr(self, "_closed", False):
             return
         self._closed = True
+        self._unfollow()
         self._check.stop()
         self.app.removeEventFilter(self)
         self.input.close()

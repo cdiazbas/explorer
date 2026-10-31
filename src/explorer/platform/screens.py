@@ -6,32 +6,43 @@ is needed.
 - Qt sees each monitor as a screen (a local Mac, the bridge, most X servers): that screen's available geometry.
 - One X screen over several monitors (XQuartz reports two monitors as one RandR screen): Xinerama's heads, and
   without them a screen wider than ~2.4:1 taken as monitors side by side.
+- Through the bridge Qt's screens are X's monitors when the viewer started (offscreen's configuration file): the
+  bridge follows the X screen (follow) and its monitors as they are now are used instead.
 - Over X11 to a Mac: XQuartz leaves the menu bar out of its screen but not the Dock, and publishes no work area, so
   a window filling the screen went under the Dock. The Mac's own insets when the launcher passes them
   (EXPLORER_SCREEN_INSETS="WxH:top,right,bottom,left;..." in points, NSScreen visibleFrame), else the Dock's
   default size at the bottom.
 """
 import os
+from collections.abc import Callable
 
 from PySide6 import QtCore, QtGui
 
 DOCK_GUESS = 70         # pt: the Dock at its default place and size, when the Mac does not tell
 INSETS_ENV = "EXPLORER_SCREEN_INSETS"
-_X: dict = {}           # per DISPLAY: {"heads": [...], "xquartz": bool}
+_X: dict = {}           # per DISPLAY and Qt's screens: {"heads": [...], "xquartz": bool}
+_FOLLOWED: list = []    # the bridge's monitors as they are now (follow)
+
+
+def _qt_screens() -> tuple:
+    """Qt's screens' geometries: X's heads are asked again when they change (a monitor plugged in or taken out)."""
+    if not isinstance(QtCore.QCoreApplication.instance(), QtGui.QGuiApplication):
+        return ()
+    return tuple(s.geometry().getRect() for s in QtGui.QGuiApplication.screens())
 
 
 def _x_facts() -> dict:
-    """Xinerama's heads and whether the server is XQuartz (it announces Apple-WM), asked once per DISPLAY over one
-    short connection; nothing when there is no X display or it does not answer."""
-    key = os.environ.get("DISPLAY", "")
+    """Xinerama's heads and whether the server is XQuartz (it announces Apple-WM), asked once per DISPLAY and per
+    set of Qt's screens over one short connection; nothing when there is no X display or it does not answer."""
+    key = (os.environ.get("DISPLAY", ""), _qt_screens())
     if key in _X:
         return _X[key]
     facts: dict = {"heads": [], "xquartz": False}
-    if key:
+    if key[0]:
         try:
             from .xbridge import xproto as X
 
-            c = X.Connection(key, name="screens")
+            c = X.Connection(key[0], name="screens")
             try:
                 facts["heads"] = [QtCore.QRect(*h) for h in c.xinerama_screens()]
                 facts["xquartz"] = c.ext("Apple-WM") is not None
@@ -41,6 +52,17 @@ def _x_facts() -> dict:
             pass
     _X[key] = facts
     return facts
+
+
+def follow(heads: Callable[[], list[QtCore.QRect]]) -> Callable[[], None]:
+    """Through the bridge, the monitors are heads() (in Qt's coordinates, X's root ones), not Qt's screens. Returns
+    what stops it."""
+    _FOLLOWED.append(heads)
+
+    def stop():
+        if heads in _FOLLOWED:
+            _FOLLOWED.remove(heads)
+    return stop
 
 
 def screen_insets(env=None) -> list[tuple[int, int, int, int, int, int]]:
@@ -74,18 +96,26 @@ def leave_mac_bars(app, rect: QtCore.QRect) -> QtCore.QRect:
 
 
 def _raw(app, point) -> QtCore.QRect:
-    scr = app.screenAt(point) or app.primaryScreen()
-    if scr is None:                                     # no screen at all: any sane size
-        return QtCore.QRect(0, 0, 1600, 1000)
-    a = scr.availableGeometry()
-    if len(app.screens()) > 1:                          # Qt already sees each monitor
-        return a
-    heads = _x_facts()["heads"] if app.platformName() == "xcb" else []
-    if len(heads) > 1:
-        r = scr.devicePixelRatio()
-        rects = [QtCore.QRect(int(h.x() / r), int(h.y() / r), int(h.width() / r), int(h.height() / r)) for h in heads]
-        hit = [q for q in rects if q.contains(point)]
-        return (hit[0] if hit else rects[0]).intersected(a)
+    live = _FOLLOWED[-1]() if _FOLLOWED and app.platformName() == "offscreen" else []
+    if live:                                            # the bridge: X's monitors now
+        hit = [q for q in live if q.contains(point)]
+        a = hit[0] if hit else live[0]
+        if len(live) > 1:
+            return a
+    else:
+        scr = app.screenAt(point) or app.primaryScreen()
+        if scr is None:                                 # no screen at all: any sane size
+            return QtCore.QRect(0, 0, 1600, 1000)
+        a = scr.availableGeometry()
+        if len(app.screens()) > 1:                      # Qt already sees each monitor
+            return a
+        heads = _x_facts()["heads"] if app.platformName() == "xcb" else []
+        if len(heads) > 1:
+            r = scr.devicePixelRatio()
+            rects = [QtCore.QRect(int(h.x() / r), int(h.y() / r), int(h.width() / r), int(h.height() / r))
+                     for h in heads]
+            hit = [q for q in rects if q.contains(point)]
+            return (hit[0] if hit else rects[0]).intersected(a)
     # no Xinerama: wider than ~2.4:1 is taken as n monitors side by side; only on X11, where XQuartz can report two
     # monitors as one screen (a local Mac separates them itself)
     n = round(a.width() / a.height() / (16 / 9)) if app.platformName() in ("xcb", "offscreen") else 1
