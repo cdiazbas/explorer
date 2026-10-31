@@ -148,3 +148,22 @@ def test_sequence_numbers_expand_past_16_bits():
     c._seq = 0x1_0005
     assert c._full_seq(0x0003) == 0x1_0003
     assert c._full_seq(0xFFFE) == 0x0_FFFE              # sent before the wrap
+
+
+
+def test_a_new_copy_drops_a_large_one_that_never_ended():
+    """A copy too large for one property comes in pieces (INCR); one that never ended (its owner quit mid-way, or
+    another copy made before it finished over a slow link) left the transfer open, and the next owner's ordinary
+    reply was read as one of its pieces: every later paste into the viewer came empty, or mixed. Each new request
+    for the clipboard drops what was left of the last."""
+    from types import SimpleNamespace
+
+    from explorer.platform.xbridge.clipboard import Clipboard
+
+    clip = Clipboard.__new__(Clipboard)
+    asked: list = []
+    clip.c = SimpleNamespace(get_selection_owner=lambda sel: SimpleNamespace(then=lambda fn: asked.append(fn)))
+    clip.A = {"CLIPBOARD": 1}
+    clip.incoming = dict(parts=[b"half of the old text"], size=20, latin1=False)     # never ended
+    clip.fetch()
+    assert clip.incoming is None and asked

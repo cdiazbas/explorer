@@ -55,6 +55,11 @@ class Clipboard:
 
     # ---- another client copied
     def fetch(self) -> None:
+        """The clipboard asked of its owner. What is left of an earlier INCR read that never ended (its owner quit
+        mid-way, or another copy came before it finished) is dropped: kept, the next owner's ordinary reply was read
+        as one of its pieces, and every later paste came empty or mixed."""
+        self.incoming = None
+
         def got(reply, err):
             if err is None:
                 owner = struct.unpack_from("<I", reply, 8)[0]
