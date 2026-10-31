@@ -243,33 +243,34 @@ def c_qt(rep, show):
 
 
 def c_cube(rep, path):
-    """Header and one small read. The full read checks (image, spectrum, per-pixel file) come with the data
-    layer (ROADMAP E1)."""
-    from astropy.io import fits
+    """Header and one small read, the cube opened as explorer opens it (formats.open_layout: FITS and La Palma cubes),
+    its per-pixel files found as explorer finds them (formats.companions). The full read checks (image, spectrum,
+    per-pixel file) come with the data layer (ROADMAP E1)."""
+    from .data import formats
+    from .data.io import missing_bytes
 
     st = os.stat(path)
     t = time.perf_counter()
-    with fits.open(path, memmap=False, lazy_load_hdus=True) as h:
-        hdr, off = h[0].header, h[0]._data_offset
+    lay = formats.open_layout(path)
     t_hdr = (time.perf_counter() - t) * 1e3
-    n = hdr["NAXIS"]
-    shape = tuple(hdr[f"NAXIS{i}"] for i in range(n, 0, -1))
-    axes = [str(hdr.get(f"CTYPE{i}", "?")) for i in range(n, 0, -1)]
     fd = os.open(path, os.O_RDONLY)
     try:
         t = time.perf_counter()
-        b = os.pread(fd, 4096, off)
+        want = min(4096, int(lay.nbytes))
+        b = os.pread(fd, want, lay.offset)
         t_read = (time.perf_counter() - t) * 1e3
     finally:
         os.close(fd)
-    comp = path.replace("_im.", "_sp.")
-    sp = [p for p in (comp, comp.rsplit(".", 1)[0] + ".icube") if p != path and os.path.exists(p)]
-    d = dict(path=os.path.realpath(path), size_gb=round(st.st_size / 1e9, 2), shape=shape, axes=axes,
-             bitpix=hdr["BITPIX"], header_ms=round(t_hdr, 1), small_read_ms=round(t_read, 2), per_pixel=sp)
+    sp = [p for p in formats.companions(path) if p != path and os.path.exists(p)]
+    d = dict(path=os.path.realpath(path), size_gb=round(st.st_size / 1e9, 2), shape=tuple(lay.shape),
+             axes=list(lay.axes), dtype=str(lay.dtype), kind=lay.kind, header_ms=round(t_hdr, 1),
+             small_read_ms=round(t_read, 2), per_pixel=sp, short_bytes=missing_bytes(lay))
     rep.data["cube"] = d
-    if len(b) < 4096:
+    if len(b) < want:
         return FAIL, f"short read at the data offset ({len(b)} B)"
-    return (f"{os.path.basename(path)[:40]}: {d['size_gb']} GB, numpy shape {shape}, axes {axes}; header "
+    if d["short_bytes"]:
+        return WARN, f"{d['short_bytes']} bytes short of what its header says (still being copied, or cut)"
+    return (f"{os.path.basename(path)[:40]}: {d['size_gb']} GB, numpy shape {d['shape']}, axes {d['axes']}; header "
             f"{t_hdr:.0f} ms, first 4 KB {t_read:.2f} ms; per-pixel file: {'yes' if sp else 'no'}")
 
 

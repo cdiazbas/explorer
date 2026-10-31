@@ -41,7 +41,7 @@ def test_doctor_headless_with_cube(headless, capsys):
     status = {c["name"]: c["status"] for c in rep["checks"]}
     assert status["Qt"] == "ok" and rep["qt"]["platform"] == "offscreen"
     assert status["numba"] == "ok" and status["files"] == "ok"
-    assert rep["cube"]["shape"] == [3, 2, 64, 64] and rep["cube"]["axes"][0] == "UTC--TAB"
+    assert rep["cube"]["shape"] == [3, 2, 64, 64] and rep["cube"]["axes"][0].startswith("UTC")   # as explorer reads it
     assert code == (1 if "FAIL" in status.values() else 0)
 
 
@@ -186,3 +186,31 @@ print("SECONDS", round(time.perf_counter() - t, 3), "COMPILED", sorted(set(n)))
     second = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
     print(second.stdout.strip(), second.stderr[-1500:])
     assert second.returncode == 0 and "COMPILED []" in second.stdout
+
+
+
+@pytest.mark.parametrize("kind", ["fits", "lp"])
+def test_the_cube_check_reads_both_formats_and_finds_their_per_pixel_files(tmp_path, kind):
+    """The cube check opened its file with astropy: `explorer doctor x.icube` reported a failure for a valid La Palma
+    cube, and looked for its per-pixel file by a name of its own making. It reads the cube as explorer opens it
+    (formats.open_layout) and its per-pixel file as explorer finds it (formats.companions)."""
+    import types
+
+    import numpy as np
+
+    from explorer import doctor
+    from explorer.testing import synth
+
+    if kind == "fits":
+        d = synth.write_dataset(tmp_path, "c", shape=(2, 4, 3, 16, 12), icube=False)
+        path = d["im"]
+    else:
+        frames = np.ones((2 * 4 * 3, 16, 12), np.float32)
+        path = synth.write_lp(tmp_path / "c_im.fcube", frames, head="stokes=[I,Q,U,V], ns=4 :  ")
+        head = "stokes=[I,Q,U,V], ns=4 :  "
+        synth.write_lp(tmp_path / "c_sp.fcube", np.ones((16 * 12 * 4, 2, 3), np.float32), head=head)
+    rep = types.SimpleNamespace(data={})
+    r = doctor.c_cube(rep, str(path))                   # (status, info), or info alone when ok
+    status, msg = r if isinstance(r, tuple) else (doctor.OK, r)
+    assert status != doctor.FAIL, msg
+    assert rep.data["cube"]["per_pixel"], rep.data["cube"]
