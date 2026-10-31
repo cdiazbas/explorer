@@ -29,6 +29,22 @@ from . import xproto
 
 log = get_logger("platform.xbridge")
 MAX_UNACKED = 2
+ACK_SAY_S = 60.0            # an update not taken by the X server this long: said, and waited for still
+
+
+def _wait_ack(ck) -> None:
+    """Until the X server has taken an update (its marker cookie): as long as it takes, a slow server is not a dead
+    one (a Mac asleep a minute with the ssh link up, XQuartz frozen: a 60-s limit closed the viewer under it). Said
+    every ACK_SAY_S while it waits; a connection that breaks fails its cookies at once (xproto), ending the wait with
+    ConnectionError."""
+    waited = 0.0
+    while True:
+        try:
+            ck.result(ACK_SAY_S)
+            return
+        except TimeoutError:
+            waited += ACK_SAY_S
+            log.warning("the X server has taken no update for %.0f s: waiting for it", waited)
 
 
 class Grey:
@@ -366,7 +382,7 @@ class Transport:
         while self._unacked and self._unacked[0].done:
             self._unacked.popleft()
         while len(self._unacked) >= MAX_UNACKED:        # backpressure: the link, not a queue, sets the pace
-            self._unacked.popleft().result(60.0)
+            _wait_ack(self._unacked.popleft())
         wire0 = c.bytes_out
         ncopies = 0
         for job in bufs:
