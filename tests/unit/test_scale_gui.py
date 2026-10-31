@@ -283,6 +283,29 @@ def test_the_card_types_min_max_slides_gamma_picks_the_rule_and_closes(window):
     assert w.scale_card is None                                          # a click outside
 
 
+@pytest.mark.parametrize("locale", ["nb_NO", "de_DE", "en_US"])
+def test_the_card_takes_a_typed_limit_whatever_the_decimal_mark(window, locale):
+    """The fields are written with a point ({:.6g}) and read with float(): a validator that followed the system's
+    locale refused the point where the decimal mark is a comma (a Mac set to Norway), and "500.5" then Enter fixed
+    5005. The keys typed go through the validator here, as a person's do."""
+    w, qapp = window
+    QtCore.QLocale.setDefault(QtCore.QLocale(locale))
+    try:
+        card = w.open_scale_card(1, 0)
+        qapp.processEvents()
+        lo = w.scale_levels(1, 0)[0]
+        want = float(f"{lo + 1.5:.6g}")
+        card.hi.setFocus()
+        card.hi.selectAll()
+        QTest.keyClicks(card.hi, f"{want:.6g}")
+        QTest.keyClick(card.hi, QtCore.Qt.Key.Key_Return)
+        qapp.processEvents()
+        rule, _lo, hi = w.session.scale(1, 0)
+        assert rule == "fixed" and hi == pytest.approx(want, rel=1e-6), (card.hi.text(), w.session.scale(1, 0))
+    finally:
+        QtCore.QLocale.setDefault(QtCore.QLocale.c())
+
+
 # ---------------------------------------------------------------------------------------------- kept
 def test_the_layout_keeps_limits_rule_and_gamma_by_cube_and_stokes(qapp, cubes, tmp_path):
     from explorer.ui.layout import LayoutStore

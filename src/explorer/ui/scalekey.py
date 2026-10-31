@@ -520,7 +520,9 @@ class ScaleCard(QtWidgets.QFrame):
         for lab, e in (("min", self.lo), ("max", self.hi)):
             row.addWidget(QtWidgets.QLabel(lab))
             e.setFixedWidth(96)
-            e.setValidator(QtGui.QDoubleValidator(e))
+            v = QtGui.QDoubleValidator(e)
+            v.setLocale(QtCore.QLocale.c())             # a point, as refresh writes and float() reads, in any locale
+            e.setValidator(v)
             e.editingFinished.connect(lambda e=e: self._typed(e))
             row.addWidget(e)
         row.addStretch(1)
