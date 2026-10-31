@@ -59,11 +59,24 @@ def two_sided(levels, centred: bool) -> bool:
     return centred and lo < 0 < hi and lo != -hi
 
 
+def drawn_levels(levels, centred: bool) -> tuple[float, float]:
+    """The levels a plane is drawn with: as given, but a signed plane's (centred) keep 0 at the map's middle. Levels
+    of one sign (Z's limits of its own sides on a frame all positive, or a fixed pair so) mirror the side with no data
+    from the other: -m..m."""
+    lo, hi = float(levels[0]), float(levels[1])
+    if not centred or lo < 0 < hi:
+        return lo, hi
+    m = max(abs(lo), abs(hi))
+    return (-m, m) if m > 0 else (-1.0, 1.0)
+
+
 def gamma_panel(a, levels, gamma: float, centred: bool = False):
     """(values, levels) to draw a lambda-t or a slit's slice with gamma: as given at 1; else the values bent between
     the levels, on (0, 1), or (-1, 1) for symmetric levels. A signed plane's levels on each side of 0 (centred,
-    two_sided): on (-1, 1), each side by its own limit, gamma 1 too. NaN stays NaN (no data)."""
-    lo, hi = float(levels[0]), float(levels[1])
+    two_sided): on (-1, 1), each side by its own limit, gamma 1 too; of one sign, 0 still the middle (drawn_levels).
+    NaN stays NaN (no data)."""
+    levels = drawn_levels(levels, centred)
+    lo, hi = levels
     if two_sided(levels, centred):
         a = np.asarray(a, np.float32)
         with np.errstate(invalid="ignore"):

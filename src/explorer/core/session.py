@@ -254,6 +254,9 @@ class Session:
             return False
         rest = tuple(e for e in self.store.state.zero if e != (int(member), int(s)))
         self.store.set(zero=tuple(sorted(rest + (((int(member), int(s)),) if on else ()))))
+        rule, lo, hi = self.scale(member, s)
+        if rule == "fixed" and not on:                  # fixed levels of its own sides: -m..m again, as Z off draws
+            self.set_scale(member, s, rule, lo, hi)
         return True
 
     def scale(self, member: int, s: int) -> tuple[str, float, float]:

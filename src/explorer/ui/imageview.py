@@ -18,7 +18,7 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore
 
-from ..core.levels import symmetric_levels, two_sided
+from ..core.levels import drawn_levels, symmetric_levels, two_sided
 from ..data.axes import Planes
 from ..data.kernels import TABLE_N, centred_table, gamma_table, reduce_u8
 from . import pens
@@ -133,6 +133,7 @@ class ImageView:
             self._gamma = float(gamma)
         if centred is not None:
             self._centred = bool(centred)
+        self._lim = drawn_levels(self._lim, self._centred)     # a signed plane: 0 the map's middle, whatever the levels
         if self._first:
             ny, nx = img.shape
             self.vb.setRange(QtCore.QRectF(0, 0, nx, ny), padding=0)

@@ -157,3 +157,53 @@ def test_the_layout_keeps_z_and_reads_what_it_kept_before(qapp, files, tmp_path)
         assert w.session.zero(0, 0)
     finally:
         close()
+
+
+def test_z_off_makes_fixed_levels_of_its_own_symmetric_again(files):
+    """set_zero only changed the plane's mode: with Z on, levels fixed at (-0.1, 0.4), then Z off, the plane said
+    symmetric and was drawn two-sided at (-0.1, 0.4) still; the layout kept that pair, and the next session made it
+    -0.4..0.4 on opening."""
+    from explorer.core.loop import ManualLoop
+    from explorer.core.session import Session
+    from explorer.data.dataset import Dataset
+
+    ds = Dataset.open(files["bz"])
+    try:
+        s = Session(ManualLoop(), ds)
+        s.set_zero(0, 0, True)
+        s.set_scale(0, 0, "fixed", -0.1, 0.4)
+        s.set_zero(0, 0, False)
+        assert s.symmetric(0, 0) and s.scale(0, 0) == ("fixed", -0.4, 0.4)
+        s.set_zero(0, 0, True)                          # on again: -0.4..0.4 is a pair of its own sides too
+        assert s.scale(0, 0) == ("fixed", -0.4, 0.4)
+        s.set_scale(0, 0, "p1")
+        s.set_zero(0, 0, False)                         # a per-frame rule: nothing to make symmetric
+        assert s.scale(0, 0) == ("p1", 0.0, 0.0)
+    finally:
+        ds.close()
+
+
+@pytest.mark.parametrize("levels", [(0.1, 0.4), (-0.4, -0.1), (0.0, 0.4)])
+def test_a_signed_plane_of_one_sign_keeps_0_at_the_map_s_middle(qapp, levels):
+    """With Z, a signed plane takes each side's own limit; a frame all of one sign (bz high up, a Doppler map all
+    redshifted) has one side only, and was drawn lo..hi: the map's middle at (lo + hi) / 2, so weak positive values
+    wore the negative colours. The side with no data mirrors the other: 0 stays the middle."""
+    from explorer.core.levels import gamma_panel
+    from explorer.ui.imageview import ImageView
+
+    lo, hi = levels
+    v = ImageView()
+    v.widget.resize(200, 200)
+    v.widget.show()
+    qapp.processEvents()
+    try:
+        a = np.linspace(lo, hi, 64 * 64, dtype=np.float32).reshape(64, 64)
+        v.set_image(a, levels, gamma=1.0, centred=True)
+        m = max(abs(lo), abs(hi))
+        assert v._lim == (-m, m)
+        u, lv = gamma_panel(a, levels, 1.0, centred=True)
+        assert lv[0] < 0 < lv[1] and lv[0] == -lv[1]
+        v.set_image(a, levels, gamma=1.0, centred=False)       # not signed: as given
+        assert v._lim == levels
+    finally:
+        v.widget.close()
