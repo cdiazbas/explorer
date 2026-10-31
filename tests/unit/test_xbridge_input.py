@@ -479,3 +479,43 @@ def test_window_ops_publish_the_shape_the_bridge_applies(qapp):
     assert getattr(w, SHAPE_ATTR) == r
     ops.set_shape(None)
     assert getattr(w, SHAPE_ATTR).isEmpty()
+
+
+
+def test_a_digit_typed_with_shift_on_azerty_picks_its_stokes(qapp, shell):
+    """On a French AZERTY keyboard the digits are Shift + & é " ...: through the bridge Shift+& came as Key_1 with
+    ShiftModifier, which the shortcut "1" does not match (offscreen offers Qt no other keys a press could be, as xcb's
+    xkb does), so the Stokes keys did nothing; the bridge had the same with "?" (Shift+/), bound twice for it. A
+    Shift that changed the symbol to one that is no letter is taken by the symbol; letters keep their Shift (Shift+C
+    is its own key)."""
+    from PySide6 import QtCore, QtWidgets
+
+    from explorer.platform.xbridge.qtinput import QtInput
+
+    km = keymap()
+    km.syms[10 - 8] = (0x26, ord("1"))                  # AZERTY: & / 1
+    i = QtInput(lambda: km)
+    w = shell
+    got: list = []
+    orig = QtCore.QCoreApplication.sendEvent
+
+    def send(target, e):
+        if e.type() == QtCore.QEvent.Type.KeyPress:
+            got.append((e.key(), e.modifiers()))
+        return orig(target, e)
+    try:
+        QtWidgets.QApplication.sendEvent = staticmethod(send)
+        QtCore.QCoreApplication.sendEvent = staticmethod(send)
+        i.key(w, ev(X.KeyPress, w, 5, 5, detail=10, state=K.MOD_SHIFT), False)
+        i.key(w, ev(X.KeyRelease, w, 5, 5, detail=10, state=K.MOD_SHIFT), False)
+        assert spin(qapp, lambda: w.session.state.s == 0)
+        w.session.set_index("s", 2)
+        qapp.processEvents()
+        i.key(w, ev(X.KeyPress, w, 5, 5, detail=10, state=K.MOD_SHIFT), False)
+        assert spin(qapp, lambda: w.session.state.s == 0), got
+        i.key(w, ev(X.KeyPress, w, 5, 5, detail=KA, state=K.MOD_SHIFT), False)
+        assert got[-1] == (QtCore.Qt.Key.Key_A, QtCore.Qt.KeyboardModifier.ShiftModifier)    # a letter keeps Shift
+    finally:
+        QtCore.QCoreApplication.sendEvent = orig
+        QtWidgets.QApplication.sendEvent = orig
+        i.close()

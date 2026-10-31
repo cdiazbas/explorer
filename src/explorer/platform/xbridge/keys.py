@@ -153,6 +153,16 @@ def ctrl_char(ch: str) -> str:
     return {"2": "\x00", "8": "\x7f", "/": "\x1f"}.get(ch, chr(c - ord("3") + 0x1B) if "3" <= ch <= "7" else ch)
 
 
+def shift_consumed(km: "Keymap", keycode: int, state: int, sym: int) -> bool:
+    """Whether Shift made the symbol (not a letter's case): Shift+& gives 1 on AZERTY, Shift+/ gives ? on US. Qt's
+    xcb matches such a key to shortcuts without the Shift (xkb's possible keys); offscreen offers none, so the key
+    is sent without it. A letter keeps its Shift: Shift+C is a key of its own."""
+    ch = keysym_char(sym)
+    if ch is None or ch.isalpha() or not state & MOD_SHIFT:
+        return False
+    return km.keysym(keycode, state & ~MOD_SHIFT) != sym
+
+
 def translate(sym: int, ctrl: bool) -> tuple[str | int, str] | None:
     """(Qt key name, or the key's code for a character; text) of a keysym; None for one Qt has no key for."""
     ch = keysym_char(sym)

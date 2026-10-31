@@ -329,6 +329,8 @@ class QtInput:
             return
         sym = km.keysym(e.detail, e.state)
         mods = self.mods(e.state, sym)
+        if K.shift_consumed(km, e.detail, e.state, sym):   # the 1 of AZERTY's Shift+&: the shortcut "1"
+            mods &= ~Qt.KeyboardModifier.ShiftModifier
         got = K.translate(sym, bool(e.state & K.MOD_CONTROL))
         if got is None:
             return
