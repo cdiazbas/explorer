@@ -158,7 +158,7 @@ class _Sink(CubeSink):
         self.shell.last["slit"] = s
         sess, k = self.shell.session, self.shell._slit_on
         self.shell.slit_panel.show(ts, sl, ts_levels, sl_levels, gamma=sess.gamma(k, s), centred=sess.centred(k, s))
-        cols = self.shell.maps_for(s)
+        cols = self.shell.maps_for(s, k)
         self.shell.slit_panel.set_lut(cols.lut(s) if cols is not None else None)
 
 
@@ -371,6 +371,7 @@ class Shell(QtWidgets.QMainWindow):
         # what the sink reads, before the scheduler: an image already in the cache (a second window on the same
         # Dataset) is shown inside Scheduler()
         self.colours: ColormapRegistry | None = None    # made the first time the look has colour or cmap (maps_for)
+        self._own_colours: dict[int, ColormapRegistry] = {}     # a linked cube's with planes of its own (maps_for)
         self.colour_key: ColourKey | None = self.main.key     # in every look (ui.scalekey), hidden in the 2x2 view
         self.scale_card: ScaleCard | None = None
         self.grid: StokesGrid | None = None             # the 2x2 view (ui.stokesgrid), made the first time it is asked
@@ -439,6 +440,8 @@ class Shell(QtWidgets.QMainWindow):
                                             signed=tuple(signed(r, s) for s in range(max(1, self.session.ns))))
         elif self.colours is not None:
             self.colours.set_start(L.has("colour"))
+        for own in self._own_colours.values():
+            own.set_start(L.has("colour"))
         if self.colour_key is not None:
             self.colour_key.show_with(True, grid=self.grid is not None and not self.grid.isHidden())
         self._shown_lut = object()
@@ -449,11 +452,11 @@ class Shell(QtWidgets.QMainWindow):
             cols = self.maps_for(lt[2]) if lt is not None else None
             self.lambda_t.set_lut(cols.lut(lt[2]) if cols is not None and lt is not None else None)
         s = self.last.get("slit", self.session.state.s)
-        cols = self.maps_for(s)
+        cols = self.maps_for(s, self._slit_on)
         self.slit_panel.set_lut(cols.lut(s) if cols is not None else None)
         for c in self.linked:
             if c.slit_panel is not None:
-                cols = self.maps_for(c.slit_s)
+                cols = self.maps_for(c.slit_s, c.k)
                 c.slit_panel.set_lut(cols.lut(c.slit_s) if cols is not None else None)
         if st.name() == "macos" and self._seams is None:   # the native style's light lines under the panel titles
             self._seams = MacSeams()                    # and on the separators: in the window's colour, in both looks
@@ -501,6 +504,8 @@ class Shell(QtWidgets.QMainWindow):
             p.set_light(light)
         if self.colours is not None:
             self.colours.set_light(light)
+        for own in self._own_colours.values():
+            own.set_light(light)
         self.nav.restyle()
         self.sheet.setText(self.sheet_html())
         if self.sp_sheet is not None:
@@ -697,14 +702,32 @@ class Shell(QtWidgets.QMainWindow):
         self.set_look(get_look(nxt))
         self.statusBar().showMessage(f"{self.look.name} look (M switches)", 3000)
 
-    def maps_for(self, s: int) -> ColormapRegistry | None:
-        """The colour maps Stokes s is drawn through, or None: the image's plain grey (base_lut). A look with the
-        colour part draws every Stokes through its map; one with cmap alone (classic) only a Stokes off grey, so it
-        starts exactly as it did before it had maps."""
+    def maps_for(self, s: int, k: int = 0) -> ColormapRegistry | None:
+        """The colour maps plane s of cube k is drawn through, or None: the image's plain grey (base_lut). A look with
+        the colour part draws every Stokes through its map; one with cmap alone (classic) only a Stokes off grey, so it
+        starts exactly as it did before it had maps. A linked cube with the main cube's Stokes wears the main cube's
+        maps (C on Q changes both); one with planes of its own (an inversion's parameters), maps of its own."""
         cols = self.colours
+        if cols is not None and not self.shares_maps(k):
+            cols = self._colours_of(k)
         if cols is None or self.look.has("colour"):
             return cols
         return cols if self.look.has("cmap") and s < len(cols.maps) and cols.maps[s] != "gray" else None
+
+    def shares_maps(self, k: int) -> bool:
+        """Whether cube k's planes wear the main cube's maps: the main cube, and a linked cube with its Stokes."""
+        return k == 0 or self.session.members[k].link_s
+
+    def _colours_of(self, k: int) -> ColormapRegistry:
+        """The maps of linked cube k's own planes, by their number and sign, in the window's theme and look."""
+        cols = self._own_colours.get(k)
+        if cols is None:
+            r = self.session.members[k].dataset.roles
+            ns = r.ns if r.s is not None else 1
+            light = self.colours.light if self.colours is not None else style.is_light()
+            cols = self._own_colours[k] = ColormapRegistry(ns, light, colour=self.look.has("colour"),
+                                                           signed=tuple(signed(r, s) for s in range(max(1, ns))))
+        return cols
 
     def _paint_colour(self) -> None:
         """The image's colour table, for the Stokes shown (maps_for), and the key in every look (in the image's plain
@@ -858,9 +881,10 @@ class Shell(QtWidgets.QMainWindow):
         self._grid_luts()                               # the 2x2 view's panel of that Stokes too
         if self.lambda_t is not None:
             self.lambda_t.set_lut(lut)
-        self.slit_panel.set_lut(lut)
+        if self.shares_maps(self._slit_on):             # not a cube's slices of planes of its own
+            self.slit_panel.set_lut(lut)
         for c in self.linked:                           # a linked cube's slit tab of that Stokes
-            if c.slit_panel is not None and c.slit_s == s:
+            if c.slit_panel is not None and c.slit_s == s and self.shares_maps(c.k):
                 c.slit_panel.set_lut(lut)
         if self.colour_key is not None:
             self.key_for(0, s).flash(name)

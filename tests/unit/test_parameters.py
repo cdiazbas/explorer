@@ -254,3 +254,48 @@ def test_a_saved_slit_of_an_inversion_is_never_named_by_a_stokes():
     got = [stokes_name(s, 4, "parameter") for s in range(4)], [stokes_name(s, 4) for s in range(4)]
     print(got)
     assert got == (["s0", "s1", "s2", "s3"], ["I", "Q", "U", "V"])
+
+
+def test_a_linked_cube_with_planes_of_its_own_wears_maps_of_its_own(qapp, tmp_path):
+    """The colour maps were the main cube's, by plane number, for a linked cube's planes too: with an inversion of 5
+    parameters beside I Q U V, plane 4 raised IndexError at every main image in a look with colour (the status line
+    froze, the error only in the log), and below that the parameters wore Q's and U's diverging maps; C on the main
+    cube's Q changed the inversion's plane 1 too."""
+    from astropy.io import fits
+
+    from explorer.data.dataset import Dataset
+    from explorer.look import get_look
+    from explorer.look.colormaps import SEQUENTIAL
+    from explorer.ui.shell import Shell
+
+    y, x = np.mgrid[0:NY, 0:NX]
+    a = np.stack([np.stack([1000.0 * k + 10 * (np.sin(x / 5 + t) + 2) + y for k in range(5)])
+                  for t in range(NT)]).astype(">f4")
+    fits.PrimaryHDU(a).writeto(tmp_path / "WFA_inversion_8542.fits")
+    main = synth.write_dataset(tmp_path, "spec", shape=(NT, 4, 7, NY, NX), sp=False, icube=False)["im"]
+    ds = Dataset.open(main)
+    lk = Dataset.open(str(tmp_path / "WFA_inversion_8542.fits"), executors=ds.executors)
+    w = Shell(ds, linked=[lk], look=get_look("modern"))
+    try:
+        w.resize(1200, 640)
+        w.show()
+        assert spin(qapp, lambda: w.first_image_s is not None and all(c.scheduler.img is not None for c in w.linked))
+        c = w.linked[0]
+        assert (c.ns, w.session.ns) == (5, 4) and not w.session.members[c.k].link_s
+        w.session.set_member_index(c.k, "s", 4)
+        assert spin(qapp, lambda: c.scheduler.img_idx is not None and c.scheduler.shown_s() == 4)
+        w._paint_colour()                               # raised IndexError, plane 4 past the main cube's 4 maps
+        assert c.key.state[3] == SEQUENTIAL[0], c.key.state
+        w.session.set_member_index(c.k, "s", 1)
+        assert spin(qapp, lambda: c.scheduler.shown_s() == 1)
+        assert c.key.state[3] == SEQUENTIAL[0], c.key.state                    # a parameter, not Q's diverging map
+        w.session.set_index("s", 1)                     # the main cube's Q
+        qapp.processEvents()
+        w.cycle_colours(1)
+        qapp.processEvents()
+        c.paint_colour()
+        assert c.key.state[3] == SEQUENTIAL[0], c.key.state                    # C on Q leaves the parameter
+    finally:
+        w.close()
+        lk.close()
+        ds.close()

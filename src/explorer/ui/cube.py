@@ -104,7 +104,7 @@ class CubeSink:
         self.cube.slit_s = s
         p.show(ts, sl, ts_levels, sl_levels, gamma=self.cube.session.gamma(self.cube.k, s),
                centred=self.cube.session.centred(self.cube.k, s))
-        cols = self.cube.shell.maps_for(s)
+        cols = self.cube.shell.maps_for(s, self.cube.k)
         p.set_lut(cols.lut(s) if cols is not None else None)
 
 
@@ -277,10 +277,10 @@ class CubeView:
         if not self.k:
             return
         s = self.session.member_state(self.k).s
-        cols = self.shell.maps_for(s)
+        cols = self.shell.maps_for(s, self.k)
         self.view.set_lut(cols.image_lut(s) if cols is not None else self.view.base_lut)
         if self.lambda_t is not None:
-            lt = self.shell.maps_for(self.last_s)
+            lt = self.shell.maps_for(self.last_s, self.k)
             self.lambda_t.set_lut(lt.lut(self.last_s) if lt is not None else None)
         if self.view._full is not None:                 # its key: its name, its plane, its levels and gamma
             what = plane_text(s, self.ns, self.planes) or (self.value if self.value not in self.name else "")
