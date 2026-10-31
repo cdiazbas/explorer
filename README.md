@@ -4,9 +4,10 @@ Viewer for solar spectropolarimetric cubes [t, Stokes, λ, y, x], successor of C
 
 ## Install
 
-Runs on macOS (Apple silicon and Intel) and Linux x86_64. No root needed. It needs `git`, and either
-[uv](https://docs.astral.sh/uv/) or conda/mamba on the machine; with uv, the right Python is fetched for you. It
-runs on Python 3.12 (the version it was measured with) and 3.13.
+Runs on macOS (Apple silicon and Intel) and Linux x86_64. No root needed. It needs `git` and `curl` (or `wget`).
+It uses [uv](https://docs.astral.sh/uv/) or a conda/mamba (conda 4.7 or newer) if the machine has one; with neither,
+it fetches uv into `~/.cache/explorer` itself. uv fetches the right Python for you. It runs on Python 3.12 (the
+version it was measured with) and 3.13.
 
 ```bash
 git clone https://github.com/cdiazbas/explorer.git

@@ -15,8 +15,10 @@
 #
 # One directory on shared storage serves Linux and Macs: each builds its own .venv-<OS>-<arch>.
 # Tools, as in the prototype's setup_env.sh: uv (on PATH, or its per-platform copy in
-# ~/.cache/explorer/uv-<OS>-<arch>) with the exact versions of uv.lock; else mamba/conda for Python 3.12 and pip
-# with requirements/lock*.txt (uv.lock exported with hashes by scripts/sync.py). Only tools that run on this
+# ~/.cache/explorer/uv-<OS>-<arch>) with the exact versions of uv.lock; else mamba/conda (conda 4.7 or newer) for
+# Python 3.12 and pip with requirements/lock*.txt (uv.lock exported with hashes by scripts/sync.py); with neither,
+# uv is fetched into that cache (curl or wget, https). On Linux without libxcb-cursor, a conda that serves, else
+# micromamba fetched into ~/.cache/explorer/micromamba, installs it into .qtlibs. Only tools that run on this
 # machine count: a shared home shows Linux tools to Macs. With uv, Python lives next to the environment
 # (.python-<OS>-<arch>), never in the home of whoever builds it. The package is installed editable, so code
 # pushed by scripts/sync.py takes effect without reinstalling.
@@ -196,18 +198,61 @@ if [ "$link" = 1 ] && [ "$force" = 0 ] && [ -x "$venv/bin/python" ] && "$venv/bi
 fi
 
 works() { [ -n "$1" ] && [ -x "$1" ] && "$1" --version >/dev/null 2>&1; }
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/explorer"
+micromamba="$cache/micromamba/bin/micromamba"      # fetched here when nothing else can install libxcb-cursor
+# conda before 4.7 reads no .conda packages, and conda-forge has Python 3.12 and xcb-util-cursor in no other form:
+# such a conda answers "PackagesNotFoundError: python=3.12". mamba and micromamba read them all
+new_enough() {
+  local v major minor
+  v="$("$1" --version 2>/dev/null)"
+  case "$v" in "conda "*) ;; *) return 0 ;; esac
+  v="${v#conda }"; major="${v%%.*}"; minor="${v#*.}"; minor="${minor%%.*}"
+  case "$major$minor" in *[!0-9]*|"") return 0 ;; esac
+  [ "$major" -gt 4 ] || { [ "$major" -eq 4 ] && [ "$minor" -ge 7 ]; } && return 0
+  echo "note: $1 is $("$1" --version 2>/dev/null), too old for conda-forge's packages (4.7 or newer reads them):" \
+       "not used" >&2
+  return 1
+}
 conda_cmd() {  # a real mamba/conda executable: in scripts they are not the shell functions of .bashrc
   local c
-  for c in "${MAMBA_EXE:-}" "${CONDA_EXE:-}" "$(type -P mamba || true)" "$(type -P conda || true)"; do
-    works "$c" && { echo "$c"; return 0; }
+  for c in "${MAMBA_EXE:-}" "${CONDA_EXE:-}" "$(type -P mamba || true)" "$(type -P conda || true)" "$micromamba"; do
+    works "$c" && new_enough "$c" && { echo "$c"; return 0; }
   done
   return 1
 }
+conda_run() {  # "$@" with the fetched micromamba's packages kept beside it, never in the home's ~/micromamba
+  if [ "$1" = "$micromamba" ]; then MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-$cache/micromamba/root}" "$@"; else "$@"; fi
+}
+fetch() {                                           # $1 an https URL, $2 the file: curl, else wget; https only
+  if type -P curl >/dev/null; then curl -fsSL --proto '=https' -o "$2" "$1"
+  elif type -P wget >/dev/null; then wget -q --https-only -O "$2" "$1"
+  else echo "need curl or wget to fetch $1" >&2; return 1; fi
+}
+fetch_uv() {  # astral's installer, into the cache, the shell's startup files left alone; no admin
+  local t
+  t="$(mktemp)"
+  echo "== no uv and no conda that serves: fetching uv into $cache/uv-$plat (astral.sh, no admin)"
+  fetch https://astral.sh/uv/install.sh "$t" \
+    && env UV_INSTALL_DIR="$cache/uv-$plat" UV_NO_MODIFY_PATH=1 sh "$t" >/dev/null 2>&1
+  rm -f "$t"
+  works "$cache/uv-$plat/uv"
+}
+fetch_micromamba() {  # one static binary from conda-forge's mamba, into the cache
+  local sub t
+  case "$plat" in Linux-x86_64) sub=linux-64 ;; Linux-aarch64) sub=linux-aarch64 ;; *) return 1 ;; esac
+  t="$(mktemp)"
+  echo "== no conda that serves: fetching micromamba into $cache/micromamba (micro.mamba.pm, no admin)"
+  mkdir -p "$cache/micromamba"
+  fetch "https://micro.mamba.pm/api/micromamba/$sub/latest" "$t" && tar -xjf "$t" -C "$cache/micromamba" bin/micromamba
+  rm -f "$t"
+  works "$micromamba"
+}
 UV=""
-for c in "$(type -P uv || true)" "${XDG_CACHE_HOME:-$HOME/.cache}/explorer/uv-$plat/uv" \
-         "${XDG_CACHE_HOME:-$HOME/.cache}/crispex/uv-$plat/uv"; do
+for c in "$(type -P uv || true)" "$cache/uv-$plat/uv" "${XDG_CACHE_HOME:-$HOME/.cache}/crispex/uv-$plat/uv"; do
   works "$c" && { UV="$c"; break; }
 done
+CONDA="$(conda_cmd || true)"                        # once, so that a conda too old is noted once
+if [ -z "$UV" ] && [ -z "$CONDA" ] && fetch_uv; then UV="$cache/uv-$plat/uv"; fi
 
 # a copy without .git (bellatrix's, synced by scripts/sync.py): the editable build of explorer writes vcs-versioning's
 # fallback, 0.0.0, over the version sync.py wrote, and explorer --version and its update notice then said 0.0.0.
@@ -224,19 +269,21 @@ if [ -n "$UV" ]; then
   export UV_PYTHON_INSTALL_DIR="$pyhome" UV_PROJECT_ENVIRONMENT="$venv" UV_PYTHON_PREFERENCE=only-managed
   "$UV" python install -q --no-bin 3.12
   if [ "$dev" = 1 ]; then "$UV" sync -q --frozen; else "$UV" sync -q --frozen --no-dev; fi
-elif c="$(conda_cmd)"; then
+elif [ -n "$CONDA" ]; then
+  c="$CONDA"
   req="requirements/lock.txt"; [ "$dev" = 1 ] && req="requirements/lock-dev.txt"
   [ -f "$req" ] || { echo "missing $req (scripts/sync.py exports it from uv.lock)" >&2; exit 1; }
   if [ ! -x "$venv/bin/python" ]; then
     echo "== $(basename "$c"): $venv (conda-forge Python 3.12)"
-    "$c" create -q -y -p "$venv" -c conda-forge --override-channels python=3.12 pip >/dev/null
+    conda_run "$c" create -q -y -p "$venv" -c conda-forge --override-channels python=3.12 pip >/dev/null
   fi
   echo "== pip: $req (exact versions, hash-checked)"
   "$venv/bin/python" -m pip install -q --upgrade pip
   "$venv/bin/python" -m pip install -q -r "$req"
   "$venv/bin/python" -m pip install -q --no-deps -e "$root"
 else
-  echo "need uv, mamba or conda to get Python 3.12 (uv: https://docs.astral.sh/uv/, no admin needed)" >&2
+  echo "need uv, or mamba or conda 4.7 or newer, to get Python 3.12; uv could not be fetched either" \
+       "(https://docs.astral.sh/uv/, no admin needed)" >&2
   exit 1
 fi
 if [ -n "${kept_version:-}" ]; then                 # before the checks below, which report the version
@@ -254,13 +301,15 @@ chmod -R a+rX "$venv" 2>/dev/null || true
 # from conda-forge into a prefix of its own and expose only that library (scripts/run.sh adds .qtlibs/only).
 if [ "$(uname -s)" = Linux ] && ! /sbin/ldconfig -p 2>/dev/null | grep -q "libxcb-cursor.so.0" \
    && [ ! -e "$qtlibs/only/libxcb-cursor.so.0" ]; then
-  if c="$(conda_cmd)"; then
+  c="$CONDA"
+  if [ -n "$c" ] || { fetch_micromamba && c="$micromamba"; }; then
     echo "== libxcb-cursor missing on this system: installing it into $qtlibs"
-    "$c" create -q -y -p "$qtlibs" -c conda-forge --override-channels xcb-util-cursor >/dev/null
+    conda_run "$c" create -q -y -p "$qtlibs" -c conda-forge --override-channels xcb-util-cursor >/dev/null
     mkdir -p "$qtlibs/only"
     for f in "$qtlibs"/lib/libxcb-cursor.so.0*; do ln -sf "../lib/$(basename "$f")" "$qtlibs/only/"; done
   else
-    echo "note: no libxcb-cursor and no mamba/conda to install it: Qt will not show over X11 (ssh -Y)" >&2
+    echo "note: no libxcb-cursor, and no mamba or conda to install it (micromamba could not be fetched):" \
+         "Qt will not show over X11 (ssh -Y)" >&2
   fi
 fi
 

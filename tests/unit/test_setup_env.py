@@ -16,6 +16,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(ROOT, "scripts", "setup_env.sh")
+PLAT = f"{os.uname().sysname}-{os.uname().machine}"     # as setup_env.sh names it
 
 
 FAKE_UV = """#!/bin/sh
@@ -221,3 +222,66 @@ def test_run_from_a_folder_deleted_under_the_terminal_says_so(tmp_path):
                        env=env, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
     assert r.returncode == 1 and "the current folder no longer exists" in r.stderr, r.stderr
     assert "no environment" not in r.stderr
+
+
+FAKE_CURL = """#!/bin/sh
+# records the URL; for astral's installer, an installer that puts the stand-in uv where it is told
+out="" url=""
+while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift ;; -*) ;; *) url="$1" ;; esac; shift; done
+echo "$url" >> "$(dirname "$0")/fetched"
+case "$url" in
+  https://astral.sh/uv/install.sh)
+    cat > "$out" <<'EOF'
+mkdir -p "$UV_INSTALL_DIR"
+printf '#!/bin/sh\\n[ "$1" = --version ] && { echo "uv 0.0.0 (fetched)"; exit 0; }\\n' > "$UV_INSTALL_DIR/uv"
+printf 'echo "fetched uv: $*" >&2\\nexit 3\\n' >> "$UV_INSTALL_DIR/uv"
+chmod +x "$UV_INSTALL_DIR/uv"
+echo "UV_NO_MODIFY_PATH=$UV_NO_MODIFY_PATH" > "$UV_INSTALL_DIR/asked"
+EOF
+    ;;
+  *) exit 22 ;;
+esac
+"""
+
+
+def _run_with(tmp_path, tools, *args):
+    """setup_env.sh with only these stand-in tools (name -> script) before /usr/bin and /bin."""
+    d = tmp_path / "tools"
+    d.mkdir(exist_ok=True)
+    for name, text in tools.items():
+        (d / name).write_text(text)
+        (d / name).chmod(0o755)
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    env = {"HOME": str(home), "PATH": f"{d}:/usr/bin:/bin", "XDG_CACHE_HOME": str(tmp_path / "cache"),
+           "SHELL": "/bin/bash"}
+    return subprocess.run(["/bin/bash", SCRIPT, "--venv", str(tmp_path / "venv"), *args], env=env,
+                          capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
+
+
+def _conda(version):
+    return (f'#!/bin/sh\n[ "$1" = --version ] && {{ echo "conda {version}"; exit 0; }}\n'
+            'echo "stand-in conda: $*" >&2\nexit 3\n')
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a bash script")
+def test_a_conda_too_old_is_not_used_and_uv_is_fetched_into_the_cache(tmp_path):
+    """conda before 4.7 reads none of conda-forge's .conda packages (python=3.12 "not available"): with no uv either,
+    uv is fetched over https into the cache, the startup files left alone, and builds the environment."""
+    r = _run_with(tmp_path, {"conda": _conda("4.5.12"), "curl": FAKE_CURL})
+    uv = tmp_path / "cache" / "explorer" / f"uv-{PLAT}" / "uv"
+    assert "conda 4.5.12, too old" in r.stderr and "not used" in r.stderr, r.stderr
+    assert r.stderr.count("too old") == 1                     # said once
+    assert "fetching uv" in r.stdout and os.access(uv, os.X_OK), r.stdout + r.stderr
+    assert (tmp_path / "tools" / "fetched").read_text().split() == ["https://astral.sh/uv/install.sh"]
+    assert (uv.parent / "asked").read_text().strip() == "UV_NO_MODIFY_PATH=1"
+    assert "fetched uv: python install" in r.stderr           # the fetched uv is the one that builds
+    assert "stand-in conda" not in r.stderr and not list((tmp_path / "home").iterdir())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a bash script")
+def test_a_conda_new_enough_is_used_and_nothing_is_fetched(tmp_path):
+    r = _run_with(tmp_path, {"conda": _conda("24.11.3"), "curl": FAKE_CURL})
+    assert "too old" not in r.stderr and "fetching" not in r.stdout
+    assert "stand-in conda: create" in r.stderr, r.stdout + r.stderr
+    assert not (tmp_path / "tools" / "fetched").exists()
