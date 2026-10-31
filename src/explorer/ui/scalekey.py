@@ -304,13 +304,15 @@ class ScaleKey(ColourKey):
         loop, whatever the mouse sent meanwhile)."""
         k, s = self.target()
         lo, hi = self.levels()
+        a0, a1 = self.axis()                            # the drag's, as its press found it
+        gap = (a1 - a0) * 1e-3 or (hi - lo) * 1e-3      # between the handles: not of the levels, which it would shrink
         if self.symmetric():
             m = max(abs(v), 1e-30)
             lo, hi = -m, m
         elif self.drag == "lo":
-            lo = min(v, hi - (hi - lo) * 1e-3)
+            lo = min(v, hi - gap)
         else:
-            hi = max(v, lo + (hi - lo) * 1e-3)
+            hi = max(v, lo + gap)
         self.shell.session.set_scale(k, s, "fixed", lo, hi)
         self.update()
 

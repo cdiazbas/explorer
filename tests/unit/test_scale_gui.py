@@ -164,6 +164,31 @@ def test_dragging_a_handle_sets_that_limit_and_closes_the_padlock(window):
     assert sess.scale(0, 1) == sess.scale(1, 0) == ("p1", 0.0, 0.0)    # nothing else moved
 
 
+def test_a_handle_dragged_past_the_other_stops_short_of_it(window):
+    """The gap kept between the handles was a thousandth of the levels as they were at each move, so every move past
+    the other handle shrank them a thousandfold: one bit of contrast at the second move, set_scale refusing lo == hi
+    at the sixth, and the collapsed levels kept in the layout. It is a thousandth of the key's axis as the press
+    found it."""
+    w, qapp = window
+    key, sess = w.main.key, w.session
+    hot(qapp, key)
+    lo, hi = key.levels()
+    y = int(key._bar().center().y())
+    QTest.mousePress(key, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                     QtCore.QPoint(int(round(key.x_of(lo))), y))
+    assert key.drag == "lo"
+    a0, a1 = key.axis()
+    far = int(key._bar().right()) - 2
+    for _ in range(8):
+        QTest.mouseMove(key, QtCore.QPoint(far, y))
+        qapp.processEvents()
+    QTest.mouseRelease(key, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                       QtCore.QPoint(far, y))
+    rule, lo2, hi2 = sess.scale(0, 0)
+    assert rule == "fixed" and hi2 == pytest.approx(hi)
+    assert hi2 - lo2 == pytest.approx((a1 - a0) * 1e-3, rel=1e-6), (lo2, hi2, a0, a1)
+
+
 def test_on_q_one_handle_moves_both_ends(window):
     w, qapp = window
     sess, key = w.session, w.linked[0].key
