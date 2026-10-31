@@ -84,6 +84,7 @@ class XWin:
         self.pieces: list[QtGui.QRegion] = []           # what each Paint event repainted, in order (bridge._flush)
         self.check = False                              # the next grab is the periodic whole-window check
         self.cfg_seq: int | None = None                 # our last ConfigureWindow
+        self.refused: tuple[int, int] | None = None     # X's size Qt would not take, asked of X once (Bridge)
         self.want = QtCore.QRect(w.geometry())          # the whole geometry last asked for
         self.asked: collections.deque = collections.deque(maxlen=64)
         self.xg: QtCore.QRect | None = None             # the geometry X last told us (Qt taking it asks nothing)

@@ -144,6 +144,24 @@ def test_what_qt_would_not_take_is_asked_once(qapp, setup):
     assert s.c.asked == [dict(width=700, height=500)]
 
 
+def test_a_tiling_manager_that_keeps_its_size_is_asked_once_not_for_ever(qapp, setup):
+    """A tiling manager (i3, awesome) gives a tile under the window's minimum size and answers every request with a
+    synthetic notice of the tile again: Qt refused the size, the bridge asked for Qt's, the manager answered with
+    the tile, and so on, a request and a notice each round trip for ever. The same size refused again is not asked
+    again: the window keeps Qt's size, cropped by the manager's tile."""
+    from explorer.platform.xbridge.bridge import Bridge
+
+    s = setup
+    s.w.setMinimumSize(700, 500)
+    s.c.asked.clear()
+    me = SimpleNamespace(windows=s.ws, stats=dict(applied=0), post=None)
+    for _ in range(5):                                  # the manager's tile, again after each request
+        Bridge._apply_geometry(me, s.rec, 90, 190, 600, 400)
+    assert s.c.asked == [dict(width=700, height=500)], s.c.asked
+    Bridge._apply_geometry(me, s.rec, 90, 190, 650, 450)               # another tile, still too small: asked once
+    assert len(s.c.asked) == 2
+
+
 def test_the_managers_old_record_after_a_resize_is_an_echo(setup):
     """quartz-wm's record of the frame, the old place and size, after a resize asked in one request: a geometry
     asked before the last, an echo. In the trace it was not one: the bridge's own request of the old size, made

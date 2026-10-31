@@ -651,6 +651,12 @@ class Bridge(QtCore.QObject):
                 rec.w.move(x, y)
         finally:
             rec.taking = False
+        # a size Qt would not take (under its minimum) is asked of X once; the same size from the manager again (a
+        # tiling manager's tile, answered to each request) is kept as it is, not asked again for ever
+        kept = (rec.w.width(), rec.w.height()) != (w, h)
+        if kept and rec.refused == (w, h):
+            return
+        rec.refused = (w, h) if kept else None
         self.windows.qt_geometry(rec)
 
     def _mapped(self, rec: XWin, mapped: bool) -> None:
