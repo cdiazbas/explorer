@@ -308,6 +308,51 @@ def test_the_card_types_min_max_slides_gamma_picks_the_rule_and_closes(window):
     assert w.scale_card is None                                          # a click outside
 
 
+def test_the_card_closes_when_its_image_leaves_its_stokes(window):
+    """The card of Stokes I read the levels of the image as shown: a Stokes key with the card open (the card does not
+    keep the key) and "fixed" in it fixed I at Q's levels; a card opened from a 2x2 panel's key (Q) read the single
+    image's (I's) once the 2x2 view gave way. The card is of its image at its Stokes: it closes when the image shows
+    another."""
+    w, qapp = window
+    w.open_scale_card(0, 0)
+    qapp.processEvents()
+    w.pick_stokes(1)
+    assert spin(qapp, lambda: w.scale_card is None)
+    assert w.session.scale(0, 0)[0] != "fixed"
+    w.pick_stokes(0)
+    w.set_grid(True)
+    qapp.processEvents()
+    card = w.open_scale_card(0, 1)                      # Q's panel
+    qapp.processEvents()
+    w.pick_stokes(1)                                    # the single view back, at Q: the card's Stokes
+    qapp.processEvents()
+    assert w.scale_card is card
+    w.set_grid(True)
+    qapp.processEvents()
+    w.set_grid(False)                                   # back at Q too
+    assert w.scale_card is card
+    w.set_grid(True)
+    w.session.set_index("s", 0)                         # the single view will show I
+    w.set_grid(False)
+    assert spin(qapp, lambda: w.scale_card is None)
+
+
+def test_a_key_dragged_before_its_stokes_frame_came_fixes_nothing(window):
+    """A Stokes key, then a drag on the key before the new Stokes' frame came: the levels were the frame on screen's
+    (another Stokes'), fixed for the new one."""
+    w, qapp = window
+    key, sess = w.main.key, w.session
+    hot(qapp, key)
+    lo, hi = key.levels()
+    sess.set_index("s", 1)                              # Q asked; I's frame still on screen
+    assert w.scheduler.shown_s() == 0
+    key._axis = key.axis()
+    key.drag = "hi"
+    key.drag_to(hi * 0.5)
+    key.drag, key._axis = None, None
+    assert sess.scale(0, 1)[0] != "fixed"
+
+
 @pytest.mark.parametrize("locale", ["nb_NO", "de_DE", "en_US"])
 def test_the_card_takes_a_typed_limit_whatever_the_decimal_mark(window, locale):
     """The fields are written with a point ({:.6g}) and read with float(): a validator that followed the system's

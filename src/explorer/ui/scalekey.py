@@ -303,6 +303,8 @@ class ScaleKey(ColourKey):
         """The dragged limit at v, fixed: the image follows at the state's next notice (one per pass of the event
         loop, whatever the mouse sent meanwhile)."""
         k, s = self.target()
+        if self.stokes is None and self.shell.cubes[k].scheduler.shown_s() != s:
+            return                                      # the frame on screen is another Stokes': not its levels
         lo, hi = self.levels()
         a0, a1 = self.axis()                            # the drag's, as its press found it
         gap = (a1 - a0) * 1e-3 or (hi - lo) * 1e-3      # between the handles: not of the levels, which it would shrink
@@ -562,8 +564,7 @@ class ScaleCard(QtWidgets.QFrame):
         self._quiet = False
         self.refresh()
         self.adjustSize()
-        self._off = shell.session.store.subscribe(lambda st, ch: self.refresh() if ch & {"scale", "gamma", "s"}
-                                                  else None)
+        self._off = shell.session.store.subscribe(self._state)
         app = QtWidgets.QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
@@ -598,6 +599,14 @@ class ScaleCard(QtWidgets.QFrame):
             return
         g = gamma_of_slider(v)
         self.shell.set_gamma(self.k, self.s, 1.0 if abs(np.log10(g)) < 1e-9 else g)
+
+    def _state(self, st, changed) -> None:
+        """Its image at another Stokes (a Stokes key while it is open): closed, as its numbers are of its own Stokes
+        (a "fixed" picked then took the levels shown, another Stokes'); else its numbers follow."""
+        if not self.shell.shows(self.k, self.s):
+            self.close()
+        elif changed & {"scale", "gamma", "s"}:
+            self.refresh()
 
     def keyPressEvent(self, e):
         if e.key() == QtCore.Qt.Key.Key_Escape:

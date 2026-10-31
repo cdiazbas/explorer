@@ -601,6 +601,9 @@ class Shell(QtWidgets.QMainWindow):
             self.view.set_paused(False)
         if self.colour_key is not None:                 # no single Stokes' key over the four panels: each has its own
             self.colour_key.show_with(True, grid=on)
+        card = self.scale_card
+        if card is not None and not self.shows(card.k, card.s):     # a panel's card, the single view at another Stokes
+            card.close()
         self.nav.set_all(on)
         self._place_slit_hint()
         if self.glass is not None:
@@ -610,9 +613,10 @@ class Shell(QtWidgets.QMainWindow):
         self.set_grid(not (self.grid is not None and self.grid.isVisible()))
 
     def pick_stokes(self, s: int) -> None:
-        """One Stokes in the image (keys 1-4, the Stokes control): the 2x2 view, if on, gives way."""
-        self.set_grid(False)
+        """One Stokes in the image (keys 1-4, the Stokes control): the 2x2 view, if on, gives way, the image at that
+        Stokes already (a panel's scale card of it stays open)."""
         self.session.set_index("s", s)
+        self.set_grid(False)
 
     def _grid_luts(self) -> None:
         if self.grid is None:
@@ -773,6 +777,13 @@ class Shell(QtWidgets.QMainWindow):
         else:
             v = self.cubes[k].view
         return float(v._lim[0]), float(v._lim[1])
+
+    def shows(self, k: int, s: int) -> bool:
+        """Whether cube k's Stokes s is on screen: every Stokes of the main cube in the 2x2 view, else the Stokes its
+        image is at."""
+        if k == 0 and self.grid is not None and self.grid.isVisible():
+            return True
+        return self.session.member_state(k).s == s
 
     def open_scale_card(self, k: int, s: int) -> ScaleCard:
         """The card with the numbers of cube k at Stokes s, by its key (a panel's, in the 2x2 view; at the image's top

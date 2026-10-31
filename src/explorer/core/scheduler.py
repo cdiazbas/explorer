@@ -362,7 +362,7 @@ class Scheduler:
             due = self._fix_due
             if due is not None and due[0] != self.state.s:  # its Stokes left before its frame came
                 self._fix_due = None
-            elif due is not None and self._shown_s() == due[0]:
+            elif due is not None and self.shown_s() == due[0]:
                 self.fix_levels(True, due[1])
             self._start_sample_once()                   # the y-range sample, after the first image and cursor
         if not self.gens.stale("image", g) and self._pending:
@@ -457,7 +457,7 @@ class Scheduler:
         if s is None:
             s, img = self.state.s, self.img
             self._fix_due = None
-            if on and (img is None or self._shown_s() != s):      # that Stokes' frame not shown yet: fixed by it
+            if on and (img is None or self.shown_s() != s):      # that Stokes' frame not shown yet: fixed by it
                 self._fix_due = (s, refit)
                 return
         if img is None:
@@ -473,7 +473,7 @@ class Scheduler:
         if self.grid:
             self._request_grid(self.state)
 
-    def _shown_s(self) -> int | None:
+    def shown_s(self) -> int | None:
         """The Stokes of the frame on screen (None before the first)."""
         if self.img_idx is None:
             return None
