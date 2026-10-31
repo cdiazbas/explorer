@@ -2,12 +2,22 @@
 back). A hierarchical store (StorNext, for one) moves old files to tape and leaves them on disk with their size and
 almost no blocks; the first read then waits until the store brings the file back, minutes for tens of GB.
 
-A sparse file (holes never written) looks the same: an SST cube is written whole, so its blocks cover its size.
+A sparse file (holes never written) looks the same: an SST cube is written whole, so its blocks cover its size. So
+does a file on a filesystem that compresses (ZFS, btrfs, APFS): a cube of NaN padding or int16 counts takes few blocks
+there, and is on disk; not said away (an NFS mount served from such a filesystem still cannot be told apart).
 """
 import os
 
 MIN_BYTES = 64 << 20        # a smaller file comes back in moments: nothing said
 ON_DISK = 0.5               # under this fraction of its bytes on disk, a file is said to be away
+COMPRESSING = {"zfs", "btrfs", "apfs", "hfs", "bcachefs", "f2fs", "ntfs", "ntfs3"}   # few blocks: compressed there
+
+
+def fs_type(path) -> str:
+    """The type of the filesystem path is on (policy.mount_of), lower case; "" when it cannot be told."""
+    from .policy import mount_of
+
+    return str(mount_of(os.path.realpath(path)).get("fstype", "")).lower()
 
 
 def on_disk(path) -> float | None:
@@ -32,7 +42,7 @@ def away(paths) -> list[str]:
             size = os.stat(p).st_size
         except OSError:
             continue
-        if f is not None and f < ON_DISK and size >= MIN_BYTES:
+        if f is not None and f < ON_DISK and size >= MIN_BYTES and fs_type(p) not in COMPRESSING:
             out.append(p)
     return out
 

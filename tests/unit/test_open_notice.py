@@ -30,6 +30,7 @@ def test_a_file_with_its_size_and_no_blocks_is_away(tmp_path, monkeypatch):
     assert residency.on_disk(far) == 0.0 and residency.on_disk(whole) >= 0.99
     assert residency.on_disk(tmp_path / "missing") is None
     monkeypatch.setattr(residency, "MIN_BYTES", 1 << 20)
+    monkeypatch.setattr(residency, "fs_type", lambda path: "cvfs", raising=False)    # StorNext's
     assert residency.away([far, str(whole), str(tmp_path / "missing"), None, far]) == [far]
     text = residency.away_text(far)
     print(text, "|", residency.on_disk_gb([far, str(whole)]))
@@ -94,6 +95,7 @@ def test_start_says_which_files_are_away_and_how_much_is_back(qapp, offscreen, c
 
     monkeypatch.setattr(residency, "MIN_BYTES", 0)
     monkeypatch.setattr(residency, "on_disk", lambda p: 0.0)
+    monkeypatch.setattr(residency, "fs_type", lambda path: "cvfs")       # StorNext's: blocks gone, to tape
     made = []
 
     def quick(*a, **k):                                 # a line every 0.05 s, kept to look at
@@ -124,3 +126,18 @@ def spin(qapp, until, timeout=10.0):
         qapp.processEvents()
         time.sleep(0.002)
     return until()
+
+
+
+@pytest.mark.parametrize("fs, away", [("zfs", False), ("btrfs", False), ("apfs", False), ("cvfs", True), ("", True)])
+def test_a_file_that_compresses_is_not_said_to_be_on_tape(tmp_path, monkeypatch, fs, away):
+    """Few blocks for its size was taken for tape: on a filesystem that compresses (ZFS's lz4, btrfs, APFS) a cube
+    of NaN padding or int16 counts that compresses well was "probably on tape", and the waiting line's "x of y GB
+    on disk" never grew. Said only where the filesystem does not compress (or is not known)."""
+    from explorer.data import residency
+
+    far = tmp_path / "far_im.fits"
+    with open(far, "wb") as f:
+        f.truncate(100 << 20)                           # its size, no blocks: as on tape, or as compressed
+    monkeypatch.setattr(residency, "fs_type", lambda path: fs, raising=False)
+    assert residency.away([str(far)]) == ([str(far)] if away else [])
