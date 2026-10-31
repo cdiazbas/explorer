@@ -126,9 +126,14 @@ def test_c_in_classic_recolours_the_linked_images_of_that_stokes(window):
     assert other.view.img.lut is other.view.base_lut
     w.cycle_colours(1)
     qapp.processEvents()
-    assert w.look.name == "classic" and w.colours.maps[3] == "CET-D4"
-    assert np.array_equal(other.view.img.lut, cm.image_table(cm.table("CET-D4"), False))
-    assert other.key.state[3] == "CET-D4"
+    # the theme's own diverging map, whatever the theme: a test before this one may leave the application light (a
+    # start through ui.app on a Mac applies its native theme), and CET-D4 is the dark theme's
+    from explorer.ui import style
+
+    name = w.colours.maps[3]
+    assert w.look.name == "classic" and name in cm._divergings(style.is_light())
+    assert np.array_equal(other.view.img.lut, cm.image_table(cm.table(name), style.is_light()))
+    assert other.key.state[3] == name
     assert blos.view.img.lut is blos.view.base_lut
     w.cycle_colours(-1)
     qapp.processEvents()
