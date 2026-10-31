@@ -466,6 +466,10 @@ class Connection:
         except BaseException as e:                      # every way out ends the connection
             self._broken(e)
 
+    def full_seq(self, s16: int) -> int:
+        """A packet's 16-bit sequence number as the full number of the latest request with those bits."""
+        return self._full_seq(s16)
+
     def _full_seq(self, s16: int) -> int:
         sent = self._seq
         full = (sent & ~0xFFFF) | s16

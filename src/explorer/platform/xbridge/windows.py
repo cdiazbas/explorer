@@ -391,7 +391,9 @@ class Windows:
             if tr is not None:
                 tr.write("NOTICE", rec.xid, f"{'synthetic' if e.sent else 'real'} "
                                             f"{rect(e.x, e.y, e.width, e.height)}: {what}")
-        if rec.cfg_seq is not None and 0 < ((rec.cfg_seq - e.seq) & 0xFFFF) < 0x8000:
+        # full numbers: 16 bits compared with ours past half their range (32769 requests later, a long session) made
+        # a new notice look older, dropped as an echo
+        if rec.cfg_seq is not None and self.c.full_seq(e.seq & 0xFFFF) < rec.cfg_seq:
             self.stats["echoes"] += 1
             say("an echo, older than the last request")
             self._check_later(rec, apply)
@@ -434,11 +436,12 @@ class Windows:
         request: quartz-wm answers a frame it keeps as it is (a size over the screen's, cut back to the size of before)
         with its record only, a geometry asked before. Taken for an echo, Qt kept the size refused, larger than the
         window on X. If no notice is taken CHECK_MS after, X is asked where the window is and Qt takes that."""
-        seq = rec.cfg_seq
-        QtCore.QTimer.singleShot(CHECK_MS, lambda: self._ask_where(rec, seq, apply))
+        seq, taken = rec.cfg_seq, rec.xg
+        QtCore.QTimer.singleShot(CHECK_MS, lambda: self._ask_where(rec, seq, apply, taken))
 
-    def _ask_where(self, rec: XWin, seq: int | None, apply) -> None:
-        if self.by_xid.get(rec.xid) is not rec or rec.cfg_seq != seq or rec.xg is not None:
+    def _ask_where(self, rec: XWin, seq: int | None, apply, taken=None) -> None:
+        # a notice taken since the echo is a new rec.xg: one taken before (any window has had one) is no answer
+        if self.by_xid.get(rec.xid) is not rec or rec.cfg_seq != seq or rec.xg is not taken:
             return                                      # gone, asked again since, or a notice was taken
         size: list = []
 
@@ -447,7 +450,7 @@ class Windows:
                 size.extend(struct.unpack_from("<HH", r, 16))
 
         def got_place(r, err):
-            if err is not None or not size or rec.cfg_seq != seq or rec.xg is not None:
+            if err is not None or not size or rec.cfg_seq != seq or rec.xg is not taken:
                 return
             x, y = struct.unpack_from("<hh", r, 12)
             if self.trace is not None:

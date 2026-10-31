@@ -24,6 +24,10 @@ class FakeX:
         self.seq += 1
         return self.seq
 
+    def full_seq(self, s16):                            # as xproto.Connection's: the latest request with these bits
+        full = (self.seq & ~0xFFFF) | (s16 & 0xFFFF)
+        return full - 0x10000 if full > self.seq else full
+
     def translate_coordinates(self, src, dst):
         r = Reply()
         self.replies.append(r)
@@ -110,3 +114,20 @@ def test_where_x_says_is_an_echo_when_it_is_an_older_geometry_asked(setup):
     c.replies[-1].done(reply_at(2703, 87), None)
     seen = dict(applied=applied, echoes=ws.stats["echoes"] - echoes)
     assert seen == dict(applied=[], echoes=1), seen
+
+
+
+def test_a_notice_past_half_the_16_bit_sequence_is_taken_not_an_echo(setup):
+    """The echo test compared our last ConfigureWindow's full number with the notice's 16 bits: 32769 requests or
+    more after it (cursors, tooltips, raises in a long session), a notice of the window manager's own move or
+    resize looked older and was dropped as an echo; the check that asks X again then returned, a notice having been
+    applied before. The notice's number is extended to the full one, as replies' are."""
+    ws, c, rec, applied = setup
+    rec.reparented = False                              # a notice applied as it comes
+    rec.cfg_seq = c.configure_window(rec.xid)
+    c.seq += 40000                                      # other requests since, on the control connection
+    ws.configured(rec, notice(c.seq & 0xFFFF, 300, 200, 700, 500), lambda *a: applied.append(a))
+    assert applied and applied[-1][1:5] == (300, 200, 700, 500), applied
+    applied.clear()
+    ws.configured(rec, notice((rec.cfg_seq - 1) & 0xFFFF, 1, 2, 3, 4), lambda *a: applied.append(a))
+    assert not applied                                  # one generated before our last request: an echo still

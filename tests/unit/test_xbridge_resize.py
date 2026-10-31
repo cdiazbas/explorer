@@ -36,6 +36,10 @@ class FakeX:
         self.asked.append(kw)
         return self.seq
 
+    def full_seq(self, s16):                            # as xproto.Connection's: the latest request with these bits
+        full = (self.seq & ~0xFFFF) | (s16 & 0xFFFF)
+        return full - 0x10000 if full > self.seq else full
+
     def get_geometry(self, xid):
         self.queries.append("geometry")
         return Answer(struct.pack("<12xhhHH12x", 0, 0, *self.has[2:]))
