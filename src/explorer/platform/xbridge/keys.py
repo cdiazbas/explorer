@@ -7,7 +7,10 @@ with the second group behind Mode_switch (XQuartz's Option key) and, on XKB serv
 ISO_Level3_Shift (AltGr) in keysyms 5 and 6 of each key.
 """
 import struct
+import unicodedata
 from dataclasses import dataclass, field
+
+from .keysyms import UCS
 
 NO_SYMBOL = 0
 MOD_SHIFT, MOD_LOCK, MOD_CONTROL = 1, 2, 4
@@ -47,14 +50,34 @@ def is_keypad(sym: int) -> bool:
 
 
 def keysym_char(sym: int) -> str | None:
-    """The character a keysym types: Latin-1 keysyms are their code point, 0x01000000 + c is Unicode c."""
+    """The character a keysym types: Latin-1 keysyms are their code point, 0x01000000 + c is Unicode c, the legacy
+    ones (Serbian's č and ђ, the euro sign) from keysyms.UCS."""
     if 0x20 <= sym <= 0x7E or 0xA0 <= sym <= 0xFF:
         return chr(sym)
     if sym & 0xFF000000 == 0x01000000:
         cp = sym & 0xFFFFFF
         if cp <= 0x10FFFF:
             return chr(cp)
-    return None
+    legacy = UCS.get(sym)
+    return chr(legacy) if legacy is not None else None
+
+
+# dead keys: the combining mark each puts on the next letter, and the accent it types alone (before a space, or a key
+# it does not combine with); X leaves composing them to the client
+DEAD = {0xFE50: ("\u0300", "`"), 0xFE51: ("\u0301", "\u00b4"), 0xFE52: ("\u0302", "^"), 0xFE53: ("\u0303", "~"),
+        0xFE54: ("\u0304", "\u00af"), 0xFE55: ("\u0306", "\u02d8"), 0xFE56: ("\u0307", "\u02d9"),
+        0xFE57: ("\u0308", "\u00a8"), 0xFE58: ("\u030a", "\u02da"), 0xFE59: ("\u030b", "\u02dd"),
+        0xFE5A: ("\u030c", "\u02c7"), 0xFE5B: ("\u0327", "\u00b8"), 0xFE5C: ("\u0328", "\u02db")}
+
+
+def compose(dead: int, text: str) -> str:
+    """What a dead key and the next key's text type: the letter with its mark (´ then a: á), the accent alone before a
+    space, else the accent and the text (´ then x: ´x)."""
+    mark, alone = DEAD[dead]
+    if text == " ":
+        return alone
+    one = unicodedata.normalize("NFC", text + mark)
+    return one if len(one) == 1 else alone + text
 
 
 def _cased(sym: int) -> tuple[int, int]:

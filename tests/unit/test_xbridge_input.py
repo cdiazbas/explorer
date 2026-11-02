@@ -519,3 +519,44 @@ def test_a_digit_typed_with_shift_on_azerty_picks_its_stokes(qapp, shell):
         QtCore.QCoreApplication.sendEvent = orig
         QtWidgets.QApplication.sendEvent = orig
         i.close()
+
+
+
+def test_serbian_letters_the_euro_and_spanish_accents_are_typed(qapp):
+    """Through the bridge a key typed nothing unless its keysym was Latin-1 or Unicode: Serbian's č ć š ž đ (Latin-2
+    keysyms) and Cyrillic, and the euro sign, were dropped; and X leaves dead keys to the client, so Spanish á came as
+    a. Legacy keysyms are typed from keysymdef.h's table, and a dead key is composed with the next key."""
+    from PySide6 import QtWidgets
+
+    from explorer.platform.xbridge.qtinput import QtInput
+
+    dead, ka, ku, kx, space, kc, kcy, keur, kn = 34, 38, 30, 53, 65, 47, 24, 26, 57
+    km = K.Keymap(8, 2, [()] * 248)
+    for code, syms in {dead: (0xFE51, 0xFE57),         # Spanish: ´, with Shift ¨
+                       ka: (ord("a"), ord("A")), ku: (ord("u"), ord("U")), kx: (ord("x"), ord("X")),
+                       space: (0x20, 0x20), kc: (0x1E8, 0x1C8),        # Serbian Latin: č Č
+                       kcy: (0x6C1, 0x6E1), keur: (0x20AC, 0x20AC),    # Serbian Cyrillic: а А; €
+                       kn: (0xF1, 0xD1)}.items():                      # ñ Ñ: Latin-1, as before
+        km.syms[code - 8] = syms
+    km.alt, km.meta, km.num_lock = 8, 64, 16
+    i = QtInput(lambda: km)
+    w = QtWidgets.QLineEdit()
+    w.show()
+    w.activateWindow()
+    w.setFocus()
+    qapp.processEvents()
+    S = K.MOD_SHIFT
+    try:
+        for code, state in [(dead, 0), (ka, 0),         # ´ a: á
+                            (dead, 0), (space, 0),      # ´ space: ´
+                            (dead, 0), (kx, 0),         # ´ x: ´x
+                            (dead, S), (ku, 0),         # ¨ u: ü
+                            (dead, 0), (ka, S),         # ´ A: Á
+                            (kc, 0), (kc, S), (kcy, 0), (keur, 0), (kn, 0)]:
+            i.key(w, ev(X.KeyPress, w, 5, 5, detail=code, state=state), False)
+            i.key(w, ev(X.KeyRelease, w, 5, 5, detail=code, state=state), False)
+        want = "á´´xüÁčČа€ñ"
+        assert spin(qapp, lambda: w.text() == want), repr(w.text())
+    finally:
+        w.close()
+        i.close()

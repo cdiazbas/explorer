@@ -95,6 +95,7 @@ class QtInput:
         self._rest.setInterval(REST_MS)
         self._rest.timeout.connect(self._at_rest)
         self._sink: QtGui.QWindow | None = None
+        self._dead: int | None = None                   # a dead key waiting for its letter
         self.xfocus = None                              # the top-level widget with the X focus, None: none of ours
         self._focus_out = QtCore.QTimer()
         self._focus_out.setSingleShot(True)
@@ -331,10 +332,20 @@ class QtInput:
         mods = self.mods(e.state, sym)
         if K.shift_consumed(km, e.detail, e.state, sym):   # the 1 of AZERTY's Shift+&: the shortcut "1"
             mods &= ~Qt.KeyboardModifier.ShiftModifier
+        if sym in K.DEAD:
+            if e.code == X.KeyPress:
+                self._dead = sym                        # composed with the next key that types
+            return
         got = K.translate(sym, bool(e.state & K.MOD_CONTROL))
         if got is None:
             return
         key, text = got
+        if self._dead is not None and e.code == X.KeyPress and text and text.isprintable():
+            text = K.compose(self._dead, text)
+            self._dead = None
+            if len(text) == 1:
+                up = text.upper()
+                key = ord(up if len(up) == 1 else text)
         popup = QtWidgets.QApplication.activePopupWidget()
         h = (popup or w).windowHandle()                 # an open popup takes the keys, as with xcb's keyboard grab
         if h is None:
