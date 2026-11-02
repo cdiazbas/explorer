@@ -2,6 +2,8 @@
 
 Viewer for solar spectropolarimetric cubes [t, Stokes, λ, y, x], successor of CRISPEX. Under construction.
 
+![explorer on a CRISP 6173 Å cube: the cursor on a sunspot's penumbra, its Stokes spectra and λ–t](.github/assets/explorer.png)
+
 ## Install
 
 macOS (Apple silicon, Intel) or Linux x86_64; no root needed, only `git` and `curl` (or `wget`). It uses uv or conda
@@ -83,6 +85,9 @@ scripts/setup_env.sh --dev     # also the test and lint tools
 scripts/install_hooks.sh       # once per clone: hygiene and commit format
 scripts/check.sh               # what CI runs: hygiene, lint, layers, types, tests
 ```
+
+The picture above is made by `bench/readme_picture.py CUBE` (offscreen; its docstring says with which cube and
+settings), to be made again when the window changes.
 
 ## License and citation
 
