@@ -32,7 +32,7 @@ def main(argv=None):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     from explorer.data.dataset import Dataset
     from explorer.look import get_look
-    from explorer.ui import style
+    from explorer.ui import style, titlebar
     from explorer.ui.shell import Shell
 
     def spin(s, until=None):
@@ -45,6 +45,7 @@ def main(argv=None):
     with Dataset.open(a.cube) as ds:
         _nt, _ns, nl, ny, nx = ds.shape
         w = Shell(ds, title="explorer", look=get_look("modern"))
+        titlebar.dock_titles(w)                         # the panels' titles as ui.app.start gives them (chrome)
         w.setGeometry(40, 40, 1600, 960)
         w.show()
         spin(60, lambda: w.first_image_s is not None)
