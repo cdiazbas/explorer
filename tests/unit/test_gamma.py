@@ -123,7 +123,7 @@ def test_gamma_panel_at_1_is_what_the_core_gave_and_keeps_the_sign_otherwise():
     a = frame(2, (40, 30), sign=True)
     lv = (-50.0, 50.0)
     same, slv = gamma_panel(a, lv, 1.0)
-    assert same is a and slv is lv
+    assert same is a and slv == lv                    # the values themselves: no copy at 1
     b, blv = gamma_panel(np.concatenate([a, -a]), lv, 0.5)
     p, n = np.split(b, 2)
     assert blv == (-1.0, 1.0) and np.allclose(p, -n, equal_nan=True) and np.isnan(p[:5, :9]).all()

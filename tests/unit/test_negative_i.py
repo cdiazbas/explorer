@@ -185,7 +185,7 @@ def test_levels_leave_out_negative_intensity(cubes, case):
         print(case, "I levels", lo, hi)
         assert lo > 0 and (lo, hi) == image_levels(want[0, 0, 0], symmetric=False)
         lt = ds.read_series(*RING, (0, 1, 0), [0, 2])
-        assert panel_levels(lt, symmetric=True) == (0.0, 1.0)                 # nothing finite at the ring
+        assert panel_levels(lt, symmetric=True) == (-1.0, 1.0)    # nothing finite at the ring: 0 still the middle
         assert image_levels(ds.image((0, 1, 0)).result(5), True) == image_levels(want[0, 1, 0], True)
 
 
