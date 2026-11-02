@@ -330,6 +330,8 @@ def test_the_button_is_in_the_slit_s_title_alone_and_no_key_saves(qapp, shell):
     from explorer.ui.titlebar import SAVE_TIP, SaveButton
 
     w = shell
+    draw(w, PTS)                                        # the slit's panel in view, its title laid out at its size
+    assert spin(qapp, lambda: w.slit_dock.isVisible())
     t, lt = w.slit_dock.titleBarWidget(), w.lt_dock.titleBarWidget()
     b = save_button(w)
     print(type(t).__name__, "steps", t.steps_button.geometry().getRect(), "save", b.geometry().getRect(),

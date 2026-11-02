@@ -441,16 +441,29 @@ def test_under_the_macos_style_the_numbered_titles_have_qt_s_own_close_and_float
         pg.setConfigOptions(background="k", foreground="d")
 
 
-def test_away_from_the_macos_style_the_numbered_titles_keep_their_marks(qapp, cube):
-    """Away from the macOS style (Linux, the Mac's dark and light themes, the chrome's titles) the titles of lambda-t
-    and the slit keep the tool buttons they had, at the left: unchanged by the stand-in's Qt marks."""
+def test_the_panels_titles_are_of_one_kind_with_our_chrome_or_without(qapp, cube):
+    """lambda-t and the slit have a title of their own for the number of t steps (Shell.give_steps). Without our
+    chrome (a local Mac; Linux with the window manager's frame, EXPLORER_TITLEBAR=wm) the spectra keep Qt's, and off
+    a Mac lambda-t's had our tool buttons at the left and its name centred, beside the spectra's Qt marks at the
+    right and name at the left. Without our chrome it stands in for Qt's, its marks Qt's, on every platform; with it
+    (titlebar.dock_titles) every panel has ours, the tool buttons at the left."""
     from PySide6 import QtWidgets
+
+    from explorer.ui import titlebar
 
     w, close = window(qapp, cube[0], no_sp=True)
     try:
+        assert w.spec_dock.titleBarWidget() is None                     # Qt's own
         for d in (w.lt_dock, w.slit_dock):
             t = d.titleBarWidget()
-            assert [type(b) for b in t.buttons] == [QtWidgets.QToolButton] * 2
+            assert t.qt_marks and [type(b) for b in t.buttons] == [titlebar.QtMark] * 2, [type(b) for b in t.buttons]
+        titlebar.dock_titles(w)
+        qapp.processEvents()
+        for d in (w.spec_dock, w.lt_dock, w.slit_dock):
+            t = d.titleBarWidget()
+            assert not t.qt_marks and [type(b) for b in t.buttons] == [QtWidgets.QToolButton] * 2
+        for d in (w.lt_dock, w.slit_dock):
+            t = d.titleBarWidget()
             assert t.buttons[0].x() < t.buttons[1].x() < t.steps_button.x() < t.width() // 2
     finally:
         close()
@@ -486,20 +499,16 @@ def _as_qt_s(qapp, w, where: str) -> None:
     assert b.geometry().center().y() == f.center().y() and t.rect().contains(b.geometry()), where
 
 
-def test_on_a_mac_under_explorer_s_themes_the_numbered_titles_have_qt_s_marks(qapp, cube, monkeypatch):
+def test_on_a_mac_under_explorer_s_themes_the_numbered_titles_have_qt_s_marks(qapp, cube):
     """On a local Mac (cocoa) the spectra keep Qt's title under every theme; lambda-t's and the slit's stand in for
     it (Shell.give_steps). Under explorer's dark and light themes (Fusion's, with explorer's style) they showed 7-px
     tool buttons at the left, where the spectra beside them have Qt's marks at the right. Now Qt's marks, where Qt
     puts them, also after T (the theme while the window runs) and after T from the native macOS style, whose marks
-    are at the left. Offscreen, as a platform whose stand-in titles show Qt's marks (cocoa's, which tests do not
-    run on)."""
+    are at the left. Offscreen: a stand-in shows Qt's marks on every platform."""
     import pyqtgraph as pg
     from PySide6 import QtGui, QtWidgets
 
     from explorer.ui import style
-    from explorer.ui.titlebar import DockTitle
-
-    monkeypatch.setattr(DockTitle, "QT_MARKS_PLATFORMS", ("offscreen",), raising=False)
     name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
     try:
         style.apply_theme(qapp, "dark")
@@ -559,7 +568,7 @@ def _titles_clear(qapp, w, where: str) -> None:
         assert room >= need, (where, "name cut")
 
 
-def test_on_a_mac_the_numbered_titles_stay_clear_after_t(qapp, cube, monkeypatch):
+def test_on_a_mac_the_numbered_titles_stay_clear_after_t(qapp, cube):
     """After T from the native macOS style to explorer's themes (and back to light), lambda-t's number and the slit's
     number and save stay inside their titles, clear of Qt's marks and of each other, and the name keeps room: on
     main from 83c724a, T to dark put the number over the close mark, past the title's end, and the name was gone."""
@@ -567,8 +576,6 @@ def test_on_a_mac_the_numbered_titles_stay_clear_after_t(qapp, cube, monkeypatch
     from PySide6 import QtGui, QtWidgets
 
     from explorer.ui import style
-    from explorer.ui.titlebar import DockTitle
-    monkeypatch.setattr(DockTitle, "QT_MARKS_PLATFORMS", ("offscreen",), raising=False)
     name, pal = qapp.style().name(), QtGui.QPalette(qapp.palette())
     try:
         style.apply_theme(qapp, "dark")

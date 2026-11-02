@@ -732,20 +732,17 @@ class QtMark(QtWidgets.QAbstractButton):
 class DockTitle(QtWidgets.QWidget):
     """Close and float buttons at the left, the title centred: what macOS draws on a local Mac, so every path looks
     and works the same. A temporal panel's (dock.steps, a TimeSteps) has the number of its t steps after them.
-    stand_in: the title stands in for Qt's own (Shell.give_steps: a local Mac, where the other panels keep Qt's);
-    under the native macOS style, and under any style on a local Mac (explorer's dark and light themes), its close
-    and float are then Qt's (QtMark), where Qt puts them, and the bar is drawn in the panel's style (MacSeams: no
-    light line under it), so it reads as its neighbours' titles: the macOS style's marks at the left, the name centred
-    after the number; the themes' marks at the right, the name at the left as the style draws Qt's, the number by the
+    stand_in: the title stands in for Qt's own (Shell.give_steps), where the other panels keep Qt's (a local Mac;
+    Linux with the window manager's frame, EXPLORER_TITLEBAR=wm): its close and float are then Qt's (QtMark), where
+    Qt puts them, and the bar is drawn in the panel's style (MacSeams: no light line under it), so it reads as its
+    neighbours' titles whatever the platform and style: the macOS style's marks at the left, the name centred after
+    the number; the other styles' marks at the right, the name at the left as the style draws Qt's, the number by the
     marks."""
-    QT_MARKS = ("macos",)                               # the styles whose stand-in titles show Qt's marks
-    QT_MARKS_PLATFORMS = ("cocoa",)                     # and the platforms, whatever the style
 
     def __init__(self, dock, stand_in: bool = False):
         super().__init__(dock)
         self.d = dock
-        self.qt_marks = stand_in and (QtWidgets.QApplication.style().name() in self.QT_MARKS
-                                      or QtGui.QGuiApplication.platformName() in self.QT_MARKS_PLATFORMS)
+        self.qt_marks = stand_in
         st = dock.style()
         PM = QtWidgets.QStyle.PixelMetric
         m = st.pixelMetric(PM.PM_DockWidgetTitleMargin, None, dock)
