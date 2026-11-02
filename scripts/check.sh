@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Every check CI would run, here: hygiene, lint, layer contracts, types, tests. One summary; exit code = failures.
-#   scripts/check.sh           all of them (~10 s)
+#   scripts/check.sh           all of them (~10 s; the first run also fetches the Intel Mac's numpy, ~15 s)
 #   scripts/check.sh --fast    hygiene of the tree, ruff and layer contracts (no types, no tests)
 # Tests run headless (no DISPLAY: the X11 bridge would otherwise open windows on the user's screen) and without an
 # inherited LD_LIBRARY_PATH (another environment's Qt breaks PySide6), as scripts/run.sh does.
@@ -21,6 +21,7 @@ step() {                                   # step <name> <command...>
   local t0=$(date +%s)
   local out; out="$("$@" 2>&1)"; local rc=$?
   local s="ok"; [ $rc -ne 0 ] && { s="FAIL"; fails=$((fails + 1)); echo "$out" | tail -30; }
+  [ $rc -eq 0 ] && [ "${out#skipped:}" != "$out" ] && { s="skip"; echo "$out"; }   # it could not run: said, not ok
   rows+=("$(printf '  %-5s %-10s %4ss' "$s" "$name" "$(( $(date +%s) - t0 ))")")
 }
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -32,6 +33,7 @@ step ruff "$bin/ruff" check src tests scripts bench tools
 step layers "$bin/lint-imports"
 if [ $fast = 0 ]; then
   step types "$bin/mypy"
+  step intel "$bin/python" scripts/types_intel.py  # mypy with the Intel Mac's numpy and an untyped numba
   step tests env -u DISPLAY QT_QPA_PLATFORM=offscreen "$bin/python" -m pytest -q
 fi
 echo "checks:"; printf '%s\n' "${rows[@]}"
