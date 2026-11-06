@@ -4,8 +4,6 @@ Viewer for solar spectropolarimetric cubes [t, Stokes, λ, y, x], successor of C
 
 ![explorer at work on SST/CRISP cubes: a pixel's spectra, the four Stokes, zoom, colour tables, a slit, looks, themes and linked cubes](.github/assets/explorer.gif)
 
-![explorer on a CRISP 6173 Å cube: the cursor on a sunspot's penumbra, its Stokes spectra and λ–t](.github/assets/explorer.png)
-
 ## Install
 
 macOS (Apple silicon, Intel) or Linux x86_64; no root needed, only `git` and `curl` (or `wget`). It uses uv or conda
@@ -88,9 +86,8 @@ scripts/install_hooks.sh       # once per clone: hygiene and commit format
 scripts/check.sh               # what CI runs: hygiene, lint, layers, types, tests
 ```
 
-The still above is made by `bench/readme_picture.py CUBE` (offscreen; its docstring says with which cube and
-settings), to be made again when the window changes. The animation is the window offscreen on SST/CRISP cubes, one
-scripted state per frame: it shows what the window does, not how fast.
+The animation above is the window offscreen on SST/CRISP cubes, one scripted state per frame: it shows what the window
+does, not how fast.
 
 ## License and citation
 
