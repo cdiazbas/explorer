@@ -1,6 +1,8 @@
 # explorer
 
-Viewer for solar spectropolarimetric cubes [t, Stokes, λ, y, x], successor of CRISPEX. Under construction.
+Viewer for solar spectropolarimetric cubes [t, Stokes, λ, y, x], successor of CRISPEX.
+
+[Install](#install) · [Cubes it opens](#cubes-it-opens) · [Linked cubes](#linked-cubes) · [Updating](#updating)
 
 ![explorer at work on SST/CRISP cubes: a pixel's spectra, the four Stokes, zoom, colour tables, a slit, looks, themes and linked cubes](.github/assets/explorer.gif)
 
@@ -69,6 +71,8 @@ each its own. At each t a linked cube shows its scan nearest in time, as CRISPEX
 left out, and the terminal says why.
 
 ## Updating
+
+explorer is under construction, so it changes often.
 
 ```bash
 explorer update --check          # what is new; nothing changed
